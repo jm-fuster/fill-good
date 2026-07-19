@@ -76,9 +76,15 @@ export default async function PrecioDetallePage({
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
-                    <th className="py-2 font-medium">Fecha</th>
-                    <th className="py-2 font-medium">Tienda</th>
-                    <th className="py-2 text-right font-medium">Precio/ud</th>
+                    <th scope="col" className="py-2 font-medium">
+                      Fecha
+                    </th>
+                    <th scope="col" className="py-2 font-medium">
+                      Tienda
+                    </th>
+                    <th scope="col" className="py-2 text-right font-medium">
+                      Precio/ud
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

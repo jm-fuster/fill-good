@@ -15,6 +15,13 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export const metadata: Metadata = { title: "Guía de estilo" };
@@ -177,6 +184,19 @@ export default function StyleguidePage() {
           <div className="flex items-center gap-3">
             <Checkbox id="sg-check" defaultChecked />
             <Label htmlFor="sg-check">Comprado</Label>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="sg-select">Ubicación</Label>
+            <Select defaultValue="fridge">
+              <SelectTrigger id="sg-select" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pantry">Despensa</SelectItem>
+                <SelectItem value="fridge">Nevera</SelectItem>
+                <SelectItem value="freezer">Congelador</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </Section>
