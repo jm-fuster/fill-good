@@ -2,10 +2,10 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Food — Tu hogar organizado",
-    short_name: "Food",
+    name: "Stash — Compra lo justo, ahorra más",
+    short_name: "Stash",
     description:
-      "Inventario, lista de la compra, escaneo de tickets y menús semanales para tu hogar.",
+      "Controla tu despensa, compra solo lo que falta y ahorra: inventario, lista de la compra, escaneo de tickets, precios y menús semanales.",
     lang: "es",
     start_url: "/",
     display: "standalone",
