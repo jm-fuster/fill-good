@@ -264,6 +264,154 @@ export type Database = {
           },
         ];
       };
+      product_aliases: {
+        Row: {
+          id: string;
+          household_id: string;
+          product_id: string;
+          alias: string;
+          alias_normalized: string;
+          source: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          product_id: string;
+          alias: string;
+          alias_normalized: string;
+          source?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          product_id?: string;
+          alias?: string;
+          alias_normalized?: string;
+          source?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      receipts: {
+        Row: {
+          id: string;
+          household_id: string;
+          uploaded_by: string | null;
+          store_name: string | null;
+          store_chain: string | null;
+          purchased_at: string | null;
+          total_amount: number | null;
+          currency: string;
+          image_path: string | null;
+          status: string;
+          raw_extraction: unknown | null;
+          created_at: string;
+          confirmed_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          uploaded_by?: string | null;
+          store_name?: string | null;
+          store_chain?: string | null;
+          purchased_at?: string | null;
+          total_amount?: number | null;
+          currency?: string;
+          image_path?: string | null;
+          status?: string;
+          raw_extraction?: unknown | null;
+          created_at?: string;
+          confirmed_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          uploaded_by?: string | null;
+          store_name?: string | null;
+          store_chain?: string | null;
+          purchased_at?: string | null;
+          total_amount?: number | null;
+          currency?: string;
+          image_path?: string | null;
+          status?: string;
+          raw_extraction?: unknown | null;
+          created_at?: string;
+          confirmed_at?: string | null;
+        };
+        Relationships: [];
+      };
+      receipt_items: {
+        Row: {
+          id: string;
+          receipt_id: string;
+          household_id: string;
+          raw_text: string | null;
+          description: string;
+          quantity: number;
+          unit: UnitType;
+          is_weighted: boolean;
+          total_price: number | null;
+          unit_price: number | null;
+          price_per_kg: number | null;
+          product_id: string | null;
+          match_status: string;
+          added_to_inventory: boolean;
+          purchased_at: string | null;
+          store_chain: string | null;
+          position: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          receipt_id: string;
+          household_id: string;
+          raw_text?: string | null;
+          description: string;
+          quantity?: number;
+          unit?: UnitType;
+          is_weighted?: boolean;
+          total_price?: number | null;
+          unit_price?: number | null;
+          price_per_kg?: number | null;
+          product_id?: string | null;
+          match_status?: string;
+          added_to_inventory?: boolean;
+          purchased_at?: string | null;
+          store_chain?: string | null;
+          position?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          receipt_id?: string;
+          household_id?: string;
+          raw_text?: string | null;
+          description?: string;
+          quantity?: number;
+          unit?: UnitType;
+          is_weighted?: boolean;
+          total_price?: number | null;
+          unit_price?: number | null;
+          price_per_kg?: number | null;
+          product_id?: string | null;
+          match_status?: string;
+          added_to_inventory?: boolean;
+          purchased_at?: string | null;
+          store_chain?: string | null;
+          position?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "receipt_items_receipt_id_fkey";
+            columns: ["receipt_id"];
+            referencedRelation: "receipts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<never, never>;
     Functions: {

@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { ScanLine } from "lucide-react";
 
-import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
+import { ScanForm } from "@/features/receipts/components/scan-form";
 
 export const metadata: Metadata = { title: "Escanear ticket" };
 
@@ -11,13 +10,13 @@ export default function EscanearPage() {
     <>
       <PageHeader
         title="Escanear ticket"
-        description="Fotografía tu ticket y actualiza el inventario."
+        description="Haz una foto o sube un PDF: la IA lee los productos y precios."
       />
-      <EmptyState
-        icon={ScanLine}
-        title="Escaneo de tickets"
-        description="Haz una foto al ticket de la compra: la IA extraerá los productos y precios y tú solo tendrás que revisar y confirmar."
-      />
+      <ScanForm />
+      <p className="mt-6 text-sm text-muted-foreground text-pretty">
+        Tras leer el ticket podrás revisar cada producto antes de añadirlo a tu
+        inventario. Los precios alimentan el historial para ver tendencias.
+      </p>
     </>
   );
 }

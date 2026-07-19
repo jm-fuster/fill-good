@@ -1,0 +1,39 @@
+import type { Metadata } from "next";
+import { notFound, redirect } from "next/navigation";
+
+import { PageHeader } from "@/components/layout/page-header";
+import { ReceiptReview } from "@/features/receipts/components/receipt-review";
+import { getReceipt, getReceiptItems } from "@/features/receipts/queries";
+import { getProducts } from "@/features/inventory/queries";
+
+export const metadata: Metadata = { title: "Revisar ticket" };
+
+export default async function RevisarPage({
+  params,
+}: {
+  params: Promise<{ receiptId: string }>;
+}) {
+  const { receiptId } = await params;
+  const receipt = await getReceipt(receiptId);
+  if (!receipt) notFound();
+  if (receipt.status === "confirmed") redirect("/inventario");
+
+  const [items, products] = await Promise.all([
+    getReceiptItems(receiptId),
+    getProducts(),
+  ]);
+
+  return (
+    <>
+      <PageHeader
+        title="Revisar ticket"
+        description="Ajusta lo que haga falta y confirma. Lo marcado pasará al inventario."
+      />
+      <ReceiptReview
+        receipt={receipt}
+        items={items}
+        products={products.map((p) => ({ id: p.id, name: p.name }))}
+      />
+    </>
+  );
+}
