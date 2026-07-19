@@ -120,7 +120,8 @@ export async function setInventoryQuantityAction(
     .update({ quantity, updated_by: userId })
     .eq("id", id);
   if (error) return { error: "No se pudo actualizar la cantidad." };
-  revalidatePath("/inventario");
+  // Sin revalidatePath: el stepper es optimista en el cliente y persiste en
+  // segundo plano; evita un refetch de toda la página en cada pulsación.
   return { ok: true };
 }
 

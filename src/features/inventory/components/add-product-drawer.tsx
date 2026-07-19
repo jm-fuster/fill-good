@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useId, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -35,25 +36,27 @@ export function AddProductDrawer({
   categories: Category[];
   productNames: string[];
 }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldsKey, setFieldsKey] = useState(0);
-  const [pending, startTransition] = useTransition();
+  const [pending, setPending] = useState(false);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     setError(null);
-    startTransition(async () => {
-      const result = await addInventoryAction({}, formData);
-      if (result.error) {
-        setError(result.error);
-      } else {
-        toast.success("Producto añadido al inventario");
-        setOpen(false);
-        setFieldsKey((k) => k + 1);
-      }
-    });
+    setPending(true);
+    const result = await addInventoryAction({}, formData);
+    setPending(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    toast.success("Producto añadido al inventario");
+    setOpen(false);
+    setFieldsKey((k) => k + 1);
+    router.refresh();
   }
 
   return (

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,35 +30,38 @@ export function EditItemDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
-  const [deleting, startDelete] = useTransition();
+  const [pending, setPending] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     setError(null);
-    startTransition(async () => {
-      const result = await updateInventoryAction({}, formData);
-      if (result.error) {
-        setError(result.error);
-      } else {
-        toast.success("Cambios guardados");
-        onOpenChange(false);
-      }
-    });
+    setPending(true);
+    const result = await updateInventoryAction({}, formData);
+    setPending(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    toast.success("Cambios guardados");
+    onOpenChange(false);
+    router.refresh();
   }
 
-  function handleDelete() {
-    startDelete(async () => {
-      const result = await deleteInventoryAction(entry.id);
-      if (result?.error) {
-        toast.error(result.error);
-      } else {
-        toast.success("Eliminado del inventario");
-        onOpenChange(false);
-      }
-    });
+  async function handleDelete() {
+    setDeleting(true);
+    const result = await deleteInventoryAction(entry.id);
+    setDeleting(false);
+    if (result?.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Eliminado del inventario");
+    onOpenChange(false);
+    router.refresh();
   }
 
   return (

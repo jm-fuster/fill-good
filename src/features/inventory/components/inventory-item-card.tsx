@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,6 +18,8 @@ export function InventoryItemCard({ entry }: { entry: InventoryEntry }) {
   const [serverQty, setServerQty] = useState(entry.quantity);
   const [editing, setEditing] = useState(false);
   const [, startTransition] = useTransition();
+  // Ref para que clics rápidos consecutivos acumulen (evita el closure obsoleto).
+  const qtyRef = useRef(entry.quantity);
 
   // Sincroniza el estado local cuando el servidor devuelve un valor nuevo
   // (patrón de ajuste de estado en render, no en efecto).
@@ -26,13 +28,21 @@ export function InventoryItemCard({ entry }: { entry: InventoryEntry }) {
     setQty(entry.quantity);
   }
 
+  // El ref (para acumular clics rápidos) se sincroniza en un efecto, no en
+  // render.
+  useEffect(() => {
+    qtyRef.current = entry.quantity;
+  }, [entry.quantity]);
+
   function changeBy(delta: number) {
-    const next = Math.max(0, Math.round((qty + delta) * 100) / 100);
+    const next = Math.max(0, Math.round((qtyRef.current + delta) * 100) / 100);
+    qtyRef.current = next;
     setQty(next);
     startTransition(async () => {
       const result = await setInventoryQuantityAction(entry.id, next);
       if (result?.error) {
         toast.error(result.error);
+        qtyRef.current = entry.quantity;
         setQty(entry.quantity);
       }
     });
@@ -116,7 +126,11 @@ export function InventoryItemCard({ entry }: { entry: InventoryEntry }) {
         ) : null}
       </div>
 
-      <EditItemDrawer entry={entry} open={editing} onOpenChange={setEditing} />
+      <EditItemDrawer
+        entry={{ ...entry, quantity: qty }}
+        open={editing}
+        onOpenChange={setEditing}
+      />
     </>
   );
 }
