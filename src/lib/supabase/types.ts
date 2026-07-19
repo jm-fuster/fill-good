@@ -412,6 +412,161 @@ export type Database = {
           },
         ];
       };
+      recipes: {
+        Row: {
+          id: string;
+          household_id: string;
+          name: string;
+          description: string | null;
+          servings: number;
+          prep_minutes: number | null;
+          meal_types: string[] | null;
+          instructions: string | null;
+          source: string;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          name: string;
+          description?: string | null;
+          servings?: number;
+          prep_minutes?: number | null;
+          meal_types?: string[] | null;
+          instructions?: string | null;
+          source?: string;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          name?: string;
+          description?: string | null;
+          servings?: number;
+          prep_minutes?: number | null;
+          meal_types?: string[] | null;
+          instructions?: string | null;
+          source?: string;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      recipe_ingredients: {
+        Row: {
+          id: string;
+          recipe_id: string;
+          household_id: string;
+          product_id: string | null;
+          name: string;
+          quantity: number | null;
+          unit: UnitType | null;
+          optional: boolean;
+        };
+        Insert: {
+          id?: string;
+          recipe_id: string;
+          household_id: string;
+          product_id?: string | null;
+          name: string;
+          quantity?: number | null;
+          unit?: UnitType | null;
+          optional?: boolean;
+        };
+        Update: {
+          id?: string;
+          recipe_id?: string;
+          household_id?: string;
+          product_id?: string | null;
+          name?: string;
+          quantity?: number | null;
+          unit?: UnitType | null;
+          optional?: boolean;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "recipe_ingredients_recipe_id_fkey";
+            columns: ["recipe_id"];
+            referencedRelation: "recipes";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      weekly_menus: {
+        Row: {
+          id: string;
+          household_id: string;
+          week_start: string;
+          status: string;
+          generated_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          week_start: string;
+          status?: string;
+          generated_by?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          week_start?: string;
+          status?: string;
+          generated_by?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      menu_entries: {
+        Row: {
+          id: string;
+          menu_id: string;
+          household_id: string;
+          date: string;
+          meal_slot: string;
+          recipe_id: string | null;
+          free_text: string | null;
+          servings: number;
+        };
+        Insert: {
+          id?: string;
+          menu_id: string;
+          household_id: string;
+          date: string;
+          meal_slot: string;
+          recipe_id?: string | null;
+          free_text?: string | null;
+          servings?: number;
+        };
+        Update: {
+          id?: string;
+          menu_id?: string;
+          household_id?: string;
+          date?: string;
+          meal_slot?: string;
+          recipe_id?: string | null;
+          free_text?: string | null;
+          servings?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "menu_entries_menu_id_fkey";
+            columns: ["menu_id"];
+            referencedRelation: "weekly_menus";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "menu_entries_recipe_id_fkey";
+            columns: ["recipe_id"];
+            referencedRelation: "recipes";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<never, never>;
     Functions: {
