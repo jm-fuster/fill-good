@@ -5,6 +5,7 @@ import { OnboardingForm } from "@/features/household/components/onboarding-form"
 import { getCurrentHousehold } from "@/features/household/queries";
 
 export const metadata: Metadata = { title: "Bienvenido" };
+export const dynamic = "force-dynamic";
 
 export default async function OnboardingPage() {
   const household = await getCurrentHousehold();

@@ -1,0 +1,170 @@
+"use server";
+
+import { auth } from "@clerk/nextjs/server";
+import { revalidatePath } from "next/cache";
+
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { normalizeName } from "@/lib/normalize";
+import { getCurrentHousehold } from "@/features/household/queries";
+import { addInventorySchema, editInventorySchema } from "./schemas";
+
+export type ActionState = { error?: string; ok?: boolean };
+
+export async function addInventoryAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+
+  const parsed = addInventorySchema.safeParse({
+    name: formData.get("name"),
+    categoryId: formData.get("categoryId") || undefined,
+    location: formData.get("location"),
+    unit: formData.get("unit"),
+    quantity: formData.get("quantity"),
+    expiryDate: formData.get("expiryDate") || undefined,
+    minQuantity: formData.get("minQuantity") || undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  const d = parsed.data;
+  const supabase = createServerSupabaseClient();
+  const normalized = normalizeName(d.name);
+
+  // Resolver el producto: reutilizar si ya existe en el catálogo, si no crearlo.
+  const { data: existing, error: selErr } = await supabase
+    .from("products")
+    .select("id")
+    .eq("household_id", household.id)
+    .eq("normalized_name", normalized)
+    .maybeSingle();
+  if (selErr) return { error: "Error al buscar el producto." };
+
+  let productId: string;
+  if (existing) {
+    productId = existing.id;
+    const updates: { min_quantity?: number | null; category_id?: string } = {};
+    if (d.minQuantity !== null) updates.min_quantity = d.minQuantity;
+    if (d.categoryId) updates.category_id = d.categoryId;
+    if (Object.keys(updates).length > 0) {
+      await supabase.from("products").update(updates).eq("id", productId);
+    }
+  } else {
+    const { data: created, error: insErr } = await supabase
+      .from("products")
+      .insert({
+        household_id: household.id,
+        name: d.name,
+        normalized_name: normalized,
+        category_id: d.categoryId,
+        default_unit: d.unit,
+        default_location: d.location,
+        min_quantity: d.minQuantity,
+      })
+      .select("id")
+      .single();
+    if (insErr || !created) return { error: "No se pudo crear el producto." };
+    productId = created.id;
+  }
+
+  // Existencias: si ya hay una fila en esa ubicación, sumar; si no, crearla.
+  const { data: invExisting } = await supabase
+    .from("inventory_items")
+    .select("id, quantity")
+    .eq("household_id", household.id)
+    .eq("product_id", productId)
+    .eq("location", d.location)
+    .maybeSingle();
+
+  if (invExisting) {
+    await supabase
+      .from("inventory_items")
+      .update({
+        quantity: Number(invExisting.quantity) + d.quantity,
+        unit: d.unit,
+        updated_by: userId,
+        ...(d.expiryDate ? { expiry_date: d.expiryDate } : {}),
+      })
+      .eq("id", invExisting.id);
+  } else {
+    const { error: invErr } = await supabase.from("inventory_items").insert({
+      household_id: household.id,
+      product_id: productId,
+      location: d.location,
+      quantity: d.quantity,
+      unit: d.unit,
+      expiry_date: d.expiryDate,
+      updated_by: userId,
+    });
+    if (invErr) return { error: "No se pudo añadir al inventario." };
+  }
+
+  revalidatePath("/inventario");
+  return { ok: true };
+}
+
+export async function setInventoryQuantityAction(
+  id: string,
+  quantity: number,
+): Promise<ActionState> {
+  if (!Number.isFinite(quantity) || quantity < 0) {
+    return { error: "Cantidad no válida." };
+  }
+  const { userId } = await auth();
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase
+    .from("inventory_items")
+    .update({ quantity, updated_by: userId })
+    .eq("id", id);
+  if (error) return { error: "No se pudo actualizar la cantidad." };
+  revalidatePath("/inventario");
+  return { ok: true };
+}
+
+export async function updateInventoryAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const { userId } = await auth();
+  const parsed = editInventorySchema.safeParse({
+    inventoryId: formData.get("inventoryId"),
+    productId: formData.get("productId"),
+    quantity: formData.get("quantity"),
+    expiryDate: formData.get("expiryDate") || undefined,
+    minQuantity: formData.get("minQuantity") || undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  const d = parsed.data;
+  const supabase = createServerSupabaseClient();
+
+  const { error: invErr } = await supabase
+    .from("inventory_items")
+    .update({
+      quantity: d.quantity,
+      expiry_date: d.expiryDate,
+      updated_by: userId,
+    })
+    .eq("id", d.inventoryId);
+  if (invErr) return { error: "No se pudo guardar." };
+
+  await supabase
+    .from("products")
+    .update({ min_quantity: d.minQuantity })
+    .eq("id", d.productId);
+
+  revalidatePath("/inventario");
+  return { ok: true };
+}
+
+export async function deleteInventoryAction(id: string): Promise<ActionState> {
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.from("inventory_items").delete().eq("id", id);
+  if (error) return { error: "No se pudo eliminar." };
+  revalidatePath("/inventario");
+  return { ok: true };
+}

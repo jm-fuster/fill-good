@@ -70,6 +70,121 @@ export type Database = {
           },
         ];
       };
+      categories: {
+        Row: {
+          id: string;
+          household_id: string;
+          name: string;
+          icon: string | null;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          name: string;
+          icon?: string | null;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          name?: string;
+          icon?: string | null;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      products: {
+        Row: {
+          id: string;
+          household_id: string;
+          name: string;
+          normalized_name: string;
+          category_id: string | null;
+          default_unit: UnitType;
+          default_location: LocationType;
+          min_quantity: number | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          name: string;
+          normalized_name: string;
+          category_id?: string | null;
+          default_unit?: UnitType;
+          default_location?: LocationType;
+          min_quantity?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          name?: string;
+          normalized_name?: string;
+          category_id?: string | null;
+          default_unit?: UnitType;
+          default_location?: LocationType;
+          min_quantity?: number | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      inventory_items: {
+        Row: {
+          id: string;
+          household_id: string;
+          product_id: string;
+          location: LocationType;
+          quantity: number;
+          unit: UnitType;
+          expiry_date: string | null;
+          notes: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          product_id: string;
+          location?: LocationType;
+          quantity?: number;
+          unit?: UnitType;
+          expiry_date?: string | null;
+          notes?: string | null;
+          updated_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          product_id?: string;
+          location?: LocationType;
+          quantity?: number;
+          unit?: UnitType;
+          expiry_date?: string | null;
+          notes?: string | null;
+          updated_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "inventory_items_product_id_fkey";
+            columns: ["product_id"];
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<never, never>;
     Functions: {
@@ -84,6 +199,10 @@ export type Database = {
       regenerate_invite_code: {
         Args: { p_household_id: string };
         Returns: string;
+      };
+      seed_default_categories: {
+        Args: { hid: string };
+        Returns: undefined;
       };
     };
     Enums: {

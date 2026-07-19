@@ -1,0 +1,122 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { Minus, Plus } from "lucide-react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { expiryLabel, getExpiryStatus } from "@/lib/dates";
+import { formatQuantity, isCountable } from "@/lib/units";
+import type { InventoryEntry } from "../queries";
+import { setInventoryQuantityAction } from "../actions";
+import { EditItemDrawer } from "./edit-item-drawer";
+
+export function InventoryItemCard({ entry }: { entry: InventoryEntry }) {
+  const [qty, setQty] = useState(entry.quantity);
+  const [serverQty, setServerQty] = useState(entry.quantity);
+  const [editing, setEditing] = useState(false);
+  const [, startTransition] = useTransition();
+
+  // Sincroniza el estado local cuando el servidor devuelve un valor nuevo
+  // (patrón de ajuste de estado en render, no en efecto).
+  if (serverQty !== entry.quantity) {
+    setServerQty(entry.quantity);
+    setQty(entry.quantity);
+  }
+
+  function changeBy(delta: number) {
+    const next = Math.max(0, Math.round((qty + delta) * 100) / 100);
+    setQty(next);
+    startTransition(async () => {
+      const result = await setInventoryQuantityAction(entry.id, next);
+      if (result?.error) {
+        toast.error(result.error);
+        setQty(entry.quantity);
+      }
+    });
+  }
+
+  const expiry = getExpiryStatus(entry.expiryDate);
+  const belowMin = entry.minQuantity !== null && qty <= entry.minQuantity;
+  const countable = isCountable(entry.unit);
+
+  return (
+    <>
+      <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+          aria-label={`Editar ${entry.productName}`}
+        >
+          <span
+            aria-hidden
+            className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-lg"
+          >
+            {entry.categoryIcon ?? "📦"}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-medium">
+              {entry.productName}
+            </span>
+            <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
+              <span className="text-sm text-muted-foreground">
+                {qty === 0 ? "Agotado" : formatQuantity(qty, entry.unit)}
+              </span>
+              {expiry ? (
+                <Badge
+                  className={cn(
+                    "border-transparent",
+                    expiry.status === "expired" &&
+                      "bg-destructive/15 text-destructive",
+                    expiry.status === "soon" && "bg-warning/15 text-warning",
+                    expiry.status === "ok" && "bg-success/15 text-success",
+                  )}
+                >
+                  {expiryLabel(expiry.days)}
+                </Badge>
+              ) : null}
+              {belowMin && qty > 0 ? (
+                <Badge className="border-transparent bg-warning/15 text-warning">
+                  Quedan pocas
+                </Badge>
+              ) : null}
+            </span>
+          </span>
+        </button>
+
+        {countable ? (
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={`Quitar una unidad de ${entry.productName}`}
+              onClick={() => changeBy(-1)}
+              disabled={qty <= 0}
+            >
+              <Minus aria-hidden />
+            </Button>
+            <span
+              className="w-7 text-center text-sm font-semibold tabular-nums"
+              aria-live="polite"
+            >
+              {qty}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={`Añadir una unidad de ${entry.productName}`}
+              onClick={() => changeBy(1)}
+            >
+              <Plus aria-hidden />
+            </Button>
+          </div>
+        ) : null}
+      </div>
+
+      <EditItemDrawer entry={entry} open={editing} onOpenChange={setEditing} />
+    </>
+  );
+}
