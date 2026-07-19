@@ -1,3 +1,6 @@
+import { ClerkProvider } from "@clerk/nextjs";
+import { esES } from "@clerk/localizations";
+import { shadcn } from "@clerk/ui/themes";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SerwistProvider } from "@serwist/next/react";
@@ -54,20 +57,22 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
-        <SerwistProvider
-          swUrl="/sw.js"
-          disable={process.env.NODE_ENV === "development"}
-        >
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
+        <ClerkProvider localization={esES} appearance={{ theme: shadcn }}>
+          <SerwistProvider
+            swUrl="/sw.js"
+            disable={process.env.NODE_ENV === "development"}
           >
-            {children}
-            <Toaster position="top-center" />
-          </ThemeProvider>
-        </SerwistProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              {children}
+              <Toaster position="top-center" />
+            </ThemeProvider>
+          </SerwistProvider>
+        </ClerkProvider>
       </body>
     </html>
   );
