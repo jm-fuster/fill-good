@@ -2,10 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
-import { ChevronRight, Palette, Users } from "lucide-react";
+import { ChevronRight, Palette } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { HouseholdCard } from "@/features/household/components/household-card";
+import {
+  getCurrentHousehold,
+  getHouseholdMembers,
+} from "@/features/household/queries";
 import {
   Card,
   CardContent,
@@ -17,13 +22,17 @@ import {
 export const metadata: Metadata = { title: "Ajustes" };
 
 export default async function AjustesPage() {
-  const user = await currentUser();
+  const [user, household] = await Promise.all([
+    currentUser(),
+    getCurrentHousehold(),
+  ]);
   const displayName =
     user?.firstName ??
     user?.fullName ??
     user?.primaryEmailAddress?.emailAddress ??
     "Tu cuenta";
   const email = user?.primaryEmailAddress?.emailAddress;
+  const members = household ? await getHouseholdMembers(household.id) : [];
 
   return (
     <>
@@ -44,18 +53,9 @@ export default async function AjustesPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="size-4" aria-hidden />
-              Hogar
-            </CardTitle>
-            <CardDescription>
-              Miembros y código de invitación. Disponible en cuanto conectemos la
-              base de datos.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        {household ? (
+          <HouseholdCard household={household} members={members} />
+        ) : null}
 
         <Card>
           <CardHeader>
