@@ -136,6 +136,85 @@ export type Database = {
         };
         Relationships: [];
       };
+      shopping_lists: {
+        Row: {
+          id: string;
+          household_id: string;
+          name: string;
+          status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          name?: string;
+          status?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          name?: string;
+          status?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      shopping_list_items: {
+        Row: {
+          id: string;
+          list_id: string;
+          household_id: string;
+          product_id: string | null;
+          name: string;
+          quantity: number | null;
+          unit: UnitType | null;
+          is_checked: boolean;
+          checked_by: string | null;
+          checked_at: string | null;
+          added_by: string | null;
+          position: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          list_id: string;
+          household_id: string;
+          product_id?: string | null;
+          name: string;
+          quantity?: number | null;
+          unit?: UnitType | null;
+          is_checked?: boolean;
+          checked_by?: string | null;
+          checked_at?: string | null;
+          added_by?: string | null;
+          position?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          list_id?: string;
+          household_id?: string;
+          product_id?: string | null;
+          name?: string;
+          quantity?: number | null;
+          unit?: UnitType | null;
+          is_checked?: boolean;
+          checked_by?: string | null;
+          checked_at?: string | null;
+          added_by?: string | null;
+          position?: number;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "shopping_list_items_list_id_fkey";
+            columns: ["list_id"];
+            referencedRelation: "shopping_lists";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       inventory_items: {
         Row: {
           id: string;
@@ -201,6 +280,10 @@ export type Database = {
         Returns: string;
       };
       seed_default_categories: {
+        Args: { hid: string };
+        Returns: undefined;
+      };
+      ensure_active_list: {
         Args: { hid: string };
         Returns: undefined;
       };
