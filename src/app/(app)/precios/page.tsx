@@ -1,23 +1,66 @@
 import type { Metadata } from "next";
-import { TrendingUp } from "lucide-react";
+import Link from "next/link";
+import { ChevronRight, TrendingUp } from "lucide-react";
 
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
+import { getPriceOverview } from "@/features/prices/queries";
+import { UNIT_LABELS } from "@/lib/units";
 
 export const metadata: Metadata = { title: "Precios" };
 
-export default function PreciosPage() {
+function euro(n: number) {
+  return `${n.toFixed(2).replace(".", ",")} €`;
+}
+
+export default async function PreciosPage() {
+  const rows = await getPriceOverview();
+
   return (
     <>
       <PageHeader
         title="Precios"
         description="Evolución de precios de lo que compras."
       />
-      <EmptyState
-        icon={TrendingUp}
-        title="Sin historial de precios"
-        description="Cuando confirmes tickets escaneados, aquí verás cómo evoluciona el precio de cada producto y en qué supermercado compras más barato."
-      />
+
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={TrendingUp}
+          title="Sin historial de precios"
+          description="Escanea tickets de la compra y aquí verás cómo evoluciona el precio de cada producto y dónde compras más barato."
+        />
+      ) : (
+        <div className="flex flex-col gap-2">
+          {rows.map((r) => (
+            <Link
+              key={r.productId}
+              href={`/precios/${r.productId}`}
+              className="flex min-h-14 items-center justify-between gap-3 rounded-xl border p-3 transition-colors hover:bg-muted"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-medium">{r.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {r.purchases}{" "}
+                  {r.purchases === 1 ? "compra" : "compras"} · último{" "}
+                  {euro(r.lastUnitPrice)}/{UNIT_LABELS[r.unit]}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 text-right">
+                <div>
+                  <p className="font-medium tabular-nums">
+                    {euro(r.totalSpent)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">gastado</p>
+                </div>
+                <ChevronRight
+                  className="size-4 text-muted-foreground"
+                  aria-hidden
+                />
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
     </>
   );
 }

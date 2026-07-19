@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
-import { Package } from "lucide-react";
+import Link from "next/link";
+import { Package, TrendingUp } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { AddProductDrawer } from "@/features/inventory/components/add-product-drawer";
@@ -35,7 +37,17 @@ export default async function InventarioPage() {
         title="Inventario"
         description="Tu despensa, nevera y congelador."
         action={
-          <AddProductDrawer categories={categories} productNames={productNames} />
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="icon" aria-label="Ver precios">
+              <Link href="/precios">
+                <TrendingUp aria-hidden />
+              </Link>
+            </Button>
+            <AddProductDrawer
+              categories={categories}
+              productNames={productNames}
+            />
+          </div>
         }
       />
 
