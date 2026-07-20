@@ -19,7 +19,7 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - [x] A1 — Invitación por enlace (URL con código)
 - [x] A2 — Productos habituales y autocompletado inteligente en la lista
 - [x] A3 — Revisión de caducidades tras la compra + "consumir pronto"
-- [ ] B1 — Recetario del hogar (CRUD de recetas, tipo de comida y temporada)
+- [x] B1 — Recetario del hogar (CRUD de recetas, tipo de comida y temporada)
 - [ ] B2 — Gustos y apetencia (valoraciones + señales de uso)
 - [ ] C1 — Varios platos por comida/cena
 - [ ] C2 — Reglas del menú
@@ -173,13 +173,26 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - **Acceso:** botón/enlace "Mis recetas" en la cabecera de `/menus`.
 
 **Pasos**
-- [ ] Migración (`is_saved`, `seasons`, `normalized_name` + backfills + único parcial) + regenerar tipos.
-- [ ] Helper `getCurrentSeason` en `src/lib/dates.ts` con tests mentales documentados (oct–abr = invierno).
-- [ ] Feature `recipes`: schemas (zod), queries (listado con ingredientes), actions.
-- [ ] Página `/recetas` (listado + buscador + filtros) y páginas de crear/editar con lista dinámica de ingredientes.
-- [ ] Vinculación ingrediente→producto por nombre normalizado al guardar.
-- [ ] Botón "Guardar en mi recetario" sobre recetas generadas por IA en el menú.
-- [ ] Enlace "Mis recetas" desde `/menus`.
+- [x] Migración (`is_saved`, `seasons`, `normalized_name` + backfills + único parcial) + regenerar tipos.
+- [x] Helper `getCurrentSeason` en `src/lib/dates.ts` con tests mentales documentados (oct–abr = invierno).
+- [x] Feature `recipes`: schemas (zod), queries (listado con ingredientes), actions.
+- [x] Página `/recetas` (listado + buscador + filtros) y páginas de crear/editar con lista dinámica de ingredientes.
+- [x] Vinculación ingrediente→producto por nombre normalizado al guardar.
+- [x] Botón "Guardar en mi recetario" sobre recetas generadas por IA en el menú.
+- [x] Enlace "Mis recetas" desde `/menus`.
+
+> **Nota de implementación (B1):** migración `supabase/migrations/20260720120000_recipes_recetario.sql`
+> (`recipes.is_saved`, `recipes.seasons text[] default '{all}'`, `recipes.normalized_name` + backfills +
+> índice único parcial `recipes_saved_normalized_idx (household_id, normalized_name) where is_saved`).
+> Tipos actualizados a mano en `src/lib/supabase/types.ts`. Feature nueva en `src/features/recipes/`
+> (`schemas.ts`, `queries.ts`, `actions.ts`, `components/{recipe-form,recipes-list}.tsx`, `constants.ts`);
+> páginas en `src/app/(app)/recetas/{page,nueva/page,[id]/page}.tsx`. Helper `getCurrentSeason` en
+> `src/lib/dates.ts`. `getMenuEntries` ahora trae `is_saved`/`source`; `menu-view.tsx` muestra "Guardar en
+> mi recetario" solo sobre recetas IA no guardadas; `generateMenuAction` fija `normalized_name` en las
+> efímeras. **Migración PENDIENTE en remoto** (verificado con `npx supabase migration list --linked`:
+> `20260720120000`). **YA APLICADA en remoto** (autorizada por el usuario y verificada con
+> `npx supabase migration list --linked`: `local == remote` en todas). `npx tsc --noEmit` y
+> `npx eslint` limpios.
 
 **Criterios de aceptación**
 - Crear "Lentejas con verduras" (Comida, Invierno) con 6 ingredientes; aparece en el listado con sus chips y sobrevive a recargas.

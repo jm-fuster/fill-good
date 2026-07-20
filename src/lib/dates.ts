@@ -1,5 +1,21 @@
 export type ExpiryStatus = "expired" | "soon" | "ok";
 
+export type Season = "winter" | "summer";
+
+/**
+ * Temporada de una fecha (por defecto hoy) con el modelo simple de dos
+ * estaciones para España:
+ *   · invierno = octubre–abril (meses 10, 11, 12, 1, 2, 3, 4)
+ *   · verano   = mayo–septiembre (meses 5, 6, 7, 8, 9)
+ * Ejemplos: julio (7) → "summer"; enero (1) → "winter"; octubre (10) →
+ * "winter"; mayo (5) → "summer". Una receta con seasons=['all'] vale siempre;
+ * una de seasons=['winter'] no debería salir en un menú de julio.
+ */
+export function getCurrentSeason(date: Date = new Date()): Season {
+  const month = date.getMonth() + 1; // 1 = enero … 12 = diciembre
+  return month >= 5 && month <= 9 ? "summer" : "winter";
+}
+
 /**
  * Estado de caducidad de una fecha (YYYY-MM-DD). `warnDays` = umbral de aviso
  * "caduca pronto". Devuelve null si no hay fecha.

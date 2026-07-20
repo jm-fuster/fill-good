@@ -3,7 +3,13 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Plus, Sparkles } from "lucide-react";
+import {
+  BookmarkPlus,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Sparkles,
+} from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
@@ -22,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getWeekDays, shiftWeek } from "@/lib/dates";
 import { cn } from "@/lib/utils";
+import { saveGeneratedRecipeAction } from "@/features/recipes/actions";
 import type { MenuEntry } from "../queries";
 import {
   addMissingToListAction,
@@ -51,6 +58,8 @@ export function MenuView({
     slot: string;
     label: string;
     current: string;
+    recipeId: string | null;
+    canSaveToRecipes: boolean;
   } | null>(null);
 
   const days = getWeekDays(weekStart);
@@ -122,6 +131,10 @@ export function MenuView({
                         slot: slot.key,
                         label: `${slot.label} · ${format(parseISO(date), "EEEE", { locale: es })}`,
                         current: text ?? "",
+                        recipeId: entry?.recipeId ?? null,
+                        canSaveToRecipes: Boolean(
+                          entry?.recipeId && entry.recipeIsSaved === false,
+                        ),
                       })
                     }
                     className={cn(
@@ -177,13 +190,21 @@ function EditEntryDrawer({
   onClose,
   onSaved,
 }: {
-  editing: { date: string; slot: string; label: string; current: string } | null;
+  editing: {
+    date: string;
+    slot: string;
+    label: string;
+    current: string;
+    recipeId: string | null;
+    canSaveToRecipes: boolean;
+  } | null;
   weekStart: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [value, setValue] = useState("");
   const [pending, startTransition] = useTransition();
+  const [savingRecipe, startSaveRecipe] = useTransition();
 
   // Sincroniza el input al abrir con una entrada distinta.
   const [lastKey, setLastKey] = useState<string | null>(null);
@@ -204,6 +225,18 @@ function EditEntryDrawer({
       );
       if (r.error) toast.error(r.error);
       else onSaved();
+    });
+  }
+
+  function saveToRecipes() {
+    if (!editing?.recipeId) return;
+    startSaveRecipe(async () => {
+      const r = await saveGeneratedRecipeAction(editing.recipeId!);
+      if (r.error) toast.error(r.error);
+      else {
+        toast.success("Guardada en tu recetario");
+        onSaved();
+      }
     });
   }
 
@@ -236,6 +269,17 @@ function EditEntryDrawer({
               <Button type="submit" size="lg" disabled={pending}>
                 {pending ? "Guardando…" : "Guardar"}
               </Button>
+              {editing?.canSaveToRecipes ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={saveToRecipes}
+                  disabled={savingRecipe}
+                >
+                  <BookmarkPlus aria-hidden />
+                  {savingRecipe ? "Guardando…" : "Guardar en mi recetario"}
+                </Button>
+              ) : null}
               {editing?.current ? (
                 <Button
                   type="button"

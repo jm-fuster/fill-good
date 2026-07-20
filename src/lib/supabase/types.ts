@@ -430,8 +430,11 @@ export type Database = {
           servings: number;
           prep_minutes: number | null;
           meal_types: string[] | null;
+          seasons: string[];
           instructions: string | null;
           source: string;
+          is_saved: boolean;
+          normalized_name: string | null;
           created_by: string | null;
           created_at: string;
         };
@@ -443,8 +446,11 @@ export type Database = {
           servings?: number;
           prep_minutes?: number | null;
           meal_types?: string[] | null;
+          seasons?: string[];
           instructions?: string | null;
           source?: string;
+          is_saved?: boolean;
+          normalized_name?: string | null;
           created_by?: string | null;
           created_at?: string;
         };
@@ -456,8 +462,11 @@ export type Database = {
           servings?: number;
           prep_minutes?: number | null;
           meal_types?: string[] | null;
+          seasons?: string[];
           instructions?: string | null;
           source?: string;
+          is_saved?: boolean;
+          normalized_name?: string | null;
           created_by?: string | null;
           created_at?: string;
         };

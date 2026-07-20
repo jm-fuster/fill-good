@@ -1,0 +1,269 @@
+"use server";
+
+import { auth } from "@clerk/nextjs/server";
+import { revalidatePath } from "next/cache";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { normalizeName } from "@/lib/normalize";
+import type { Database } from "@/lib/supabase/types";
+import { getCurrentHousehold } from "@/features/household/queries";
+import { recipeInputSchema, type RecipeInput, type RecipeIngredientInput } from "./schemas";
+
+export type RecipeActionState = { error?: string; ok?: boolean; id?: string };
+
+type Supabase = SupabaseClient<Database>;
+
+/**
+ * Construye las filas de recipe_ingredients vinculando cada ingrediente a un
+ * producto del catálogo del hogar si su nombre normalizado coincide (así el
+ * generador de menús sabrá qué hay en stock). Una sola consulta al catálogo.
+ */
+async function buildIngredientRows(
+  supabase: Supabase,
+  householdId: string,
+  recipeId: string,
+  ingredients: RecipeIngredientInput[],
+) {
+  const norms = [
+    ...new Set(ingredients.map((i) => normalizeName(i.name)).filter(Boolean)),
+  ];
+  const productByNorm = new Map<string, string>();
+  if (norms.length > 0) {
+    const { data: products } = await supabase
+      .from("products")
+      .select("id, normalized_name")
+      .eq("household_id", householdId)
+      .in("normalized_name", norms);
+    for (const p of products ?? []) productByNorm.set(p.normalized_name, p.id);
+  }
+  return ingredients.map((i) => ({
+    recipe_id: recipeId,
+    household_id: householdId,
+    name: i.name,
+    quantity: i.quantity,
+    unit: i.unit,
+    optional: i.optional,
+    product_id: productByNorm.get(normalizeName(i.name)) ?? null,
+  }));
+}
+
+/** Valida la entrada descartando filas de ingrediente sin nombre. */
+function parseInput(input: RecipeInput) {
+  return recipeInputSchema.safeParse({
+    ...input,
+    ingredients: (input.ingredients ?? []).filter((i) => i?.name?.trim()),
+  });
+}
+
+/** Comprueba si ya existe otra receta guardada con el mismo nombre normalizado. */
+async function findSavedDuplicate(
+  supabase: Supabase,
+  householdId: string,
+  normalized: string,
+  excludeId?: string,
+): Promise<boolean> {
+  let query = supabase
+    .from("recipes")
+    .select("id")
+    .eq("household_id", householdId)
+    .eq("normalized_name", normalized)
+    .eq("is_saved", true);
+  if (excludeId) query = query.neq("id", excludeId);
+  const { data } = await query.maybeSingle();
+  return Boolean(data);
+}
+
+export async function createRecipeAction(
+  input: RecipeInput,
+): Promise<RecipeActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+
+  const parsed = parseInput(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  const d = parsed.data;
+  const supabase = createServerSupabaseClient();
+  const normalized = normalizeName(d.name);
+
+  if (await findSavedDuplicate(supabase, household.id, normalized)) {
+    return { error: "Ya tienes una receta con ese nombre en tu recetario." };
+  }
+
+  const { data: recipe, error: insErr } = await supabase
+    .from("recipes")
+    .insert({
+      household_id: household.id,
+      name: d.name,
+      normalized_name: normalized,
+      description: d.description,
+      servings: d.servings,
+      prep_minutes: d.prepMinutes,
+      meal_types: d.mealTypes,
+      seasons: d.seasons,
+      instructions: d.instructions,
+      source: "manual",
+      is_saved: true,
+      created_by: userId,
+    })
+    .select("id")
+    .single();
+  if (insErr || !recipe) return { error: "No se pudo crear la receta." };
+
+  if (d.ingredients.length > 0) {
+    const rows = await buildIngredientRows(
+      supabase,
+      household.id,
+      recipe.id,
+      d.ingredients,
+    );
+    const { error: ingErr } = await supabase
+      .from("recipe_ingredients")
+      .insert(rows);
+    if (ingErr) {
+      // Evita dejar una receta a medias sin sus ingredientes.
+      await supabase.from("recipes").delete().eq("id", recipe.id);
+      return { error: "No se pudieron guardar los ingredientes." };
+    }
+  }
+
+  revalidatePath("/recetas");
+  return { ok: true, id: recipe.id };
+}
+
+export async function updateRecipeAction(
+  id: string,
+  input: RecipeInput,
+): Promise<RecipeActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const parsed = parseInput(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  const d = parsed.data;
+  const supabase = createServerSupabaseClient();
+  const normalized = normalizeName(d.name);
+
+  if (await findSavedDuplicate(supabase, household.id, normalized, id)) {
+    return { error: "Ya tienes otra receta con ese nombre en tu recetario." };
+  }
+
+  const { error: updErr } = await supabase
+    .from("recipes")
+    .update({
+      name: d.name,
+      normalized_name: normalized,
+      description: d.description,
+      servings: d.servings,
+      prep_minutes: d.prepMinutes,
+      meal_types: d.mealTypes,
+      seasons: d.seasons,
+      instructions: d.instructions,
+    })
+    .eq("id", id);
+  if (updErr) return { error: "No se pudo guardar la receta." };
+
+  // Reemplaza los ingredientes por completo (más simple que diferenciar).
+  await supabase.from("recipe_ingredients").delete().eq("recipe_id", id);
+  if (d.ingredients.length > 0) {
+    const rows = await buildIngredientRows(
+      supabase,
+      household.id,
+      id,
+      d.ingredients,
+    );
+    const { error: ingErr } = await supabase
+      .from("recipe_ingredients")
+      .insert(rows);
+    if (ingErr) return { error: "No se pudieron guardar los ingredientes." };
+  }
+
+  revalidatePath("/recetas");
+  revalidatePath(`/recetas/${id}`);
+  return { ok: true, id };
+}
+
+export async function deleteRecipeAction(
+  id: string,
+): Promise<RecipeActionState> {
+  const supabase = createServerSupabaseClient();
+  // menu_entries.recipe_id es ON DELETE SET NULL: el menú conserva el hueco
+  // como texto vacío en vez de romperse.
+  const { error } = await supabase.from("recipes").delete().eq("id", id);
+  if (error) return { error: "No se pudo eliminar la receta." };
+  revalidatePath("/recetas");
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * Adopta en el recetario una receta generada por la IA (is_saved = true). Fija
+ * normalized_name y vincula sus ingredientes al catálogo. Es la vía natural de
+ * poblar el recetario desde /menus.
+ */
+export async function saveGeneratedRecipeAction(
+  recipeId: string,
+): Promise<RecipeActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const { data: recipe } = await supabase
+    .from("recipes")
+    .select("id, name, is_saved")
+    .eq("id", recipeId)
+    .maybeSingle();
+  if (!recipe) return { error: "No se encontró la receta." };
+  if (recipe.is_saved) return { ok: true, id: recipe.id };
+
+  const normalized = normalizeName(recipe.name);
+  if (await findSavedDuplicate(supabase, household.id, normalized)) {
+    return { error: "Ya tienes una receta con ese nombre en tu recetario." };
+  }
+
+  const { error: updErr } = await supabase
+    .from("recipes")
+    .update({ is_saved: true, normalized_name: normalized })
+    .eq("id", recipeId);
+  if (updErr) return { error: "No se pudo guardar en el recetario." };
+
+  // Vincula a productos los ingredientes que aún no lo estaban.
+  const { data: ings } = await supabase
+    .from("recipe_ingredients")
+    .select("id, name, product_id")
+    .eq("recipe_id", recipeId);
+  const unlinked = (ings ?? []).filter((i) => !i.product_id);
+  if (unlinked.length > 0) {
+    const norms = [
+      ...new Set(unlinked.map((i) => normalizeName(i.name)).filter(Boolean)),
+    ];
+    if (norms.length > 0) {
+      const { data: products } = await supabase
+        .from("products")
+        .select("id, normalized_name")
+        .eq("household_id", household.id)
+        .in("normalized_name", norms);
+      const byNorm = new Map(
+        (products ?? []).map((p) => [p.normalized_name, p.id]),
+      );
+      for (const ing of unlinked) {
+        const pid = byNorm.get(normalizeName(ing.name));
+        if (pid) {
+          await supabase
+            .from("recipe_ingredients")
+            .update({ product_id: pid })
+            .eq("id", ing.id);
+        }
+      }
+    }
+  }
+
+  revalidatePath("/recetas");
+  revalidatePath("/menus");
+  return { ok: true, id: recipeId };
+}

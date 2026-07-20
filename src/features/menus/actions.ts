@@ -90,6 +90,7 @@ export async function generateMenuAction(
         .insert({
           household_id: household.id,
           name: meal.recipe_name,
+          normalized_name: normalizeName(meal.recipe_name),
           description: meal.description,
           servings: 2,
           meal_types: [meal.slot],

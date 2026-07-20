@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { BookOpen } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { MenuView } from "@/features/menus/components/menu-view";
 import { getMenuEntries, getWeekMenu } from "@/features/menus/queries";
@@ -26,6 +29,13 @@ export default async function MenusPage({
       <PageHeader
         title="Menús"
         description="Planifica la semana con lo que tienes en casa."
+        action={
+          <Button asChild variant="outline">
+            <Link href="/recetas">
+              <BookOpen aria-hidden /> Mis recetas
+            </Link>
+          </Button>
+        }
       />
       <MenuView
         weekStart={weekStart}
