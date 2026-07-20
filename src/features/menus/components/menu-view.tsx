@@ -33,10 +33,12 @@ import { cn } from "@/lib/utils";
 import { saveGeneratedRecipeAction } from "@/features/recipes/actions";
 import type { MenuEntry } from "../queries";
 import {
+  addMenuEntryAction,
   addMissingToListAction,
   generateMenuAction,
-  setMenuEntryAction,
+  removeMenuEntryAction,
   toggleEntryCookedAction,
+  updateMenuEntryAction,
 } from "../actions";
 
 /** ISO local (YYYY-MM-DD) de hoy, para comparar con la fecha de la entrada. */
@@ -48,6 +50,18 @@ const SLOTS = [
   { key: "lunch", label: "Comida" },
   { key: "dinner", label: "Cena" },
 ] as const;
+
+/** Estado de edición del drawer. `entryId === null` ⇒ añadir un plato nuevo. */
+type Editing = {
+  entryId: string | null;
+  date: string;
+  slot: string;
+  label: string;
+  current: string;
+  recipeId: string | null;
+  canSaveToRecipes: boolean;
+  cookedAt: string | null;
+};
 
 export function MenuView({
   weekStart,
@@ -61,19 +75,17 @@ export function MenuView({
   const router = useRouter();
   const [generating, startGenerate] = useTransition();
   const [addingList, startAddList] = useTransition();
-  const [editing, setEditing] = useState<{
-    entryId: string | null;
-    date: string;
-    slot: string;
-    label: string;
-    current: string;
-    recipeId: string | null;
-    canSaveToRecipes: boolean;
-    cookedAt: string | null;
-  } | null>(null);
+  const [editing, setEditing] = useState<Editing | null>(null);
 
   const days = getWeekDays(weekStart);
-  const byKey = new Map(entries.map((e) => [`${e.date}|${e.slot}`, e]));
+  // Varios platos por hueco: agrupamos por `date|slot` (ya vienen por posición).
+  const bySlot = new Map<string, MenuEntry[]>();
+  for (const e of entries) {
+    const key = `${e.date}|${e.slot}`;
+    const list = bySlot.get(key);
+    if (list) list.push(e);
+    else bySlot.set(key, [e]);
+  }
   const hasRecipes = entries.some((e) => e.recipeId);
 
   function generate() {
@@ -94,6 +106,36 @@ export function MenuView({
       if (r.error) toast.error(r.error);
       else if (r.added === 0) toast.info("Ya tienes todos los ingredientes");
       else toast.success(`${r.added} ingredientes añadidos a la lista`);
+    });
+  }
+
+  function openAdd(date: string, slot: (typeof SLOTS)[number]) {
+    setEditing({
+      entryId: null,
+      date,
+      slot: slot.key,
+      label: `${slot.label} · ${format(parseISO(date), "EEEE", { locale: es })}`,
+      current: "",
+      recipeId: null,
+      canSaveToRecipes: false,
+      cookedAt: null,
+    });
+  }
+
+  function openEdit(
+    date: string,
+    slot: (typeof SLOTS)[number],
+    entry: MenuEntry,
+  ) {
+    setEditing({
+      entryId: entry.id,
+      date,
+      slot: slot.key,
+      label: `${slot.label} · ${format(parseISO(date), "EEEE", { locale: es })}`,
+      current: entry.recipeName ?? entry.freeText ?? "",
+      recipeId: entry.recipeId,
+      canSaveToRecipes: Boolean(entry.recipeId && entry.recipeIsSaved === false),
+      cookedAt: entry.cookedAt,
     });
   }
 
@@ -127,44 +169,43 @@ export function MenuView({
             <p className="mb-2 text-sm font-semibold capitalize">
               {format(parseISO(date), "EEEE d", { locale: es })}
             </p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 items-start gap-2">
               {SLOTS.map((slot) => {
-                const entry = byKey.get(`${date}|${slot.key}`);
-                const text = entry?.recipeName ?? entry?.freeText ?? null;
+                const slotEntries = bySlot.get(`${date}|${slot.key}`) ?? [];
                 return (
-                  <button
-                    key={slot.key}
-                    type="button"
-                    onClick={() =>
-                      setEditing({
-                        entryId: entry?.id ?? null,
-                        date,
-                        slot: slot.key,
-                        label: `${slot.label} · ${format(parseISO(date), "EEEE", { locale: es })}`,
-                        current: text ?? "",
-                        recipeId: entry?.recipeId ?? null,
-                        canSaveToRecipes: Boolean(
-                          entry?.recipeId && entry.recipeIsSaved === false,
-                        ),
-                        cookedAt: entry?.cookedAt ?? null,
-                      })
-                    }
-                    className={cn(
-                      "flex min-h-16 flex-col gap-1 rounded-lg border border-dashed p-2 text-left text-sm transition-colors hover:bg-muted",
-                      text && "border-solid",
-                    )}
-                  >
+                  <div key={slot.key} className="flex flex-col gap-1.5">
                     <span className="text-xs font-medium text-muted-foreground">
                       {slot.label}
                     </span>
-                    {text ? (
-                      <span className="line-clamp-2">{text}</span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-muted-foreground">
-                        <Plus className="size-3.5" aria-hidden /> Añadir
-                      </span>
-                    )}
-                  </button>
+                    {slotEntries.map((entry) => {
+                      const text = entry.recipeName ?? entry.freeText ?? "";
+                      return (
+                        <button
+                          key={entry.id}
+                          type="button"
+                          onClick={() => openEdit(date, slot, entry)}
+                          className="flex min-h-11 items-start gap-1.5 rounded-lg border p-2 text-left text-sm transition-colors hover:bg-muted"
+                        >
+                          {entry.cookedAt ? (
+                            <Check
+                              className="mt-0.5 size-3.5 shrink-0 text-success"
+                              aria-label="Cocinado"
+                            />
+                          ) : null}
+                          <span className="line-clamp-2">{text}</span>
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => openAdd(date, slot)}
+                      className={cn(
+                        "flex min-h-11 items-center gap-1 rounded-lg border border-dashed p-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted",
+                      )}
+                    >
+                      <Plus className="size-3.5" aria-hidden /> Añadir plato
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -208,16 +249,7 @@ function EditEntryDrawer({
   onSaved,
   onCookedChange,
 }: {
-  editing: {
-    entryId: string | null;
-    date: string;
-    slot: string;
-    label: string;
-    current: string;
-    recipeId: string | null;
-    canSaveToRecipes: boolean;
-    cookedAt: string | null;
-  } | null;
+  editing: Editing | null;
   weekStart: string;
   onClose: () => void;
   onSaved: () => void;
@@ -228,15 +260,16 @@ function EditEntryDrawer({
   const [savingRecipe, startSaveRecipe] = useTransition();
   const [cooking, startCooking] = useTransition();
 
+  const isNew = editing?.entryId == null;
   const cooked = Boolean(editing?.cookedAt);
   // "Lo cocinamos" solo tiene sentido en entradas ya guardadas y de hoy/pasado.
-  const canMarkCooked = Boolean(
-    editing?.entryId && editing.date <= todayISO(),
-  );
+  const canMarkCooked = Boolean(editing?.entryId && editing.date <= todayISO());
 
-  // Sincroniza el input al abrir con una entrada distinta.
+  // Sincroniza el input al abrir con un plato distinto (o al pasar a "añadir").
   const [lastKey, setLastKey] = useState<string | null>(null);
-  const key = editing ? `${editing.date}|${editing.slot}` : null;
+  const key = editing
+    ? (editing.entryId ?? `add:${editing.date}|${editing.slot}`)
+    : null;
   if (key !== lastKey) {
     setLastKey(key);
     setValue(editing?.current ?? "");
@@ -244,13 +277,26 @@ function EditEntryDrawer({
 
   function save(text: string) {
     if (!editing) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
     startTransition(async () => {
-      const r = await setMenuEntryAction(
-        weekStart,
-        editing.date,
-        editing.slot,
-        text,
-      );
+      const r = editing.entryId
+        ? await updateMenuEntryAction(editing.entryId, trimmed)
+        : await addMenuEntryAction(
+            weekStart,
+            editing.date,
+            editing.slot,
+            trimmed,
+          );
+      if (r.error) toast.error(r.error);
+      else onSaved();
+    });
+  }
+
+  function remove() {
+    if (!editing?.entryId) return;
+    startTransition(async () => {
+      const r = await removeMenuEntryAction(editing.entryId!);
       if (r.error) toast.error(r.error);
       else onSaved();
     });
@@ -287,7 +333,9 @@ function EditEntryDrawer({
         <div className="mx-auto w-full max-w-md">
           <DrawerHeader>
             <DrawerTitle className="capitalize">{editing?.label}</DrawerTitle>
-            <DrawerDescription>¿Qué toca ese día?</DrawerDescription>
+            <DrawerDescription>
+              {isNew ? "Añade un plato a este hueco." : "Edita o quita este plato."}
+            </DrawerDescription>
           </DrawerHeader>
           <form
             onSubmit={(e) => {
@@ -307,8 +355,16 @@ function EditEntryDrawer({
               />
             </div>
             <DrawerFooter className="gap-2 px-0">
-              <Button type="submit" size="lg" disabled={pending}>
-                {pending ? "Guardando…" : "Guardar"}
+              <Button
+                type="submit"
+                size="lg"
+                disabled={pending || !value.trim()}
+              >
+                {pending
+                  ? "Guardando…"
+                  : isNew
+                    ? "Añadir plato"
+                    : "Guardar"}
               </Button>
               {canMarkCooked ? (
                 <Button
@@ -337,11 +393,11 @@ function EditEntryDrawer({
                   {savingRecipe ? "Guardando…" : "Guardar en mi recetario"}
                 </Button>
               ) : null}
-              {editing?.current ? (
+              {!isNew ? (
                 <Button
                   type="button"
                   variant="destructive"
-                  onClick={() => save("")}
+                  onClick={remove}
                   disabled={pending}
                 >
                   Quitar del menú

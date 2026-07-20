@@ -13,18 +13,32 @@ export const menuSchema = z.object({
             slot: z
               .enum(["lunch", "dinner"])
               .describe("lunch = comida, dinner = cena."),
-            recipe_name: z.string().describe("Nombre del plato en español."),
-            description: z
-              .string()
-              .nullable()
-              .describe("Descripción breve o pasos resumidos."),
-            ingredients: z.array(
-              z.object({
-                name: z.string().describe("Ingrediente en español."),
-                quantity: z.number().nullable(),
-                unit: z.enum(["ud", "g", "kg", "ml", "l"]).nullable(),
-              }),
-            ),
+            dishes: z
+              .array(
+                z.object({
+                  recipe_name: z
+                    .string()
+                    .describe("Nombre del plato en español."),
+                  description: z
+                    .string()
+                    .nullable()
+                    .describe("Descripción breve o pasos resumidos."),
+                  ingredients: z.array(
+                    z.object({
+                      name: z.string().describe("Ingrediente en español."),
+                      quantity: z.number().nullable(),
+                      unit: z.enum(["ud", "g", "kg", "ml", "l"]).nullable(),
+                    }),
+                  ),
+                }),
+              )
+              .min(1)
+              .max(2)
+              .describe(
+                "1 o 2 platos del hueco. La comida (lunch) puede llevar 2 " +
+                  "(p. ej. primero ligero + segundo) cuando tenga sentido; la " +
+                  "cena (dinner) normalmente 1.",
+              ),
           }),
         ),
       }),

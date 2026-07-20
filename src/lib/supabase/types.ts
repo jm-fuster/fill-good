@@ -549,6 +549,7 @@ export type Database = {
           recipe_id: string | null;
           free_text: string | null;
           servings: number;
+          position: number;
           cooked_at: string | null;
         };
         Insert: {
@@ -560,6 +561,7 @@ export type Database = {
           recipe_id?: string | null;
           free_text?: string | null;
           servings?: number;
+          position?: number;
           cooked_at?: string | null;
         };
         Update: {
@@ -571,6 +573,7 @@ export type Database = {
           recipe_id?: string | null;
           free_text?: string | null;
           servings?: number;
+          position?: number;
           cooked_at?: string | null;
         };
         Relationships: [

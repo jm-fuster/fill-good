@@ -85,41 +85,48 @@ export async function generateMenuAction(
     const date = weekDays[day.day_index];
     if (!date) continue;
     for (const meal of day.meals) {
-      const { data: recipe } = await supabase
-        .from("recipes")
-        .insert({
-          household_id: household.id,
-          name: meal.recipe_name,
-          normalized_name: normalizeName(meal.recipe_name),
-          description: meal.description,
-          servings: 2,
-          meal_types: [meal.slot],
-          source: "ai",
-          created_by: userId,
-        })
-        .select("id")
-        .single();
-      if (!recipe) continue;
-
-      if (meal.ingredients.length > 0) {
-        await supabase.from("recipe_ingredients").insert(
-          meal.ingredients.map((ing) => ({
-            recipe_id: recipe.id,
+      // Como mucho 2 platos por hueco (el schema lo pide, pero lo garantizamos).
+      const dishes = meal.dishes.slice(0, 2);
+      let position = 0;
+      for (const dish of dishes) {
+        const { data: recipe } = await supabase
+          .from("recipes")
+          .insert({
             household_id: household.id,
-            name: ing.name,
-            quantity: ing.quantity,
-            unit: ing.unit,
-          })),
-        );
-      }
+            name: dish.recipe_name,
+            normalized_name: normalizeName(dish.recipe_name),
+            description: dish.description,
+            servings: 2,
+            meal_types: [meal.slot],
+            source: "ai",
+            created_by: userId,
+          })
+          .select("id")
+          .single();
+        if (!recipe) continue;
 
-      await supabase.from("menu_entries").insert({
-        menu_id: menuId,
-        household_id: household.id,
-        date,
-        meal_slot: meal.slot,
-        recipe_id: recipe.id,
-      });
+        if (dish.ingredients.length > 0) {
+          await supabase.from("recipe_ingredients").insert(
+            dish.ingredients.map((ing) => ({
+              recipe_id: recipe.id,
+              household_id: household.id,
+              name: ing.name,
+              quantity: ing.quantity,
+              unit: ing.unit,
+            })),
+          );
+        }
+
+        await supabase.from("menu_entries").insert({
+          menu_id: menuId,
+          household_id: household.id,
+          date,
+          meal_slot: meal.slot,
+          recipe_id: recipe.id,
+          position,
+        });
+        position += 1;
+      }
     }
   }
 
@@ -132,7 +139,11 @@ export async function generateMenuAction(
   return { ok: true };
 }
 
-export async function setMenuEntryAction(
+/**
+ * Añade un plato (texto libre) a un hueco (comida/cena de un día). Cada hueco
+ * admite varios platos: la posición del nuevo es la siguiente libre (0..n).
+ */
+export async function addMenuEntryAction(
   weekStart: string,
   date: string,
   slot: string,
@@ -142,39 +153,78 @@ export async function setMenuEntryAction(
   if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
 
+  const text = freeText.trim();
+  if (!text) return { error: "Escribe el nombre del plato." };
+
   const menuId = await ensureMenu(supabase, household.id, weekStart);
   if (!menuId) return { error: "No se pudo crear el menú." };
 
-  const text = freeText.trim();
-
-  const { data: existing } = await supabase
+  // Siguiente posición dentro del hueco.
+  const { data: last } = await supabase
     .from("menu_entries")
-    .select("id")
+    .select("position")
     .eq("menu_id", menuId)
     .eq("date", date)
     .eq("meal_slot", slot)
+    .order("position", { ascending: false })
+    .limit(1)
     .maybeSingle();
+  const position = last ? last.position + 1 : 0;
 
-  if (!text) {
-    if (existing) await supabase.from("menu_entries").delete().eq("id", existing.id);
-    revalidatePath("/menus");
-    return { ok: true };
-  }
+  const { error } = await supabase.from("menu_entries").insert({
+    menu_id: menuId,
+    household_id: household.id,
+    date,
+    meal_slot: slot,
+    free_text: text,
+    position,
+  });
+  if (error) return { error: "No se pudo añadir el plato." };
 
-  if (existing) {
-    await supabase
-      .from("menu_entries")
-      .update({ free_text: text, recipe_id: null })
-      .eq("id", existing.id);
-  } else {
-    await supabase.from("menu_entries").insert({
-      menu_id: menuId,
-      household_id: household.id,
-      date,
-      meal_slot: slot,
-      free_text: text,
-    });
-  }
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * Edita el texto de un plato concreto. Si la entrada apuntaba a una receta, la
+ * convierte en texto libre (desvincula la receta), igual que hacía la edición
+ * de un solo plato por hueco.
+ */
+export async function updateMenuEntryAction(
+  entryId: string,
+  freeText: string,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const text = freeText.trim();
+  // Sin texto = quitar el plato (misma semántica que el botón "Quitar").
+  if (!text) return removeMenuEntryAction(entryId);
+
+  const { error } = await supabase
+    .from("menu_entries")
+    .update({ free_text: text, recipe_id: null })
+    .eq("id", entryId);
+  if (error) return { error: "No se pudo guardar el plato." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/** Quita un plato concreto del menú. */
+export async function removeMenuEntryAction(
+  entryId: string,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const { error } = await supabase
+    .from("menu_entries")
+    .delete()
+    .eq("id", entryId);
+  if (error) return { error: "No se pudo quitar el plato." };
 
   revalidatePath("/menus");
   return { ok: true };

@@ -8,6 +8,7 @@ export type MenuEntry = {
   id: string;
   date: string;
   slot: string;
+  position: number;
   recipeId: string | null;
   recipeName: string | null;
   recipeIsSaved: boolean | null;
@@ -25,6 +26,7 @@ type EntryRow = {
   id: string;
   date: string;
   meal_slot: string;
+  position: number;
   recipe_id: string | null;
   free_text: string | null;
   cooked_at: string | null;
@@ -47,9 +49,12 @@ export async function getMenuEntries(menuId: string): Promise<MenuEntry[]> {
   const { data, error } = await supabase
     .from("menu_entries")
     .select(
-      "id, date, meal_slot, recipe_id, free_text, cooked_at, recipe:recipes(name, is_saved, source)",
+      "id, date, meal_slot, position, recipe_id, free_text, cooked_at, recipe:recipes(name, is_saved, source)",
     )
-    .eq("menu_id", menuId);
+    .eq("menu_id", menuId)
+    .order("date", { ascending: true })
+    .order("meal_slot", { ascending: true })
+    .order("position", { ascending: true });
   if (error) throw error;
 
   const rows = (data ?? []) as unknown as EntryRow[];
@@ -57,6 +62,7 @@ export async function getMenuEntries(menuId: string): Promise<MenuEntry[]> {
     id: r.id,
     date: r.date,
     slot: r.meal_slot,
+    position: r.position,
     recipeId: r.recipe_id,
     recipeName: r.recipe?.name ?? null,
     recipeIsSaved: r.recipe?.is_saved ?? null,

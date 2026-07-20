@@ -36,7 +36,9 @@ Objetivos, por orden de prioridad:
 Inventario actual del hogar:
 ${inventoryText}
 
+Cada comida y cena es una lista de platos. La comida (lunch) puede llevar 1 o 2 platos (por ejemplo un primero ligero y un segundo) cuando tenga sentido; la cena (dinner) normalmente 1 plato. Nunca más de 2 platos por hueco.
+
 Para cada plato indica un nombre claro en español, una descripción breve y la lista de ingredientes con cantidad y unidad aproximadas (para 2 raciones). Usa ingredientes comunes; puedes proponer ingredientes que no estén en el inventario (se añadirán a la lista de la compra).
 
-Devuelve exactamente 7 días (day_index 0 a 6) y en cada día las dos comidas (slot "lunch" y "dinner").`;
+Devuelve exactamente 7 días (day_index 0 a 6) y en cada día las dos comidas (slot "lunch" y "dinner"), cada una con su lista de platos.`;
 }

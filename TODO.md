@@ -21,7 +21,7 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - [x] A3 — Revisión de caducidades tras la compra + "consumir pronto"
 - [x] B1 — Recetario del hogar (CRUD de recetas, tipo de comida y temporada)
 - [x] B2 — Gustos y apetencia (valoraciones + señales de uso)
-- [ ] C1 — Varios platos por comida/cena
+- [x] C1 — Varios platos por comida/cena
 - [ ] C2 — Reglas del menú
 - [ ] C3 — Generador de menús 2.0 (integra recetario, gustos, temporada, reglas y stock)
 
@@ -270,10 +270,32 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - **IA:** en `menu-schema.ts`, cada meal pasa de plato único a `dishes: []` (máx. 2) con los mismos campos; el prompt indica que la comida puede llevar dos platos (primero ligero + segundo) cuando tenga sentido y la cena normalmente uno. El bucle de inserción de `generateMenuAction` crea una `menu_entry` por plato con `position` incremental.
 
 **Pasos**
-- [ ] Migración (quitar único, añadir `position`, nuevo único) + regenerar tipos.
-- [ ] Acciones por-entrada + queries con orden.
-- [ ] UI de hueco multi-plato + drawer por plato.
-- [ ] Schema y prompt de IA con `dishes[]`; bucle de inserción actualizado.
+- [x] Migración (quitar único, añadir `position`, nuevo único) + regenerar tipos.
+- [x] Acciones por-entrada + queries con orden.
+- [x] UI de hueco multi-plato + drawer por plato.
+- [x] Schema y prompt de IA con `dishes[]`; bucle de inserción actualizado.
+
+> **Nota de implementación (C1):** migración `supabase/migrations/20260720160000_menu_entries_multi.sql`.
+> En vez de fiarse del nombre autogenerado del único, un bloque `DO` localiza el constraint único por su
+> conjunto exacto de columnas `{date, meal_slot, menu_id}` y lo elimina (robusto ante el nombre real);
+> luego `add column position int not null default 0` y nuevo único
+> `menu_entries_menu_id_date_meal_slot_position_key (menu_id, date, meal_slot, position)`. Idempotente.
+> Tipos actualizados a mano en `src/lib/supabase/types.ts` (`menu_entries.position`). En
+> `src/features/menus/`: `setMenuEntryAction` se sustituye por `addMenuEntryAction` (calcula la
+> siguiente `position` del hueco) / `updateMenuEntryAction` (edita texto y desvincula receta; texto
+> vacío ⇒ quita) / `removeMenuEntryAction`; `generateMenuAction` itera `meal.dishes` (máx. 2) creando
+> una `menu_entry` por plato con `position` incremental; `addMissingToListAction` sin cambios.
+> `getMenuEntries` trae `position` y ordena por `date, meal_slot, position`; `MenuEntry` gana `position`.
+> IA: `menu-schema.ts` cambia `recipe_name/description/ingredients` por plato único a `dishes: [].min(1).max(2)`;
+> `menu-prompt.ts` explica que la comida puede llevar 2 platos y la cena normalmente 1. UI
+> (`menu-view.tsx`): cada hueco lista sus platos (1 botón por plato) + botón "Añadir plato"; el drawer
+> edita/añade UN plato (indicador ✔ de cocinado en la celda; se conservan "Lo cocinamos" por entrada y
+> "Guardar en mi recetario"). `npx tsc --noEmit` y `npx eslint .` limpios.
+> **YA APLICADA en remoto** (autorizada por el usuario 2026-07-20 y verificada con
+> `npx supabase migration list --linked`: `20260720160000` con `local == remote`). Nota: hizo falta
+> castear `att.attname::text` en el bloque `DO` (comparación `name[] = text[]` no tiene operador).
+> Verificación de criterios limitada: `/menus` compila y carga (redirige al login de Clerk, sin
+> error de esquema); el flujo interactivo con sesión iniciada no es verificable en modo headless.
 
 **Criterios de aceptación**
 - Añadir manualmente 2 platos a la comida del martes y quitar solo uno funciona.
@@ -310,6 +332,56 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - Crear "Lentejas al menos 1 vez por semana" y verla activa en `/menus`.
 - Desactivar una regla hace que deje de aplicarse en la siguiente generación (C3).
 - Las reglas pertenecen al hogar (las ve/edita cualquier miembro).
+
+> **Prompt para el siguiente agente (C2 — Reglas del menú):**
+>
+> ```
+> Continúa con el proyecto Stash (C:\Users\Jorge\Desktop\Food). Lee primero AGENTS.md
+> (sistema de diseño, tokens semánticos, touch targets ≥44px, drawers en móvil, UI en
+> español) y las "Instrucciones para el agente" al inicio de TODO.md. A1, A2, A3, B1, B2 y C1
+> ya están terminadas y marcadas.
+>
+> Estado de la BD: proyecto enlazado por CLI (supabase/.temp/linked-project.json, ref
+> mxnbvgcaedaccpxefqiq). Comprueba con `npx supabase migration list --linked` (solo lectura).
+> IMPORTANTE: verifica si la migración de C1 (20260720160000_menu_entries_multi) ya está en
+> remoto; si sigue pendiente, aplícala junto con la de C2 en el mismo `npx supabase db push`
+> (que requiere autorización explícita del usuario). Los tipos en src/lib/supabase/types.ts se
+> mantienen a mano.
+>
+> Contexto ya disponible tras C1: `menu_entries` admite varios platos por hueco
+> (`position` int, único (menu_id, date, meal_slot, position)). Las acciones de menú son por-entrada:
+> addMenuEntryAction / updateMenuEntryAction / removeMenuEntryAction (src/features/menus/actions.ts);
+> el schema de IA usa `meals[].dishes[]` (máx. 2, src/lib/ai/menu-schema.ts) y generateMenuAction
+> inserta una menu_entry por plato con position incremental. getRecipeSignals(householdId) (de B2, en
+> src/features/recipes/queries.ts) da avgRating/timesPlanned/timesCooked/lastCookedAt por receta guardada.
+>
+> Implementa ÚNICAMENTE la tarea C2 — Reglas del menú tal como está en TODO.md (sección
+> "Bloque C → C2"):
+>
+> * Migración `menu_rules`: tabla con kind ('recipe_min_week'|'recipe_max_week'|'free_text'),
+>   recipe_id (refs recipes on delete cascade), value int (1..7), text_rule, active bool default true,
+>   created_at; CHECK de coherencia (recipe_% ⇒ recipe_id y value no nulos; free_text ⇒ text_rule
+>   no nulo). RLS por hogar con el patrón `is_household_member` + grants del resto de tablas.
+>   Regenerar tipos a mano.
+> * Feature: queries (listar reglas activas del hogar, con nombre de receta) + acciones
+>   createRuleAction / toggleRuleAction / deleteRuleAction (Server Actions + revalidatePath).
+> * UI en `/menus`: sección "Reglas del menú" (colapsable o bajo el calendario) con lista de reglas
+>   activas (toggle activar/desactivar + borrar) y alta en un Drawer con dos modos: (a) frecuencia de
+>   receta = selector de receta guardada + "al menos / como mucho" + "X veces por semana"; (b) regla
+>   libre = texto. Reutiliza el listado de recetas guardadas (getSavedRecipes o equivalente en
+>   src/features/recipes/queries.ts) para el selector. Respeta drawers en móvil y targets ≥44px.
+> * Deja preparada `validateAndPatchRules(menu, rules)` PURA y testeable (sin I/O) para C3: recibe el
+>   menú generado (estructura de días → huecos → platos, ya multi-plato con `position`) y las reglas
+>   activas, y devuelve el menú parcheado. Para `recipe_min_week`: si falta una receta requerida,
+>   sustituir/añadir en un hueco compatible con sus `meal_types` sin romper otra regla. Para
+>   `recipe_max_week`: recortar el exceso (a texto libre "(elegir plato)" o alternativa). Las
+>   `free_text` NO se validan (solo van al prompt en C3). OJO: ahora hay varios platos por hueco;
+>   razona en términos de entradas/posiciones, no de "un plato por hueco".
+>
+> Al terminar: verifica los criterios de aceptación de C2, ejecuta `npx tsc --noEmit` y `npx eslint .`,
+> marca las casillas de C2 en TODO.md y deja un prompt para el agente que siga con C3 (Generador de
+> menús 2.0). Pide autorización antes de cualquier `npx supabase db push`.
+> ```
 
 ---
 
