@@ -265,6 +265,11 @@ export async function confirmReceiptAction(
         updated_by: userId,
       });
     }
+
+    // Memoria de habitualidad: este producto se ha comprado.
+    if (productId) {
+      await supabase.rpc("bump_product_purchase", { pid: productId });
+    }
     added += 1;
   }
 

@@ -17,7 +17,7 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 ### Estado global
 
 - [x] A1 — Invitación por enlace (URL con código)
-- [ ] A2 — Productos habituales y autocompletado inteligente en la lista
+- [x] A2 — Productos habituales y autocompletado inteligente en la lista
 - [ ] A3 — Revisión de caducidades tras la compra + "consumir pronto"
 - [ ] B1 — Recetario del hogar (CRUD de recetas, tipo de comida y temporada)
 - [ ] B2 — Gustos y apetencia (valoraciones + señales de uso)
@@ -84,11 +84,17 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - **Sección "Habituales"** (opcional pero recomendada): bajo el formulario, chips con los productos con `purchase_count >= 2` que **no** están en la lista ni tienen stock (> 0) en inventario → añadir de un toque.
 
 **Pasos**
-- [ ] Migración + backfill + regenerar tipos.
-- [ ] Incrementar contadores en `checkoutAction` y `confirmReceiptAction`.
-- [ ] Query en `/lista` que devuelva el catálogo ligero ordenado por habitualidad.
-- [ ] Componente `ProductAutocomplete` accesible; integrarlo en `add-item-form.tsx`.
-- [ ] Sección "Habituales" con chips de un toque.
+- [x] Migración + backfill + regenerar tipos.
+- [x] Incrementar contadores en `checkoutAction` y `confirmReceiptAction`.
+- [x] Query en `/lista` que devuelva el catálogo ligero ordenado por habitualidad.
+- [x] Componente `ProductAutocomplete` accesible; integrarlo en `add-item-form.tsx`.
+- [x] Sección "Habituales" con chips de un toque.
+
+> **Nota de implementación (A2):** migración `supabase/migrations/20260720073534_products_habits.sql`
+> (columnas `purchase_count`/`last_purchased_at`, backfill desde `receipt_items` y función atómica
+> `bump_product_purchase`). **Pendiente de aplicar en la BD** (proyecto remoto, no enlazado): ejecutar
+> `npx supabase db push` (o `supabase migration up`) — hasta entonces `/lista` fallará al leer `purchase_count`.
+> Tipos actualizados a mano en `src/lib/supabase/types.ts` (el archivo se mantiene manualmente).
 
 **Criterios de aceptación**
 - Con "Leche" comprada previamente, escribir "le" muestra "Leche" primero, con badge "Nevera".

@@ -11,7 +11,12 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/units";
 import { useRealtimeList } from "../use-realtime-list";
-import type { ListItem, Suggestion } from "../queries";
+import type {
+  CatalogProduct,
+  HabitualProduct,
+  ListItem,
+  Suggestion,
+} from "../queries";
 import {
   addProductToListAction,
   checkoutAction,
@@ -30,12 +35,14 @@ export function ShoppingListView({
   listId,
   initialItems,
   suggestions,
-  productNames,
+  habituales,
+  catalog,
 }: {
   listId: string;
   initialItems: ListItem[];
   suggestions: Suggestion[];
-  productNames: string[];
+  habituales: HabitualProduct[];
+  catalog: CatalogProduct[];
 }) {
   useRealtimeList(listId);
   const router = useRouter();
@@ -64,9 +71,13 @@ export function ShoppingListView({
   const pending = items.filter((i) => !i.isChecked);
   const done = items.filter((i) => i.isChecked);
 
+  // Evita repetir en "Habituales" lo que ya sale en "Se está acabando".
+  const suggestedIds = new Set(suggestions.map((s) => s.productId));
+  const habitualChips = habituales.filter((h) => !suggestedIds.has(h.id));
+
   return (
     <div className="flex flex-col gap-4">
-      <AddItemForm productNames={productNames} />
+      <AddItemForm catalog={catalog} />
 
       {items.length === 0 ? (
         <EmptyState
@@ -93,6 +104,10 @@ export function ShoppingListView({
 
       {suggestions.length > 0 ? (
         <Suggestions suggestions={suggestions} />
+      ) : null}
+
+      {habitualChips.length > 0 ? (
+        <Habituales products={habitualChips} />
       ) : null}
 
       {done.length > 0 ? <CheckoutBar count={done.length} /> : null}
@@ -180,6 +195,39 @@ function Suggestions({ suggestions }: { suggestions: Suggestion[] }) {
           >
             <Plus aria-hidden />
             {s.name}
+          </Button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Habituales({ products }: { products: HabitualProduct[] }) {
+  const router = useRouter();
+  const [adding, startAdd] = useTransition();
+
+  function add(productId: string) {
+    startAdd(async () => {
+      const r = await addProductToListAction(productId);
+      if (r?.error) toast.error(r.error);
+      else router.refresh();
+    });
+  }
+
+  return (
+    <section className="rounded-xl border border-dashed p-3">
+      <h2 className="mb-2 text-sm font-medium">Habituales</h2>
+      <div className="flex flex-wrap gap-2">
+        {products.map((p) => (
+          <Button
+            key={p.id}
+            variant="outline"
+            size="sm"
+            disabled={adding}
+            onClick={() => add(p.id)}
+          >
+            <Plus aria-hidden />
+            {p.name}
           </Button>
         ))}
       </div>

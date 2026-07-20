@@ -107,6 +107,8 @@ export type Database = {
           default_unit: UnitType;
           default_location: LocationType;
           min_quantity: number | null;
+          purchase_count: number;
+          last_purchased_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -119,6 +121,8 @@ export type Database = {
           default_unit?: UnitType;
           default_location?: LocationType;
           min_quantity?: number | null;
+          purchase_count?: number;
+          last_purchased_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -131,6 +135,8 @@ export type Database = {
           default_unit?: UnitType;
           default_location?: LocationType;
           min_quantity?: number | null;
+          purchase_count?: number;
+          last_purchased_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -588,6 +594,10 @@ export type Database = {
       };
       ensure_active_list: {
         Args: { hid: string };
+        Returns: undefined;
+      };
+      bump_product_purchase: {
+        Args: { pid: string };
         Returns: undefined;
       };
     };

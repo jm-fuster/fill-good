@@ -4,7 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentHousehold } from "@/features/household/queries";
-import type { UnitType } from "@/lib/supabase/types";
+import type { LocationType, UnitType } from "@/lib/supabase/types";
 
 export type ActiveList = { id: string; name: string };
 
@@ -22,6 +22,25 @@ export type Suggestion = {
   productId: string;
   name: string;
   unit: UnitType;
+};
+
+/** Catálogo ligero para el autocompletado (filtrado en cliente). */
+export type CatalogProduct = {
+  id: string;
+  name: string;
+  normalizedName: string;
+  defaultUnit: UnitType;
+  defaultLocation: LocationType;
+  purchaseCount: number;
+};
+
+/** Producto habitual sugerido como chip de un toque. */
+export type HabitualProduct = {
+  id: string;
+  name: string;
+  defaultUnit: UnitType;
+  defaultLocation: LocationType;
+  purchaseCount: number;
 };
 
 export async function getActiveList(): Promise<ActiveList | null> {
@@ -108,5 +127,73 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
       productId: p.id,
       name: p.name,
       unit: p.default_unit,
+    }));
+}
+
+/**
+ * Catálogo ligero del hogar para el autocompletado en cliente. Ordenado por
+ * habitualidad (más comprados primero) y luego alfabético como desempate.
+ */
+export async function getProductCatalog(): Promise<CatalogProduct[]> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("products")
+    .select(
+      "id, name, normalized_name, default_unit, default_location, purchase_count",
+    )
+    .order("purchase_count", { ascending: false })
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+    normalizedName: p.normalized_name,
+    defaultUnit: p.default_unit,
+    defaultLocation: p.default_location,
+    purchaseCount: p.purchase_count,
+  }));
+}
+
+/**
+ * Productos habituales (comprados ≥ 2 veces) que no están ya en la lista ni
+ * tienen stock en el inventario. Se ofrecen como chips de un toque.
+ */
+export async function getHabitualProducts(
+  listId: string,
+): Promise<HabitualProduct[]> {
+  const supabase = createServerSupabaseClient();
+  const [{ data: products }, { data: inventory }, { data: items }] =
+    await Promise.all([
+      supabase
+        .from("products")
+        .select("id, name, default_unit, default_location, purchase_count")
+        .gte("purchase_count", 2)
+        .order("purchase_count", { ascending: false })
+        .order("name", { ascending: true }),
+      supabase.from("inventory_items").select("product_id, quantity"),
+      supabase
+        .from("shopping_list_items")
+        .select("product_id")
+        .eq("list_id", listId)
+        .not("product_id", "is", null),
+    ]);
+
+  const stockByProduct = new Map<string, number>();
+  for (const row of inventory ?? []) {
+    stockByProduct.set(
+      row.product_id,
+      (stockByProduct.get(row.product_id) ?? 0) + Number(row.quantity),
+    );
+  }
+  const onList = new Set((items ?? []).map((i) => i.product_id));
+
+  return (products ?? [])
+    .filter((p) => !onList.has(p.id) && (stockByProduct.get(p.id) ?? 0) <= 0)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      defaultUnit: p.default_unit,
+      defaultLocation: p.default_location,
+      purchaseCount: p.purchase_count,
     }));
 }

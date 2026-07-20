@@ -1,55 +1,66 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { addListItemAction } from "../actions";
+import { addListItemAction, addProductToListAction } from "../actions";
+import type { CatalogProduct } from "../queries";
+import { ProductAutocomplete } from "./product-autocomplete";
 
-export function AddItemForm({ productNames }: { productNames: string[] }) {
+export function AddItemForm({ catalog }: { catalog: CatalogProduct[] }) {
   const router = useRouter();
-  const listId = useId();
   const formRef = useRef<HTMLFormElement>(null);
+  const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+  const [pending, startTransition] = useTransition();
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  // Alta de texto libre (Enter o botón +): comportamiento clásico.
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     setError(null);
-    setPending(true);
-    const result = await addListItemAction({}, formData);
-    setPending(false);
-    if (result.error) {
-      setError(result.error);
-      return;
-    }
-    if (result.warning) toast.warning(result.warning);
-    formRef.current?.reset();
-    router.refresh();
+    startTransition(async () => {
+      const result = await addListItemAction({}, formData);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      if (result.warning) toast.warning(result.warning);
+      setName("");
+      formRef.current?.reset();
+      router.refresh();
+    });
+  }
+
+  // Elegir una sugerencia del catálogo: alta ya vinculada al producto.
+  function handleSelect(product: CatalogProduct) {
+    setError(null);
+    startTransition(async () => {
+      const result = await addProductToListAction(product.id);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setName("");
+      formRef.current?.reset();
+      router.refresh();
+    });
   }
 
   return (
     <div>
       <form ref={formRef} onSubmit={handleSubmit} className="flex gap-2">
-        <Input
-          name="name"
-          required
-          maxLength={120}
-          autoComplete="off"
-          list={listId}
-          placeholder="Añadir a la lista…"
-          className="flex-1"
-          aria-label="Producto a añadir"
+        <ProductAutocomplete
+          products={catalog}
+          value={name}
+          onValueChange={setName}
+          onSelect={handleSelect}
+          disabled={pending}
         />
-        <datalist id={listId}>
-          {productNames.map((n) => (
-            <option key={n} value={n} />
-          ))}
-        </datalist>
         <Input
           name="quantity"
           type="number"

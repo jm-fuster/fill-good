@@ -4,10 +4,11 @@ import { PageHeader } from "@/components/layout/page-header";
 import { ShoppingListView } from "@/features/shopping-list/components/shopping-list-view";
 import {
   getActiveList,
+  getHabitualProducts,
   getListItems,
+  getProductCatalog,
   getSuggestions,
 } from "@/features/shopping-list/queries";
-import { getProducts } from "@/features/inventory/queries";
 
 export const metadata: Metadata = { title: "Lista de la compra" };
 
@@ -25,10 +26,11 @@ export default async function ListaPage() {
     );
   }
 
-  const [items, suggestions, products] = await Promise.all([
+  const [items, suggestions, habituales, catalog] = await Promise.all([
     getListItems(list.id),
     getSuggestions(list.id),
-    getProducts(),
+    getHabitualProducts(list.id),
+    getProductCatalog(),
   ]);
 
   return (
@@ -41,7 +43,8 @@ export default async function ListaPage() {
         listId={list.id}
         initialItems={items}
         suggestions={suggestions}
-        productNames={products.map((p) => p.name)}
+        habituales={habituales}
+        catalog={catalog}
       />
     </>
   );
