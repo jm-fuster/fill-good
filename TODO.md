@@ -20,7 +20,7 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - [x] A2 — Productos habituales y autocompletado inteligente en la lista
 - [x] A3 — Revisión de caducidades tras la compra + "consumir pronto"
 - [x] B1 — Recetario del hogar (CRUD de recetas, tipo de comida y temporada)
-- [ ] B2 — Gustos y apetencia (valoraciones + señales de uso)
+- [x] B2 — Gustos y apetencia (valoraciones + señales de uso)
 - [ ] C1 — Varios platos por comida/cena
 - [ ] C2 — Reglas del menú
 - [ ] C3 — Generador de menús 2.0 (integra recetario, gustos, temporada, reglas y stock)
@@ -219,10 +219,29 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - **Interpretación para el generador (documentar en el código):** apetencia alta = se cocina a menudo y hace poco que no se hace; una receta con rating alto pero cocinada ayer debe descansar unos días; una con rating alto no cocinada en semanas es candidata ideal.
 
 **Pasos**
-- [ ] Migración `recipe_ratings` + `menu_entries.cooked_at` + RLS + regenerar tipos.
-- [ ] `rateRecipeAction` + componente de estrellas accesible (radiogroup con labels).
-- [ ] Botón "Lo cocinamos" en el drawer de entrada del menú (solo fechas ≤ hoy) → `cooked_at = date` de la entrada; permitir desmarcar.
-- [ ] `getRecipeSignals` + mostrar señales en `/recetas` (media, veces hecha, última vez).
+- [x] Migración `recipe_ratings` + `menu_entries.cooked_at` + RLS + regenerar tipos.
+- [x] `rateRecipeAction` + componente de estrellas accesible (radiogroup con labels).
+- [x] Botón "Lo cocinamos" en el drawer de entrada del menú (solo fechas ≤ hoy) → `cooked_at = date` de la entrada; permitir desmarcar.
+- [x] `getRecipeSignals` + mostrar señales en `/recetas` (media, veces hecha, última vez).
+
+> **Nota de implementación (B2):** migración `supabase/migrations/20260720140000_recipe_ratings.sql`
+> (tabla `recipe_ratings` con `rating smallint 1–5`, `unique (recipe_id, user_id)`, RLS
+> `is_household_member` + grants; `alter table menu_entries add column cooked_at date` + índice
+> parcial `menu_entries_cooked_idx`). Tipos actualizados a mano en `src/lib/supabase/types.ts`
+> (tabla `recipe_ratings` + `menu_entries.cooked_at`). En `src/features/recipes/`:
+> `ratingSchema` (schemas), `getRecipeRating`/`getRecipeSignals` (queries, con la interpretación
+> para C3 documentada en el JSDoc de `getRecipeSignals`), `rateRecipeAction` (upsert, actions),
+> `formatRating` (constants) y componente `components/recipe-rating.tsx` (radiogroup accesible con
+> roving tabindex + flechas, targets 44px, media optimista). En `src/features/menus/`:
+> `toggleEntryCookedAction` (actions, fija `cooked_at` con la fecha de la entrada y valida ≤ hoy;
+> permite desmarcar), `MenuEntry.cookedAt` (queries) y botón "Lo cocinamos / Cocinado · deshacer"
+> en el drawer de `menu-view.tsx` (solo con entrada guardada y fecha ≤ hoy). `getRecipeSignals`
+> se muestra en `/recetas` ("★ 4,5 · N votos" y "Hecha N veces · última vez …"); helper
+> `relativeDaysLabel` en `src/lib/dates.ts`. `npx tsc --noEmit` y `npx eslint` limpios.
+> **Migración PENDIENTE en remoto** (verificado con `npx supabase migration list --linked`:
+> `20260720140000` con remote vacío). Aplicar con `npx supabase db push` (requiere autorización
+> del usuario); hasta entonces `/recetas`, `/recetas/[id]` y `/menus` fallarán al leer
+> `recipe_ratings`/`cooked_at`.
 
 **Criterios de aceptación**
 - Dos miembros pueden valorar la misma receta y se ve la media.

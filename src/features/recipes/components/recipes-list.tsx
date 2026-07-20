@@ -9,8 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { normalizeName } from "@/lib/normalize";
-import type { SavedRecipe } from "../queries";
+import { relativeDaysLabel } from "@/lib/dates";
+import type { RecipeSignals, SavedRecipe } from "../queries";
 import {
+  formatRating,
   MEAL_TYPE_LABELS,
   SEASON_ICONS,
   SEASON_LABELS,
@@ -25,7 +27,13 @@ const MEAL_FILTERS: { value: MealFilter; label: string }[] = [
   { value: "dinner", label: "Cena" },
 ];
 
-export function RecipesList({ recipes }: { recipes: SavedRecipe[] }) {
+export function RecipesList({
+  recipes,
+  signals,
+}: {
+  recipes: SavedRecipe[];
+  signals?: Record<string, RecipeSignals>;
+}) {
   const [query, setQuery] = useState("");
   const [meal, setMeal] = useState<MealFilter>("all");
 
@@ -85,6 +93,9 @@ export function RecipesList({ recipes }: { recipes: SavedRecipe[] }) {
         <ul className="flex flex-col gap-2">
           {filtered.map((recipe) => {
             const seasonChoice = seasonsToChoice(recipe.seasons);
+            const sig = signals?.[recipe.id];
+            const hasRating = Boolean(sig && sig.ratingCount > 0 && sig.avgRating != null);
+            const hasCooked = Boolean(sig && sig.timesCooked > 0);
             return (
               <li key={recipe.id}>
                 <Link
@@ -115,6 +126,26 @@ export function RecipesList({ recipes }: { recipes: SavedRecipe[] }) {
                       {SEASON_LABELS[seasonChoice]}
                     </Badge>
                   </div>
+                  {sig && (hasRating || hasCooked) ? (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      {hasRating ? (
+                        <span>
+                          <span aria-hidden>★</span> {formatRating(sig.avgRating!)}{" "}
+                          · {sig.ratingCount}{" "}
+                          {sig.ratingCount === 1 ? "voto" : "votos"}
+                        </span>
+                      ) : null}
+                      {hasCooked ? (
+                        <span>
+                          Hecha {sig.timesCooked}{" "}
+                          {sig.timesCooked === 1 ? "vez" : "veces"}
+                          {sig.lastCookedAt
+                            ? ` · última vez ${relativeDaysLabel(sig.lastCookedAt)}`
+                            : ""}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </Link>
               </li>
             );

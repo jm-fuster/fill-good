@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   BookmarkPlus,
+  Check,
+  ChefHat,
   ChevronLeft,
   ChevronRight,
   Plus,
@@ -34,7 +36,13 @@ import {
   addMissingToListAction,
   generateMenuAction,
   setMenuEntryAction,
+  toggleEntryCookedAction,
 } from "../actions";
+
+/** ISO local (YYYY-MM-DD) de hoy, para comparar con la fecha de la entrada. */
+function todayISO(): string {
+  return format(new Date(), "yyyy-MM-dd");
+}
 
 const SLOTS = [
   { key: "lunch", label: "Comida" },
@@ -54,12 +62,14 @@ export function MenuView({
   const [generating, startGenerate] = useTransition();
   const [addingList, startAddList] = useTransition();
   const [editing, setEditing] = useState<{
+    entryId: string | null;
     date: string;
     slot: string;
     label: string;
     current: string;
     recipeId: string | null;
     canSaveToRecipes: boolean;
+    cookedAt: string | null;
   } | null>(null);
 
   const days = getWeekDays(weekStart);
@@ -127,6 +137,7 @@ export function MenuView({
                     type="button"
                     onClick={() =>
                       setEditing({
+                        entryId: entry?.id ?? null,
                         date,
                         slot: slot.key,
                         label: `${slot.label} · ${format(parseISO(date), "EEEE", { locale: es })}`,
@@ -135,6 +146,7 @@ export function MenuView({
                         canSaveToRecipes: Boolean(
                           entry?.recipeId && entry.recipeIsSaved === false,
                         ),
+                        cookedAt: entry?.cookedAt ?? null,
                       })
                     }
                     className={cn(
@@ -179,6 +191,11 @@ export function MenuView({
           setEditing(null);
           router.refresh();
         }}
+        onCookedChange={(cookedAt) => {
+          // Refresca los datos sin cerrar el drawer y refleja el nuevo estado.
+          setEditing((prev) => (prev ? { ...prev, cookedAt } : prev));
+          router.refresh();
+        }}
       />
     </div>
   );
@@ -189,22 +206,33 @@ function EditEntryDrawer({
   weekStart,
   onClose,
   onSaved,
+  onCookedChange,
 }: {
   editing: {
+    entryId: string | null;
     date: string;
     slot: string;
     label: string;
     current: string;
     recipeId: string | null;
     canSaveToRecipes: boolean;
+    cookedAt: string | null;
   } | null;
   weekStart: string;
   onClose: () => void;
   onSaved: () => void;
+  onCookedChange: (cookedAt: string | null) => void;
 }) {
   const [value, setValue] = useState("");
   const [pending, startTransition] = useTransition();
   const [savingRecipe, startSaveRecipe] = useTransition();
+  const [cooking, startCooking] = useTransition();
+
+  const cooked = Boolean(editing?.cookedAt);
+  // "Lo cocinamos" solo tiene sentido en entradas ya guardadas y de hoy/pasado.
+  const canMarkCooked = Boolean(
+    editing?.entryId && editing.date <= todayISO(),
+  );
 
   // Sincroniza el input al abrir con una entrada distinta.
   const [lastKey, setLastKey] = useState<string | null>(null);
@@ -240,6 +268,19 @@ function EditEntryDrawer({
     });
   }
 
+  function toggleCooked() {
+    if (!editing?.entryId) return;
+    const next = !cooked;
+    startCooking(async () => {
+      const r = await toggleEntryCookedAction(editing.entryId!, next);
+      if (r.error) toast.error(r.error);
+      else {
+        toast.success(next ? "Marcado como cocinado" : "Ya no está cocinado");
+        onCookedChange(next ? editing.date : null);
+      }
+    });
+  }
+
   return (
     <Drawer open={editing !== null} onOpenChange={(o) => !o && onClose()}>
       <DrawerContent>
@@ -269,6 +310,22 @@ function EditEntryDrawer({
               <Button type="submit" size="lg" disabled={pending}>
                 {pending ? "Guardando…" : "Guardar"}
               </Button>
+              {canMarkCooked ? (
+                <Button
+                  type="button"
+                  variant={cooked ? "secondary" : "outline"}
+                  onClick={toggleCooked}
+                  disabled={cooking}
+                  aria-pressed={cooked}
+                >
+                  {cooked ? <Check aria-hidden /> : <ChefHat aria-hidden />}
+                  {cooking
+                    ? "Guardando…"
+                    : cooked
+                      ? "Cocinado · deshacer"
+                      : "Lo cocinamos"}
+                </Button>
+              ) : null}
               {editing?.canSaveToRecipes ? (
                 <Button
                   type="button"

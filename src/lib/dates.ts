@@ -68,6 +68,20 @@ export function shiftWeek(weekStart: string, weeks: number): string {
   return toISODate(d);
 }
 
+/**
+ * Etiqueta relativa en días desde una fecha pasada (YYYY-MM-DD) hasta hoy:
+ * "hoy" / "ayer" / "hace N días". Pensada para "última vez que se cocinó".
+ */
+export function relativeDaysLabel(dateStr: string): string {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(`${dateStr}T00:00:00`);
+  const days = Math.round((today.getTime() - target.getTime()) / 86_400_000);
+  if (days <= 0) return "hoy";
+  if (days === 1) return "ayer";
+  return `hace ${days} días`;
+}
+
 /** Texto corto para el badge de caducidad. */
 export function expiryLabel(days: number): string {
   if (days < 0) {

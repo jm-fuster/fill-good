@@ -31,6 +31,14 @@ export const SEASON_OPTIONS: { value: SeasonValue; label: string }[] = [
   { value: "summer", label: "Verano" },
 ];
 
+/** Media de valoración con coma decimal española (p. ej. 4.5 → "4,5"). */
+export function formatRating(avg: number): string {
+  return avg.toLocaleString("es-ES", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+}
+
 /**
  * Reduce el array `seasons` de la BD a una única elección para el formulario:
  * si contiene 'all' (o ambas estaciones, o nada) → "all"; si no, la estación

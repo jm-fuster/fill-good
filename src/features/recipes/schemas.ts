@@ -64,3 +64,10 @@ export const recipeInputSchema = z.object({
 
 export type RecipeInput = z.infer<typeof recipeInputSchema>;
 export type RecipeIngredientInput = z.infer<typeof recipeIngredientSchema>;
+
+/** Valoración de gusto de un miembro (1–5 estrellas). */
+export const ratingSchema = z
+  .number()
+  .int("La valoración debe ser un número entero.")
+  .min(1, "La valoración mínima es 1 estrella.")
+  .max(5, "La valoración máxima es 5 estrellas.");

@@ -8,7 +8,12 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import type { Database } from "@/lib/supabase/types";
 import { getCurrentHousehold } from "@/features/household/queries";
-import { recipeInputSchema, type RecipeInput, type RecipeIngredientInput } from "./schemas";
+import {
+  ratingSchema,
+  recipeInputSchema,
+  type RecipeInput,
+  type RecipeIngredientInput,
+} from "./schemas";
 
 export type RecipeActionState = { error?: string; ok?: boolean; id?: string };
 
@@ -265,5 +270,52 @@ export async function saveGeneratedRecipeAction(
 
   revalidatePath("/recetas");
   revalidatePath("/menus");
+  return { ok: true, id: recipeId };
+}
+
+/**
+ * Valora una receta (1–5) para el usuario actual. Upsert: cada miembro tiene
+ * una sola valoración por receta (unique recipe_id, user_id). La media del
+ * hogar se deriva por query (getRecipeRating / getRecipeSignals).
+ */
+export async function rateRecipeAction(
+  recipeId: string,
+  rating: number,
+): Promise<RecipeActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+  if (!userId) return { error: "Sesión no válida." };
+
+  const parsed = ratingSchema.safeParse(rating);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Valoración no válida." };
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  // Comprueba que la receta existe y pertenece al hogar (RLS ya lo restringe).
+  const { data: recipe } = await supabase
+    .from("recipes")
+    .select("id")
+    .eq("id", recipeId)
+    .eq("household_id", household.id)
+    .maybeSingle();
+  if (!recipe) return { error: "No se encontró la receta." };
+
+  const { error } = await supabase.from("recipe_ratings").upsert(
+    {
+      household_id: household.id,
+      recipe_id: recipeId,
+      user_id: userId,
+      rating: parsed.data,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "recipe_id,user_id" },
+  );
+  if (error) return { error: "No se pudo guardar la valoración." };
+
+  revalidatePath("/recetas");
+  revalidatePath(`/recetas/${recipeId}`);
   return { ok: true, id: recipeId };
 }

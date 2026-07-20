@@ -6,12 +6,24 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { RecipesList } from "@/features/recipes/components/recipes-list";
-import { getSavedRecipes } from "@/features/recipes/queries";
+import {
+  getRecipeSignals,
+  getSavedRecipes,
+  type RecipeSignals,
+} from "@/features/recipes/queries";
+import { getCurrentHousehold } from "@/features/household/queries";
 
 export const metadata: Metadata = { title: "Mis recetas" };
 
 export default async function RecetasPage() {
-  const recipes = await getSavedRecipes();
+  const [recipes, household] = await Promise.all([
+    getSavedRecipes(),
+    getCurrentHousehold(),
+  ]);
+  const signalsList = household ? await getRecipeSignals(household.id) : [];
+  const signals: Record<string, RecipeSignals> = Object.fromEntries(
+    signalsList.map((s) => [s.recipeId, s]),
+  );
 
   return (
     <>
@@ -41,7 +53,7 @@ export default async function RecetasPage() {
           }
         />
       ) : (
-        <RecipesList recipes={recipes} />
+        <RecipesList recipes={recipes} signals={signals} />
       )}
     </>
   );

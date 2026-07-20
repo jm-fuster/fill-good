@@ -13,6 +13,7 @@ export type MenuEntry = {
   recipeIsSaved: boolean | null;
   recipeSource: string | null;
   freeText: string | null;
+  cookedAt: string | null;
 };
 
 export type WeekMenu = {
@@ -26,6 +27,7 @@ type EntryRow = {
   meal_slot: string;
   recipe_id: string | null;
   free_text: string | null;
+  cooked_at: string | null;
   recipe: { name: string; is_saved: boolean; source: string } | null;
 };
 
@@ -45,7 +47,7 @@ export async function getMenuEntries(menuId: string): Promise<MenuEntry[]> {
   const { data, error } = await supabase
     .from("menu_entries")
     .select(
-      "id, date, meal_slot, recipe_id, free_text, recipe:recipes(name, is_saved, source)",
+      "id, date, meal_slot, recipe_id, free_text, cooked_at, recipe:recipes(name, is_saved, source)",
     )
     .eq("menu_id", menuId);
   if (error) throw error;
@@ -60,6 +62,7 @@ export async function getMenuEntries(menuId: string): Promise<MenuEntry[]> {
     recipeIsSaved: r.recipe?.is_saved ?? null,
     recipeSource: r.recipe?.source ?? null,
     freeText: r.free_text,
+    cookedAt: r.cooked_at,
   }));
 }
 

@@ -549,6 +549,7 @@ export type Database = {
           recipe_id: string | null;
           free_text: string | null;
           servings: number;
+          cooked_at: string | null;
         };
         Insert: {
           id?: string;
@@ -559,6 +560,7 @@ export type Database = {
           recipe_id?: string | null;
           free_text?: string | null;
           servings?: number;
+          cooked_at?: string | null;
         };
         Update: {
           id?: string;
@@ -569,6 +571,7 @@ export type Database = {
           recipe_id?: string | null;
           free_text?: string | null;
           servings?: number;
+          cooked_at?: string | null;
         };
         Relationships: [
           {
@@ -579,6 +582,43 @@ export type Database = {
           },
           {
             foreignKeyName: "menu_entries_recipe_id_fkey";
+            columns: ["recipe_id"];
+            referencedRelation: "recipes";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      recipe_ratings: {
+        Row: {
+          id: string;
+          household_id: string;
+          recipe_id: string;
+          user_id: string;
+          rating: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          recipe_id: string;
+          user_id: string;
+          rating: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          recipe_id?: string;
+          user_id?: string;
+          rating?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "recipe_ratings_recipe_id_fkey";
             columns: ["recipe_id"];
             referencedRelation: "recipes";
             referencedColumns: ["id"];

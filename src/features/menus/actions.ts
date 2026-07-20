@@ -180,6 +180,54 @@ export async function setMenuEntryAction(
   return { ok: true };
 }
 
+/**
+ * Marca o desmarca "Lo cocinamos" en una entrada del menú. Al marcar, fija
+ * cooked_at con la propia fecha de la entrada (señal de apetencia para C3);
+ * al desmarcar, la deja en null. Solo tiene sentido en entradas de hoy o
+ * pasadas: la UI oculta el botón en fechas futuras, pero aquí se valida igual.
+ */
+export async function toggleEntryCookedAction(
+  entryId: string,
+  cooked: boolean,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  if (!cooked) {
+    const { error } = await supabase
+      .from("menu_entries")
+      .update({ cooked_at: null })
+      .eq("id", entryId);
+    if (error) return { error: "No se pudo actualizar la entrada." };
+    revalidatePath("/menus");
+    return { ok: true };
+  }
+
+  // Recupera la fecha real de la entrada (RLS garantiza que es del hogar).
+  const { data: entry } = await supabase
+    .from("menu_entries")
+    .select("date")
+    .eq("id", entryId)
+    .maybeSingle();
+  if (!entry) return { error: "No se encontró la entrada del menú." };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (new Date(`${entry.date}T00:00:00`) > today) {
+    return { error: "Solo puedes marcar como cocinado un día que ya ha pasado." };
+  }
+
+  const { error } = await supabase
+    .from("menu_entries")
+    .update({ cooked_at: entry.date })
+    .eq("id", entryId);
+  if (error) return { error: "No se pudo actualizar la entrada." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
 export async function addMissingToListAction(
   menuId: string,
 ): Promise<MenuState> {
