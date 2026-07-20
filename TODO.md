@@ -1,4 +1,4 @@
-# TO-DO — Mejoras de Stash
+# TO-DO — Mejoras de Fill Good
 
 Documento de trabajo para implementar las próximas mejoras **progresivamente con agentes de IA**.
 Cada tarea es autocontenida: incluye contexto, diseño propuesto, pasos y criterios de aceptación.
@@ -422,7 +422,7 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 > **Prompt para el siguiente agente (C3 — Generador de menús 2.0):**
 >
 > ```
-> Continúa con el proyecto Stash (C:\Users\Jorge\Desktop\Food). Lee primero AGENTS.md
+> Continúa con el proyecto Fill Good (C:\Users\Jorge\Desktop\Food). Lee primero AGENTS.md
 > (sistema de diseño, tokens semánticos, touch targets ≥44px, drawers en móvil, UI en
 > español) y las "Instrucciones para el agente" al inicio de TODO.md. A1, A2, A3, B1, B2, C1
 > y C2 ya están terminadas y marcadas. C3 es la ÚLTIMA tarea del plan.

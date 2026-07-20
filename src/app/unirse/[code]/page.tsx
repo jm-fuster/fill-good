@@ -56,7 +56,7 @@ export default async function UnirsePage({
               Únete al hogar
             </h1>
             <p className="mt-2 text-sm text-muted-foreground text-pretty">
-              Te han invitado a un hogar en Stash. Revisa el código y pulsa
+              Te han invitado a un hogar en Fill Good. Revisa el código y pulsa
               «Unirme al hogar» para empezar a compartir inventario y lista de
               la compra.
             </p>

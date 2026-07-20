@@ -4,9 +4,9 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-# Stash — App de hogar (inventario + lista + tickets + menús)
+# Fill Good — App de hogar (inventario + lista + tickets + menús)
 
-PWA mobile-first en **español** enfocada en **ahorrar y comprar con eficiencia** en el hogar (eslogan: *"Compra lo justo, ahorra más"*): inventario, lista de la compra compartida, escaneo de tickets con IA, tendencias de precios y menús semanales. El identificador interno del repo/carpeta sigue siendo `Food`; el nombre de producto es **Stash**. Plan de fases completo en `C:\Users\Jorge\.claude\plans\quiero-construir-una-aplicaci-n-fizzy-lollipop.md`.
+PWA mobile-first en **español** enfocada en **ahorrar y comprar con eficiencia** en el hogar (eslogan: *"Compra lo justo, ahorra más"*): inventario, lista de la compra compartida, escaneo de tickets con IA, tendencias de precios y menús semanales. El identificador interno del repo/carpeta sigue siendo `Food`; el nombre de producto es **Fill Good**. Plan de fases completo en `C:\Users\Jorge\.claude\plans\quiero-construir-una-aplicaci-n-fizzy-lollipop.md`.
 
 ## Stack
 

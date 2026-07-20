@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Stash — Compra lo justo, ahorra más",
-    short_name: "Stash",
+    name: "Fill Good — Compra lo justo, ahorra más",
+    short_name: "Fill Good",
     description:
       "Controla tu despensa, compra solo lo que falta y ahorra: inventario, lista de la compra, escaneo de tickets, precios y menús semanales.",
     lang: "es",

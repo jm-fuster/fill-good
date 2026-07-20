@@ -47,8 +47,8 @@ export function HouseholdCard({
   function shareLink() {
     navigator
       .share({
-        title: `Únete a ${household.name} en Stash`,
-        text: "Te invito a nuestro hogar en Stash para compartir la compra.",
+        title: `Únete a ${household.name} en Fill Good`,
+        text: "Te invito a nuestro hogar en Fill Good para compartir la compra.",
         url: inviteUrl(),
       })
       .catch(() => {

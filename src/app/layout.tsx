@@ -22,16 +22,16 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Stash — Compra lo justo, ahorra más",
-    template: "%s · Stash",
+    default: "Fill Good — Compra lo justo, ahorra más",
+    template: "%s · Fill Good",
   },
   description:
     "Controla tu despensa, compra solo lo que falta y ahorra: inventario, lista de la compra, escaneo de tickets, precios y menús semanales.",
-  applicationName: "Stash",
+  applicationName: "Fill Good",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Stash",
+    title: "Fill Good",
   },
 };
 
