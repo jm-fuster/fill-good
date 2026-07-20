@@ -1,7 +1,7 @@
 "use client";
 
-import { useTransition } from "react";
-import { Copy, LogOut, RefreshCw } from "lucide-react";
+import { useSyncExternalStore, useTransition } from "react";
+import { Copy, LogOut, RefreshCw, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -25,12 +25,35 @@ export function HouseholdCard({
   members: HouseholdMember[];
 }) {
   const [pending, startTransition] = useTransition();
+  // navigator.share solo existe en cliente; useSyncExternalStore devuelve false
+  // en servidor e hidratación, evitando el desajuste de hidratación.
+  const canShare = useSyncExternalStore(
+    () => () => {},
+    () => "share" in navigator,
+    () => false,
+  );
 
-  function copyCode() {
+  function inviteUrl() {
+    return `${window.location.origin}/unirse/${household.inviteCode}`;
+  }
+
+  function copyLink() {
     navigator.clipboard
-      .writeText(household.inviteCode)
-      .then(() => toast.success("Código copiado"))
+      .writeText(inviteUrl())
+      .then(() => toast.success("Enlace copiado"))
       .catch(() => toast.error("No se pudo copiar"));
+  }
+
+  function shareLink() {
+    navigator
+      .share({
+        title: `Únete a ${household.name} en Stash`,
+        text: "Te invito a nuestro hogar en Stash para compartir la compra.",
+        url: inviteUrl(),
+      })
+      .catch(() => {
+        // El usuario canceló el diálogo de compartir: no es un error.
+      });
   }
 
   function regenerate() {
@@ -57,7 +80,8 @@ export function HouseholdCard({
       <CardHeader>
         <CardTitle>{household.name}</CardTitle>
         <CardDescription>
-          Comparte el código para que otros miembros se unan a tu hogar.
+          Comparte el enlace para que otros miembros se unan a tu hogar con un
+          solo toque. También puedes dictarles el código.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -70,11 +94,21 @@ export function HouseholdCard({
             <Button
               variant="outline"
               size="icon"
-              aria-label="Copiar código"
-              onClick={copyCode}
+              aria-label="Copiar enlace de invitación"
+              onClick={copyLink}
             >
               <Copy aria-hidden />
             </Button>
+            {canShare ? (
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Compartir enlace de invitación"
+                onClick={shareLink}
+              >
+                <Share2 aria-hidden />
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               size="icon"

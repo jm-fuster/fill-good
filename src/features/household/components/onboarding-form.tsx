@@ -16,7 +16,7 @@ import {
 
 const initialState: ActionState = {};
 
-export function OnboardingForm() {
+export function OnboardingForm({ initialCode }: { initialCode?: string }) {
   const [createState, createFormAction, creating] = useActionState(
     createHouseholdAction,
     initialState,
@@ -27,7 +27,7 @@ export function OnboardingForm() {
   );
 
   return (
-    <Tabs defaultValue="create" className="w-full">
+    <Tabs defaultValue={initialCode ? "join" : "create"} className="w-full">
       <TabsList className="grid w-full grid-cols-2">
         <TabsTrigger value="create">Crear hogar</TabsTrigger>
         <TabsTrigger value="join">Unirme</TabsTrigger>
@@ -80,6 +80,7 @@ export function OnboardingForm() {
               name="code"
               required
               maxLength={12}
+              defaultValue={initialCode}
               autoComplete="off"
               autoCapitalize="characters"
               className="font-mono tracking-widest uppercase"
