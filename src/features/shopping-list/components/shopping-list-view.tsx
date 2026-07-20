@@ -250,7 +250,13 @@ function CheckoutBar({ count }: { count: number }) {
             r.added === 1 ? "" : "s"
           } al inventario`,
         );
-        router.refresh();
+        // Revisión opcional de caducidades de lo recién comprado.
+        const ids = r.inventoryItemIds ?? [];
+        if (ids.length > 0) {
+          router.push(`/inventario/revision?items=${ids.join(",")}`);
+        } else {
+          router.refresh();
+        }
       }
     });
   }

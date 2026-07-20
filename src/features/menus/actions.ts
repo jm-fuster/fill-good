@@ -59,6 +59,7 @@ export async function generateMenuAction(
       quantity: i.quantity,
       unit: i.unit as string,
       expiresInDays: exp ? exp.days : null,
+      useSoon: i.useSoon,
     };
   });
 

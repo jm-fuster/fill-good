@@ -18,7 +18,7 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 
 - [x] A1 — Invitación por enlace (URL con código)
 - [x] A2 — Productos habituales y autocompletado inteligente en la lista
-- [ ] A3 — Revisión de caducidades tras la compra + "consumir pronto"
+- [x] A3 — Revisión de caducidades tras la compra + "consumir pronto"
 - [ ] B1 — Recetario del hogar (CRUD de recetas, tipo de comida y temporada)
 - [ ] B2 — Gustos y apetencia (valoraciones + señales de uso)
 - [ ] C1 — Varios platos por comida/cena
@@ -92,9 +92,10 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 
 > **Nota de implementación (A2):** migración `supabase/migrations/20260720073534_products_habits.sql`
 > (columnas `purchase_count`/`last_purchased_at`, backfill desde `receipt_items` y función atómica
-> `bump_product_purchase`). **Pendiente de aplicar en la BD** (proyecto remoto, no enlazado): ejecutar
-> `npx supabase db push` (o `supabase migration up`) — hasta entonces `/lista` fallará al leer `purchase_count`.
-> Tipos actualizados a mano en `src/lib/supabase/types.ts` (el archivo se mantiene manualmente).
+> `bump_product_purchase`). **YA APLICADA en remoto** (verificado 2026-07-20 con
+> `npx supabase migration list --linked`: `local == remote` para todas las migraciones hasta A2). El proyecto
+> está enlazado por CLI (`supabase/.temp/linked-project.json`); la advertencia previa de "no enlazado /
+> pendiente" quedó obsoleta. Tipos en `src/lib/supabase/types.ts` mantenidos a mano.
 
 **Criterios de aceptación**
 - Con "Leche" comprada previamente, escribir "le" muestra "Leche" primero, con badge "Nevera".
@@ -125,12 +126,20 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - Al consumir/agotar el item (cantidad a 0) o editarlo, `use_soon` se puede desmarcar manualmente; no automatizar más por ahora.
 
 **Pasos**
-- [ ] Migración + regenerar tipos.
-- [ ] `checkoutAction` y `confirmReceiptAction` devuelven `inventoryItemIds`.
-- [ ] Página `/inventario/revision` + `saveExpiryReviewAction` con presets y toggle.
-- [ ] Redirecciones tras compra y tras ticket (con opción clara de omitir).
-- [ ] Badge + toggle "Consumir pronto" en inventario; orden con prioridad.
-- [ ] Marcar `use_soon` en el prompt del menú.
+- [x] Migración + regenerar tipos.
+- [x] `checkoutAction` y `confirmReceiptAction` devuelven `inventoryItemIds`.
+- [x] Página `/inventario/revision` + `saveExpiryReviewAction` con presets y toggle.
+- [x] Redirecciones tras compra y tras ticket (con opción clara de omitir).
+- [x] Badge + toggle "Consumir pronto" en inventario; orden con prioridad.
+- [x] Marcar `use_soon` en el prompt del menú.
+
+> **Nota de implementación (A3):** migración `supabase/migrations/20260720101500_inventory_use_soon.sql`
+> (columna `inventory_items.use_soon boolean not null default false`). Tipos actualizados a mano en
+> `src/lib/supabase/types.ts`. **El proyecto SÍ está enlazado por CLI** (`supabase/.temp/linked-project.json`,
+> ref `mxnbvgcaedaccpxefqiq`) y todas las migraciones anteriores —incluida la de A2 `20260720073534`—
+> **ya están aplicadas en remoto** (verificado con `npx supabase migration list --linked`). Solo esta
+> migración de A3 queda pendiente: aplicarla con `npx supabase db push` (requiere autorización del usuario;
+> hasta entonces `/inventario` y `/menus` fallarán al leer `use_soon`).
 
 **Criterios de aceptación**
 - Finalizar compra con 3 items marcados → aparece la página con esos 3; asignar "+1 semana" a uno y omitir el resto funciona.

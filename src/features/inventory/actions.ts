@@ -6,7 +6,11 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import { getCurrentHousehold } from "@/features/household/queries";
-import { addInventorySchema, editInventorySchema } from "./schemas";
+import {
+  addInventorySchema,
+  editInventorySchema,
+  expiryReviewSchema,
+} from "./schemas";
 
 export type ActionState = { error?: string; ok?: boolean };
 
@@ -135,6 +139,7 @@ export async function updateInventoryAction(
     productId: formData.get("productId"),
     quantity: formData.get("quantity"),
     expiryDate: formData.get("expiryDate") || undefined,
+    useSoon: formData.get("useSoon") || undefined,
     minQuantity: formData.get("minQuantity") || undefined,
   });
   if (!parsed.success) {
@@ -148,6 +153,7 @@ export async function updateInventoryAction(
     .update({
       quantity: d.quantity,
       expiry_date: d.expiryDate,
+      use_soon: d.useSoon,
       updated_by: userId,
     })
     .eq("id", d.inventoryId);
@@ -166,6 +172,47 @@ export async function deleteInventoryAction(id: string): Promise<ActionState> {
   const supabase = createServerSupabaseClient();
   const { error } = await supabase.from("inventory_items").delete().eq("id", id);
   if (error) return { error: "No se pudo eliminar." };
+  revalidatePath("/inventario");
+  return { ok: true };
+}
+
+export type ExpiryReviewUpdate = {
+  id: string;
+  expiryDate: string | null;
+  useSoon: boolean;
+};
+
+/**
+ * Revisión de caducidades tras la compra: fija `expiry_date` / `use_soon` en
+ * lote para los items recién comprados. Solo escribe filas que cambian de
+ * verdad; la RLS restringe a los del hogar. Es idempotente y opcional (omitir
+ * no llama a esta acción).
+ */
+export async function saveExpiryReviewAction(
+  updates: ExpiryReviewUpdate[],
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+
+  const parsed = expiryReviewSchema.safeParse({ updates });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+
+  const supabase = createServerSupabaseClient();
+  for (const u of parsed.data.updates) {
+    const { error } = await supabase
+      .from("inventory_items")
+      .update({
+        expiry_date: u.expiryDate,
+        use_soon: u.useSoon,
+        updated_by: userId,
+      })
+      .eq("id", u.id);
+    if (error) return { error: "No se pudieron guardar los cambios." };
+  }
+
   revalidatePath("/inventario");
   return { ok: true };
 }

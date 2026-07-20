@@ -99,7 +99,13 @@ export function ReceiptReview({
         result.added === 1 ? "" : "s"
       } al inventario`,
     );
-    router.push("/inventario");
+    // Revisión opcional de caducidades de lo recién añadido.
+    const ids = result.inventoryItemIds ?? [];
+    if (ids.length > 0) {
+      router.push(`/inventario/revision?items=${ids.join(",")}`);
+    } else {
+      router.push("/inventario");
+    }
   }
 
   const includedCount = rows.filter((r) => r.include).length;

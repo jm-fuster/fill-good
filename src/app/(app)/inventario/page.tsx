@@ -11,10 +11,23 @@ import {
   getCategories,
   getInventory,
   getProducts,
+  type InventoryEntry,
 } from "@/features/inventory/queries";
+import { getExpiryStatus } from "@/lib/dates";
 import { LOCATION_ICONS, LOCATION_LABELS, LOCATION_ORDER } from "@/lib/units";
 
 export const metadata: Metadata = { title: "Inventario" };
+
+/**
+ * Prioridad de atención dentro de cada ubicación: primero lo caducado, luego lo
+ * que caduca pronto o está marcado "consumir pronto", después el resto.
+ */
+function urgencyRank(entry: InventoryEntry): number {
+  const expiry = getExpiryStatus(entry.expiryDate);
+  if (expiry?.status === "expired") return 0;
+  if (expiry?.status === "soon" || entry.useSoon) return 1;
+  return 2;
+}
 
 export default async function InventarioPage() {
   const [entries, categories, products] = await Promise.all([
@@ -28,7 +41,11 @@ export default async function InventarioPage() {
     location,
     items: entries
       .filter((e) => e.location === location)
-      .sort((a, b) => a.productName.localeCompare(b.productName, "es")),
+      .sort(
+        (a, b) =>
+          urgencyRank(a) - urgencyRank(b) ||
+          a.productName.localeCompare(b.productName, "es"),
+      ),
   })).filter((g) => g.items.length > 0);
 
   return (

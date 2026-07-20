@@ -151,7 +151,7 @@ export async function deleteListItemAction(
  * lista. Los items de texto libre crean/actualizan su producto en el catálogo.
  */
 export async function checkoutAction(): Promise<
-  ActionState & { added?: number }
+  ActionState & { added?: number; inventoryItemIds?: string[] }
 > {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
@@ -170,6 +170,8 @@ export async function checkoutAction(): Promise<
   if (!checked || checked.length === 0) {
     return { error: "No hay productos marcados." };
   }
+
+  const inventoryItemIds: string[] = [];
 
   for (const item of checked) {
     // Resolver producto: enlazado, o resolver/crear por nombre normalizado.
@@ -235,15 +237,21 @@ export async function checkoutAction(): Promise<
           updated_by: userId,
         })
         .eq("id", inv.id);
+      inventoryItemIds.push(inv.id);
     } else {
-      await supabase.from("inventory_items").insert({
-        household_id: household.id,
-        product_id: productId,
-        location,
-        quantity: qty,
-        unit: defaultUnit,
-        updated_by: userId,
-      });
+      const { data: created } = await supabase
+        .from("inventory_items")
+        .insert({
+          household_id: household.id,
+          product_id: productId,
+          location,
+          quantity: qty,
+          unit: defaultUnit,
+          updated_by: userId,
+        })
+        .select("id")
+        .single();
+      if (created) inventoryItemIds.push(created.id);
     }
 
     // Memoria de habitualidad: este producto se ha comprado.
@@ -257,5 +265,5 @@ export async function checkoutAction(): Promise<
 
   revalidatePath("/lista");
   revalidatePath("/inventario");
-  return { ok: true, added: checked.length };
+  return { ok: true, added: checked.length, inventoryItemIds };
 }

@@ -230,6 +230,7 @@ export type Database = {
           quantity: number;
           unit: UnitType;
           expiry_date: string | null;
+          use_soon: boolean;
           notes: string | null;
           updated_by: string | null;
           created_at: string;
@@ -243,6 +244,7 @@ export type Database = {
           quantity?: number;
           unit?: UnitType;
           expiry_date?: string | null;
+          use_soon?: boolean;
           notes?: string | null;
           updated_by?: string | null;
           created_at?: string;
@@ -256,6 +258,7 @@ export type Database = {
           quantity?: number;
           unit?: UnitType;
           expiry_date?: string | null;
+          use_soon?: boolean;
           notes?: string | null;
           updated_by?: string | null;
           created_at?: string;

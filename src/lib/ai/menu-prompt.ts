@@ -3,20 +3,24 @@ type InventoryLine = {
   quantity: number;
   unit: string;
   expiresInDays: number | null;
+  useSoon: boolean;
 };
 
 export function buildMenuPrompt(inventory: InventoryLine[]): string {
   const inventoryText =
     inventory.length > 0
       ? inventory
-          .map(
-            (i) =>
-              `- ${i.name}: ${i.quantity} ${i.unit}${
-                i.expiresInDays !== null
-                  ? ` (caduca en ${i.expiresInDays} días)`
-                  : ""
-              }`,
-          )
+          .map((i) => {
+            const flags: string[] = [];
+            if (i.expiresInDays !== null) {
+              flags.push(`caduca en ${i.expiresInDays} días`);
+            }
+            // "Consumir pronto" tiene la misma prioridad que una caducidad
+            // inminente aunque no haya fecha.
+            if (i.useSoon) flags.push("consumir pronto");
+            const suffix = flags.length > 0 ? ` (${flags.join(", ")})` : "";
+            return `- ${i.name}: ${i.quantity} ${i.unit}${suffix}`;
+          })
           .join("\n")
       : "(el inventario está vacío)";
 
@@ -25,7 +29,7 @@ export function buildMenuPrompt(inventory: InventoryLine[]): string {
 Genera un menú para 7 días (de lunes a domingo), con COMIDA y CENA cada día.
 
 Objetivos, por orden de prioridad:
-1. Aprovechar lo que ya hay en el inventario, especialmente lo que caduca pronto.
+1. Aprovechar lo que ya hay en el inventario, especialmente lo que caduca pronto o está marcado como "consumir pronto".
 2. Dieta equilibrada y variada a lo largo de la semana (verduras, legumbres, pescado, carne, hidratos), sin repetir el mismo plato.
 3. Cocina española sencilla y realista para el día a día. Cenas más ligeras que las comidas.
 

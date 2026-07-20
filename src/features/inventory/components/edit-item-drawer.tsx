@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import type { InventoryEntry } from "../queries";
 import { deleteInventoryAction, updateInventoryAction } from "../actions";
@@ -34,6 +35,15 @@ export function EditItemDrawer({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // "Consumir pronto": controlado, resincronizado cuando el servidor cambia
+  // (mismo patrón de ajuste en render que el stepper de la tarjeta).
+  const [useSoon, setUseSoon] = useState(entry.useSoon);
+  const [serverUseSoon, setServerUseSoon] = useState(entry.useSoon);
+  if (serverUseSoon !== entry.useSoon) {
+    setServerUseSoon(entry.useSoon);
+    setUseSoon(entry.useSoon);
+  }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -78,6 +88,7 @@ export function EditItemDrawer({
           <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4">
             <input type="hidden" name="inventoryId" value={entry.id} />
             <input type="hidden" name="productId" value={entry.productId} />
+            <input type="hidden" name="useSoon" value={String(useSoon)} />
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="edit-quantity">
@@ -121,6 +132,20 @@ export function EditItemDrawer({
                 min={0}
                 step="any"
                 defaultValue={entry.minQuantity ?? ""}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <Label htmlFor="edit-use-soon" className="flex flex-col gap-0.5">
+                <span>Consumir pronto</span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  Priorízalo en los menús aunque no caduque
+                </span>
+              </Label>
+              <Switch
+                id="edit-use-soon"
+                checked={useSoon}
+                onCheckedChange={setUseSoon}
               />
             </div>
 

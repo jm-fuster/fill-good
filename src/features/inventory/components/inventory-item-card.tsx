@@ -93,6 +93,11 @@ export function InventoryItemCard({ entry }: { entry: InventoryEntry }) {
                   Quedan pocas
                 </Badge>
               ) : null}
+              {entry.useSoon ? (
+                <Badge className="border-transparent bg-warning/15 text-warning">
+                  Consumir pronto
+                </Badge>
+              ) : null}
             </span>
           </span>
         </button>

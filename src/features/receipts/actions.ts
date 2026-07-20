@@ -134,7 +134,12 @@ export type ConfirmPayload = {
 
 export async function confirmReceiptAction(
   payload: ConfirmPayload,
-): Promise<{ error?: string; ok?: boolean; added?: number }> {
+): Promise<{
+  error?: string;
+  ok?: boolean;
+  added?: number;
+  inventoryItemIds?: string[];
+}> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
   const { userId } = await auth();
@@ -152,6 +157,7 @@ export async function confirmReceiptAction(
   const purchasedAt = payload.purchaseDate ?? receipt.purchased_at;
   const storeChain = receipt.store_chain;
   let added = 0;
+  const inventoryItemIds: string[] = [];
 
   for (const dec of payload.items) {
     if (dec.skip) {
@@ -255,15 +261,21 @@ export async function confirmReceiptAction(
           updated_by: userId,
         })
         .eq("id", inv.id);
+      inventoryItemIds.push(inv.id);
     } else {
-      await supabase.from("inventory_items").insert({
-        household_id: household.id,
-        product_id: productId,
-        location,
-        quantity: dec.quantity,
-        unit: dec.unit,
-        updated_by: userId,
-      });
+      const { data: created } = await supabase
+        .from("inventory_items")
+        .insert({
+          household_id: household.id,
+          product_id: productId,
+          location,
+          quantity: dec.quantity,
+          unit: dec.unit,
+          updated_by: userId,
+        })
+        .select("id")
+        .single();
+      if (created) inventoryItemIds.push(created.id);
     }
 
     // Memoria de habitualidad: este producto se ha comprado.
@@ -287,5 +299,5 @@ export async function confirmReceiptAction(
   revalidatePath("/inventario");
   revalidatePath("/precios");
   revalidatePath("/escanear");
-  return { ok: true, added };
+  return { ok: true, added, inventoryItemIds };
 }
