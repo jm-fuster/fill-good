@@ -628,6 +628,46 @@ export type Database = {
           },
         ];
       };
+      menu_rules: {
+        Row: {
+          id: string;
+          household_id: string;
+          kind: string;
+          recipe_id: string | null;
+          value: number | null;
+          text_rule: string | null;
+          active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          kind: string;
+          recipe_id?: string | null;
+          value?: number | null;
+          text_rule?: string | null;
+          active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          kind?: string;
+          recipe_id?: string | null;
+          value?: number | null;
+          text_rule?: string | null;
+          active?: boolean;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "menu_rules_recipe_id_fkey";
+            columns: ["recipe_id"];
+            referencedRelation: "recipes";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
     };
     Views: Record<never, never>;
     Functions: {

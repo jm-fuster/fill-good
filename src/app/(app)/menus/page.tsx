@@ -5,7 +5,9 @@ import { BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/layout/page-header";
 import { MenuView } from "@/features/menus/components/menu-view";
-import { getMenuEntries, getWeekMenu } from "@/features/menus/queries";
+import { MenuRules } from "@/features/menus/components/menu-rules";
+import { getMenuEntries, getMenuRules, getWeekMenu } from "@/features/menus/queries";
+import { getSavedRecipes } from "@/features/recipes/queries";
 import { getWeekStart } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Menús" };
@@ -22,7 +24,11 @@ export default async function MenusPage({
       : getWeekStart();
 
   const menu = await getWeekMenu(weekStart);
-  const entries = menu ? await getMenuEntries(menu.id) : [];
+  const [entries, rules, recipes] = await Promise.all([
+    menu ? getMenuEntries(menu.id) : Promise.resolve([]),
+    getMenuRules(),
+    getSavedRecipes(),
+  ]);
 
   return (
     <>
@@ -37,11 +43,14 @@ export default async function MenusPage({
           </Button>
         }
       />
-      <MenuView
-        weekStart={weekStart}
-        menuId={menu?.id ?? null}
-        entries={entries}
-      />
+      <div className="flex flex-col gap-4">
+        <MenuView
+          weekStart={weekStart}
+          menuId={menu?.id ?? null}
+          entries={entries}
+        />
+        <MenuRules rules={rules} recipes={recipes} />
+      </div>
     </>
   );
 }

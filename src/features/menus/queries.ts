@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import type { MenuRuleKind } from "./rules";
 
 export type MealSlot = "lunch" | "dinner";
 
@@ -69,6 +70,58 @@ export async function getMenuEntries(menuId: string): Promise<MenuEntry[]> {
     recipeSource: r.recipe?.source ?? null,
     freeText: r.free_text,
     cookedAt: r.cooked_at,
+  }));
+}
+
+/** Regla del menú tal como la consume la UI (con el nombre de la receta). */
+export type MenuRule = {
+  id: string;
+  kind: MenuRuleKind;
+  recipeId: string | null;
+  recipeName: string | null;
+  value: number | null;
+  textRule: string | null;
+  active: boolean;
+  createdAt: string;
+};
+
+type MenuRuleRow = {
+  id: string;
+  kind: string;
+  recipe_id: string | null;
+  value: number | null;
+  text_rule: string | null;
+  active: boolean;
+  created_at: string;
+  recipe: { name: string } | null;
+};
+
+/**
+ * Reglas del hogar (activas e inactivas) para la sección "Reglas del menú".
+ * Devolver también las inactivas permite reactivarlas desde la UI. RLS limita
+ * las filas al hogar del usuario.
+ */
+export async function getMenuRules(): Promise<MenuRule[]> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("menu_rules")
+    .select(
+      "id, kind, recipe_id, value, text_rule, active, created_at, recipe:recipes(name)",
+    )
+    .order("active", { ascending: false })
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+
+  const rows = (data ?? []) as unknown as MenuRuleRow[];
+  return rows.map((r) => ({
+    id: r.id,
+    kind: r.kind as MenuRuleKind,
+    recipeId: r.recipe_id,
+    recipeName: r.recipe?.name ?? null,
+    value: r.value,
+    textRule: r.text_rule,
+    active: r.active,
+    createdAt: r.created_at,
   }));
 }
 

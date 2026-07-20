@@ -16,6 +16,7 @@ import type { Database, UnitType } from "@/lib/supabase/types";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { getInventory } from "@/features/inventory/queries";
 import { getActiveList } from "@/features/shopping-list/queries";
+import { menuRuleInputSchema, type MenuRuleInput } from "./schemas";
 
 export type MenuState = { error?: string; ok?: boolean; added?: number };
 
@@ -339,4 +340,91 @@ export async function addMissingToListAction(
 
   revalidatePath("/lista");
   return { ok: true, added: toAdd.size };
+}
+
+// ---------------------------------------------------------------------------
+// Reglas del menú (C2)
+// ---------------------------------------------------------------------------
+
+export type RuleState = { error?: string; ok?: boolean };
+
+/**
+ * Crea una regla del menú. Las reglas de frecuencia (recipe_min/max_week) exigen
+ * una receta guardada del hogar; las libres, un texto. El CHECK de coherencia de
+ * la BD respalda la forma; aquí validamos con zod y comprobamos la receta.
+ */
+export async function createRuleAction(
+  input: MenuRuleInput,
+): Promise<RuleState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const parsed = menuRuleInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  const d = parsed.data;
+  const supabase = createServerSupabaseClient();
+
+  if (d.kind === "free_text") {
+    const { error } = await supabase.from("menu_rules").insert({
+      household_id: household.id,
+      kind: d.kind,
+      text_rule: d.textRule,
+    });
+    if (error) return { error: "No se pudo crear la regla." };
+  } else {
+    // La receta debe existir, pertenecer al hogar y estar guardada.
+    const { data: recipe } = await supabase
+      .from("recipes")
+      .select("id")
+      .eq("id", d.recipeId)
+      .eq("household_id", household.id)
+      .eq("is_saved", true)
+      .maybeSingle();
+    if (!recipe) return { error: "Elige una receta de tu recetario." };
+
+    const { error } = await supabase.from("menu_rules").insert({
+      household_id: household.id,
+      kind: d.kind,
+      recipe_id: d.recipeId,
+      value: d.value,
+    });
+    if (error) return { error: "No se pudo crear la regla." };
+  }
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/** Activa o desactiva una regla (una regla inactiva no se aplica en C3). */
+export async function toggleRuleAction(
+  ruleId: string,
+  active: boolean,
+): Promise<RuleState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const { error } = await supabase
+    .from("menu_rules")
+    .update({ active })
+    .eq("id", ruleId);
+  if (error) return { error: "No se pudo actualizar la regla." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/** Borra una regla del menú. */
+export async function deleteRuleAction(ruleId: string): Promise<RuleState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const { error } = await supabase.from("menu_rules").delete().eq("id", ruleId);
+  if (error) return { error: "No se pudo borrar la regla." };
+
+  revalidatePath("/menus");
+  return { ok: true };
 }
