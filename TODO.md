@@ -23,7 +23,7 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - [x] B2 — Gustos y apetencia (valoraciones + señales de uso)
 - [x] C1 — Varios platos por comida/cena
 - [x] C2 — Reglas del menú
-- [ ] C3 — Generador de menús 2.0 (integra recetario, gustos, temporada, reglas y stock)
+- [x] C3 — Generador de menús 2.0 (integra recetario, gustos, temporada, reglas y stock)
 
 ---
 
@@ -383,12 +383,34 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - **Limpieza (housekeeping):** al regenerar el menú de una semana, borrar las recetas efímeras (`is_saved = false`) que queden huérfanas (sin `menu_entries` que las referencien).
 
 **Pasos**
-- [ ] Reescribir `buildMenuPrompt` con el objeto de contexto completo (inventario + recetario filtrado + señales + reglas + temporada).
-- [ ] Añadir `saved_recipe_id` al schema de IA + fallback por nombre normalizado.
-- [ ] Inserción que vincula recetas guardadas y solo crea efímeras cuando toca.
-- [ ] Integrar `validateAndPatchRules` post-generación.
-- [ ] Limpieza de recetas efímeras huérfanas al regenerar.
-- [ ] Revisar el resultado con datos reales: temporada correcta, reglas cumplidas, recetas guardadas enlazadas (visible porque "Guardar en mi recetario" no aparece en las ya guardadas).
+- [x] Reescribir `buildMenuPrompt` con el objeto de contexto completo (inventario + recetario filtrado + señales + reglas + temporada).
+- [x] Añadir `saved_recipe_id` al schema de IA + fallback por nombre normalizado.
+- [x] Inserción que vincula recetas guardadas y solo crea efímeras cuando toca.
+- [x] Integrar `validateAndPatchRules` post-generación.
+- [x] Limpieza de recetas efímeras huérfanas al regenerar.
+- [ ] Revisar el resultado con datos reales: temporada correcta, reglas cumplidas, recetas guardadas enlazadas (visible porque "Guardar en mi recetario" no aparece en las ya guardadas). — PENDIENTE de verificación manual (requiere sesión Clerk + llamada a Gemini; no verificable en modo headless).
+
+> **Nota de implementación (C3):** sin migración nueva (reutiliza tablas de A3/B1/B2/C1/C2).
+> `src/lib/ai/menu-schema.ts`: cada plato gana `saved_recipe_id: string|null`.
+> `src/lib/ai/menu-prompt.ts`: `buildMenuPrompt(context)` reescrito con `MenuPromptContext`
+> (today, season, inventory, recipes [ya filtradas por temporada, con id/nombre/tipos/rating/veces
+> cocinada/última vez/ingredientes con marca "en casa"], rules [frecuencia en lenguaje claro + libres]).
+> `src/features/recipes/queries.ts`: nueva `getSavedRecipesForMenu()` (recetas guardadas con
+> ingredientes + `product_id`, sin filtrar por temporada). `src/features/menus/actions.ts`:
+> `generateMenuAction` reescrita — reúne inventario + recetario + `getRecipeSignals` + `getMenuRules`
+> en paralelo, filtra el recetario por `getCurrentSeason()`, marca ingredientes en stock (por
+> `product_id` o nombre normalizado, cantidad>0), construye la `MenuStructure` (cada plato con
+> `savedRecipeId` resuelto por id explícito o fallback por nombre normalizado contra TODO el recetario,
+> y `payload` con descripción/ingredientes), aplica `validateAndPatchRules` con las reglas activas
+> enriquecidas con `{name, mealTypes}` de la receta, e inserta SIN contaminar: receta guardada ⇒
+> `menu_entries.recipe_id` directo (misma id, señales siguen acumulando); marcador ⇒ `free_text`
+> "(elegir plato)"; plato inventado ⇒ receta efímera `is_saved=false` desde el payload. Housekeeping
+> `cleanupOrphanEphemeralRecipes` borra las efímeras sin `menu_entries` que las referencien tras
+> regenerar. `npx tsc --noEmit` y `npx eslint .` limpios. `validateAndPatchRules` verificada con un
+> arnés (esbuild+node, 12 asserts: mínimos por adición/sustitución, máximos a marcador, protección de
+> mínimos ajenos, free_text inerte, no-mutación de la entrada). Verificación en preview no posible por
+> conflicto de `.next` con otro dev server activo + login Clerk headless (mismo límite que C1/C2); el
+> último paso (revisión con datos reales) queda para el usuario con sesión iniciada.
 
 **Criterios de aceptación**
 - Con "Sopa de cocido" marcada como invierno, en julio no aparece en el menú generado.

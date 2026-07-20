@@ -19,6 +19,14 @@ export const menuSchema = z.object({
                   recipe_name: z
                     .string()
                     .describe("Nombre del plato en español."),
+                  saved_recipe_id: z
+                    .string()
+                    .nullable()
+                    .describe(
+                      "Si el plato es una receta del recetario del hogar, " +
+                        "copia aquí su id EXACTO (el que aparece en la lista). " +
+                        "Si es un plato nuevo inventado, deja null.",
+                    ),
                   description: z
                     .string()
                     .nullable()

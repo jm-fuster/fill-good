@@ -65,6 +65,49 @@ export async function getSavedRecipes(): Promise<SavedRecipe[]> {
   }));
 }
 
+/** Receta guardada con lo que el generador de menús 2.0 (C3) necesita. */
+export type SavedRecipeForMenu = {
+  id: string;
+  name: string;
+  mealTypes: string[];
+  seasons: string[];
+  ingredients: { name: string; productId: string | null }[];
+};
+
+type SavedRecipeForMenuRow = {
+  id: string;
+  name: string;
+  meal_types: string[] | null;
+  seasons: string[] | null;
+  recipe_ingredients: { name: string; product_id: string | null }[];
+};
+
+/**
+ * Recetas guardadas del hogar con sus ingredientes (nombre + product_id), para
+ * el generador de menús 2.0. El `product_id` permite saber qué ingredientes hay
+ * en stock. RLS limita las filas al hogar del usuario.
+ */
+export async function getSavedRecipesForMenu(): Promise<SavedRecipeForMenu[]> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("recipes")
+    .select("id, name, meal_types, seasons, recipe_ingredients(name, product_id)")
+    .eq("is_saved", true);
+  if (error) throw error;
+
+  const rows = (data ?? []) as unknown as SavedRecipeForMenuRow[];
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    mealTypes: r.meal_types ?? [],
+    seasons: r.seasons ?? ["all"],
+    ingredients: (r.recipe_ingredients ?? []).map((i) => ({
+      name: i.name,
+      productId: i.product_id,
+    })),
+  }));
+}
+
 type RecipeRow = {
   id: string;
   name: string;
