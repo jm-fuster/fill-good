@@ -12,6 +12,7 @@ import {
   getCurrentSeason,
   getExpiryStatus,
   getWeekDays,
+  getWeekStart,
   relativeDaysLabel,
 } from "@/lib/dates";
 import { normalizeName } from "@/lib/normalize";
@@ -19,11 +20,13 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, UnitType } from "@/lib/supabase/types";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { getInventory } from "@/features/inventory/queries";
+import { getInventoryStatus } from "@/features/inventory/status";
 import { getActiveList, getProductCatalog } from "@/features/shopping-list/queries";
 import {
   getRecipeSignals,
   getSavedRecipesForMenu,
 } from "@/features/recipes/queries";
+import { rankTonight, type TonightCard, type TonightSoonInfo } from "./tonight";
 import { getMenuRules } from "./queries";
 import {
   computeMissingIngredients,
@@ -621,6 +624,147 @@ export async function confirmCookedDeductionsAction(
   revalidatePath("/inventario");
   revalidatePath("/menus");
   return { ok: true, deducted };
+}
+
+export type TonightState = { error?: string; cards?: TonightCard[] };
+
+/**
+ * "¿Qué hago hoy?" (M6): ranking determinista (sin IA) de recetas del recetario
+ * cocinables ahora mismo con lo que hay, priorizando lo que caduca. Devuelve
+ * 2–3 tarjetas; el cálculo vive en `tonight.ts` (puro y testeable).
+ */
+export async function computeTonightAction(): Promise<TonightState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const [recipes, inventory, catalog, signals] = await Promise.all([
+    getSavedRecipesForMenu(),
+    getInventory(),
+    getProductCatalog(),
+    getRecipeSignals(household.id),
+  ]);
+
+  // Stock real por producto y por nombre (cantidad > 0).
+  const stockByProduct = new Map<string, number>();
+  for (const i of inventory) {
+    stockByProduct.set(
+      i.productId,
+      (stockByProduct.get(i.productId) ?? 0) + i.quantity,
+    );
+  }
+  const stockProductIds = new Set<string>();
+  for (const [pid, qty] of stockByProduct) if (qty > 0) stockProductIds.add(pid);
+  const stockNames = new Set<string>();
+  for (const i of inventory) {
+    if (i.quantity > 0) stockNames.add(normalizeName(i.productName));
+  }
+
+  // Productos "consumir pronto" (caducado o caduca pronto), el más urgente por
+  // producto, para el bonus y la razón de la tarjeta.
+  const soonByProduct = new Map<string, TonightSoonInfo>();
+  for (const i of inventory) {
+    if (i.quantity <= 0) continue;
+    const status = getInventoryStatus({
+      quantity: i.quantity,
+      expiryDate: i.expiryDate,
+      useSoon: i.useSoon,
+      minQuantity: i.minQuantity,
+    });
+    if (!status.soon && !status.expired) continue;
+    const exp = getExpiryStatus(i.expiryDate);
+    const info: TonightSoonInfo = {
+      name: i.productName,
+      days: exp?.days ?? null,
+      expired: status.expired,
+    };
+    const prev = soonByProduct.get(i.productId);
+    const moreUrgent =
+      !prev ||
+      (info.expired && !prev.expired) ||
+      (info.days !== null && (prev.days === null || info.days < prev.days));
+    if (moreUrgent) soonByProduct.set(i.productId, info);
+  }
+
+  const cards = rankTonight({
+    recipes: recipes.map((r) => ({
+      id: r.id,
+      name: r.name,
+      ingredients: r.ingredients.map((i) => ({
+        name: i.name,
+        productId: i.productId,
+      })),
+    })),
+    catalog: catalog.map((c) => ({
+      id: c.id,
+      name: c.name,
+      normalizedName: c.normalizedName,
+      defaultUnit: c.defaultUnit,
+    })),
+    stockProductIds,
+    stockNames,
+    soonByProduct,
+    signals: new Map(
+      signals.map((s) => [
+        s.recipeId,
+        { avgRating: s.avgRating, lastCookedAt: s.lastCookedAt },
+      ]),
+    ),
+    todayISO: todayLocalISO(),
+  });
+
+  return { cards };
+}
+
+/**
+ * Añade una receta guardada al hueco de HOY (M6). El slot se elige por la hora
+ * (comida antes de las 16:00, cena después). Va a la semana actual aunque la
+ * vista muestre otra.
+ */
+export async function addRecipeToMenuAction(
+  recipeId: string,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const { data: recipe } = await supabase
+    .from("recipes")
+    .select("id")
+    .eq("id", recipeId)
+    .eq("household_id", household.id)
+    .maybeSingle();
+  if (!recipe) return { error: "Receta no encontrada." };
+
+  const weekStart = getWeekStart();
+  const menuId = await ensureMenu(supabase, household.id, weekStart);
+  if (!menuId) return { error: "No se pudo crear el menú." };
+
+  const date = todayLocalISO();
+  const slot = new Date().getHours() < 16 ? "lunch" : "dinner";
+
+  const { data: last } = await supabase
+    .from("menu_entries")
+    .select("position")
+    .eq("menu_id", menuId)
+    .eq("date", date)
+    .eq("meal_slot", slot)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const position = last ? last.position + 1 : 0;
+
+  const { error } = await supabase.from("menu_entries").insert({
+    menu_id: menuId,
+    household_id: household.id,
+    date,
+    meal_slot: slot,
+    recipe_id: recipeId,
+    position,
+  });
+  if (error) return { error: "No se pudo añadir al menú." };
+
+  revalidatePath("/menus");
+  return { ok: true };
 }
 
 export type MissingState = {

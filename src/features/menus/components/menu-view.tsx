@@ -9,6 +9,7 @@ import {
   ChefHat,
   ChevronLeft,
   ChevronRight,
+  Lightbulb,
   Plus,
   Printer,
   Share2,
@@ -39,10 +40,13 @@ import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import type { MenuEntry } from "../queries";
 import type { MissingCandidate } from "../missing";
 import type { CookedDeduction } from "../cooked";
+import type { TonightCard } from "../tonight";
 import {
   addMenuEntryAction,
+  addRecipeToMenuAction,
   computeCookedDeductionsAction,
   computeMissingForMenuAction,
+  computeTonightAction,
   confirmCookedDeductionsAction,
   confirmMissingToListAction,
   generateMenuAction,
@@ -91,6 +95,8 @@ export function MenuView({
     recipeName: string;
     items: CookedDeduction[];
   } | null>(null);
+  const [tonight, setTonight] = useState<TonightCard[] | null>(null);
+  const [askingTonight, startTonight] = useTransition();
 
   const days = getWeekDays(weekStart);
   // Varios platos por hueco: agrupamos por `date|slot` (ya vienen por posición).
@@ -112,6 +118,17 @@ export function MenuView({
         toast.success("Menú generado");
         router.refresh();
       }
+    });
+  }
+
+  function askTonight() {
+    startTonight(async () => {
+      const r = await computeTonightAction();
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      setTonight(r.cards ?? []);
     });
   }
 
@@ -215,15 +232,27 @@ export function MenuView({
         </Button>
       </div>
 
-      <Button
-        onClick={generate}
-        disabled={generating}
-        size="lg"
-        className="print:hidden"
-      >
-        <Sparkles aria-hidden />
-        {generating ? "Generando menú…" : "Generar menú con IA"}
-      </Button>
+      <div className="flex flex-col gap-2 print:hidden sm:flex-row">
+        <Button
+          onClick={generate}
+          disabled={generating}
+          size="lg"
+          className="sm:flex-1"
+        >
+          <Sparkles aria-hidden />
+          {generating ? "Generando menú…" : "Generar menú con IA"}
+        </Button>
+        <Button
+          onClick={askTonight}
+          disabled={askingTonight}
+          variant="outline"
+          size="lg"
+          className="sm:flex-1"
+        >
+          <Lightbulb aria-hidden />
+          {askingTonight ? "Pensando…" : "¿Qué hago hoy?"}
+        </Button>
+      </div>
 
       <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 xl:grid-cols-3 print:!flex print:!flex-col">
         {days.map((date) => (
@@ -342,6 +371,15 @@ export function MenuView({
         onClose={() => setCookedDeductions(null)}
         onDone={() => {
           setCookedDeductions(null);
+          router.refresh();
+        }}
+      />
+
+      <TonightDrawer
+        cards={tonight}
+        onClose={() => setTonight(null)}
+        onAdded={() => {
+          setTonight(null);
           router.refresh();
         }}
       />
@@ -829,6 +867,108 @@ function CookedDeductionsDrawer({
           <ResponsiveModalClose asChild>
             <Button type="button" variant="ghost">
               No descontar
+            </Button>
+          </ResponsiveModalClose>
+        </ResponsiveModalFooter>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
+  );
+}
+
+/**
+ * "¿Qué hago hoy?" (M6): 2–3 recetas cocinables ahora, con su disponibilidad
+ * ("Tienes todo" / "Falta 1: X") y el porqué (deriva del score: caducidad,
+ * apetencia…). Acciones por tarjeta: ver receta o añadirla al hueco de hoy.
+ */
+function TonightDrawer({
+  cards,
+  onClose,
+  onAdded,
+}: {
+  cards: TonightCard[] | null;
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  const [adding, startAdd] = useTransition();
+  const [addingId, setAddingId] = useState<string | null>(null);
+
+  function add(recipeId: string) {
+    setAddingId(recipeId);
+    startAdd(async () => {
+      const r = await addRecipeToMenuAction(recipeId);
+      if (r.error) toast.error(r.error);
+      else {
+        toast.success("Añadida al menú de hoy");
+        onAdded();
+      }
+    });
+  }
+
+  return (
+    <ResponsiveModal open={cards !== null} onOpenChange={(o) => !o && onClose()}>
+      <ResponsiveModalContent>
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle>¿Qué hago hoy?</ResponsiveModalTitle>
+          <ResponsiveModalDescription>
+            Ideas cocinables ahora mismo con lo que tienes.
+          </ResponsiveModalDescription>
+        </ResponsiveModalHeader>
+
+        {cards && cards.length > 0 ? (
+          <ul className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto px-4">
+            {cards.map((c) => (
+              <li
+                key={c.recipeId}
+                className="flex flex-col gap-2 rounded-xl border p-3"
+              >
+                <div className="flex flex-col gap-1">
+                  <p className="font-medium">{c.name}</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <Badge variant={c.missingCount === 0 ? "secondary" : "outline"}>
+                      {c.missingCount === 0
+                        ? "Tienes todo"
+                        : `Falta 1: ${c.missingName}`}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {c.reason}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="flex-1" asChild>
+                    <Link href={`/recetas/${c.recipeId}`}>
+                      <ChefHat aria-hidden />
+                      Ver receta
+                    </Link>
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="flex-1"
+                    disabled={adding}
+                    onClick={() => add(c.recipeId)}
+                  >
+                    <Plus aria-hidden />
+                    {adding && addingId === c.recipeId
+                      ? "Añadiendo…"
+                      : "Añadir a hoy"}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="px-4 pb-2">
+            <p className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
+              Ahora mismo no hay ninguna receta cocinable con lo que tienes.
+              Añade recetas a tu recetario o compra lo que falte.
+            </p>
+          </div>
+        )}
+
+        <ResponsiveModalFooter>
+          <ResponsiveModalClose asChild>
+            <Button type="button" variant="ghost">
+              Cerrar
             </Button>
           </ResponsiveModalClose>
         </ResponsiveModalFooter>
