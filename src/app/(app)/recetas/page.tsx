@@ -5,6 +5,7 @@ import { BookOpen, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
+import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
 import { RecipesList } from "@/features/recipes/components/recipes-list";
 import {
   getRecipeSignals,
@@ -38,6 +39,10 @@ export default async function RecetasPage() {
           </Button>
         }
       />
+
+      <div className="mb-6">
+        <MenuSectionTabs active="recetario" />
+      </div>
 
       {recipes.length === 0 ? (
         <EmptyState

@@ -16,7 +16,13 @@ const tabs = [
   { href: "/inventario", label: "Inventario", icon: Package },
   { href: "/lista", label: "Lista", icon: ShoppingCart },
   { href: "/escanear", label: "Escanear", icon: ScanLine, primary: true },
-  { href: "/menus", label: "Menús", icon: CalendarDays },
+  // El recetario vive bajo Menús: la pestaña se mantiene activa en /recetas*.
+  {
+    href: "/menus",
+    label: "Menús",
+    icon: CalendarDays,
+    matchPrefixes: ["/recetas"],
+  },
   { href: "/ajustes", label: "Ajustes", icon: Settings },
 ] as const;
 
@@ -31,7 +37,13 @@ export function BottomNav() {
       <ul className="mx-auto grid h-16 max-w-lg grid-cols-5">
         {tabs.map((tab) => {
           const isActive =
-            pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+            pathname === tab.href ||
+            pathname.startsWith(`${tab.href}/`) ||
+            ("matchPrefixes" in tab &&
+              tab.matchPrefixes.some(
+                (prefix) =>
+                  pathname === prefix || pathname.startsWith(`${prefix}/`),
+              ));
           const Icon = tab.icon;
 
           if ("primary" in tab && tab.primary) {

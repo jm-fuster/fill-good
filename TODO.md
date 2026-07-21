@@ -29,7 +29,7 @@ ordenadas por prioridad; pueden hacerse en cualquier orden, pero D1 y D2 primero
 - [x] D1 — Gobernanza del hogar: transferir propiedad y eliminar hogar
 - [x] D2 — Estado "Agotado" visible + añadir a la lista de un toque
 - [x] D3 — Mejorar "Añadir a la lista lo que falte" del menú (revisión + matching + stock real)
-- [ ] D4 — Recetario como pestaña dentro de Menús
+- [x] D4 — Recetario como pestaña dentro de Menús
 - [ ] D5 — Compartir el menú semanal (imagen + Web Share, print CSS)
 - [ ] D6 — Hint de escaneo: sugerir PDF escaneado con la app nativa
 - [ ] D7 — Hint de caducidad: "la fecha del que caduque antes"
@@ -657,9 +657,24 @@ entre sí. D1 y D2 son las de mayor impacto; D6 y D7 son microcopys de una tarde
 - Retirar el enlace suelto "Mis recetas" si queda redundante; comprobar que no quedan enlaces rotos a `/recetas` desde otras vistas.
 
 **Pasos**
-- [ ] Conmutador Semana/Recetario en `/menus` y `/recetas` (componente compartido).
-- [ ] Estado activo de la pestaña Menús en `/recetas*`.
-- [ ] Limpieza de enlaces redundantes; verificación en preview móvil.
+- [x] Conmutador Semana/Recetario en `/menus` y `/recetas` (componente compartido `MenuSectionTabs`).
+- [x] Estado activo de la pestaña Menús en `/recetas*` (nuevo `matchPrefixes` en la bottom nav).
+- [x] Limpieza de enlaces redundantes (retirado el botón "Mis recetas" del header de `/menus`); verificación en preview limitada por Clerk (headless).
+
+> **Nota de implementación (D4):** sin migración. Componente compartido nuevo
+> `src/components/layout/menu-section-tabs.tsx` (`MenuSectionTabs`, Server Component): conmutador
+> segmentado de dos enlaces —"Semana" → `/menus`, "Recetario" → `/recetas`— estilado como segmented
+> control (contenedor `bg-muted` + segmento activo `bg-background shadow-sm`), con `aria-current="page"`
+> en el activo y targets `min-h-11` (44px). No usa `role="tab"` a propósito: son enlaces que navegan
+> entre páginas, no tabs ARIA con panel compartido. En `src/app/(app)/menus/page.tsx`: retirado el botón
+> suelto "Mis recetas" del header y añadido `<MenuSectionTabs active="semana" />` sobre `<MenuView>`.
+> En `src/app/(app)/recetas/page.tsx`: `<MenuSectionTabs active="recetario" />` bajo el header (se
+> conserva el botón "+" de nueva receta). En `src/components/layout/bottom-nav.tsx`: la definición de
+> la pestaña Menús gana `matchPrefixes: ["/recetas"]` y el cálculo de `isActive` la considera activa en
+> `/recetas`, `/recetas/nueva` y `/recetas/[id]` (guardado con `"matchPrefixes" in tab`). Los back-links
+> "Mis recetas" (flecha) de `/recetas/nueva` y `/recetas/[id]` se conservan (navegación "hacia arriba"
+> dentro de la sección). `npx tsc --noEmit` y `npx eslint .` limpios. Verificación interactiva del
+> preview limitada por el login de Clerk (headless), como el resto del bloque D.
 
 **Criterios de aceptación**
 - Desde la pestaña Menús se llega al recetario en un toque y se vuelve igual de rápido.
