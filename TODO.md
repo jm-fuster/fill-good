@@ -45,7 +45,7 @@ el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene ha
 - [x] E7 — Sugerencia de producto por IA en la extracción (coste cero)
 - [x] E8 — Gestión de aliases aprendidos
 - [x] E9 — Fusionar productos duplicados
-- [ ] E10 — Robustez transaccional de la confirmación del ticket (menor)
+- [x] E10 — Robustez transaccional de la confirmación del ticket (menor)
 
 ---
 
@@ -1359,9 +1359,27 @@ es valiosa, no solo limpieza.
 - Coordinar con E3 (la política de unidades debe vivir en un solo sitio, sea TS o SQL).
 
 **Pasos**
-- [ ] Elegir enfoque (RPC vs batching) y documentar el porqué en el código.
-- [ ] Implementar + migración si aplica (autorización antes de `db push`).
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Elegir enfoque (RPC vs batching) y documentar el porqué en el código.
+- [x] Implementar (sin migración: batching + reintento idempotente en TS).
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (E10):** sin migración. **Enfoque elegido: batching de lecturas + reintento
+> idempotente en TS** (la alternativa "mínima" del plan), NO el RPC transaccional. Motivo documentado en
+> el código: el RPC obligaría a reimplementar `normalizeName` en SQL (NFD + quita diacríticos + colapsa
+> espacios), cuya divergencia con la versión TS rompería la unicidad `(household_id, normalized_name)` y el
+> matching de aliases — arriesgado para el historial de precios, el activo central que protege el bloque E —
+> y a mover la política de unidades de E3 a SQL. El batching mantiene normalización y política de unidades
+> en un solo sitio (TS, ya verificado) y cumple los criterios. En `confirmReceiptAction`
+> (`src/features/receipts/actions.ts`): las ~3 lecturas por línea (buscar producto enlazado, buscar por
+> nombre, buscar fila de inventario, leer raw_text) se sustituyen por **3 lecturas por lote** (catálogo,
+> inventario y líneas del ticket del hogar) resueltas en mapas en memoria (`productByNorm`, `productById`,
+> `invByKey`, `itemById`), que se mantienen al día al crear productos/inventario dentro del bucle (dedup
+> dentro del ticket incluido). Un ticket de 40 líneas pasa de ~1+40×3 = 121 SELECTs a 1+3 = 4.
+> **Reintentabilidad sin duplicar:** el ticket solo se marca `confirmed` al final; si falla a mitad sigue
+> `needs_review`, y al reintentar se saltan las líneas con `added_to_inventory = true` (procesadas en el
+> intento previo) — no re-suma stock ni re-bumpea habitualidad. La política de unidades de E3 se conserva
+> intacta (única, en TS). `npx tsc --noEmit` y `npx eslint .` limpios. Verificación funcional (ticket real
+> de 40 líneas, fallo simulado a mitad) limitada por Clerk (headless).
 
 **Criterios de aceptación**
 - Un fallo a mitad de confirmación no deja estado inconsistente (o queda claramente

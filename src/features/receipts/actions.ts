@@ -223,6 +223,44 @@ export async function confirmReceiptAction(
   const inventoryItemIds: string[] = [];
   const warnings: string[] = [];
 
+  // Robustez transaccional (E10): en vez de ~3 SELECTs por línea (N×8 round-trips
+  // en un ticket de 40 líneas), se cargan por LOTE una sola vez el catálogo, el
+  // inventario y las líneas del ticket, y se resuelve todo en memoria. Se
+  // mantiene la política de unidades y la normalización en TS (un solo sitio,
+  // coordinado con E3) en vez de reimplementar normalizeName en SQL (divergencia
+  // arriesgada para la unicidad de productos y el historial de precios).
+  // Idempotencia: la confirmación solo marca el ticket `confirmed` al final; si
+  // falla a mitad, el ticket sigue `needs_review` y al reintentar se saltan las
+  // líneas ya procesadas (`added_to_inventory`), sin duplicar stock.
+  const [
+    { data: itemRows },
+    { data: productRows },
+    { data: invRows },
+  ] = await Promise.all([
+    supabase
+      .from("receipt_items")
+      .select("id, raw_text, added_to_inventory")
+      .eq("receipt_id", payload.receiptId),
+    supabase
+      .from("products")
+      .select("id, normalized_name, default_location")
+      .eq("household_id", household.id),
+    supabase
+      .from("inventory_items")
+      .select("id, product_id, location, quantity, unit")
+      .eq("household_id", household.id),
+  ]);
+
+  const itemById = new Map((itemRows ?? []).map((r) => [r.id, r]));
+  const productByNorm = new Map(
+    (productRows ?? []).map((p) => [p.normalized_name, p]),
+  );
+  const productById = new Map((productRows ?? []).map((p) => [p.id, p]));
+  const invKey = (pid: string, loc: LocationType) => `${pid}::${loc}`;
+  const invByKey = new Map(
+    (invRows ?? []).map((r) => [invKey(r.product_id, r.location), r]),
+  );
+
   for (const dec of payload.items) {
     if (dec.skip) {
       await supabase
@@ -232,26 +270,24 @@ export async function confirmReceiptAction(
       continue;
     }
 
-    // Resolver producto: enlazado, existente por nombre, o crear nuevo.
+    // Reintento idempotente: si esta línea ya se procesó en un intento previo
+    // (el ticket quedó a medias), no volver a añadirla al stock.
+    const itemRow = itemById.get(dec.itemId);
+    if (itemRow?.added_to_inventory) {
+      added += 1;
+      continue;
+    }
+
+    // Resolver producto (enlazado, existente por nombre o nuevo) desde los mapas.
     let productId = dec.productId;
     let location: LocationType = "pantry";
     let matchStatus = "manual";
 
     if (productId) {
-      const { data: p } = await supabase
-        .from("products")
-        .select("default_location")
-        .eq("id", productId)
-        .maybeSingle();
-      if (p) location = p.default_location;
+      location = productById.get(productId)?.default_location ?? "pantry";
     } else {
       const normalized = normalizeName(dec.description);
-      const { data: existing } = await supabase
-        .from("products")
-        .select("id, default_location")
-        .eq("household_id", household.id)
-        .eq("normalized_name", normalized)
-        .maybeSingle();
+      const existing = productByNorm.get(normalized);
       if (existing) {
         productId = existing.id;
         location = existing.default_location;
@@ -265,36 +301,35 @@ export async function confirmReceiptAction(
             default_unit: dec.unit,
             default_location: "pantry",
           })
-          .select("id")
+          .select("id, normalized_name, default_location")
           .single();
         if (!created) continue;
         productId = created.id;
         matchStatus = "new_product";
+        // Mantener los mapas al día: otra línea del mismo ticket con el mismo
+        // nombre reutiliza el producto recién creado (dedup dentro del ticket).
+        productById.set(created.id, created);
+        productByNorm.set(created.normalized_name, created);
       }
     }
 
-    // Aprender el alias (texto crudo del ticket → producto).
-    const { data: item } = await supabase
-      .from("receipt_items")
-      .select("raw_text")
-      .eq("id", dec.itemId)
-      .maybeSingle();
-    const aliasKey = normalizeName(item?.raw_text || dec.description);
+    // Aprender el alias (texto crudo del ticket → producto), con el raw_text ya
+    // cargado por lote.
+    const rawText = itemRow?.raw_text ?? null;
+    const aliasKey = normalizeName(rawText || dec.description);
     if (aliasKey && productId) {
-      await supabase
-        .from("product_aliases")
-        .upsert(
-          {
-            household_id: household.id,
-            product_id: productId,
-            alias: item?.raw_text || dec.description,
-            alias_normalized: aliasKey,
-          },
-          { onConflict: "household_id,alias_normalized", ignoreDuplicates: true },
-        );
+      await supabase.from("product_aliases").upsert(
+        {
+          household_id: household.id,
+          product_id: productId,
+          alias: rawText || dec.description,
+          alias_normalized: aliasKey,
+        },
+        { onConflict: "household_id,alias_normalized", ignoreDuplicates: true },
+      );
     }
 
-    // Fijar la línea del ticket (historial de precios) y llevar al inventario.
+    // Fijar la línea del ticket (historial de precios) y marcarla procesada.
     await supabase
       .from("receipt_items")
       .update({
@@ -309,27 +344,20 @@ export async function confirmReceiptAction(
       })
       .eq("id", dec.itemId);
 
-    const { data: inv } = await supabase
-      .from("inventory_items")
-      .select("id, quantity, unit")
-      .eq("household_id", household.id)
-      .eq("product_id", productId)
-      .eq("location", location)
-      .maybeSingle();
+    // Inventario con la política de unidades de E3 (única, en TS).
+    const key = invKey(productId, location);
+    const inv = invByKey.get(key);
     let addedToInventory = false;
     if (inv) {
-      // Política de unidades (E3): NO sumar magnitudes de unidades distintas
-      // (ud + l = disparate). Sin tabla de conversión (fuera de alcance): si
-      // difieren, se conserva la unidad y cantidad del inventario sin tocar
-      // nada y se avisa al usuario para que lo ajuste a mano. Nunca en silencio.
+      // NO sumar magnitudes de unidades distintas (ud + l = disparate). Si
+      // difieren, se conserva la unidad y cantidad del inventario y se avisa.
       if (inv.unit === dec.unit) {
+        const newQty = Number(inv.quantity) + dec.quantity;
         await supabase
           .from("inventory_items")
-          .update({
-            quantity: Number(inv.quantity) + dec.quantity,
-            updated_by: userId,
-          })
+          .update({ quantity: newQty, updated_by: userId })
           .eq("id", inv.id);
+        invByKey.set(key, { ...inv, quantity: newQty });
         inventoryItemIds.push(inv.id);
         addedToInventory = true;
       } else {
@@ -354,6 +382,13 @@ export async function confirmReceiptAction(
         .select("id")
         .single();
       if (created) {
+        invByKey.set(key, {
+          id: created.id,
+          product_id: productId,
+          location,
+          quantity: dec.quantity,
+          unit: dec.unit,
+        });
         inventoryItemIds.push(created.id);
         addedToInventory = true;
       }
