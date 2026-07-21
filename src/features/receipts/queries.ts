@@ -1,6 +1,8 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getCurrentHousehold } from "@/features/household/queries";
+import { suggestCandidates, type HouseholdMatchData } from "@/lib/matching";
 import type { UnitType } from "@/lib/supabase/types";
 
 export type ReceiptHeader = {
@@ -88,4 +90,55 @@ export async function getReceiptItems(
     matchStatus: r.match_status,
     matchedProductName: r.product?.name ?? null,
   }));
+}
+
+/** Sugerencia fuzzy (E6): id del producto candidato para una línea sin match. */
+export type ReceiptSuggestion = { itemId: string; productId: string };
+
+/**
+ * Candidatos fuzzy (E6) para las líneas del ticket que quedaron como producto
+ * nuevo: top-1 por similitud de trigramas contra el catálogo Y los aliases del
+ * hogar. Se calcula al cargar la revisión (sin migración: recomputar es trivial)
+ * y NUNCA auto-asocia — la UI lo ofrece como sugerencia de un toque.
+ */
+export async function getReceiptSuggestions(
+  items: ReceiptItem[],
+): Promise<ReceiptSuggestion[]> {
+  const targets = items.filter(
+    (i) => i.productId === null && i.matchStatus === "new_product",
+  );
+  if (targets.length === 0) return [];
+  const household = await getCurrentHousehold();
+  if (!household) return [];
+
+  const supabase = createServerSupabaseClient();
+  const [{ data: products }, { data: aliases }] = await Promise.all([
+    supabase
+      .from("products")
+      .select("id, normalized_name")
+      .eq("household_id", household.id),
+    supabase
+      .from("product_aliases")
+      .select("product_id, alias_normalized")
+      .eq("household_id", household.id),
+  ]);
+  const matchData: HouseholdMatchData = {
+    products: (products ?? []).map((p) => ({
+      id: p.id,
+      normalizedName: p.normalized_name,
+    })),
+    aliases: (aliases ?? []).map((a) => ({
+      productId: a.product_id,
+      aliasNormalized: a.alias_normalized,
+    })),
+  };
+
+  const out: ReceiptSuggestion[] = [];
+  for (const it of targets) {
+    const [top] = suggestCandidates(matchData, it.rawText, it.description, {
+      topN: 1,
+    });
+    if (top) out.push({ itemId: it.id, productId: top.productId });
+  }
+  return out;
 }

@@ -3,7 +3,11 @@ import { notFound, redirect } from "next/navigation";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { ReceiptReview } from "@/features/receipts/components/receipt-review";
-import { getReceipt, getReceiptItems } from "@/features/receipts/queries";
+import {
+  getReceipt,
+  getReceiptItems,
+  getReceiptSuggestions,
+} from "@/features/receipts/queries";
 import { getProductCatalog } from "@/features/shopping-list/queries";
 
 export const metadata: Metadata = { title: "Revisar ticket" };
@@ -22,6 +26,7 @@ export default async function RevisarPage({
     getReceiptItems(receiptId),
     getProductCatalog(),
   ]);
+  const suggestions = await getReceiptSuggestions(items);
 
   return (
     <>
@@ -39,6 +44,7 @@ export default async function RevisarPage({
           defaultLocation: p.defaultLocation,
           purchaseCount: p.purchaseCount,
         }))}
+        suggestions={suggestions}
       />
     </>
   );

@@ -7,7 +7,7 @@ import { generateObject } from "ai";
 import { getModel } from "@/lib/ai/models";
 import { receiptSchema } from "@/lib/ai/receipt-schema";
 import { RECEIPT_PROMPT } from "@/lib/ai/receipt-prompt";
-import { matchProduct } from "@/lib/matching";
+import { loadHouseholdMatchData, matchLineExact } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
 import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -86,16 +86,14 @@ export async function scanReceiptAction(
     return { error: "No se pudo guardar el ticket." };
   }
 
-  // Líneas de producto (ignorando descuentos), con matching.
+  // Líneas de producto (ignorando descuentos), con matching EXACTO. El catálogo
+  // + aliases del hogar se cargan una sola vez por ticket (antes: 2 queries por
+  // línea). El fuzzy no se aplica aquí: solo sugiere en la revisión (E6).
   const products = extraction.items.filter((it) => !it.is_discount);
+  const matchData = await loadHouseholdMatchData(supabase, household.id);
   let position = 0;
   for (const item of products) {
-    const match = await matchProduct(
-      supabase,
-      household.id,
-      item.raw_text,
-      item.description,
-    );
+    const match = matchLineExact(matchData, item.raw_text, item.description);
     await supabase.from("receipt_items").insert({
       receipt_id: receipt.id,
       household_id: household.id,

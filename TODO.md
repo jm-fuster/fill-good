@@ -41,7 +41,7 @@ el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene ha
 - [x] E3 — BUG: unidades distintas al sumar cantidades al confirmar ticket
 - [x] E4 — Inventario: buscador + chips de filtro por estado
 - [x] E5 — "Mis habituales": pin de productos por usuario
-- [ ] E6 — Matching difuso (candidatos con un toque) en el escaneo
+- [x] E6 — Matching difuso (candidatos con un toque) en el escaneo
 - [ ] E7 — Sugerencia de producto por IA en la extracción (coste cero)
 - [ ] E8 — Gestión de aliases aprendidos
 - [ ] E9 — Fusionar productos duplicados
@@ -1142,10 +1142,33 @@ aunque el texto del ticket varíe ligeramente.
   recalcular es trivial.
 
 **Pasos**
-- [ ] Refactor de `matchProduct` a candidatos con score, con catálogo/aliases cargados por ticket.
-- [ ] UI de sugerencia de un toque en la revisión (sobre E1).
-- [ ] Calibrar umbral con 2–3 tickets reales de Mercadona (incluir líneas al peso).
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Refactor de `matchProduct` a candidatos con score, con catálogo/aliases cargados por ticket.
+- [x] UI de sugerencia de un toque en la revisión (sobre E1).
+- [~] Calibrar umbral con 2–3 tickets reales de Mercadona — umbral inicial 0,4 (compartido con D3/E2);
+      calibración con tickets reales pendiente del usuario (no verificable en headless).
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (E6):** sin migración (la sugerencia se recomputa al cargar la revisión;
+> trivial). `src/lib/matching.ts` reescrito: `matchProduct` (async, 2 queries por línea) se sustituye por
+> funciones puras sobre datos precargados —`loadHouseholdMatchData(supabase, householdId)` carga catálogo
+> + aliases UNA vez por ticket; `matchLineExact(data, rawText, description)` hace SOLO el match exacto
+> (alias idéntico → nombre normalizado idéntico → `new_product`, precedencia fija) para asociar en el
+> escaneo; `suggestCandidates(data, rawText, description, {threshold, topN})` calcula candidatos fuzzy por
+> `trigramSimilarity` (de `@/lib/similarity`) comparando texto crudo y descripción contra los nombres
+> normalizados **y los aliases** del hogar, top-N por mejor score por producto, umbral `SUGGEST_THRESHOLD`
+> (=0,4)—. `scanReceiptAction` precarga `loadHouseholdMatchData` y usa `matchLineExact` (adiós a las 2
+> queries por línea). `receipts/queries.ts` gana `getReceiptSuggestions(items)` (top-1 candidato por línea
+> `new_product` sin producto) que se calcula en la página de revisión y se pasa a `ReceiptReview` como
+> `suggestions`. En el componente, el candidato de una línea sin producto sigue la precedencia **(E6)
+> sugerencia del servidor (trigram sobre catálogo+aliases) → (E2) guardarraíl cliente por contención de
+> tokens**, reutilizando el mismo aviso de un toque "¿es el mismo?" (aceptar fija `product_id`; al
+> confirmar el ticket se aprende el alias, flywheel intacto). **NUNCA auto-asocia por fuzzy**: `match_status`
+> sigue `new_product` hasta que el usuario confirma. Precedencia global: alias aprendido > nombre exacto >
+> candidato fuzzy/IA > nuevo (se mantiene). Lógica verificada con un arnés (esbuild+node, 7 asserts:
+> exacto→auto, alias exacto gana, punto extra→new_product+candidato vía alias, errata OCR→candidato vía
+> nombre, distinto→sin candidato). Nota: la contención "Leche" ⊆ "Leche Entera Hacendado" (sin alias) la
+> cubre el fallback de tokens de E2, complementario al trigram de E6. `npx tsc --noEmit` y `npx eslint .`
+> limpios. Calibración del umbral con tickets reales y verificación interactiva limitadas por Clerk (headless).
 
 **Criterios de aceptación**
 - Una línea "Leche Entera Hacendado" sin alias propone "Leche" como candidato; aceptarlo con un

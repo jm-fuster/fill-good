@@ -27,7 +27,11 @@ import {
   trigramSimilarity,
 } from "@/lib/similarity";
 import type { UnitType } from "@/lib/supabase/types";
-import type { ReceiptHeader, ReceiptItem } from "../queries";
+import type {
+  ReceiptHeader,
+  ReceiptItem,
+  ReceiptSuggestion,
+} from "../queries";
 import { confirmReceiptAction, type ConfirmItemDecision } from "../actions";
 
 /**
@@ -98,10 +102,13 @@ export function ReceiptReview({
   receipt,
   items,
   products,
+  suggestions = [],
 }: {
   receipt: ReceiptHeader;
   items: ReceiptItem[];
   products: ComboboxProduct[];
+  /** Candidatos fuzzy del servidor por línea (E6): catálogo + aliases. */
+  suggestions?: ReceiptSuggestion[];
 }) {
   const router = useRouter();
   const [storeName, setStoreName] = useState(receipt.storeName ?? "");
@@ -184,19 +191,30 @@ export function ReceiptReview({
   const pendingRows = rows.filter((r) => needsDecision(r.initialStatus));
   const matchedRows = rows.filter((r) => !needsDecision(r.initialStatus));
 
-  // Guardarraíl antiduplicados (E2): para las líneas que quedarían como producto
-  // nuevo, un posible producto del catálogo que sea el mismo (para asociar con
-  // un toque y no fragmentar el historial de precios).
+  const suggestionByItem = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of suggestions) m.set(s.itemId, s.productId);
+    return m;
+  }, [suggestions]);
+
+  // Candidato a asociar para las líneas que quedarían como producto nuevo, con
+  // precedencia: (E6) sugerencia del servidor por trigramas sobre catálogo +
+  // aliases → (E2) guardarraíl cliente por contención de tokens. Nunca
+  // auto-asocia: se ofrece con un toque para no fragmentar el historial de precios.
   const duplicateCandidates = useMemo(() => {
+    const byId = new Map(products.map((p) => [p.id, p]));
     const map = new Map<string, ComboboxProduct>();
     for (const r of rows) {
       if (r.include && r.productId === null) {
-        const candidate = findDuplicateCandidate(r.description, products);
+        const suggestedId = suggestionByItem.get(r.itemId);
+        const candidate =
+          (suggestedId ? byId.get(suggestedId) : undefined) ??
+          findDuplicateCandidate(r.description, products);
         if (candidate) map.set(r.itemId, candidate);
       }
     }
     return map;
-  }, [rows, products]);
+  }, [rows, products, suggestionByItem]);
 
   function renderRow(row: Row) {
     const linked = row.productId !== null;
