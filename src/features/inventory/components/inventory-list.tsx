@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
-import { Search, X } from "lucide-react";
+import { Search, Star, X } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,12 +32,14 @@ export function InventoryList({
   entries,
   categories,
   onListProductIds,
+  pinnedProductIds,
   initialQuery,
   initialFilter,
 }: {
   entries: InventoryEntry[];
   categories: Category[];
   onListProductIds: string[];
+  pinnedProductIds: string[];
   initialQuery: string;
   initialFilter: StatusFilter | null;
 }) {
@@ -46,6 +48,10 @@ export function InventoryList({
   const [filter, setFilter] = useState<StatusFilter | null>(initialFilter);
 
   const onList = useMemo(() => new Set(onListProductIds), [onListProductIds]);
+  const pinned = useMemo(
+    () => new Set(pinnedProductIds),
+    [pinnedProductIds],
+  );
 
   // Sincroniza el estado con la URL sin navegación de servidor.
   useEffect(() => {
@@ -90,20 +96,27 @@ export function InventoryList({
     return searched.filter((e) => getInventoryStatus(e)[filter]);
   }, [searched, filter]);
 
+  const byUrgency = (a: InventoryEntry, b: InventoryEntry) =>
+    urgencyRank(getInventoryStatus(a)) - urgencyRank(getInventoryStatus(b)) ||
+    a.productName.localeCompare(b.productName, "es");
+
+  // "Mis habituales": los anclados se promueven a una sección propia arriba y se
+  // excluyen de sus ubicaciones (aparecen una sola vez, sin doble estado del
+  // stepper). El resto se agrupa por ubicación como siempre.
+  const pinnedItems = useMemo(
+    () => visible.filter((e) => pinned.has(e.productId)).sort(byUrgency),
+    [visible, pinned],
+  );
+
   const groups = useMemo(
     () =>
       LOCATION_ORDER.map((location) => ({
         location,
         items: visible
-          .filter((e) => e.location === location)
-          .sort(
-            (a, b) =>
-              urgencyRank(getInventoryStatus(a)) -
-                urgencyRank(getInventoryStatus(b)) ||
-              a.productName.localeCompare(b.productName, "es"),
-          ),
+          .filter((e) => e.location === location && !pinned.has(e.productId))
+          .sort(byUrgency),
       })).filter((g) => g.items.length > 0),
-    [visible],
+    [visible, pinned],
   );
 
   return (
@@ -175,12 +188,33 @@ export function InventoryList({
         </div>
       </div>
 
-      {groups.length === 0 ? (
+      {pinnedItems.length === 0 && groups.length === 0 ? (
         <p className="py-10 text-center text-sm text-muted-foreground">
           Sin resultados{query ? ` para «${query}»` : ""}.
         </p>
       ) : (
         <div className="flex flex-col gap-6">
+          {pinnedItems.length > 0 ? (
+            <section>
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                <Star aria-hidden className="size-4 fill-current text-warning" />
+                Mis habituales
+                <span className="font-normal">({pinnedItems.length})</span>
+              </h2>
+              <div className="flex flex-col gap-2">
+                {pinnedItems.map((entry) => (
+                  <InventoryItemCard
+                    key={entry.id}
+                    entry={entry}
+                    categories={categories}
+                    onList={onList.has(entry.productId)}
+                    pinned
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
           {groups.map((group) => (
             <section key={group.location}>
               <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">

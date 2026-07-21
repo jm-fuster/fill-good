@@ -13,6 +13,7 @@ import {
 import {
   getCategories,
   getInventory,
+  getPinnedProductIds,
   getProducts,
 } from "@/features/inventory/queries";
 import { getActiveListProductIds } from "@/features/shopping-list/queries";
@@ -27,12 +28,14 @@ export default async function InventarioPage({
   const { q, estado } = await searchParams;
   const estadoParam = estado ?? null;
   const initialFilter = isStatusFilter(estadoParam) ? estadoParam : null;
-  const [entries, categories, products, onListProductIds] = await Promise.all([
-    getInventory(),
-    getCategories(),
-    getProducts(),
-    getActiveListProductIds(),
-  ]);
+  const [entries, categories, products, onListProductIds, pinnedProductIds] =
+    await Promise.all([
+      getInventory(),
+      getCategories(),
+      getProducts(),
+      getActiveListProductIds(),
+      getPinnedProductIds(),
+    ]);
   const productNames = products.map((p) => p.name);
 
   return (
@@ -60,6 +63,7 @@ export default async function InventarioPage({
           entries={entries}
           categories={categories}
           onListProductIds={[...onListProductIds]}
+          pinnedProductIds={[...pinnedProductIds]}
           initialQuery={q ?? ""}
           initialFilter={initialFilter}
         />

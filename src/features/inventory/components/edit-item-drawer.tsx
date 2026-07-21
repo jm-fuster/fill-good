@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -25,10 +25,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { formatQuantity, LOCATION_OPTIONS, UNIT_LABELS } from "@/lib/units";
 import type { LocationType } from "@/lib/supabase/types";
 import type { Category, InventoryEntry } from "../queries";
-import { deleteInventoryAction, updateInventoryAction } from "../actions";
+import {
+  deleteInventoryAction,
+  togglePinAction,
+  updateInventoryAction,
+} from "../actions";
 
 const NO_CATEGORY = "__none__";
 
@@ -37,16 +42,47 @@ export function EditItemDrawer({
   categories,
   open,
   onOpenChange,
+  pinned = false,
 }: {
   entry: InventoryEntry;
   categories: Category[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** El producto está en "Mis habituales" del usuario actual (E5). */
+  pinned?: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Pin "Mis habituales": optimista, resincronizado con el prop del servidor.
+  const [isPinned, setIsPinned] = useState(pinned);
+  const [serverPinned, setServerPinned] = useState(pinned);
+  const [pinPending, startPin] = useTransition();
+  if (serverPinned !== pinned) {
+    setServerPinned(pinned);
+    setIsPinned(pinned);
+  }
+
+  function togglePin(next: boolean) {
+    setIsPinned(next);
+    startPin(async () => {
+      const res = await togglePinAction(entry.productId);
+      if (res.error) {
+        toast.error(res.error);
+        setIsPinned(!next);
+        return;
+      }
+      if (typeof res.pinned === "boolean") setIsPinned(res.pinned);
+      toast.success(
+        res.pinned
+          ? `${entry.productName} en Mis habituales`
+          : `${entry.productName} quitado de Mis habituales`,
+      );
+      router.refresh();
+    });
+  }
 
   // "Consumir pronto" y "Ubicación": controlados, resincronizados cuando el
   // servidor cambia (mismo patrón de ajuste en render que el stepper).
@@ -232,6 +268,30 @@ export function EditItemDrawer({
                 id="edit-use-soon"
                 checked={useSoon}
                 onCheckedChange={setUseSoon}
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <Label htmlFor="edit-pin" className="flex flex-col gap-0.5">
+                <span className="flex items-center gap-1.5">
+                  <Star
+                    aria-hidden
+                    className={cn(
+                      "size-4",
+                      isPinned && "fill-current text-warning",
+                    )}
+                  />
+                  Mis habituales
+                </span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  Ánclalo arriba en tu inventario
+                </span>
+              </Label>
+              <Switch
+                id="edit-pin"
+                checked={isPinned}
+                onCheckedChange={togglePin}
+                disabled={pinPending}
               />
             </div>
 

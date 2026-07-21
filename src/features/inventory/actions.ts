@@ -219,6 +219,48 @@ export async function updateInventoryAction(
   return { ok: true };
 }
 
+/**
+ * Ancla/desancla un producto en "Mis habituales" del usuario actual (E5). Es un
+ * toggle: si ya está anclado lo quita, si no lo añade. La RLS garantiza que un
+ * usuario solo toca sus propios pines dentro de su hogar.
+ */
+export async function togglePinAction(
+  productId: string,
+): Promise<ActionState & { pinned?: boolean }> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+  if (!userId) return { error: "No autenticado." };
+  const supabase = createServerSupabaseClient();
+
+  const { data: existing } = await supabase
+    .from("user_pinned_products")
+    .select("product_id")
+    .eq("user_id", userId)
+    .eq("product_id", productId)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("user_pinned_products")
+      .delete()
+      .eq("user_id", userId)
+      .eq("product_id", productId);
+    if (error) return { error: "No se pudo desanclar." };
+    revalidatePath("/inventario");
+    return { ok: true, pinned: false };
+  }
+
+  const { error } = await supabase.from("user_pinned_products").insert({
+    user_id: userId,
+    household_id: household.id,
+    product_id: productId,
+  });
+  if (error) return { error: "No se pudo anclar." };
+  revalidatePath("/inventario");
+  return { ok: true, pinned: true };
+}
+
 export async function deleteInventoryAction(id: string): Promise<ActionState> {
   const supabase = createServerSupabaseClient();
   const { error } = await supabase.from("inventory_items").delete().eq("id", id);

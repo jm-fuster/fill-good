@@ -628,6 +628,34 @@ export type Database = {
           },
         ];
       };
+      user_pinned_products: {
+        Row: {
+          user_id: string;
+          household_id: string;
+          product_id: string;
+          created_at: string;
+        };
+        Insert: {
+          user_id: string;
+          household_id: string;
+          product_id: string;
+          created_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          household_id?: string;
+          product_id?: string;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "user_pinned_products_product_id_fkey";
+            columns: ["product_id"];
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       menu_rules: {
         Row: {
           id: string;

@@ -40,7 +40,7 @@ el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene ha
 - [x] E2 — Guardarraíl antiduplicados al crear producto desde el ticket
 - [x] E3 — BUG: unidades distintas al sumar cantidades al confirmar ticket
 - [x] E4 — Inventario: buscador + chips de filtro por estado
-- [ ] E5 — "Mis habituales": pin de productos por usuario
+- [x] E5 — "Mis habituales": pin de productos por usuario
 - [ ] E6 — Matching difuso (candidatos con un toque) en el escaneo
 - [ ] E7 — Sugerencia de producto por IA en la extracción (coste cero)
 - [ ] E8 — Gestión de aliases aprendidos
@@ -1080,10 +1080,30 @@ reordenación manual drag & drop — ver "Notas de alcance".)
   convivir con el buscador/chips de E4 (los pines también se filtran).
 
 **Pasos**
-- [ ] Migración + RLS (pedir autorización antes de `npx supabase db push`) + tipos a mano.
-- [ ] `togglePinAction` + query de pines por usuario.
-- [ ] Toggle en el drawer de edición + sección "Mis habituales" en `/inventario`.
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Migración + RLS (autorizada por el usuario y aplicada al remoto) + tipos a mano.
+- [x] `togglePinAction` + query de pines por usuario.
+- [x] Toggle en el drawer de edición + sección "Mis habituales" en `/inventario`.
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (E5):** migración `supabase/migrations/20260721140000_user_pinned_products.sql`
+> — **primera tabla per-user del proyecto**: `user_pinned_products (user_id text, household_id uuid refs
+> households on delete cascade, product_id uuid refs products on delete cascade, created_at, primary key
+> (user_id, product_id))` + índice `(user_id, household_id)`. **RLS estricta per-user**: `for all to
+> authenticated using/with check (user_id = public.clerk_user_id() and is_household_member(household_id))`
+> + grants a `authenticated` (patrón de la init). **Aplicada al remoto** (autorizada por el usuario 2026-07-21
+> y verificada con `npx supabase migration list --linked`: `20260721140000` con `local == remote`). Tipos
+> añadidos a mano en `src/lib/supabase/types.ts`. En `src/features/inventory/`: `togglePinAction(productId)`
+> (actions, toggle idempotente insert/delete filtrando por `user_id` + `product_id`; devuelve `{ok, pinned}`)
+> y `getPinnedProductIds()` (queries, `Set<string>`; la RLS ya restringe a los pines del propio usuario).
+> UI: toggle "⭐ Mis habituales" (Switch con `Star`) en `edit-item-drawer.tsx` (optimista + `router.refresh()`);
+> `InventoryItemCard` gana prop `pinned` que pasa al drawer. En `inventory-list.tsx` (E4), los anclados se
+> **promueven** a una sección "⭐ Mis habituales" arriba (ordenada por urgencia) y se **excluyen** de sus
+> ubicaciones para que cada ítem aparezca una sola vez (evita doble estado del stepper); convive con
+> buscador/chips (los pines también se filtran). La página carga `getPinnedProductIds()` en paralelo y lo
+> pasa como array serializable. **Decisión:** sin estrella en la tarjeta (layout denso con stepper); el
+> drawer es el punto de anclaje, como permite el plan. `npx tsc --noEmit` y `npx eslint .` limpios.
+> Verificación interactiva y de RLS per-user (dos usuarios) limitada por Clerk (headless); la RLS está
+> garantizada por la política SQL aplicada.
 
 **Criterios de aceptación**
 - Dos usuarios del mismo hogar ven secciones "Mis habituales" distintas.

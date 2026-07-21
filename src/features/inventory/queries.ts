@@ -60,6 +60,20 @@ export async function getCategories(): Promise<Category[]> {
   }));
 }
 
+/**
+ * Ids de producto anclados por el usuario actual ("Mis habituales", E5). La RLS
+ * de `user_pinned_products` ya restringe a los pines del propio usuario, así que
+ * un select simple devuelve solo los suyos.
+ */
+export async function getPinnedProductIds(): Promise<Set<string>> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("user_pinned_products")
+    .select("product_id");
+  if (error) throw error;
+  return new Set((data ?? []).map((r) => r.product_id));
+}
+
 export async function getProducts(): Promise<ProductOption[]> {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase

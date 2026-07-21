@@ -19,11 +19,14 @@ export function InventoryItemCard({
   entry,
   categories,
   onList = false,
+  pinned = false,
 }: {
   entry: InventoryEntry;
   categories: Category[];
   /** El producto ya está en la lista de la compra activa. */
   onList?: boolean;
+  /** El producto está en "Mis habituales" del usuario actual (E5). */
+  pinned?: boolean;
 }) {
   const [qty, setQty] = useState(entry.quantity);
   const [serverQty, setServerQty] = useState(entry.quantity);
@@ -207,6 +210,7 @@ export function InventoryItemCard({
         categories={categories}
         open={editing}
         onOpenChange={setEditing}
+        pinned={pinned}
       />
     </>
   );
