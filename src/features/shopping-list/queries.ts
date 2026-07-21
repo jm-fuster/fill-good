@@ -18,10 +18,15 @@ export type ListItem = {
   addedByMe: boolean;
 };
 
+export type SuggestionReason = "low_stock" | "restock";
+
 export type Suggestion = {
   productId: string;
   name: string;
   unit: UnitType;
+  reason: SuggestionReason;
+  /** Cadencia habitual en días (solo en reason "restock"). */
+  intervalDays?: number;
 };
 
 /** Catálogo ligero para el autocompletado (filtrado en cliente). */
@@ -115,24 +120,57 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
   }));
 }
 
+/** Cadencia máxima (días) para sugerir reposición; por encima es compra esporádica. */
+const RESTOCK_MAX_MEDIAN_DAYS = 60;
+/** Compras mínimas para estimar una cadencia fiable. */
+const RESTOCK_MIN_PURCHASES = 3;
+
+/** Mediana de una lista de números (0 si está vacía). */
+function medianOf(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+/** Días enteros entre dos fechas ISO (YYYY-MM-DD). */
+function daysBetween(fromISO: string, toISO: string): number {
+  const from = new Date(`${fromISO}T00:00:00`).getTime();
+  const to = new Date(`${toISO}T00:00:00`).getTime();
+  return Math.floor((to - from) / 86_400_000);
+}
+
 /**
- * Sugerencias de compra: productos con mínimo definido cuyo stock total está
- * por debajo del mínimo y que no están ya en la lista.
+ * Sugerencias de compra con dos fuentes (M5), en una sola consulta agregada
+ * (sin N+1):
+ *  · "low_stock" — productos con mínimo definido cuyo stock total está por
+ *    debajo del mínimo (comportamiento original).
+ *  · "restock" — productos con ≥3 compras cuya cadencia habitual (mediana de
+ *    intervalos entre compras) ya se ha cumplido desde la última y que no tienen
+ *    stock (o están por debajo del mínimo). Cadencias > 60 días se descartan.
+ * Ninguna sugiere algo que ya esté en la lista. low_stock tiene precedencia.
  */
 export async function getSuggestions(listId: string): Promise<Suggestion[]> {
   const supabase = createServerSupabaseClient();
-  const [{ data: products }, { data: inventory }, { data: items }] =
+  const [{ data: products }, { data: inventory }, { data: items }, { data: history }] =
     await Promise.all([
       supabase
         .from("products")
-        .select("id, name, min_quantity, default_unit")
-        .not("min_quantity", "is", null),
+        .select("id, name, min_quantity, default_unit, purchase_count"),
       supabase.from("inventory_items").select("product_id, quantity"),
       supabase
         .from("shopping_list_items")
         .select("product_id")
         .eq("list_id", listId)
         .not("product_id", "is", null),
+      supabase
+        .from("receipt_items")
+        .select("product_id, purchased_at")
+        .not("product_id", "is", null)
+        .not("purchased_at", "is", null)
+        .order("purchased_at", { ascending: true }),
     ]);
 
   const stockByProduct = new Map<string, number>();
@@ -144,18 +182,61 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
   }
   const onList = new Set((items ?? []).map((i) => i.product_id));
 
-  return (products ?? [])
-    .filter((p) => {
-      if (p.min_quantity === null) return false;
-      if (onList.has(p.id)) return false;
-      const stock = stockByProduct.get(p.id) ?? 0;
-      return stock < Number(p.min_quantity);
-    })
-    .map((p) => ({
-      productId: p.id,
-      name: p.name,
-      unit: p.default_unit,
-    }));
+  // Fechas de compra por producto, en orden cronológico.
+  const datesByProduct = new Map<string, string[]>();
+  for (const row of history ?? []) {
+    if (!row.product_id || !row.purchased_at) continue;
+    const arr = datesByProduct.get(row.product_id);
+    if (arr) arr.push(row.purchased_at);
+    else datesByProduct.set(row.product_id, [row.purchased_at]);
+  }
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const suggestions: Suggestion[] = [];
+
+  for (const p of products ?? []) {
+    if (onList.has(p.id)) continue;
+    const stock = stockByProduct.get(p.id) ?? 0;
+    const min = p.min_quantity === null ? null : Number(p.min_quantity);
+
+    // Fuente 1: por debajo del mínimo (precedencia).
+    if (min !== null && stock < min) {
+      suggestions.push({
+        productId: p.id,
+        name: p.name,
+        unit: p.default_unit,
+        reason: "low_stock",
+      });
+      continue;
+    }
+
+    // Fuente 2: reposición por cadencia.
+    if (p.purchase_count < RESTOCK_MIN_PURCHASES) continue;
+    const dates = datesByProduct.get(p.id) ?? [];
+    if (dates.length < RESTOCK_MIN_PURCHASES) continue;
+
+    const intervals: number[] = [];
+    for (let i = 1; i < dates.length; i++) {
+      intervals.push(daysBetween(dates[i - 1], dates[i]));
+    }
+    const median = medianOf(intervals);
+    if (median <= 0 || median > RESTOCK_MAX_MEDIAN_DAYS) continue;
+
+    const daysSinceLast = daysBetween(dates[dates.length - 1], todayISO);
+    const belowMin = min !== null && stock < min;
+    const noStock = stock <= 0;
+    if (daysSinceLast >= median && (noStock || belowMin)) {
+      suggestions.push({
+        productId: p.id,
+        name: p.name,
+        unit: p.default_unit,
+        reason: "restock",
+        intervalDays: Math.round(median),
+      });
+    }
+  }
+
+  return suggestions;
 }
 
 /**

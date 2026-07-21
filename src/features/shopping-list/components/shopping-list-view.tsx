@@ -249,20 +249,32 @@ function Suggestions({ suggestions }: { suggestions: Suggestion[] }) {
 
   return (
     <section className="rounded-xl border border-dashed p-3">
-      <h2 className="mb-2 text-sm font-medium">Se está acabando</h2>
+      <h2 className="mb-2 text-sm font-medium">Sugerencias</h2>
       <div className="flex flex-wrap gap-2">
-        {suggestions.map((s) => (
-          <Button
-            key={s.productId}
-            variant="outline"
-            size="sm"
-            disabled={adding}
-            onClick={() => add(s.productId)}
-          >
-            <Plus aria-hidden />
-            {s.name}
-          </Button>
-        ))}
+        {suggestions.map((s) => {
+          const reason =
+            s.reason === "restock" && s.intervalDays
+              ? `Sueles comprarlo cada ~${s.intervalDays} días`
+              : "Quedan pocas";
+          return (
+            <Button
+              key={s.productId}
+              variant="outline"
+              size="sm"
+              disabled={adding}
+              onClick={() => add(s.productId)}
+              className="h-auto flex-col items-start gap-0.5 py-1.5"
+            >
+              <span className="flex items-center gap-1">
+                <Plus aria-hidden className="size-3.5" />
+                {s.name}
+              </span>
+              <span className="text-xs font-normal text-muted-foreground">
+                {reason}
+              </span>
+            </Button>
+          );
+        })}
       </div>
     </section>
   );
