@@ -9,6 +9,7 @@ import { receiptSchema } from "@/lib/ai/receipt-schema";
 import { RECEIPT_PROMPT } from "@/lib/ai/receipt-prompt";
 import { matchProduct } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
+import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import { getCurrentHousehold } from "@/features/household/queries";
@@ -139,6 +140,7 @@ export async function confirmReceiptAction(
   ok?: boolean;
   added?: number;
   inventoryItemIds?: string[];
+  warnings?: string[];
 }> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
@@ -158,6 +160,7 @@ export async function confirmReceiptAction(
   const storeChain = receipt.store_chain;
   let added = 0;
   const inventoryItemIds: string[] = [];
+  const warnings: string[] = [];
 
   for (const dec of payload.items) {
     if (dec.skip) {
@@ -247,21 +250,35 @@ export async function confirmReceiptAction(
 
     const { data: inv } = await supabase
       .from("inventory_items")
-      .select("id, quantity")
+      .select("id, quantity, unit")
       .eq("household_id", household.id)
       .eq("product_id", productId)
       .eq("location", location)
       .maybeSingle();
+    let addedToInventory = false;
     if (inv) {
-      await supabase
-        .from("inventory_items")
-        .update({
-          quantity: Number(inv.quantity) + dec.quantity,
-          unit: dec.unit,
-          updated_by: userId,
-        })
-        .eq("id", inv.id);
-      inventoryItemIds.push(inv.id);
+      // Política de unidades (E3): NO sumar magnitudes de unidades distintas
+      // (ud + l = disparate). Sin tabla de conversión (fuera de alcance): si
+      // difieren, se conserva la unidad y cantidad del inventario sin tocar
+      // nada y se avisa al usuario para que lo ajuste a mano. Nunca en silencio.
+      if (inv.unit === dec.unit) {
+        await supabase
+          .from("inventory_items")
+          .update({
+            quantity: Number(inv.quantity) + dec.quantity,
+            updated_by: userId,
+          })
+          .eq("id", inv.id);
+        inventoryItemIds.push(inv.id);
+        addedToInventory = true;
+      } else {
+        warnings.push(
+          `«${dec.description}»: compraste ${formatQuantity(
+            dec.quantity,
+            dec.unit,
+          )} pero en tu inventario está en ${UNIT_LABELS[inv.unit]}. No se sumó automáticamente; ajústalo a mano.`,
+        );
+      }
     } else {
       const { data: created } = await supabase
         .from("inventory_items")
@@ -275,14 +292,18 @@ export async function confirmReceiptAction(
         })
         .select("id")
         .single();
-      if (created) inventoryItemIds.push(created.id);
+      if (created) {
+        inventoryItemIds.push(created.id);
+        addedToInventory = true;
+      }
     }
 
-    // Memoria de habitualidad: este producto se ha comprado.
+    // Memoria de habitualidad: este producto se ha comprado (aunque el stock no
+    // se sumara por conflicto de unidades, la compra sí ocurrió).
     if (productId) {
       await supabase.rpc("bump_product_purchase", { pid: productId });
     }
-    added += 1;
+    if (addedToInventory) added += 1;
   }
 
   await supabase
@@ -299,5 +320,5 @@ export async function confirmReceiptAction(
   revalidatePath("/inventario");
   revalidatePath("/precios");
   revalidatePath("/escanear");
-  return { ok: true, added, inventoryItemIds };
+  return { ok: true, added, inventoryItemIds, warnings };
 }

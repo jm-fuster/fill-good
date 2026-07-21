@@ -38,7 +38,7 @@ el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene ha
 - [x] D7 — Hint de caducidad: "la fecha del que caduque antes"
 - [x] E1 — Revisión de tickets: combobox buscable + estado del match visible
 - [x] E2 — Guardarraíl antiduplicados al crear producto desde el ticket
-- [ ] E3 — BUG: unidades distintas al sumar cantidades al confirmar ticket
+- [x] E3 — BUG: unidades distintas al sumar cantidades al confirmar ticket
 - [ ] E4 — Inventario: buscador + chips de filtro por estado
 - [ ] E5 — "Mis habituales": pin de productos por usuario
 - [ ] E6 — Matching difuso (candidatos con un toque) en el escaneo
@@ -951,9 +951,26 @@ sistema (E1, E2, E6, E7), más líneas irán a productos existentes y más veces
   fuera de alcance.
 
 **Pasos**
-- [ ] Implementar la política elegida en `confirmReceiptAction` + comentario explicando la regla.
-- [ ] Aviso visible al usuario cuando se dé el caso (nunca silencioso).
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Implementar la política elegida en `confirmReceiptAction` + comentario explicando la regla.
+- [x] Aviso visible al usuario cuando se dé el caso (nunca silencioso).
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (E3):** sin migración. **Política elegida (opción b):** al confirmar, si
+> ya existe fila de inventario para (producto, ubicación) y `inv.unit !== dec.unit`, **no se suma**
+> (magnitudes incompatibles como ud + l) — se conserva la unidad y cantidad del inventario **sin
+> tocar nada** y se acumula un aviso; sin conversión automática (fuera de alcance). En
+> `src/features/receipts/actions.ts` (`confirmReceiptAction`): el bloque de fusión de inventario
+> distingue tres casos —(1) sin fila existente ⇒ insertar (como antes); (2) fila existente y unidad
+> **igual** ⇒ sumar cantidad (se eliminó el `unit: dec.unit` que la sobrescribía, ahora innecesario
+> y peligroso); (3) fila existente y unidad **distinta** ⇒ no tocar + `warnings.push(...)` con el
+> texto «"Producto": compraste X u pero en tu inventario está en Y. No se sumó automáticamente;
+> ajústalo a mano.»—. `added` solo cuenta las líneas que realmente crearon/actualizaron inventario
+> (`addedToInventory`), así el toast de éxito es honesto; `bump_product_purchase` se sigue llamando
+> (la compra ocurrió). La acción devuelve `warnings?: string[]`; `receipt-review.tsx` los muestra con
+> `toast.warning` (duración 8 s; el Toaster global sobrevive a la navegación). Coordinado con E9: la
+> misma política de "no sumar unidades distintas" se replicará en el RPC `merge_products`.
+> `formatQuantity`/`UNIT_LABELS` reutilizados de `@/lib/units`. `npx tsc --noEmit` y `npx eslint .`
+> limpios. Verificación interactiva limitada por Clerk (headless).
 
 **Criterios de aceptación**
 - Confirmar un ticket cuya línea tiene unidad distinta a la del stock existente nunca produce

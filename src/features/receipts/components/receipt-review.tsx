@@ -166,6 +166,11 @@ export function ReceiptReview({
         result.added === 1 ? "" : "s"
       } al inventario`,
     );
+    // Conflictos de unidad (E3): nunca en silencio. El Toaster es global y
+    // sobrevive a la navegación, así que se ven en la página de destino.
+    for (const w of result.warnings ?? []) {
+      toast.warning(w, { duration: 8000 });
+    }
     // Revisión opcional de caducidades de lo recién añadido.
     const ids = result.inventoryItemIds ?? [];
     if (ids.length > 0) {
