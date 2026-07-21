@@ -8,14 +8,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Fab, fabButtonClass } from "@/components/layout/fab";
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+  ResponsiveModal,
+  ResponsiveModalClose,
+  ResponsiveModalContent,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -61,7 +61,7 @@ export function AddProductDrawer({
   }
 
   return (
-    <Drawer open={open} onOpenChange={setOpen}>
+    <ResponsiveModal open={open} onOpenChange={setOpen}>
       <Fab>
         <Button
           size="icon"
@@ -72,43 +72,41 @@ export function AddProductDrawer({
           <Plus className="size-6" aria-hidden />
         </Button>
       </Fab>
-      <DrawerContent>
-        <div className="mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto">
-          <DrawerHeader>
-            <DrawerTitle>Añadir producto</DrawerTitle>
-            <DrawerDescription>
-              Se añadirá a tu inventario. Si el producto ya existe, se suma a la
-              cantidad.
-            </DrawerDescription>
-          </DrawerHeader>
+      <ResponsiveModalContent>
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle>Añadir producto</ResponsiveModalTitle>
+          <ResponsiveModalDescription>
+            Se añadirá a tu inventario. Si el producto ya existe, se suma a la
+            cantidad.
+          </ResponsiveModalDescription>
+        </ResponsiveModalHeader>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4">
-            <AddProductFields
-              key={fieldsKey}
-              categories={categories}
-              productNames={productNames}
-            />
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4">
+          <AddProductFields
+            key={fieldsKey}
+            categories={categories}
+            productNames={productNames}
+          />
 
-            {error ? (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            ) : null}
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
 
-            <DrawerFooter className="px-0">
-              <Button type="submit" size="lg" disabled={pending}>
-                {pending ? "Añadiendo…" : "Añadir al inventario"}
+          <ResponsiveModalFooter className="px-0">
+            <Button type="submit" size="lg" disabled={pending}>
+              {pending ? "Añadiendo…" : "Añadir al inventario"}
+            </Button>
+            <ResponsiveModalClose asChild>
+              <Button type="button" variant="ghost">
+                Cancelar
               </Button>
-              <DrawerClose asChild>
-                <Button type="button" variant="ghost">
-                  Cancelar
-                </Button>
-              </DrawerClose>
-            </DrawerFooter>
-          </form>
-        </div>
-      </DrawerContent>
-    </Drawer>
+            </ResponsiveModalClose>
+          </ResponsiveModalFooter>
+        </form>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }
 

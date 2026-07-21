@@ -7,14 +7,14 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+  ResponsiveModal,
+  ResponsiveModalClose,
+  ResponsiveModalContent,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -207,259 +207,257 @@ export function EditItemDrawer({
   }
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
-        <div className="mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto">
-          <DrawerHeader>
-            <DrawerTitle>{entry.productName}</DrawerTitle>
-            <DrawerDescription>
-              {formatQuantity(entry.quantity, entry.unit)} en existencias
-            </DrawerDescription>
-          </DrawerHeader>
+    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent>
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle>{entry.productName}</ResponsiveModalTitle>
+          <ResponsiveModalDescription>
+            {formatQuantity(entry.quantity, entry.unit)} en existencias
+          </ResponsiveModalDescription>
+        </ResponsiveModalHeader>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4">
-            <input type="hidden" name="inventoryId" value={entry.id} />
-            <input type="hidden" name="productId" value={entry.productId} />
-            <input type="hidden" name="useSoon" value={String(useSoon)} />
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4">
+          <input type="hidden" name="inventoryId" value={entry.id} />
+          <input type="hidden" name="productId" value={entry.productId} />
+          <input type="hidden" name="useSoon" value={String(useSoon)} />
 
-            <input type="hidden" name="categoryId" value={categoryId} />
+          <input type="hidden" name="categoryId" value={categoryId} />
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-name">Producto</Label>
-              <Input
-                id="edit-name"
-                name="name"
-                required
-                maxLength={120}
-                autoComplete="off"
-                defaultValue={entry.productName}
-              />
-            </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-name">Producto</Label>
+            <Input
+              id="edit-name"
+              name="name"
+              required
+              maxLength={120}
+              autoComplete="off"
+              defaultValue={entry.productName}
+            />
+          </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-category">Categoría</Label>
-              <Select
-                value={categoryId === "" ? NO_CATEGORY : categoryId}
-                onValueChange={(v) =>
-                  setCategoryId(v === NO_CATEGORY ? "" : v)
-                }
-              >
-                <SelectTrigger id="edit-category" className="w-full">
-                  <SelectValue placeholder="Sin categoría" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NO_CATEGORY}>Sin categoría</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.icon ? `${c.icon} ` : ""}
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-category">Categoría</Label>
+            <Select
+              value={categoryId === "" ? NO_CATEGORY : categoryId}
+              onValueChange={(v) =>
+                setCategoryId(v === NO_CATEGORY ? "" : v)
+              }
+            >
+              <SelectTrigger id="edit-category" className="w-full">
+                <SelectValue placeholder="Sin categoría" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_CATEGORY}>Sin categoría</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.icon ? `${c.icon} ` : ""}
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-location">Ubicación</Label>
-              <Select
-                value={location}
-                onValueChange={(v) => setLocation(v as LocationType)}
-                name="location"
-              >
-                <SelectTrigger id="edit-location" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LOCATION_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-location">Ubicación</Label>
+            <Select
+              value={location}
+              onValueChange={(v) => setLocation(v as LocationType)}
+              name="location"
+            >
+              <SelectTrigger id="edit-location" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LOCATION_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-quantity">
-                Cantidad ({UNIT_LABELS[entry.unit]})
-              </Label>
-              <Input
-                id="edit-quantity"
-                name="quantity"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="any"
-                defaultValue={entry.quantity}
-                required
-              />
-            </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-quantity">
+              Cantidad ({UNIT_LABELS[entry.unit]})
+            </Label>
+            <Input
+              id="edit-quantity"
+              name="quantity"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="any"
+              defaultValue={entry.quantity}
+              required
+            />
+          </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-expiry">
-                Caducidad{" "}
-                <span className="text-muted-foreground">(opcional)</span>
-              </Label>
-              <Input
-                id="edit-expiry"
-                name="expiryDate"
-                type="date"
-                defaultValue={entry.expiryDate ?? ""}
-              />
-              <p className="text-sm text-muted-foreground">
-                Si tienes varios, pon la fecha del que caduque antes.
-              </p>
-            </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-expiry">
+              Caducidad{" "}
+              <span className="text-muted-foreground">(opcional)</span>
+            </Label>
+            <Input
+              id="edit-expiry"
+              name="expiryDate"
+              type="date"
+              defaultValue={entry.expiryDate ?? ""}
+            />
+            <p className="text-sm text-muted-foreground">
+              Si tienes varios, pon la fecha del que caduque antes.
+            </p>
+          </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-min">
-                Avísame cuando queden menos de{" "}
-                <span className="text-muted-foreground">(opcional)</span>
-              </Label>
-              <Input
-                id="edit-min"
-                name="minQuantity"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step="any"
-                defaultValue={entry.minQuantity ?? ""}
-              />
-            </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-min">
+              Avísame cuando queden menos de{" "}
+              <span className="text-muted-foreground">(opcional)</span>
+            </Label>
+            <Input
+              id="edit-min"
+              name="minQuantity"
+              type="number"
+              inputMode="decimal"
+              min={0}
+              step="any"
+              defaultValue={entry.minQuantity ?? ""}
+            />
+          </div>
 
-            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
-              <Label htmlFor="edit-use-soon" className="flex flex-col gap-0.5">
-                <span>Consumir pronto</span>
-                <span className="text-sm font-normal text-muted-foreground">
-                  Priorízalo en los menús aunque no caduque
-                </span>
-              </Label>
-              <Switch
-                id="edit-use-soon"
-                checked={useSoon}
-                onCheckedChange={setUseSoon}
-              />
-            </div>
+          <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+            <Label htmlFor="edit-use-soon" className="flex flex-col gap-0.5">
+              <span>Consumir pronto</span>
+              <span className="text-sm font-normal text-muted-foreground">
+                Priorízalo en los menús aunque no caduque
+              </span>
+            </Label>
+            <Switch
+              id="edit-use-soon"
+              checked={useSoon}
+              onCheckedChange={setUseSoon}
+            />
+          </div>
 
-            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
-              <Label htmlFor="edit-pin" className="flex flex-col gap-0.5">
-                <span className="flex items-center gap-1.5">
-                  <Star
-                    aria-hidden
-                    className={cn(
-                      "size-4",
-                      isPinned && "fill-current text-warning",
-                    )}
-                  />
-                  Mis habituales
-                </span>
-                <span className="text-sm font-normal text-muted-foreground">
-                  Ánclalo arriba en tu inventario
-                </span>
-              </Label>
-              <Switch
-                id="edit-pin"
-                checked={isPinned}
-                onCheckedChange={togglePin}
-                disabled={pinPending}
-              />
-            </div>
-
-            {aliases.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium">Nombres en tickets</span>
-                <p className="text-sm text-muted-foreground">
-                  Cómo aparece en tus tickets. Bórralo si se asoció por error;
-                  no afecta a tu historial de precios.
-                </p>
-                <ul className="flex flex-col gap-1.5">
-                  {aliases.map((a) => (
-                    <li
-                      key={a.id}
-                      className="flex items-center justify-between gap-2 rounded-lg border py-1 pr-1 pl-3"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-sm">
-                        {a.alias}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Borrar el nombre «${a.alias}»`}
-                        onClick={() => removeAlias(a.id)}
-                        disabled={removingAlias}
-                      >
-                        <X aria-hidden />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {mergeCandidates.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                <span className="text-sm font-medium">
-                  Fusionar con otro producto
-                </span>
-                <p className="text-sm text-muted-foreground">
-                  Une este producto con otro: el historial de precios de ambos
-                  se juntará en el que elijas. Esta acción no se puede deshacer.
-                </p>
-                <ProductCombobox
-                  products={mergeCandidates}
-                  value={mergeTarget}
-                  onChange={setMergeTarget}
-                  ariaLabel="Producto con el que fusionar"
-                  placeholder="Buscar producto…"
-                  triggerLabel="Elegir producto…"
+          <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+            <Label htmlFor="edit-pin" className="flex flex-col gap-0.5">
+              <span className="flex items-center gap-1.5">
+                <Star
+                  aria-hidden
+                  className={cn(
+                    "size-4",
+                    isPinned && "fill-current text-warning",
+                  )}
                 />
-                {mergeTarget ? (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={confirmMerge}
-                    disabled={merging}
-                  >
-                    {merging
-                      ? "Fusionando…"
-                      : `Fusionar «${entry.productName}» en «${
-                          mergeCandidates.find((p) => p.id === mergeTarget)
-                            ?.name ?? "…"
-                        }»`}
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
+                Mis habituales
+              </span>
+              <span className="text-sm font-normal text-muted-foreground">
+                Ánclalo arriba en tu inventario
+              </span>
+            </Label>
+            <Switch
+              id="edit-pin"
+              checked={isPinned}
+              onCheckedChange={togglePin}
+              disabled={pinPending}
+            />
+          </div>
 
-            {error ? (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
+          {aliases.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium">Nombres en tickets</span>
+              <p className="text-sm text-muted-foreground">
+                Cómo aparece en tus tickets. Bórralo si se asoció por error;
+                no afecta a tu historial de precios.
               </p>
-            ) : null}
+              <ul className="flex flex-col gap-1.5">
+                {aliases.map((a) => (
+                  <li
+                    key={a.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border py-1 pr-1 pl-3"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm">
+                      {a.alias}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Borrar el nombre «${a.alias}»`}
+                      onClick={() => removeAlias(a.id)}
+                      disabled={removingAlias}
+                    >
+                      <X aria-hidden />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
-            <DrawerFooter className="gap-2 px-0">
-              <Button type="submit" size="lg" disabled={pending}>
-                {pending ? "Guardando…" : "Guardar cambios"}
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={handleDelete}
-                disabled={deleting}
-              >
-                <Trash2 aria-hidden />
-                Eliminar del inventario
-              </Button>
-              <DrawerClose asChild>
-                <Button type="button" variant="ghost">
-                  Cancelar
+          {mergeCandidates.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium">
+                Fusionar con otro producto
+              </span>
+              <p className="text-sm text-muted-foreground">
+                Une este producto con otro: el historial de precios de ambos
+                se juntará en el que elijas. Esta acción no se puede deshacer.
+              </p>
+              <ProductCombobox
+                products={mergeCandidates}
+                value={mergeTarget}
+                onChange={setMergeTarget}
+                ariaLabel="Producto con el que fusionar"
+                placeholder="Buscar producto…"
+                triggerLabel="Elegir producto…"
+              />
+              {mergeTarget ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={confirmMerge}
+                  disabled={merging}
+                >
+                  {merging
+                    ? "Fusionando…"
+                    : `Fusionar «${entry.productName}» en «${
+                        mergeCandidates.find((p) => p.id === mergeTarget)
+                          ?.name ?? "…"
+                      }»`}
                 </Button>
-              </DrawerClose>
-            </DrawerFooter>
-          </form>
-        </div>
-      </DrawerContent>
-    </Drawer>
+              ) : null}
+            </div>
+          ) : null}
+
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+
+          <ResponsiveModalFooter className="gap-2 px-0">
+            <Button type="submit" size="lg" disabled={pending}>
+              {pending ? "Guardando…" : "Guardar cambios"}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              <Trash2 aria-hidden />
+              Eliminar del inventario
+            </Button>
+            <ResponsiveModalClose asChild>
+              <Button type="button" variant="ghost">
+                Cancelar
+              </Button>
+            </ResponsiveModalClose>
+          </ResponsiveModalFooter>
+        </form>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }

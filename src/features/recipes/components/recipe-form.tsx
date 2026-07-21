@@ -7,14 +7,14 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+  ResponsiveModal,
+  ResponsiveModalClose,
+  ResponsiveModalContent,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -426,35 +426,40 @@ export function RecipeForm({ recipe }: { recipe?: RecipeForEdit }) {
       </div>
 
       {isEdit ? (
-        <Drawer open={deleteOpen} onOpenChange={setDeleteOpen}>
-          <DrawerContent>
-            <div className="mx-auto w-full max-w-md">
-              <DrawerHeader>
-                <DrawerTitle>¿Eliminar esta receta?</DrawerTitle>
-                <DrawerDescription>
-                  Se quitará de tu recetario. Los menús que la usaran dejarán
-                  ese hueco vacío. Esta acción no se puede deshacer.
-                </DrawerDescription>
-              </DrawerHeader>
-              <DrawerFooter className="gap-2">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="lg"
-                  onClick={handleDelete}
-                  disabled={deleting}
-                >
-                  {deleting ? "Eliminando…" : "Sí, eliminar"}
+        <ResponsiveModal open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <ResponsiveModalContent
+            // En escritorio el foco inicial debe caer en la acción segura,
+            // no en la destructiva (que es el primer focusable del DOM).
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              document.getElementById("recipe-delete-cancel")?.focus();
+            }}
+          >
+            <ResponsiveModalHeader>
+              <ResponsiveModalTitle>¿Eliminar esta receta?</ResponsiveModalTitle>
+              <ResponsiveModalDescription>
+                Se quitará de tu recetario. Los menús que la usaran dejarán ese
+                hueco vacío. Esta acción no se puede deshacer.
+              </ResponsiveModalDescription>
+            </ResponsiveModalHeader>
+            <ResponsiveModalFooter className="gap-2">
+              <Button
+                type="button"
+                variant="destructive"
+                size="lg"
+                onClick={handleDelete}
+                disabled={deleting}
+              >
+                {deleting ? "Eliminando…" : "Sí, eliminar"}
+              </Button>
+              <ResponsiveModalClose asChild>
+                <Button id="recipe-delete-cancel" type="button" variant="ghost">
+                  Cancelar
                 </Button>
-                <DrawerClose asChild>
-                  <Button type="button" variant="ghost">
-                    Cancelar
-                  </Button>
-                </DrawerClose>
-              </DrawerFooter>
-            </div>
-          </DrawerContent>
-        </Drawer>
+              </ResponsiveModalClose>
+            </ResponsiveModalFooter>
+          </ResponsiveModalContent>
+        </ResponsiveModal>
       ) : null}
     </form>
   );
