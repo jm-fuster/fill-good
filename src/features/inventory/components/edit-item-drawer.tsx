@@ -200,6 +200,9 @@ export function EditItemDrawer({
                 type="date"
                 defaultValue={entry.expiryDate ?? ""}
               />
+              <p className="text-sm text-muted-foreground">
+                Si tienes varios, pon la fecha del que caduque antes.
+              </p>
             </div>
 
             <div className="flex flex-col gap-2">

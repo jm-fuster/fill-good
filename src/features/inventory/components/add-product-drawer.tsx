@@ -227,6 +227,9 @@ function AddProductFields({
           Caducidad <span className="text-muted-foreground">(opcional)</span>
         </Label>
         <Input id="add-expiry" name="expiryDate" type="date" />
+        <p className="text-sm text-muted-foreground">
+          Si tienes varios, pon la fecha del que caduque antes.
+        </p>
       </div>
 
       <div className="flex flex-col gap-2">

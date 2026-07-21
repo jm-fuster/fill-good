@@ -83,6 +83,9 @@ export function ExpiryReview({ entries }: { entries: ReviewEntry[] }) {
 
   return (
     <div className="flex flex-col gap-3 pb-32">
+      <p className="text-sm text-muted-foreground">
+        Si tienes varios de un producto, pon la fecha del que caduque antes.
+      </p>
       <ul className="flex flex-col gap-2">
         {entries.map((entry) => {
           const row = rows[entry.id];

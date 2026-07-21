@@ -32,7 +32,7 @@ ordenadas por prioridad; pueden hacerse en cualquier orden, pero D1 y D2 primero
 - [x] D4 — Recetario como pestaña dentro de Menús
 - [ ] D5 — Compartir el menú semanal (imagen + Web Share, print CSS)
 - [x] D6 — Hint de escaneo: sugerir PDF escaneado con la app nativa
-- [ ] D7 — Hint de caducidad: "la fecha del que caduque antes"
+- [x] D7 — Hint de caducidad: "la fecha del que caduque antes"
 
 ---
 
@@ -748,7 +748,15 @@ entre sí. D1 y D2 son las de mayor impacto; D6 y D7 son microcopys de una tarde
 - **No** implementar tabla de lotes ni tocar el esquema.
 
 **Pasos**
-- [ ] Hint en `edit-item-drawer.tsx`, `add-product-drawer.tsx` y `expiry-review.tsx` (si este último tiene campo de fecha por fila, basta una línea general sobre la lista).
+- [x] Hint en `edit-item-drawer.tsx`, `add-product-drawer.tsx` y `expiry-review.tsx` (una línea general sobre la lista en este último, que tiene fecha por fila).
+
+> **Nota de implementación (D7):** sin migración ni cambios de esquema (sin tabla de lotes, fuera de
+> alcance). `<p className="text-sm text-muted-foreground">` con el texto "Si tienes varios, pon la fecha
+> del que caduque antes." bajo el campo de fecha en `edit-item-drawer.tsx` y `add-product-drawer.tsx`
+> (dentro del mismo bloque que el `<Label>`, que sigue siendo visible — no placeholder-only). En
+> `expiry-review.tsx`, al haber una fecha por fila, una única línea general ("Si tienes varios de un
+> producto, pon la fecha del que caduque antes.") sobre la lista. Solo tokens semánticos. `tsc`/`eslint`
+> limpios.
 
 **Criterios de aceptación**
 - El hint aparece junto al campo de fecha en los tres puntos, con estilos de token y sin romper el layout del drawer.
