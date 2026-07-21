@@ -381,7 +381,7 @@ export function ReceiptReview({
         ) : null}
       </div>
 
-      <div className="fixed inset-x-0 bottom-16 z-40 mx-auto max-w-lg px-4 pb-safe">
+      <div className="fixed inset-x-0 bottom-16 z-40 mx-auto max-w-lg px-4 pb-safe md:sticky md:inset-x-auto md:bottom-0 md:mx-0 md:max-w-none md:border-t md:bg-background/95 md:px-0 md:pt-3 md:pb-3 md:backdrop-blur-sm">
         <Button
           size="lg"
           className="w-full shadow-lg"

@@ -62,7 +62,13 @@ export function AddProductDrawer({
 
   return (
     <ResponsiveModal open={open} onOpenChange={setOpen}>
-      <Fab>
+      {/* Escritorio: acción en el header, junto a "Ver precios". */}
+      <Button className="hidden md:inline-flex" onClick={() => setOpen(true)}>
+        <Plus aria-hidden />
+        Añadir producto
+      </Button>
+      {/* Móvil: botón flotante (FAB). */}
+      <Fab className="md:hidden">
         <Button
           size="icon"
           aria-label="Añadir producto"

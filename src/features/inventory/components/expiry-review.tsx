@@ -82,7 +82,7 @@ export function ExpiryReview({ entries }: { entries: ReviewEntry[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 pb-32">
+    <div className="flex flex-col gap-3 pb-32 md:pb-0">
       <p className="text-sm text-muted-foreground">
         Si tienes varios de un producto, pon la fecha del que caduque antes.
       </p>
@@ -165,7 +165,7 @@ export function ExpiryReview({ entries }: { entries: ReviewEntry[] }) {
         })}
       </ul>
 
-      <div className="fixed inset-x-0 bottom-16 z-40 mx-auto flex max-w-lg gap-2 px-4 pb-safe">
+      <div className="fixed inset-x-0 bottom-16 z-40 mx-auto flex max-w-lg gap-2 px-4 pb-safe md:sticky md:inset-x-auto md:bottom-0 md:mx-0 md:max-w-none md:border-t md:bg-background/95 md:px-0 md:pt-3 md:pb-3 md:backdrop-blur-sm">
         <Button
           type="button"
           variant="outline"

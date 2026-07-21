@@ -48,11 +48,23 @@ export default async function InventarioPage({
         title="Inventario"
         description="Tu despensa, nevera y congelador."
         action={
-          <Button asChild variant="outline" size="icon" aria-label="Ver precios">
-            <Link href="/precios">
-              <LineChart aria-hidden />
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              asChild
+              variant="outline"
+              size="icon"
+              aria-label="Ver precios"
+            >
+              <Link href="/precios">
+                <LineChart aria-hidden />
+              </Link>
+            </Button>
+            {/* FAB en móvil, botón en el header en escritorio (mismo modal). */}
+            <AddProductDrawer
+              categories={categories}
+              productNames={productNames}
+            />
+          </div>
         }
       />
 
@@ -76,8 +88,6 @@ export default async function InventarioPage({
           initialFilter={initialFilter}
         />
       )}
-
-      <AddProductDrawer categories={categories} productNames={productNames} />
     </PageContainer>
   );
 }

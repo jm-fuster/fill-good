@@ -116,7 +116,7 @@ export function InventoryList({
   );
 
   return (
-    <div className="flex flex-col gap-4 pb-fab">
+    <div className="flex flex-col gap-4 pb-fab md:pb-0">
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="inv-search">Buscar en el inventario</Label>
