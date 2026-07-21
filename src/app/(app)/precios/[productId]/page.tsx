@@ -8,7 +8,9 @@ import { es } from "date-fns/locale";
 import { PageContainer } from "@/components/layout/page-container";
 import { PriceChart } from "@/features/prices/components/price-chart";
 import { CHAIN_LABELS } from "@/features/prices/chains";
+import { computeChainComparison } from "@/features/prices/chain-comparison";
 import { getProductPriceHistory } from "@/features/prices/queries";
+import { cn } from "@/lib/utils";
 import { UNIT_LABELS } from "@/lib/units";
 
 export const metadata: Metadata = { title: "Precio" };
@@ -32,6 +34,9 @@ export default async function PrecioDetallePage({
   const min = prices.length ? Math.min(...prices) : 0;
   const max = prices.length ? Math.max(...prices) : 0;
   const last = prices.length ? prices[prices.length - 1] : 0;
+  const chainComparison = computeChainComparison(
+    points.map((p) => ({ unitPrice: p.unitPrice, storeChain: p.storeChain })),
+  );
 
   return (
     <PageContainer variant="wide">
@@ -68,6 +73,41 @@ export default async function PrecioDetallePage({
               este producto para ver cómo evoluciona su precio.
             </p>
           )}
+
+          {chainComparison ? (
+            <div>
+              <h2 className="mb-2 text-sm font-medium">
+                Dónde te sale más barato
+              </h2>
+              <ul className="flex flex-col gap-2">
+                {chainComparison.map((c) => (
+                  <li
+                    key={c.chain}
+                    className={cn(
+                      "flex items-center justify-between gap-3 rounded-xl border p-3",
+                      c.cheapest && "border-success/40 bg-success/5",
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium">{c.label}</p>
+                      <p className="text-xs text-muted-foreground">
+                        media {euro(c.avgPrice)}/{UNIT_LABELS[unit]} ·{" "}
+                        {c.count} compras
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "shrink-0 text-sm font-medium tabular-nums",
+                        c.cheapest ? "text-success" : "text-muted-foreground",
+                      )}
+                    >
+                      {c.cheapest ? "más barato" : `+${c.deltaPct}%`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           <div>
             <h2 className="mb-2 text-sm font-medium">Compras</h2>
