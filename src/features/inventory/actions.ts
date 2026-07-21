@@ -12,6 +12,7 @@ import {
   addInventorySchema,
   editInventorySchema,
   expiryReviewSchema,
+  starterItemsSchema,
 } from "./schemas";
 
 export type ActionState = { error?: string; ok?: boolean };
@@ -110,6 +111,62 @@ export async function addInventoryAction(
 
   revalidatePath("/inventario");
   return { ok: true };
+}
+
+/**
+ * Selector inicial "¿Qué tienes ya en casa?" (E12): crea en un gesto los
+ * `inventory_items` reales de los productos que el usuario marca en el empty
+ * state. Cantidad 1, unidad/ubicación por defecto del producto, sin caducidad —
+ * mismo formato que el alta manual. `updated_by` = usuario actual.
+ *
+ * Los ids llegan del cliente pero se re-leen del catálogo del hogar (RLS +
+ * filtro por household_id): el cliente solo dice QUÉ productos, nunca sus datos.
+ * `on conflict (household_id, product_id, location) do nothing` lo hace
+ * idempotente por si el producto ya tuviera existencias en esa ubicación.
+ */
+export async function addStarterItemsAction(
+  productIds: string[],
+): Promise<ActionState & { added?: number }> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+
+  const parsed = starterItemsSchema.safeParse({ productIds });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+
+  const supabase = createServerSupabaseClient();
+  const { data: products, error: prodErr } = await supabase
+    .from("products")
+    .select("id, default_unit, default_location")
+    .eq("household_id", household.id)
+    .in("id", parsed.data.productIds);
+  if (prodErr) return { error: "No se pudieron cargar los productos." };
+  if (!products || products.length === 0) {
+    return { error: "No hay productos que añadir." };
+  }
+
+  const rows = products.map((p) => ({
+    household_id: household.id,
+    product_id: p.id,
+    location: p.default_location,
+    quantity: 1,
+    unit: p.default_unit,
+    updated_by: userId,
+  }));
+
+  const { data: inserted, error: insErr } = await supabase
+    .from("inventory_items")
+    .upsert(rows, {
+      onConflict: "household_id,product_id,location",
+      ignoreDuplicates: true,
+    })
+    .select("id");
+  if (insErr) return { error: "No se pudieron añadir los productos." };
+
+  revalidatePath("/inventario");
+  return { ok: true, added: inserted?.length ?? rows.length };
 }
 
 export async function setInventoryQuantityAction(

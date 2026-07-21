@@ -7,12 +7,14 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { AddProductDrawer } from "@/features/inventory/components/add-product-drawer";
 import { InventoryList } from "@/features/inventory/components/inventory-list";
+import { StarterPicker } from "@/features/inventory/components/starter-picker";
 import { isStatusFilter } from "@/features/inventory/status";
 import {
   getCategories,
   getInventory,
   getPinnedProductIds,
   getProducts,
+  getStarterCatalog,
 } from "@/features/inventory/queries";
 import { getActiveListProductIds } from "@/features/shopping-list/queries";
 
@@ -35,6 +37,9 @@ export default async function InventarioPage({
       getPinnedProductIds(),
     ]);
   const productNames = products.map((p) => p.name);
+  // El selector "¿Qué tienes ya en casa?" solo tiene sentido con el inventario
+  // vacío; solo entonces consultamos el catálogo sembrado que aún no está en él.
+  const starterGroups = entries.length === 0 ? await getStarterCatalog() : [];
 
   return (
     <>
@@ -51,11 +56,15 @@ export default async function InventarioPage({
       />
 
       {entries.length === 0 ? (
-        <EmptyState
-          icon={Package}
-          title="Aún no hay productos"
-          description="Pulsa el botón + para añadir tu primer producto, o escanea un ticket para llenar el inventario de golpe."
-        />
+        starterGroups.length > 0 ? (
+          <StarterPicker groups={starterGroups} />
+        ) : (
+          <EmptyState
+            icon={Package}
+            title="Aún no hay productos"
+            description="Pulsa el botón + para añadir tu primer producto, o escanea un ticket para llenar el inventario de golpe."
+          />
+        )
       ) : (
         <InventoryList
           entries={entries}

@@ -45,6 +45,20 @@ export type ProductOption = {
   categoryId: string | null;
 };
 
+/** Producto del catálogo ofrecido como chip en el selector "¿Qué tienes ya en casa?". */
+export type StarterProduct = {
+  id: string;
+  name: string;
+};
+
+/** Grupo de productos sembrados agrupados por su categoría, para el selector inicial. */
+export type StarterGroup = {
+  categoryId: string | null;
+  categoryName: string;
+  categoryIcon: string | null;
+  products: StarterProduct[];
+};
+
 export async function getCategories(): Promise<Category[]> {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
@@ -88,6 +102,76 @@ export async function getProducts(): Promise<ProductOption[]> {
     defaultLocation: p.default_location,
     categoryId: p.category_id,
   }));
+}
+
+type StarterCatalogRow = {
+  id: string;
+  name: string;
+  category: {
+    id: string;
+    name: string;
+    icon: string | null;
+    sort_order: number;
+  } | null;
+};
+
+/**
+ * Catálogo para el selector "¿Qué tienes ya en casa?" del empty state: productos
+ * del hogar que aún NO tienen fila en inventario, agrupados por categoría (con su
+ * icono) y ordenados por `sort_order`. Los productos sin categoría caen en un
+ * grupo final. Alfabético dentro de cada grupo.
+ */
+export async function getStarterCatalog(): Promise<StarterGroup[]> {
+  const supabase = createServerSupabaseClient();
+  const [{ data: products, error: prodErr }, { data: inv, error: invErr }] =
+    await Promise.all([
+      supabase
+        .from("products")
+        .select("id, name, category:categories(id, name, icon, sort_order)")
+        .order("name", { ascending: true }),
+      supabase.from("inventory_items").select("product_id"),
+    ]);
+  if (prodErr) throw prodErr;
+  if (invErr) throw invErr;
+
+  const inInventory = new Set((inv ?? []).map((r) => r.product_id));
+  const rows = (products ?? []) as unknown as StarterCatalogRow[];
+
+  // Agrupar por categoría conservando el sort_order para ordenar los grupos.
+  const NO_CATEGORY = "__none__";
+  const groups = new Map<
+    string,
+    StarterGroup & { sortOrder: number }
+  >();
+  for (const p of rows) {
+    if (inInventory.has(p.id)) continue;
+    const key = p.category?.id ?? NO_CATEGORY;
+    let group = groups.get(key);
+    if (!group) {
+      group = {
+        categoryId: p.category?.id ?? null,
+        categoryName: p.category?.name ?? "Sin categoría",
+        categoryIcon: p.category?.icon ?? null,
+        sortOrder: p.category?.sort_order ?? Number.MAX_SAFE_INTEGER,
+        products: [],
+      };
+      groups.set(key, group);
+    }
+    group.products.push({ id: p.id, name: p.name });
+  }
+
+  return [...groups.values()]
+    .sort(
+      (a, b) =>
+        a.sortOrder - b.sortOrder ||
+        a.categoryName.localeCompare(b.categoryName, "es"),
+    )
+    .map((group) => ({
+      categoryId: group.categoryId,
+      categoryName: group.categoryName,
+      categoryIcon: group.categoryIcon,
+      products: group.products,
+    }));
 }
 
 type InventoryRow = {

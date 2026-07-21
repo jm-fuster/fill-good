@@ -734,6 +734,10 @@ export type Database = {
         Args: { hid: string };
         Returns: undefined;
       };
+      seed_default_products: {
+        Args: { hid: string };
+        Returns: undefined;
+      };
       ensure_active_list: {
         Args: { hid: string };
         Returns: undefined;

@@ -74,6 +74,14 @@ export const editInventorySchema = z.object({
   minQuantity: optionalNumber,
 });
 
+/** Selector inicial "¿Qué tienes ya en casa?": ids de producto a añadir en lote. */
+export const starterItemsSchema = z.object({
+  productIds: z
+    .array(z.string().uuid())
+    .min(1, "Marca al menos un producto.")
+    .max(100, "Demasiados productos a la vez."),
+});
+
 const isoDate = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Revisión de caducidades tras la compra: cambios en lote (id → fecha/flag). */
