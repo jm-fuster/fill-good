@@ -7,13 +7,13 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+  ResponsiveModal,
+  ResponsiveModalClose,
+  ResponsiveModalContent,
+  ResponsiveModalFooter,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -80,93 +80,90 @@ export function EditListItemDrawer({
   }
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange}>
-      <DrawerContent>
-        <div className="mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto">
-          <DrawerHeader>
-            <DrawerTitle>Editar producto</DrawerTitle>
-          </DrawerHeader>
+    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+      <ResponsiveModalContent>
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle>Editar producto</ResponsiveModalTitle>
+        </ResponsiveModalHeader>
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4">
-            <input type="hidden" name="itemId" value={item.id} />
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4">
+          <input type="hidden" name="itemId" value={item.id} />
 
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-list-name">Producto</Label>
+            <Input
+              id="edit-list-name"
+              name="name"
+              required
+              maxLength={120}
+              autoComplete="off"
+              defaultValue={item.name}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-list-name">Producto</Label>
+              <Label htmlFor="edit-list-quantity">
+                Cantidad <span className="text-muted-foreground">(opcional)</span>
+              </Label>
               <Input
-                id="edit-list-name"
-                name="name"
-                required
-                maxLength={120}
-                autoComplete="off"
-                defaultValue={item.name}
+                id="edit-list-quantity"
+                name="quantity"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                defaultValue={item.quantity ?? ""}
               />
             </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="edit-list-quantity">
-                  Cantidad{" "}
-                  <span className="text-muted-foreground">(opcional)</span>
-                </Label>
-                <Input
-                  id="edit-list-quantity"
-                  name="quantity"
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  step="any"
-                  defaultValue={item.quantity ?? ""}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="edit-list-unit">Unidad</Label>
-                <Select
-                  value={unit}
-                  onValueChange={(v) => setUnit(v as UnitType)}
-                  name="unit"
-                >
-                  <SelectTrigger id="edit-list-unit" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {UNIT_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {error ? (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            ) : null}
-
-            <DrawerFooter className="gap-2 px-0">
-              <Button type="submit" size="lg" disabled={pending}>
-                {pending ? "Guardando…" : "Guardar cambios"}
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={handleDelete}
-                disabled={deleting}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-list-unit">Unidad</Label>
+              <Select
+                value={unit}
+                onValueChange={(v) => setUnit(v as UnitType)}
+                name="unit"
               >
-                <Trash2 aria-hidden />
-                Quitar de la lista
+                <SelectTrigger id="edit-list-unit" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {UNIT_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+
+          <ResponsiveModalFooter className="gap-2 px-0">
+            <Button type="submit" size="lg" disabled={pending}>
+              {pending ? "Guardando…" : "Guardar cambios"}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              <Trash2 aria-hidden />
+              Quitar de la lista
+            </Button>
+            <ResponsiveModalClose asChild>
+              <Button type="button" variant="ghost">
+                Cancelar
               </Button>
-              <DrawerClose asChild>
-                <Button type="button" variant="ghost">
-                  Cancelar
-                </Button>
-              </DrawerClose>
-            </DrawerFooter>
-          </form>
-        </div>
-      </DrawerContent>
-    </Drawer>
+            </ResponsiveModalClose>
+          </ResponsiveModalFooter>
+        </form>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }

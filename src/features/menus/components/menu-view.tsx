@@ -22,14 +22,14 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+  ResponsiveModal,
+  ResponsiveModalClose,
+  ResponsiveModalContent,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getWeekDays, shiftWeek } from "@/lib/dates";
@@ -412,91 +412,91 @@ function EditEntryDrawer({
   }
 
   return (
-    <Drawer open={editing !== null} onOpenChange={(o) => !o && onClose()}>
-      <DrawerContent>
-        <div className="mx-auto w-full max-w-md">
-          <DrawerHeader>
-            <DrawerTitle className="capitalize">{editing?.label}</DrawerTitle>
-            <DrawerDescription>
-              {isNew ? "Añade un plato a este hueco." : "Edita o quita este plato."}
-            </DrawerDescription>
-          </DrawerHeader>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              save(value);
-            }}
-            className="flex flex-col gap-4 px-4"
-          >
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="menu-dish">Plato</Label>
-              <Input
-                id="menu-dish"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                autoComplete="off"
-                placeholder="p. ej. Lentejas con verduras"
-              />
-            </div>
-            <DrawerFooter className="gap-2 px-0">
+    <ResponsiveModal open={editing !== null} onOpenChange={(o) => !o && onClose()}>
+      <ResponsiveModalContent>
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle className="capitalize">
+            {editing?.label}
+          </ResponsiveModalTitle>
+          <ResponsiveModalDescription>
+            {isNew ? "Añade un plato a este hueco." : "Edita o quita este plato."}
+          </ResponsiveModalDescription>
+        </ResponsiveModalHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            save(value);
+          }}
+          className="flex flex-col gap-4 px-4"
+        >
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="menu-dish">Plato</Label>
+            <Input
+              id="menu-dish"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              autoComplete="off"
+              placeholder="p. ej. Lentejas con verduras"
+            />
+          </div>
+          <ResponsiveModalFooter className="gap-2 px-0">
+            <Button
+              type="submit"
+              size="lg"
+              disabled={pending || !value.trim()}
+            >
+              {pending
+                ? "Guardando…"
+                : isNew
+                  ? "Añadir plato"
+                  : "Guardar"}
+            </Button>
+            {canMarkCooked ? (
               <Button
-                type="submit"
-                size="lg"
-                disabled={pending || !value.trim()}
+                type="button"
+                variant={cooked ? "secondary" : "outline"}
+                onClick={toggleCooked}
+                disabled={cooking}
+                aria-pressed={cooked}
               >
-                {pending
+                {cooked ? <Check aria-hidden /> : <ChefHat aria-hidden />}
+                {cooking
                   ? "Guardando…"
-                  : isNew
-                    ? "Añadir plato"
-                    : "Guardar"}
+                  : cooked
+                    ? "Cocinado · deshacer"
+                    : "Lo cocinamos"}
               </Button>
-              {canMarkCooked ? (
-                <Button
-                  type="button"
-                  variant={cooked ? "secondary" : "outline"}
-                  onClick={toggleCooked}
-                  disabled={cooking}
-                  aria-pressed={cooked}
-                >
-                  {cooked ? <Check aria-hidden /> : <ChefHat aria-hidden />}
-                  {cooking
-                    ? "Guardando…"
-                    : cooked
-                      ? "Cocinado · deshacer"
-                      : "Lo cocinamos"}
-                </Button>
-              ) : null}
-              {editing?.canSaveToRecipes ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={saveToRecipes}
-                  disabled={savingRecipe}
-                >
-                  <BookmarkPlus aria-hidden />
-                  {savingRecipe ? "Guardando…" : "Guardar en mi recetario"}
-                </Button>
-              ) : null}
-              {!isNew ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={remove}
-                  disabled={pending}
-                >
-                  Quitar del menú
-                </Button>
-              ) : null}
-              <DrawerClose asChild>
-                <Button type="button" variant="ghost">
-                  Cancelar
-                </Button>
-              </DrawerClose>
-            </DrawerFooter>
-          </form>
-        </div>
-      </DrawerContent>
-    </Drawer>
+            ) : null}
+            {editing?.canSaveToRecipes ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={saveToRecipes}
+                disabled={savingRecipe}
+              >
+                <BookmarkPlus aria-hidden />
+                {savingRecipe ? "Guardando…" : "Guardar en mi recetario"}
+              </Button>
+            ) : null}
+            {!isNew ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={remove}
+                disabled={pending}
+              >
+                Quitar del menú
+              </Button>
+            ) : null}
+            <ResponsiveModalClose asChild>
+              <Button type="button" variant="ghost">
+                Cancelar
+              </Button>
+            </ResponsiveModalClose>
+          </ResponsiveModalFooter>
+        </form>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }
 
@@ -556,76 +556,77 @@ function MissingReviewDrawer({
   const count = included.size;
 
   return (
-    <Drawer open={candidates !== null} onOpenChange={(o) => !o && onClose()}>
-      <DrawerContent>
-        <div className="mx-auto flex w-full max-w-md flex-col">
-          <DrawerHeader>
-            <DrawerTitle>Añadir a la lista</DrawerTitle>
-            <DrawerDescription>
-              Revisa lo que falta para el menú. Desmarca lo que no quieras.
-            </DrawerDescription>
-          </DrawerHeader>
+    <ResponsiveModal
+      open={candidates !== null}
+      onOpenChange={(o) => !o && onClose()}
+    >
+      <ResponsiveModalContent>
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle>Añadir a la lista</ResponsiveModalTitle>
+          <ResponsiveModalDescription>
+            Revisa lo que falta para el menú. Desmarca lo que no quieras.
+          </ResponsiveModalDescription>
+        </ResponsiveModalHeader>
 
-          <ul className="flex max-h-[55vh] flex-col gap-2 overflow-y-auto px-4">
-            {(candidates ?? []).map((c) => {
-              const cbId = `missing-${c.key}`;
-              const checked = included.has(c.key);
-              return (
-                <li
-                  key={c.key}
-                  className="flex items-start gap-3 rounded-xl border p-3"
+        <ul className="flex max-h-[55vh] flex-col gap-2 overflow-y-auto px-4">
+          {(candidates ?? []).map((c) => {
+            const cbId = `missing-${c.key}`;
+            const checked = included.has(c.key);
+            return (
+              <li
+                key={c.key}
+                className="flex items-start gap-3 rounded-xl border p-3"
+              >
+                <Checkbox
+                  id={cbId}
+                  checked={checked}
+                  onCheckedChange={(v) => toggle(c.key, v === true)}
+                  className="mt-0.5 size-5"
+                />
+                <Label
+                  htmlFor={cbId}
+                  className="flex flex-1 cursor-pointer flex-col items-start gap-1 font-normal"
                 >
-                  <Checkbox
-                    id={cbId}
-                    checked={checked}
-                    onCheckedChange={(v) => toggle(c.key, v === true)}
-                    className="mt-0.5 size-5"
-                  />
-                  <Label
-                    htmlFor={cbId}
-                    className="flex flex-1 cursor-pointer flex-col items-start gap-1 font-normal"
-                  >
-                    <span className="text-sm font-medium">
-                      {c.ingredientName}
+                  <span className="text-sm font-medium">
+                    {c.ingredientName}
+                  </span>
+                  {c.match ? (
+                    <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                      <Badge variant="secondary">{c.match.productName}</Badge>
+                      {c.match.kind === "fuzzy"
+                        ? "coincidencia aproximada"
+                        : null}
                     </span>
-                    {c.match ? (
-                      <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                        <Badge variant="secondary">{c.match.productName}</Badge>
-                        {c.match.kind === "fuzzy"
-                          ? "coincidencia aproximada"
-                          : null}
-                      </span>
-                    ) : (
-                      <Badge variant="outline">Texto libre</Badge>
-                    )}
-                  </Label>
-                </li>
-              );
-            })}
-          </ul>
+                  ) : (
+                    <Badge variant="outline">Texto libre</Badge>
+                  )}
+                </Label>
+              </li>
+            );
+          })}
+        </ul>
 
-          <DrawerFooter className="gap-2">
-            <Button
-              type="button"
-              size="lg"
-              onClick={confirm}
-              disabled={pending || count === 0}
-            >
-              <Check aria-hidden />
-              {pending
-                ? "Añadiendo…"
-                : count === 1
-                  ? "Añadir 1 a la lista"
-                  : `Añadir ${count} a la lista`}
+        <ResponsiveModalFooter className="gap-2">
+          <Button
+            type="button"
+            size="lg"
+            onClick={confirm}
+            disabled={pending || count === 0}
+          >
+            <Check aria-hidden />
+            {pending
+              ? "Añadiendo…"
+              : count === 1
+                ? "Añadir 1 a la lista"
+                : `Añadir ${count} a la lista`}
+          </Button>
+          <ResponsiveModalClose asChild>
+            <Button type="button" variant="ghost">
+              Cancelar
             </Button>
-            <DrawerClose asChild>
-              <Button type="button" variant="ghost">
-                Cancelar
-              </Button>
-            </DrawerClose>
-          </DrawerFooter>
-        </div>
-      </DrawerContent>
-    </Drawer>
+          </ResponsiveModalClose>
+        </ResponsiveModalFooter>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }

@@ -7,14 +7,14 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+  ResponsiveModal,
+  ResponsiveModalClose,
+  ResponsiveModalContent,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -255,147 +255,145 @@ function AddRuleDrawer({
   }
 
   return (
-    <Drawer open={open} onOpenChange={handleOpenChange}>
-      <DrawerContent>
-        <div className="mx-auto w-full max-w-md">
-          <DrawerHeader>
-            <DrawerTitle>Nueva regla del menú</DrawerTitle>
-            <DrawerDescription>
-              Elige la frecuencia de una receta o escribe una instrucción libre.
-            </DrawerDescription>
-          </DrawerHeader>
+    <ResponsiveModal open={open} onOpenChange={handleOpenChange}>
+      <ResponsiveModalContent>
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle>Nueva regla del menú</ResponsiveModalTitle>
+          <ResponsiveModalDescription>
+            Elige la frecuencia de una receta o escribe una instrucción libre.
+          </ResponsiveModalDescription>
+        </ResponsiveModalHeader>
 
-          <div className="flex flex-col gap-4 px-4">
-            {/* Selector de modo */}
-            <div role="group" aria-label="Tipo de regla" className="flex gap-2">
-              <Button
-                type="button"
-                variant={mode === "recipe" ? "default" : "outline"}
-                aria-pressed={mode === "recipe"}
-                onClick={() => setMode("recipe")}
-                disabled={noRecipes}
-                className="flex-1"
-              >
-                Frecuencia de receta
-              </Button>
-              <Button
-                type="button"
-                variant={mode === "free_text" ? "default" : "outline"}
-                aria-pressed={mode === "free_text"}
-                onClick={() => setMode("free_text")}
-                className="flex-1"
-              >
-                Regla libre
-              </Button>
-            </div>
-
-            {mode === "recipe" ? (
-              noRecipes ? (
-                <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-                  Guarda alguna receta en tu recetario para crear reglas de
-                  frecuencia.
-                </p>
-              ) : (
-                <>
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="rule-recipe">Receta</Label>
-                    <Select value={recipeId} onValueChange={setRecipeId}>
-                      <SelectTrigger id="rule-recipe">
-                        <SelectValue placeholder="Elige una receta" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {recipes.map((r) => (
-                          <SelectItem key={r.id} value={r.id}>
-                            {r.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <fieldset className="flex flex-col gap-2">
-                    <legend className="mb-1 text-sm font-medium">
-                      Frecuencia
-                    </legend>
-                    <div className="flex gap-2">
-                      <Button
-                        type="button"
-                        variant={
-                          bound === "recipe_min_week" ? "default" : "outline"
-                        }
-                        aria-pressed={bound === "recipe_min_week"}
-                        onClick={() => setBound("recipe_min_week")}
-                        className="flex-1"
-                      >
-                        Al menos
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={
-                          bound === "recipe_max_week" ? "default" : "outline"
-                        }
-                        aria-pressed={bound === "recipe_max_week"}
-                        onClick={() => setBound("recipe_max_week")}
-                        className="flex-1"
-                      >
-                        Como mucho
-                      </Button>
-                    </div>
-                  </fieldset>
-
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="rule-times">Veces por semana</Label>
-                    <Input
-                      id="rule-times"
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      max={7}
-                      step={1}
-                      value={times}
-                      onChange={(e) => setTimes(e.target.value)}
-                      className="w-24"
-                    />
-                  </div>
-                </>
-              )
-            ) : (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="rule-text">Regla</Label>
-                <Textarea
-                  id="rule-text"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  maxLength={300}
-                  placeholder="p. ej. Los viernes cena de picoteo"
-                />
-              </div>
-            )}
-
-            {error ? (
-              <p role="alert" className="text-sm text-destructive">
-                {error}
-              </p>
-            ) : null}
-          </div>
-
-          <DrawerFooter className="gap-2">
+        <div className="flex flex-col gap-4 px-4">
+          {/* Selector de modo */}
+          <div role="group" aria-label="Tipo de regla" className="flex gap-2">
             <Button
               type="button"
-              size="lg"
-              onClick={submit}
-              disabled={pending || (mode === "recipe" && noRecipes)}
+              variant={mode === "recipe" ? "default" : "outline"}
+              aria-pressed={mode === "recipe"}
+              onClick={() => setMode("recipe")}
+              disabled={noRecipes}
+              className="flex-1"
             >
-              {pending ? "Guardando…" : "Añadir regla"}
+              Frecuencia de receta
             </Button>
-            <DrawerClose asChild>
-              <Button type="button" variant="ghost">
-                Cancelar
-              </Button>
-            </DrawerClose>
-          </DrawerFooter>
+            <Button
+              type="button"
+              variant={mode === "free_text" ? "default" : "outline"}
+              aria-pressed={mode === "free_text"}
+              onClick={() => setMode("free_text")}
+              className="flex-1"
+            >
+              Regla libre
+            </Button>
+          </div>
+
+          {mode === "recipe" ? (
+            noRecipes ? (
+              <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                Guarda alguna receta en tu recetario para crear reglas de
+                frecuencia.
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="rule-recipe">Receta</Label>
+                  <Select value={recipeId} onValueChange={setRecipeId}>
+                    <SelectTrigger id="rule-recipe">
+                      <SelectValue placeholder="Elige una receta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {recipes.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <fieldset className="flex flex-col gap-2">
+                  <legend className="mb-1 text-sm font-medium">
+                    Frecuencia
+                  </legend>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={
+                        bound === "recipe_min_week" ? "default" : "outline"
+                      }
+                      aria-pressed={bound === "recipe_min_week"}
+                      onClick={() => setBound("recipe_min_week")}
+                      className="flex-1"
+                    >
+                      Al menos
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={
+                        bound === "recipe_max_week" ? "default" : "outline"
+                      }
+                      aria-pressed={bound === "recipe_max_week"}
+                      onClick={() => setBound("recipe_max_week")}
+                      className="flex-1"
+                    >
+                      Como mucho
+                    </Button>
+                  </div>
+                </fieldset>
+
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="rule-times">Veces por semana</Label>
+                  <Input
+                    id="rule-times"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={7}
+                    step={1}
+                    value={times}
+                    onChange={(e) => setTimes(e.target.value)}
+                    className="w-24"
+                  />
+                </div>
+              </>
+            )
+          ) : (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="rule-text">Regla</Label>
+              <Textarea
+                id="rule-text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                maxLength={300}
+                placeholder="p. ej. Los viernes cena de picoteo"
+              />
+            </div>
+          )}
+
+          {error ? (
+            <p role="alert" className="text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
         </div>
-      </DrawerContent>
-    </Drawer>
+
+        <ResponsiveModalFooter className="gap-2">
+          <Button
+            type="button"
+            size="lg"
+            onClick={submit}
+            disabled={pending || (mode === "recipe" && noRecipes)}
+          >
+            {pending ? "Guardando…" : "Añadir regla"}
+          </Button>
+          <ResponsiveModalClose asChild>
+            <Button type="button" variant="ghost">
+              Cancelar
+            </Button>
+          </ResponsiveModalClose>
+        </ResponsiveModalFooter>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }

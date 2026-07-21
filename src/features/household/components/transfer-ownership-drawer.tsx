@@ -7,14 +7,14 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+  ResponsiveModal,
+  ResponsiveModalClose,
+  ResponsiveModalContent,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -56,7 +56,7 @@ export function TransferOwnershipDrawer({
   }
 
   return (
-    <Drawer open={open} onOpenChange={setOpen}>
+    <ResponsiveModal open={open} onOpenChange={setOpen}>
       <Button
         variant="outline"
         onClick={() => setOpen(true)}
@@ -65,44 +65,42 @@ export function TransferOwnershipDrawer({
         <Crown aria-hidden />
         Transferir propiedad
       </Button>
-      <DrawerContent>
-        <div className="mx-auto flex w-full max-w-md flex-col">
-          <DrawerHeader>
-            <DrawerTitle>Transferir propiedad</DrawerTitle>
-            <DrawerDescription>
-              El nuevo propietario podrá gestionar y eliminar el hogar. Tú
-              pasarás a ser un miembro más.
-            </DrawerDescription>
-          </DrawerHeader>
+      <ResponsiveModalContent>
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle>Transferir propiedad</ResponsiveModalTitle>
+          <ResponsiveModalDescription>
+            El nuevo propietario podrá gestionar y eliminar el hogar. Tú pasarás
+            a ser un miembro más.
+          </ResponsiveModalDescription>
+        </ResponsiveModalHeader>
 
-          <div className="flex flex-col gap-2 px-4">
-            <Label htmlFor="transfer-member">Nuevo propietario</Label>
-            <Select value={selected} onValueChange={setSelected}>
-              <SelectTrigger id="transfer-member" className="w-full">
-                <SelectValue placeholder="Elige un miembro" />
-              </SelectTrigger>
-              <SelectContent>
-                {candidates.map((m) => (
-                  <SelectItem key={m.userId} value={m.userId}>
-                    {m.displayName ?? "Miembro"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <DrawerFooter className="gap-2">
-            <Button onClick={confirm} disabled={pending}>
-              {pending ? "Transfiriendo…" : "Transferir propiedad"}
-            </Button>
-            <DrawerClose asChild>
-              <Button type="button" variant="ghost">
-                Cancelar
-              </Button>
-            </DrawerClose>
-          </DrawerFooter>
+        <div className="flex flex-col gap-2 px-4">
+          <Label htmlFor="transfer-member">Nuevo propietario</Label>
+          <Select value={selected} onValueChange={setSelected}>
+            <SelectTrigger id="transfer-member" className="w-full">
+              <SelectValue placeholder="Elige un miembro" />
+            </SelectTrigger>
+            <SelectContent>
+              {candidates.map((m) => (
+                <SelectItem key={m.userId} value={m.userId}>
+                  {m.displayName ?? "Miembro"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-      </DrawerContent>
-    </Drawer>
+
+        <ResponsiveModalFooter className="gap-2">
+          <Button onClick={confirm} disabled={pending}>
+            {pending ? "Transfiriendo…" : "Transferir propiedad"}
+          </Button>
+          <ResponsiveModalClose asChild>
+            <Button type="button" variant="ghost">
+              Cancelar
+            </Button>
+          </ResponsiveModalClose>
+        </ResponsiveModalFooter>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }

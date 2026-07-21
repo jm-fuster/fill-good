@@ -6,14 +6,14 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
+  ResponsiveModal,
+  ResponsiveModalClose,
+  ResponsiveModalContent,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { deleteHouseholdAction } from "../actions";
@@ -40,7 +40,7 @@ export function DeleteHouseholdDrawer({
   }
 
   return (
-    <Drawer open={open} onOpenChange={setOpen}>
+    <ResponsiveModal open={open} onOpenChange={setOpen}>
       <Button
         variant="destructive"
         onClick={() => setOpen(true)}
@@ -49,51 +49,49 @@ export function DeleteHouseholdDrawer({
         <Trash2 aria-hidden />
         Eliminar hogar
       </Button>
-      <DrawerContent>
-        <div className="mx-auto flex w-full max-w-md flex-col">
-          <DrawerHeader>
-            <DrawerTitle className="flex items-center gap-2">
-              <TriangleAlert className="size-5 text-destructive" aria-hidden />
-              Eliminar «{householdName}»
-            </DrawerTitle>
-            <DrawerDescription>
-              Esta acción es irreversible. Se borrarán el inventario, las listas
-              de la compra, los tickets, las recetas y los menús de{" "}
-              <strong>todos los miembros</strong>.
-            </DrawerDescription>
-          </DrawerHeader>
+      <ResponsiveModalContent>
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle className="flex items-center gap-2">
+            <TriangleAlert className="size-5 text-destructive" aria-hidden />
+            Eliminar «{householdName}»
+          </ResponsiveModalTitle>
+          <ResponsiveModalDescription>
+            Esta acción es irreversible. Se borrarán el inventario, las listas de
+            la compra, los tickets, las recetas y los menús de{" "}
+            <strong>todos los miembros</strong>.
+          </ResponsiveModalDescription>
+        </ResponsiveModalHeader>
 
-          <div className="flex flex-col gap-2 px-4">
-            <Label htmlFor="confirm-household-name">
-              Escribe «{householdName}» para confirmar
-            </Label>
-            <Input
-              id="confirm-household-name"
-              value={confirmName}
-              onChange={(e) => setConfirmName(e.target.value)}
-              autoComplete="off"
-              autoCapitalize="off"
-              placeholder={householdName}
-            />
-          </div>
-
-          <DrawerFooter className="gap-2">
-            <Button
-              variant="destructive"
-              onClick={confirm}
-              disabled={!matches || pending}
-            >
-              <Trash2 aria-hidden />
-              {pending ? "Eliminando…" : "Eliminar hogar definitivamente"}
-            </Button>
-            <DrawerClose asChild>
-              <Button type="button" variant="ghost">
-                Cancelar
-              </Button>
-            </DrawerClose>
-          </DrawerFooter>
+        <div className="flex flex-col gap-2 px-4">
+          <Label htmlFor="confirm-household-name">
+            Escribe «{householdName}» para confirmar
+          </Label>
+          <Input
+            id="confirm-household-name"
+            value={confirmName}
+            onChange={(e) => setConfirmName(e.target.value)}
+            autoComplete="off"
+            autoCapitalize="off"
+            placeholder={householdName}
+          />
         </div>
-      </DrawerContent>
-    </Drawer>
+
+        <ResponsiveModalFooter className="gap-2">
+          <Button
+            variant="destructive"
+            onClick={confirm}
+            disabled={!matches || pending}
+          >
+            <Trash2 aria-hidden />
+            {pending ? "Eliminando…" : "Eliminar hogar definitivamente"}
+          </Button>
+          <ResponsiveModalClose asChild>
+            <Button type="button" variant="ghost">
+              Cancelar
+            </Button>
+          </ResponsiveModalClose>
+        </ResponsiveModalFooter>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
   );
 }
