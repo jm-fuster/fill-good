@@ -47,7 +47,7 @@ export function RecipesList({
   }, [recipes, query, meal]);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 pb-fab">
       <div className="relative">
         <Search
           className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"

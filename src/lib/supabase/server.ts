@@ -4,6 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "./types";
+import { fetchWithJwtRetry } from "./jwt-retry";
 
 // Clave pública (segura en cliente). Supabase renombró la anon key a
 // "publishable key"; aceptamos ambos nombres según lo que copie el usuario.
@@ -32,6 +33,8 @@ export function createServerSupabaseClient() {
     async accessToken() {
       return (await auth()).getToken();
     },
+    // Reintenta rechazos PGRST303 ("JWT not yet valid") por desfase de reloj.
+    global: { fetch: fetchWithJwtRetry },
   });
 }
 

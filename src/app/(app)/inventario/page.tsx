@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Package, TrendingUp } from "lucide-react";
+import { LineChart, Package } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -44,7 +44,7 @@ export default async function InventarioPage({
         action={
           <Button asChild variant="outline" size="icon" aria-label="Ver precios">
             <Link href="/precios">
-              <TrendingUp aria-hidden />
+              <LineChart aria-hidden />
             </Link>
           </Button>
         }

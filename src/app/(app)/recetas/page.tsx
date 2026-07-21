@@ -5,6 +5,7 @@ import { BookOpen, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
+import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
 import { RecipesList } from "@/features/recipes/components/recipes-list";
 import {
@@ -31,13 +32,6 @@ export default async function RecetasPage() {
       <PageHeader
         title="Mis recetas"
         description="El recetario de tu hogar para planificar los menús."
-        action={
-          <Button asChild size="icon" aria-label="Nueva receta">
-            <Link href="/recetas/nueva">
-              <Plus aria-hidden />
-            </Link>
-          </Button>
-        }
       />
 
       <div className="mb-6">
@@ -60,6 +54,19 @@ export default async function RecetasPage() {
       ) : (
         <RecipesList recipes={recipes} signals={signals} />
       )}
+
+      <Fab>
+        <Button
+          asChild
+          size="icon"
+          aria-label="Nueva receta"
+          className={fabButtonClass}
+        >
+          <Link href="/recetas/nueva">
+            <Plus className="size-6" aria-hidden />
+          </Link>
+        </Button>
+      </Fab>
     </>
   );
 }

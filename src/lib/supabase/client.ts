@@ -5,6 +5,7 @@ import { useSession } from "@clerk/nextjs";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "./types";
+import { fetchWithJwtRetry } from "./jwt-retry";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_KEY = (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
@@ -21,6 +22,7 @@ export function useSupabaseBrowser(): SupabaseClient<Database> {
     () =>
       createClient<Database>(SUPABASE_URL, SUPABASE_KEY, {
         accessToken: async () => (await session?.getToken()) ?? null,
+        global: { fetch: fetchWithJwtRetry },
       }),
     [session],
   );

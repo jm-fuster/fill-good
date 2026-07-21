@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronRight, TrendingUp } from "lucide-react";
+import { ChevronRight, LineChart } from "lucide-react";
 
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
@@ -25,7 +25,7 @@ export default async function PreciosPage() {
 
       {rows.length === 0 ? (
         <EmptyState
-          icon={TrendingUp}
+          icon={LineChart}
           title="Sin historial de precios"
           description="Escanea tickets de la compra y aquí verás cómo evoluciona el precio de cada producto y dónde compras más barato."
         />
