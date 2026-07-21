@@ -142,6 +142,41 @@ export async function scanReceiptAction(
   return { receiptId: receipt.id, warnings: extraction.warnings ?? [] };
 }
 
+export type ProductAlias = { id: string; alias: string };
+
+/**
+ * Aliases aprendidos que apuntan a un producto (E8). Se cargan bajo demanda al
+ * abrir el drawer de edición. La RLS de `product_aliases` restringe al hogar.
+ */
+export async function getProductAliasesAction(
+  productId: string,
+): Promise<ProductAlias[]> {
+  const supabase = createServerSupabaseClient();
+  const { data } = await supabase
+    .from("product_aliases")
+    .select("id, alias")
+    .eq("product_id", productId)
+    .order("created_at", { ascending: true });
+  return (data ?? []).map((a) => ({ id: a.id, alias: a.alias }));
+}
+
+/**
+ * Borra un alias aprendido (E8). No toca historial de precios ni inventario:
+ * solo hace que el siguiente escaneo de esa línea vuelva a pedir decisión.
+ */
+export async function deleteAliasAction(
+  aliasId: string,
+): Promise<{ ok?: boolean; error?: string }> {
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase
+    .from("product_aliases")
+    .delete()
+    .eq("id", aliasId);
+  if (error) return { error: "No se pudo borrar el nombre." };
+  revalidatePath("/inventario");
+  return { ok: true };
+}
+
 export type ConfirmItemDecision = {
   itemId: string;
   description: string;

@@ -43,7 +43,7 @@ el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene ha
 - [x] E5 — "Mis habituales": pin de productos por usuario
 - [x] E6 — Matching difuso (candidatos con un toque) en el escaneo
 - [x] E7 — Sugerencia de producto por IA en la extracción (coste cero)
-- [ ] E8 — Gestión de aliases aprendidos
+- [x] E8 — Gestión de aliases aprendidos
 - [ ] E9 — Fusionar productos duplicados
 - [ ] E10 — Robustez transaccional de la confirmación del ticket (menor)
 
@@ -1252,9 +1252,21 @@ hay forma de verlo ni corregirlo salvo SQL a mano.
   escaneo de esa línea vuelva a pedir decisión.
 
 **Pasos**
-- [ ] Query de aliases por producto + `deleteAliasAction`.
-- [ ] Listado con borrado en el drawer de edición (targets ≥ 44px, `aria-label` en el botón ×).
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Query de aliases por producto + `deleteAliasAction`.
+- [x] Listado con borrado en el drawer de edición (targets ≥ 44px, `aria-label` en el botón ×).
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (E8):** sin migración. En `src/features/receipts/actions.ts`:
+> `getProductAliasesAction(productId)` (lectura bajo demanda; devuelve `{id, alias}[]`, ordenados por
+> antigüedad; la RLS de `product_aliases` restringe al hogar) y `deleteAliasAction(aliasId)` (borra +
+> `revalidatePath("/inventario")`; no toca historial de precios ni inventario). En
+> `src/features/inventory/components/edit-item-drawer.tsx`: al abrir el drawer se cargan los aliases del
+> producto (carga perezosa en `useEffect`, un fetch por apertura; cada tarjeta tiene su propia instancia
+> de drawer, así que el `productId` no cambia dentro de una instancia). Sección "Nombres en tickets"
+> (solo si hay aliases) con una nota aclaratoria y una lista donde cada alias tiene un botón × (`size="icon"`
+> = 44px, `aria-label` "Borrar el nombre «…»") que borra optimista y revierte si el server falla. Gestión
+> **mínima** (leer + borrar), no CRUD. `npx tsc --noEmit` y `npx eslint .` limpios. Verificación interactiva
+> limitada por Clerk (headless).
 
 **Criterios de aceptación**
 - Puedo ver que "GAZPACHO HACEND." apunta a "Gazpacho" y borrar esa asociación.

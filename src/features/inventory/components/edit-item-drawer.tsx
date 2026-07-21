@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Star, Trash2 } from "lucide-react";
+import { Star, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,11 @@ import {
   togglePinAction,
   updateInventoryAction,
 } from "../actions";
+import {
+  deleteAliasAction,
+  getProductAliasesAction,
+  type ProductAlias,
+} from "@/features/receipts/actions";
 
 const NO_CATEGORY = "__none__";
 
@@ -81,6 +86,33 @@ export function EditItemDrawer({
           : `${entry.productName} quitado de Mis habituales`,
       );
       router.refresh();
+    });
+  }
+
+  // Aliases aprendidos (E8): se recargan bajo demanda al abrir el drawer (cada
+  // tarjeta tiene su propio drawer, así que productId no cambia en una instancia).
+  const [aliases, setAliases] = useState<ProductAlias[]>([]);
+  const [removingAlias, startRemove] = useTransition();
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    getProductAliasesAction(entry.productId).then((rows) => {
+      if (active) setAliases(rows);
+    });
+    return () => {
+      active = false;
+    };
+  }, [open, entry.productId]);
+
+  function removeAlias(id: string) {
+    const prev = aliases;
+    setAliases((a) => a.filter((x) => x.id !== id));
+    startRemove(async () => {
+      const res = await deleteAliasAction(id);
+      if (res.error) {
+        toast.error(res.error);
+        setAliases(prev);
+      }
     });
   }
 
@@ -294,6 +326,38 @@ export function EditItemDrawer({
                 disabled={pinPending}
               />
             </div>
+
+            {aliases.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">Nombres en tickets</span>
+                <p className="text-sm text-muted-foreground">
+                  Cómo aparece en tus tickets. Bórralo si se asoció por error;
+                  no afecta a tu historial de precios.
+                </p>
+                <ul className="flex flex-col gap-1.5">
+                  {aliases.map((a) => (
+                    <li
+                      key={a.id}
+                      className="flex items-center justify-between gap-2 rounded-lg border py-1 pr-1 pl-3"
+                    >
+                      <span className="min-w-0 flex-1 truncate text-sm">
+                        {a.alias}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Borrar el nombre «${a.alias}»`}
+                        onClick={() => removeAlias(a.id)}
+                        disabled={removingAlias}
+                      >
+                        <X aria-hidden />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             {error ? (
               <p role="alert" className="text-sm text-destructive">
