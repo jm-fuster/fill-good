@@ -45,5 +45,23 @@ export default function manifest(): MetadataRoute.Manifest {
         icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
       },
     ],
+    // Compartir una foto/PDF de un ticket desde la galería directa al escaneo
+    // (M10b). El tipo MetadataRoute.Manifest de Next aún no incluye share_target,
+    // de ahí el cast; la forma sigue la spec del Web Share Target.
+    ...({
+      share_target: {
+        action: "/escanear/compartir",
+        method: "POST",
+        enctype: "multipart/form-data",
+        params: {
+          files: [
+            {
+              name: "file",
+              accept: ["image/jpeg", "image/png", "image/webp", "application/pdf"],
+            },
+          ],
+        },
+      },
+    } as object),
   };
 }
