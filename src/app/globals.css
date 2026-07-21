@@ -157,6 +157,15 @@
 @utility pb-safe-4 {
   padding-bottom: calc(env(safe-area-inset-bottom) + --spacing(4));
 }
+/* FAB flotante: 1rem por encima de la bottom nav (4rem) respetando el safe-area */
+@utility bottom-fab {
+  bottom: calc(env(safe-area-inset-bottom) + 4rem + --spacing(4));
+}
+/* Reserva al final de una lista con FAB: se suma a la del AppShell para que el
+   botón flotante nunca tape la última tarjeta (p. ej. sus controles de stock) */
+@utility pb-fab {
+  padding-bottom: calc(env(safe-area-inset-bottom) + --spacing(12));
+}
 
 @layer base {
   * {

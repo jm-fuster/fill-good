@@ -54,17 +54,11 @@ export default async function InventarioPage() {
         title="Inventario"
         description="Tu despensa, nevera y congelador."
         action={
-          <div className="flex items-center gap-2">
-            <Button asChild variant="outline" size="icon" aria-label="Ver precios">
-              <Link href="/precios">
-                <TrendingUp aria-hidden />
-              </Link>
-            </Button>
-            <AddProductDrawer
-              categories={categories}
-              productNames={productNames}
-            />
-          </div>
+          <Button asChild variant="outline" size="icon" aria-label="Ver precios">
+            <Link href="/precios">
+              <TrendingUp aria-hidden />
+            </Link>
+          </Button>
         }
       />
 
@@ -75,7 +69,7 @@ export default async function InventarioPage() {
           description="Pulsa el botón + para añadir tu primer producto, o escanea un ticket para llenar el inventario de golpe."
         />
       ) : (
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 pb-fab">
           {groups.map((group) => (
             <section key={group.location}>
               <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
@@ -96,6 +90,8 @@ export default async function InventarioPage() {
           ))}
         </div>
       )}
+
+      <AddProductDrawer categories={categories} productNames={productNames} />
     </>
   );
 }

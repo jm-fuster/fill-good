@@ -61,13 +61,19 @@ export function AddProductDrawer({
 
   return (
     <Drawer open={open} onOpenChange={setOpen}>
-      <Button
-        size="icon"
-        aria-label="Añadir producto"
-        onClick={() => setOpen(true)}
-      >
-        <Plus aria-hidden />
-      </Button>
+      {/* FAB: fijo abajo a la derecha, alineado a la columna de contenido
+          (max-w-lg, como la bottom nav). El wrapper no captura toques salvo
+          en el propio botón. */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-fab z-40 mx-auto flex max-w-lg justify-end px-4">
+        <Button
+          size="icon"
+          aria-label="Añadir producto"
+          onClick={() => setOpen(true)}
+          className="pointer-events-auto size-14 rounded-full shadow-lg active:scale-95"
+        >
+          <Plus className="size-6" aria-hidden />
+        </Button>
+      </div>
       <DrawerContent>
         <div className="mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto">
           <DrawerHeader>
