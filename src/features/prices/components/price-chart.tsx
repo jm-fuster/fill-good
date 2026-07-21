@@ -14,18 +14,7 @@ import {
 } from "@/components/ui/chart";
 import { UNIT_LABELS } from "@/lib/units";
 import type { PricePoint } from "../queries";
-
-export const CHAIN_LABELS: Record<string, string> = {
-  mercadona: "Mercadona",
-  carrefour: "Carrefour",
-  lidl: "Lidl",
-  dia: "Día",
-  alcampo: "Alcampo",
-  eroski: "Eroski",
-  consum: "Consum",
-  aldi: "Aldi",
-  otro: "Otros",
-};
+import { CHAIN_LABELS } from "../chains";
 
 // Orden fijo de colores categóricos (tokens del design system).
 const CHART_COLORS = [

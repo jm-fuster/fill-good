@@ -18,10 +18,6 @@ import {
   type StatusFilter,
 } from "../status";
 
-function isStatusFilter(v: string | null): v is StatusFilter {
-  return v !== null && STATUS_FILTERS.some((f) => f.key === v);
-}
-
 /**
  * Listado del inventario con buscador y chips de estado (E4). Filtra 100% en
  * cliente (los datos ya vienen del servidor); conserva las cabeceras de
@@ -239,5 +235,3 @@ export function InventoryList({
     </div>
   );
 }
-
-export { isStatusFilter };

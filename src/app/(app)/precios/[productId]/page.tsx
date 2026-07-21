@@ -5,10 +5,8 @@ import { ArrowLeft } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
-import {
-  CHAIN_LABELS,
-  PriceChart,
-} from "@/features/prices/components/price-chart";
+import { PriceChart } from "@/features/prices/components/price-chart";
+import { CHAIN_LABELS } from "@/features/prices/chains";
 import { getProductPriceHistory } from "@/features/prices/queries";
 import { UNIT_LABELS } from "@/lib/units";
 

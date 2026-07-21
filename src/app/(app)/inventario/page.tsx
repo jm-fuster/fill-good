@@ -6,10 +6,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { AddProductDrawer } from "@/features/inventory/components/add-product-drawer";
-import {
-  InventoryList,
-  isStatusFilter,
-} from "@/features/inventory/components/inventory-list";
+import { InventoryList } from "@/features/inventory/components/inventory-list";
+import { isStatusFilter } from "@/features/inventory/status";
 import {
   getCategories,
   getInventory,

@@ -26,6 +26,15 @@ export const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: "low", label: "Quedan pocas" },
 ];
 
+/**
+ * Type-guard para validar el parámetro `?estado=` de la URL. Vive aquí (módulo
+ * neutro, no cliente) para poder invocarse tanto desde el Server Component de la
+ * página como desde el listado en cliente sin cruzar la frontera "use client".
+ */
+export function isStatusFilter(v: string | null): v is StatusFilter {
+  return v !== null && STATUS_FILTERS.some((f) => f.key === v);
+}
+
 export function getInventoryStatus(fields: {
   quantity: number;
   expiryDate: string | null;
