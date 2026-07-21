@@ -31,7 +31,7 @@ ordenadas por prioridad; pueden hacerse en cualquier orden, pero D1 y D2 primero
 - [x] D3 — Mejorar "Añadir a la lista lo que falte" del menú (revisión + matching + stock real)
 - [x] D4 — Recetario como pestaña dentro de Menús
 - [ ] D5 — Compartir el menú semanal (imagen + Web Share, print CSS)
-- [ ] D6 — Hint de escaneo: sugerir PDF escaneado con la app nativa
+- [x] D6 — Hint de escaneo: sugerir PDF escaneado con la app nativa
 - [ ] D7 — Hint de caducidad: "la fecha del que caduque antes"
 
 ---
@@ -721,7 +721,13 @@ entre sí. D1 y D2 son las de mayor impacto; D6 y D7 son microcopys de una tarde
 - **Nada más.** No añadir OpenCV.js ni librerías de rectificación de imagen; no plantear wrapper nativo/TWA.
 
 **Pasos**
-- [ ] Añadir el hint en `scan-form.tsx` sin romper el layout móvil.
+- [x] Añadir el hint en `scan-form.tsx` sin romper el layout móvil.
+
+> **Nota de implementación (D6):** sin migración. En
+> `src/features/receipts/components/scan-form.tsx`, un `<p className="text-sm text-muted-foreground">`
+> bajo los dos botones ("Hacer foto al ticket" / "Subir imagen o PDF") con el texto sugerido. Al estar
+> dentro del bloque de botones (no del estado `pending`, que devuelve otro layout antes), no afecta al
+> spinner de análisis. Sin OpenCV.js ni wrappers nativos (fuera de alcance). `tsc`/`eslint` limpios.
 
 **Criterios de aceptación**
 - El hint es visible, discreto, en español, y no afecta al estado `pending` del formulario.

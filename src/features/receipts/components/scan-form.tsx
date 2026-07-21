@@ -91,6 +91,10 @@ export function ScanForm() {
         <Upload aria-hidden />
         Subir imagen o PDF
       </Button>
+      <p className="text-sm text-muted-foreground">
+        ¿Ticket largo o arrugado? Escanéalo con la app de tu móvil (Notas,
+        Google Drive…) y súbelo como PDF: la lectura será más precisa.
+      </p>
     </div>
   );
 }
