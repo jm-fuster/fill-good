@@ -58,7 +58,10 @@ export function PriceChart({
   const unitLabel = UNIT_LABELS[unit as keyof typeof UNIT_LABELS] ?? unit;
 
   return (
-    <ChartContainer config={config} className="aspect-[4/3] w-full">
+    <ChartContainer
+      config={config}
+      className="aspect-[4/3] w-full md:aspect-[2/1]"
+    >
       <LineChart data={data} margin={{ left: 4, right: 12, top: 8, bottom: 4 }}>
         <CartesianGrid vertical={false} strokeDasharray="3 3" />
         <XAxis

@@ -217,7 +217,7 @@ export function MenuView({
         {generating ? "Generando menú…" : "Generar menú con IA"}
       </Button>
 
-      <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 xl:grid-cols-3 print:!flex print:!flex-col">
         {days.map((date) => (
           <div key={date} className="rounded-xl border p-3">
             <p className="mb-2 text-sm font-semibold capitalize">

@@ -147,7 +147,7 @@ export function InventoryList({
         </div>
 
         <div
-          className="-mx-4 flex gap-2 overflow-x-auto px-4 no-scrollbar"
+          className="-mx-4 flex gap-2 overflow-x-auto px-4 no-scrollbar md:mx-0 md:flex-wrap md:overflow-visible md:px-0"
           role="group"
           aria-label="Filtrar por estado"
         >
@@ -197,7 +197,7 @@ export function InventoryList({
                 Mis habituales
                 <span className="font-normal">({pinnedItems.length})</span>
               </h2>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 md:grid md:grid-cols-2 md:gap-3 xl:grid-cols-3">
                 {pinnedItems.map((entry) => (
                   <InventoryItemCard
                     key={entry.id}
@@ -218,7 +218,7 @@ export function InventoryList({
                 {LOCATION_LABELS[group.location]}
                 <span className="font-normal">({group.items.length})</span>
               </h2>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 md:grid md:grid-cols-2 md:gap-3 xl:grid-cols-3">
                 {group.items.map((entry) => (
                   <InventoryItemCard
                     key={entry.id}

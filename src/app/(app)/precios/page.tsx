@@ -31,7 +31,7 @@ export default async function PreciosPage() {
           description="Escanea tickets de la compra y aquí verás cómo evoluciona el precio de cada producto y dónde compras más barato."
         />
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2">
           {rows.map((r) => (
             <Link
               key={r.productId}
