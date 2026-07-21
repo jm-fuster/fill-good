@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Pencil, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { Check, Pencil, Plus, ShoppingCart, Store, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -104,6 +105,15 @@ export function ShoppingListView({
               {editMode ? "Hecho" : "Editar"}
             </Button>
           </div>
+
+          {!editMode && pending.length > 0 ? (
+            <Button asChild variant="outline" size="lg" className="print:hidden">
+              <Link href="/lista/compra">
+                <Store aria-hidden />
+                Modo compra
+              </Link>
+            </Button>
+          ) : null}
 
           <div className="flex flex-col gap-1">
             {pending.map((item) => (

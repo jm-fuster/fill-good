@@ -4,6 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentHousehold } from "@/features/household/queries";
+import { getLatestUnitPrices } from "@/features/prices/queries";
+import { baseUnitFactor, unitFamily } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 
 export type ActiveList = { id: string; name: string };
@@ -95,6 +97,90 @@ export async function getActiveListProductIds(): Promise<Set<string>> {
       .map((i) => i.product_id)
       .filter((id): id is string => Boolean(id)),
   );
+}
+
+/** Ítem de la lista enriquecido para el modo compra (M4). */
+export type ShoppingModeItem = {
+  id: string;
+  name: string;
+  quantity: number | null;
+  unit: UnitType | null;
+  isChecked: boolean;
+  categoryName: string;
+  categoryIcon: string | null;
+  /** Orden de pasillo (sort_order de la categoría; sin categoría al final). */
+  categorySort: number;
+  /** Coste estimado de la línea (precio × cantidad) o null si no se conoce. */
+  lineCost: number | null;
+};
+
+type ShoppingModeRow = {
+  id: string;
+  name: string;
+  quantity: number | null;
+  unit: UnitType | null;
+  is_checked: boolean;
+  product_id: string | null;
+  product: {
+    category: {
+      name: string;
+      icon: string | null;
+      sort_order: number;
+    } | null;
+  } | null;
+};
+
+const NO_CATEGORY_SORT = 9_000;
+
+/**
+ * Ítems de la lista para el "Modo compra" (M4): con su categoría (para agrupar
+ * por pasillo con el sort_order existente) y el coste estimado de cada línea
+ * (último precio del producto × cantidad, solo dentro de la misma familia de
+ * unidad). Una sola pasada + el mapa de precios; sin N+1.
+ */
+export async function getShoppingModeItems(
+  listId: string,
+): Promise<ShoppingModeItem[]> {
+  const supabase = createServerSupabaseClient();
+  const [{ data, error }, prices] = await Promise.all([
+    supabase
+      .from("shopping_list_items")
+      .select(
+        "id, name, quantity, unit, is_checked, product_id, product:products(category:categories(name, icon, sort_order))",
+      )
+      .eq("list_id", listId)
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true }),
+    getLatestUnitPrices(),
+  ]);
+  if (error) throw error;
+
+  const rows = (data ?? []) as unknown as ShoppingModeRow[];
+  return rows.map((r) => {
+    const qty = r.quantity === null ? null : Number(r.quantity);
+    let lineCost: number | null = null;
+    const price = r.product_id ? prices.get(r.product_id) : undefined;
+    if (
+      price &&
+      qty !== null &&
+      r.unit !== null &&
+      unitFamily(price.unit) === unitFamily(r.unit)
+    ) {
+      lineCost =
+        (price.price / baseUnitFactor(price.unit)) * (qty * baseUnitFactor(r.unit));
+    }
+    return {
+      id: r.id,
+      name: r.name,
+      quantity: qty,
+      unit: r.unit,
+      isChecked: r.is_checked,
+      categoryName: r.product?.category?.name ?? "Otros",
+      categoryIcon: r.product?.category?.icon ?? null,
+      categorySort: r.product?.category?.sort_order ?? NO_CATEGORY_SORT,
+      lineCost,
+    };
+  });
 }
 
 export async function getListItems(listId: string): Promise<ListItem[]> {
