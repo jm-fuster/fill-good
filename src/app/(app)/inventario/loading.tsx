@@ -1,10 +1,11 @@
 import { LoadingStatus } from "@/components/layout/loading-status";
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function InventarioLoading() {
   return (
-    <>
+    <PageContainer variant="wide">
       <LoadingStatus />
       <PageHeader
         title="Inventario"
@@ -22,6 +23,6 @@ export default function InventarioLoading() {
           </div>
         ))}
       </div>
-    </>
+    </PageContainer>
   );
 }

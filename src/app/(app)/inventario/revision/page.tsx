@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ExpiryReview } from "@/features/inventory/components/expiry-review";
 import { getInventoryItemsByIds } from "@/features/inventory/queries";
@@ -23,12 +24,12 @@ export default async function RevisionPage({
   if (entries.length === 0) redirect("/inventario");
 
   return (
-    <>
+    <PageContainer variant="narrow">
       <PageHeader
         title="Revisar caducidades"
         description="Pon fecha a lo que acabas de comprar o márcalo para consumir pronto. Todo es opcional: puedes omitir."
       />
       <ExpiryReview entries={entries} />
-    </>
+    </PageContainer>
   );
 }

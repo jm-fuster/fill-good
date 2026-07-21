@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
 import { MenuView } from "@/features/menus/components/menu-view";
@@ -29,7 +30,7 @@ export default async function MenusPage({
   ]);
 
   return (
-    <>
+    <PageContainer variant="wide">
       <PageHeader
         title="Menús"
         description="Planifica la semana con lo que tienes en casa."
@@ -47,6 +48,6 @@ export default async function MenusPage({
           <MenuRules rules={rules} recipes={recipes} />
         </div>
       </div>
-    </>
+    </PageContainer>
   );
 }

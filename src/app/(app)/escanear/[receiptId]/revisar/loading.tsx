@@ -1,10 +1,11 @@
 import { LoadingStatus } from "@/components/layout/loading-status";
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function RevisarLoading() {
   return (
-    <>
+    <PageContainer variant="default">
       <LoadingStatus />
       <PageHeader
         title="Revisar ticket"
@@ -18,6 +19,6 @@ export default function RevisarLoading() {
           ))}
         </div>
       </div>
-    </>
+    </PageContainer>
   );
 }

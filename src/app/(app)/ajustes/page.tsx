@@ -4,6 +4,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
 import { ChevronRight, Palette } from "lucide-react";
 
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { HouseholdCard } from "@/features/household/components/household-card";
@@ -35,7 +36,7 @@ export default async function AjustesPage() {
   const members = household ? await getHouseholdMembers(household.id) : [];
 
   return (
-    <>
+    <PageContainer variant="default">
       <PageHeader title="Ajustes" description="Tu hogar y tus preferencias." />
       <div className="flex flex-col gap-4">
         <Card>
@@ -79,6 +80,6 @@ export default async function AjustesPage() {
           <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
         </Link>
       </div>
-    </>
+    </PageContainer>
   );
 }

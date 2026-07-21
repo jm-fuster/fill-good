@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ReceiptReview } from "@/features/receipts/components/receipt-review";
 import {
@@ -29,7 +30,7 @@ export default async function RevisarPage({
   const suggestions = await getReceiptSuggestions(items);
 
   return (
-    <>
+    <PageContainer variant="default">
       <PageHeader
         title="Revisar ticket"
         description="Ajusta lo que haga falta y confirma. Lo marcado pasará al inventario."
@@ -46,6 +47,6 @@ export default async function RevisarPage({
         }))}
         suggestions={suggestions}
       />
-    </>
+    </PageContainer>
   );
 }

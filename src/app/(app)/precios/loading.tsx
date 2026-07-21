@@ -1,10 +1,11 @@
 import { LoadingStatus } from "@/components/layout/loading-status";
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function PreciosLoading() {
   return (
-    <>
+    <PageContainer variant="default">
       <LoadingStatus />
       <PageHeader
         title="Precios"
@@ -15,6 +16,6 @@ export default function PreciosLoading() {
           <Skeleton key={row} className="h-14 w-full rounded-xl" />
         ))}
       </div>
-    </>
+    </PageContainer>
   );
 }

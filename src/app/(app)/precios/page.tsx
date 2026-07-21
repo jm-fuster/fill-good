@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ChevronRight, LineChart } from "lucide-react";
 
 import { EmptyState } from "@/components/layout/empty-state";
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { getPriceOverview } from "@/features/prices/queries";
 import { UNIT_LABELS } from "@/lib/units";
@@ -17,7 +18,7 @@ export default async function PreciosPage() {
   const rows = await getPriceOverview();
 
   return (
-    <>
+    <PageContainer variant="default">
       <PageHeader
         title="Precios"
         description="Evolución de precios de lo que compras."
@@ -61,6 +62,6 @@ export default async function PreciosPage() {
           ))}
         </div>
       )}
-    </>
+    </PageContainer>
   );
 }

@@ -1,9 +1,10 @@
 import { LoadingStatus } from "@/components/layout/loading-status";
+import { PageContainer } from "@/components/layout/page-container";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function PrecioDetalleLoading() {
   return (
-    <div>
+    <PageContainer variant="wide">
       <LoadingStatus />
       <div aria-hidden>
         <Skeleton className="mb-2 h-5 w-24" />
@@ -23,6 +24,6 @@ export default function PrecioDetalleLoading() {
           </div>
         </div>
       </div>
-    </div>
+    </PageContainer>
   );
 }

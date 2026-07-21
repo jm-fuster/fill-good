@@ -4,6 +4,7 @@ import { LineChart, Package } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { AddProductDrawer } from "@/features/inventory/components/add-product-drawer";
 import { InventoryList } from "@/features/inventory/components/inventory-list";
@@ -42,7 +43,7 @@ export default async function InventarioPage({
   const starterGroups = entries.length === 0 ? await getStarterCatalog() : [];
 
   return (
-    <>
+    <PageContainer variant="wide">
       <PageHeader
         title="Inventario"
         description="Tu despensa, nevera y congelador."
@@ -77,6 +78,6 @@ export default async function InventarioPage({
       )}
 
       <AddProductDrawer categories={categories} productNames={productNames} />
-    </>
+    </PageContainer>
   );
 }
