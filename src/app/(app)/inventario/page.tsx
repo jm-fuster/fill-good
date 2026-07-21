@@ -13,6 +13,7 @@ import {
   getProducts,
   type InventoryEntry,
 } from "@/features/inventory/queries";
+import { getActiveListProductIds } from "@/features/shopping-list/queries";
 import { getExpiryStatus } from "@/lib/dates";
 import { LOCATION_ICONS, LOCATION_LABELS, LOCATION_ORDER } from "@/lib/units";
 
@@ -20,9 +21,11 @@ export const metadata: Metadata = { title: "Inventario" };
 
 /**
  * Prioridad de atención dentro de cada ubicación: primero lo caducado, luego lo
- * que caduca pronto o está marcado "consumir pronto", después el resto.
+ * que caduca pronto o está marcado "consumir pronto", después el resto y, al
+ * final, lo agotado (queda accionable con "Añadir a la lista", pero no urge).
  */
 function urgencyRank(entry: InventoryEntry): number {
+  if (entry.quantity === 0) return 3;
   const expiry = getExpiryStatus(entry.expiryDate);
   if (expiry?.status === "expired") return 0;
   if (expiry?.status === "soon" || entry.useSoon) return 1;
@@ -30,10 +33,11 @@ function urgencyRank(entry: InventoryEntry): number {
 }
 
 export default async function InventarioPage() {
-  const [entries, categories, products] = await Promise.all([
+  const [entries, categories, products, onListProductIds] = await Promise.all([
     getInventory(),
     getCategories(),
     getProducts(),
+    getActiveListProductIds(),
   ]);
   const productNames = products.map((p) => p.name);
 
@@ -83,6 +87,7 @@ export default async function InventarioPage() {
                     key={entry.id}
                     entry={entry}
                     categories={categories}
+                    onList={onListProductIds.has(entry.productId)}
                   />
                 ))}
               </div>

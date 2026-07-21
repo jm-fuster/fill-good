@@ -4,6 +4,8 @@ Documento de trabajo para implementar las próximas mejoras **progresivamente co
 Cada tarea es autocontenida: incluye contexto, diseño propuesto, pasos y criterios de aceptación.
 Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son secuenciales
 (A = mejoras rápidas independientes, B = recetario, C = generador de menús 2.0, que depende de B).
+El bloque D (revisión de producto del 2026-07-21) contiene tareas **independientes entre sí**,
+ordenadas por prioridad; pueden hacerse en cualquier orden, pero D1 y D2 primero.
 
 ## Instrucciones para el agente (leer antes de cada tarea)
 
@@ -24,6 +26,13 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - [x] C1 — Varios platos por comida/cena
 - [x] C2 — Reglas del menú
 - [x] C3 — Generador de menús 2.0 (integra recetario, gustos, temporada, reglas y stock)
+- [ ] D1 — Gobernanza del hogar: transferir propiedad y eliminar hogar
+- [x] D2 — Estado "Agotado" visible + añadir a la lista de un toque
+- [ ] D3 — Mejorar "Añadir a la lista lo que falte" del menú (revisión + matching + stock real)
+- [ ] D4 — Recetario como pestaña dentro de Menús
+- [ ] D5 — Compartir el menú semanal (imagen + Web Share, print CSS)
+- [ ] D6 — Hint de escaneo: sugerir PDF escaneado con la app nativa
+- [ ] D7 — Hint de caducidad: "la fecha del que caduque antes"
 
 ---
 
@@ -467,6 +476,219 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 
 ---
 
+## Bloque D — Revisión de producto (2026-07-21)
+
+Tareas surgidas de una revisión de producto sobre la app ya funcional. Independientes
+entre sí. D1 y D2 son las de mayor impacto; D6 y D7 son microcopys de una tarde.
+
+### D1 — Gobernanza del hogar: transferir propiedad y eliminar hogar
+
+**Idea original:** ¿puede el propietario de un hogar eliminarlo o pasar la propiedad a otro miembro? (Respuesta: hoy no, y es un hueco real.)
+
+**Contexto actual**
+- El enum `member_role` (`'owner' | 'member'`) existe desde `supabase/migrations/20260719113713_init.sql`, pero **ninguna política RLS ni RPC lo usa**: toda la autorización es "member-based".
+- No hay RPC de transferir propiedad ni de eliminar hogar, y no existe política de DELETE sobre `households` → un hogar cuyo último miembro se va queda huérfano en la BD para siempre.
+- `leaveHouseholdAction` (`src/features/household/actions.ts`, ~línea 88) permite que el owner abandone sin más, dejando el hogar sin propietario. **Bug adicional:** el delete filtra solo por `user_id`, sin `household_id` — si algún día hay multi-hogar, sacaría al usuario de todos sus hogares a la vez.
+
+**Diseño propuesto**
+- **Migración** `household_governance`:
+  - Helper `is_household_owner(hid uuid)` análogo a `is_household_member` (security definer).
+  - RPC `transfer_household_ownership(p_household_id uuid, p_new_owner_user_id text)`: solo el owner actual; valida que el destinatario es miembro; en la misma transacción pone al destinatario como `owner` y al anterior como `member`.
+  - RPC `delete_household(p_household_id uuid)`: solo el owner; `delete from households` (los `on delete cascade` existentes limpian el resto).
+  - RPC `leave_household(p_household_id uuid)` que encapsula las reglas en SQL (la garantía fuerte debe estar en la BD, no solo en la UI): un `member` sale sin más; el `owner` **no puede salir** si quedan otros miembros (excepción `owner_must_transfer`); si es el último miembro, salir = eliminar el hogar completo.
+  - Patrón de permisos de la migración init: `revoke execute … from public, anon; grant execute … to authenticated;`.
+- **Server Actions** en `src/features/household/actions.ts`: `transferOwnershipAction`, `deleteHouseholdAction`, y reescribir `leaveHouseholdAction` para llamar al RPC `leave_household` (corrigiendo de paso el filtro por hogar). Mensajes de error en español para `owner_must_transfer`.
+- **Queries:** exponer el rol del usuario actual (añadir `role` a lo que devuelve `getCurrentHousehold` o una query nueva en `src/features/household/queries.ts`), y una query de miembros del hogar (id de usuario + display_name) para el selector.
+- **UI en Ajustes** (`src/app/(app)/ajustes/page.tsx` / `household-card.tsx`), visible solo para el owner:
+  - "Transferir propiedad": drawer con selector de miembro + confirmación.
+  - "Eliminar hogar": confirmación destructiva (escribir el nombre del hogar o `AlertDialog` con aviso claro de que borra inventario, listas, recetas y menús de todos); botón `variant="destructive"`.
+  - Para un `member`, "Abandonar hogar" sigue como está; para el owner con más miembros, el botón de abandonar explica que antes debe transferir.
+
+**Pasos**
+- [ ] Migración (`is_household_owner` + 3 RPCs + revoke/grant) — pedir autorización antes de `npx supabase db push`.
+- [ ] Regenerar/actualizar tipos (`src/lib/supabase/types.ts`, se mantienen a mano).
+- [ ] Server Actions + rol del usuario y miembros en queries.
+- [ ] UI de Ajustes (transferir + eliminar, solo owner) con confirmaciones.
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Un `member` que invoque los RPCs directamente recibe excepción de SQL (no basta con ocultar la UI).
+- El owner con más miembros no puede abandonar; tras transferir, sí (y el nuevo owner ve los controles).
+- El último miembro que abandona elimina el hogar sin dejar filas huérfanas.
+- Eliminar hogar pide confirmación explícita y redirige a `/onboarding`.
+
+---
+
+### D2 — Estado "Agotado" visible + añadir a la lista de un toque
+
+**Idea original:** al quedar un artículo a 0, ¿debería ser más visualmente reconocible? (Sí: hoy es casi invisible.)
+
+**Contexto actual**
+- En `src/features/inventory/components/inventory-item-card.tsx` (~línea 82), con `qty === 0` solo cambia el texto de cantidad a "Agotado" en `text-muted-foreground` — el mismo gris que una cantidad normal. Comparado con los badges de caducidad o "Quedan pocas", el estado más accionable es el que menos destaca.
+- Las sugerencias de la lista (`src/features/shopping-list/queries.ts`, ~línea 100) solo cubren productos **con `min_quantity` definida**; un producto a 0 sin mínimo no se sugiere en ningún sitio.
+- Semántica de color del proyecto: `destructive` está reservado a caducado/eliminar; para agotado usar `warning` o un neutro fuerte (decidir mirando `/styleguide`).
+
+**Diseño propuesto**
+- Cuando `qty === 0` en la tarjeta de inventario:
+  - Badge "Agotado" con el mismo patrón visual que los badges existentes en la tarjeta (p. ej. `bg-warning/15 text-warning` o neutro `bg-muted text-foreground` con borde).
+  - Rebajar el énfasis del resto de la tarjeta (p. ej. opacidad en icono y nombre), manteniendo contraste AA en badge y botones.
+  - Acción de un toque **"Añadir a la lista"** en la tarjeta: reutilizar la Server Action existente de `src/features/shopping-list/actions.ts` que añade un producto del catálogo a la lista (la usa el autocompletado de A2) — **no duplicar lógica**. Si el producto ya está en la lista activa, mostrar el estado ("En la lista", deshabilitado) en vez del botón; feedback con toast.
+- Opcional (solo si no complica el código): ordenar los agotados al final de cada categoría en `src/features/inventory/queries.ts`.
+
+**Pasos**
+- [x] Badge "Agotado" + bajada de énfasis en `inventory-item-card.tsx` (tokens semánticos, nada inline).
+- [x] Botón/acción "Añadir a la lista" con estado "ya en la lista" (pasar desde el server la info de qué productos están en la lista activa, o exponer una query ligera).
+- [x] (Opcional) agotados al final de cada categoría.
+- [ ] Verificar en preview móvil: touch target ≥ 44px, contraste en ambos temas. — PENDIENTE de verificación manual (requiere sesión Clerk; no verificable en headless). Garantías a nivel de código: botón "Añadir a la lista" y estado "En la lista" con `h-11` (44px), solo tokens semánticos (`warning`, `success`, `muted-foreground`) ya usados en la tarjeta.
+
+> **Nota de implementación (D2):** sin migración (reutiliza `addProductToListAction` de A2 y las
+> columnas existentes). En `src/features/inventory/components/inventory-item-card.tsx`: nueva prop
+> `onList?: boolean`; con `qty === 0` la tarjeta muestra un badge "Agotado" (`bg-warning/15 text-warning`,
+> mismo patrón que los demás badges), rebaja el énfasis del icono (`opacity-50`) y del nombre
+> (`text-muted-foreground`), y añade una fila inferior (`border-t`) con acción de un toque: botón
+> "Añadir a la lista" (`variant="outline"`, `h-11`, icono `ShoppingCart`) que llama a
+> `addProductToListAction(entry.productId)` con `useTransition` + toast; si el producto ya está en la
+> lista (prop `onList` del server) o se acaba de añadir (estado local `addedToList`), se muestra el
+> estado "En la lista" (icono `Check`, `text-success`, no interactivo) en vez del botón — evita
+> duplicados. En `src/features/shopping-list/queries.ts`: nueva `getActiveListProductIds()` (solo
+> lectura, devuelve `Set<string>` de `product_id` en la lista activa; no crea lista como
+> `getActiveList`). En `src/app/(app)/inventario/page.tsx`: carga `getActiveListProductIds()` en
+> paralelo y pasa `onList={onListProductIds.has(entry.productId)}` a cada tarjeta; `urgencyRank`
+> manda los agotados (`quantity === 0`) al final de cada ubicación (rank 3). `npx tsc --noEmit` y
+> `npx eslint .` limpios. Dev server arranca sin errores; `/inventario` redirige al login de Clerk
+> (límite headless conocido), la UI autenticada queda para verificación manual.
+
+**Criterios de aceptación**
+- Un artículo a 0 se distingue de un vistazo en el listado (badge, no solo texto gris).
+- "Añadir a la lista" funciona con un toque, aparece en `/lista` vinculado al producto (con su unidad y ubicación por defecto), y no crea duplicados si se pulsa dos veces.
+- Sin colores inventados; AA en claro y oscuro.
+
+---
+
+### D3 — Mejorar "Añadir a la lista lo que falte" del menú (revisión + matching + stock real)
+
+**Idea original:** ¿tiene sentido generar la lista de la compra con IA? (Respuesta: no hace falta IA — es aritmética de conjuntos; lo que falta es precisión y control.)
+
+**Contexto actual**
+- **Ya existe** `addMissingToListAction` (`src/features/menus/actions.ts`, ~línea 501): recorre las recetas del menú, deduplica ingredientes por nombre normalizado, descarta los que están en inventario o en la lista, e inserta el resto. Carencias concretas:
+  1. **Cuenta como "en stock" productos a cantidad 0**: `inStock` se construye con todas las filas de inventario sin mirar `quantity` → un ingrediente que tienes agotado NO se añade a la lista.
+  2. **Matching solo por nombre exacto normalizado**: "tomate frito" (receta) no casa con "Tomate frito Orlando" (catálogo) → se añade como duplicado conceptual. Ignora además el `product_id` que `recipe_ingredients` ya tiene (B1 lo vincula al guardar).
+  3. **Inserta sin paso de revisión**: el usuario no puede desmarcar nada.
+  4. **Inserta sin vincular al catálogo** (solo `name` + `unit`): el checkout no puede enviar el producto a su ubicación por defecto.
+- La extensión `pg_trgm` está habilitada desde la migración init; `products.normalized_name` existe.
+
+**Diseño propuesto**
+- **Matching en tres niveles** al calcular faltantes: (1) `recipe_ingredients.product_id` si existe → comparar contra el stock real de ese producto (`quantity > 0`); (2) nombre normalizado exacto contra `products.normalized_name`; (3) fuzzy con `pg_trgm` vía un RPC `match_product(p_household_id, p_name text)` (o función SQL equivalente) usando `similarity()` sobre `normalized_name`, umbral orientativo 0.4 — ajustar probando. Sin IA; si el trigram no basta, dejar un `TODO` en el código proponiendo Gemini vía `getModel`, pero **no implementarlo** (restricción: cero gasto en IA).
+- **Corregir el bug de stock**: "en stock" = suma de `quantity` de las filas de inventario del producto `> 0`.
+- **Paso de revisión** antes de insertar (mismo patrón que `receipt-review.tsx`): lista con checkboxes (todo marcado por defecto), mostrando por fila el ingrediente, el producto del catálogo al que ha casado (si hay) y si viene sin match (texto libre). El usuario desmarca lo que no quiere y confirma. Puede ser un drawer sobre `/menus` o una página de revisión.
+- **Insertar vinculado**: cuando hay match, insertar el ítem de lista con la referencia al producto (verificar el esquema de `shopping_list_items` en `supabase/migrations/20260719131524_shopping_list.sql`; reutilizar la acción de A2 que añade producto del catálogo si encaja).
+
+**Pasos**
+- [ ] RPC/función SQL de matching trigram (migración pequeña; pedir autorización para `db push`) o, si se prefiere sin migración, matching en servidor cargando el catálogo ligero y usando una similitud en TS — decidir y documentar.
+- [ ] Refactor de `addMissingToListAction` en dos fases: `computeMissingIngredients` (cálculo, testeable) + acción de confirmación que recibe la selección.
+- [ ] UI de revisión con checkboxes (patrón `receipt-review`).
+- [ ] Corregir el filtro de stock (`quantity > 0`) y vincular ítems insertados al catálogo.
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Con "Leche" a 0 en inventario y una receta con leche, el ingrediente SÍ aparece como faltante.
+- "Tomate frito" de una receta casa con "Tomate frito Orlando" del catálogo (no se crea duplicado).
+- El usuario puede desmarcar ingredientes antes de insertar; los sin match aparecen señalados como texto libre.
+- No se duplican ítems ya presentes en la lista; los vinculados van a su ubicación por defecto al finalizar la compra.
+
+---
+
+### D4 — Recetario como pestaña dentro de Menús
+
+**Idea original:** ¿tiene sentido que las recetas se encuentren en Menú? (Sí: son el *input* de los menús y la bottom nav está completa.)
+
+**Contexto actual**
+- La bottom nav tiene 5 pestañas (`src/components/layout/bottom-nav.tsx`) sin hueco para Recetas. B1 añadió un enlace "Mis recetas" en la cabecera de `/menus`, pero es poco descubrible.
+- Navegando por `/recetas*`, **ninguna pestaña aparece activa** (la lógica es `pathname === href || pathname.startsWith(href + "/")` y `/recetas` no cuelga de `/menus`).
+
+**Diseño propuesto**
+- Conmutador segmentado en la cabecera de `/menus`: **"Semana" | "Recetario"** (usar `Tabs` de shadcn o un segmented control accesible; targets ≥ 44px). "Semana" = vista actual; "Recetario" navega a `/recetas` (no hace falta mover rutas; lo importante es el punto de entrada). En `/recetas`, mostrar el mismo conmutador con "Recetario" activo para volver a "Semana" con un toque.
+- En `bottom-nav.tsx`, hacer que la pestaña Menús quede activa también en rutas `/recetas*` (p. ej. añadiendo `matchPrefixes?: string[]` a la definición de tab).
+- Retirar el enlace suelto "Mis recetas" si queda redundante; comprobar que no quedan enlaces rotos a `/recetas` desde otras vistas.
+
+**Pasos**
+- [ ] Conmutador Semana/Recetario en `/menus` y `/recetas` (componente compartido).
+- [ ] Estado activo de la pestaña Menús en `/recetas*`.
+- [ ] Limpieza de enlaces redundantes; verificación en preview móvil.
+
+**Criterios de aceptación**
+- Desde la pestaña Menús se llega al recetario en un toque y se vuelve igual de rápido.
+- La pestaña Menús de la bottom nav aparece activa navegando por `/recetas`, `/recetas/nueva` y `/recetas/[id]`.
+
+---
+
+### D5 — Compartir el menú semanal (imagen + Web Share, print CSS)
+
+**Idea original:** cuando se haga un menú semanal, ¿debería poderse compartir vía PDF/imagen? (Sí: es el típico artefacto que se manda al grupo familiar.)
+
+**Contexto actual**
+- No existe ninguna vía de exportar/compartir el menú. La vista vive en `src/features/menus/components/menu-view.tsx` (página `/menus`).
+
+**Diseño propuesto**
+- **Imagen (vía principal, mobile-first):** route handler dedicado (p. ej. `src/app/api/menus/[menuId]/imagen/route.tsx`) que renderice la semana con `ImageResponse` de `next/og`: días, comidas/cenas con sus platos, nombre del hogar y logo. Estilo coherente con la marca (colores fijos claros están bien para una imagen compartida; consultar la guía de Next 16 en `node_modules/next/dist/docs/` para `ImageResponse` en route handlers).
+  - **Autorización obligatoria:** validar sesión de Clerk y pertenencia al hogar antes de renderizar (patrón de `src/lib/supabase/server.ts`). Nada de URLs públicas adivinables.
+- Botón "Compartir" en `/menus`: `fetch` de esa ruta → `blob` → `navigator.share({ files: [File] })` si `navigator.canShare` lo admite; fallback a descarga directa (desktop).
+- **PDF (barato):** hoja `@media print` para la vista del menú (ocultar bottom nav, FABs, botones y drawers; tipografía legible en A4, una semana por página) + opción "Imprimir o guardar PDF" que llame a `window.print()`.
+
+**Pasos**
+- [ ] Route handler de imagen con `ImageResponse` + validación de sesión/hogar.
+- [ ] Botón "Compartir" con Web Share API + fallback de descarga.
+- [ ] Estilos `@media print` + opción de imprimir.
+- [ ] Verificar en preview: imagen correcta, 401/404 sin sesión, print limpio.
+
+**Criterios de aceptación**
+- En móvil, "Compartir" abre la hoja nativa con la imagen del menú de la semana visible.
+- Un usuario de otro hogar (o sin sesión) recibe 401/404 al pedir la imagen por URL.
+- `window.print()` produce una página limpia, sin navegación ni controles.
+
+---
+
+### D6 — Hint de escaneo: sugerir PDF escaneado con la app nativa
+
+**Idea original:** ¿el escaneo de tickets podría usar el modo "escanear documento" del teléfono? (No directamente: es API nativa —ML Kit/VisionKit— no expuesta a una PWA; pero el flujo de subir PDF ya existe y lo aprovecha.)
+
+**Contexto actual**
+- `src/features/receipts/components/scan-form.tsx`: el botón de cámara usa `<input capture="environment">` (cámara normal); el segundo botón ya acepta `application/pdf`.
+
+**Diseño propuesto**
+- Bajo los dos botones de `/escanear`, texto de ayuda breve en `text-muted-foreground`:
+  *"¿Ticket largo o arrugado? Escanéalo con la app de tu móvil (Notas, Google Drive…) y súbelo como PDF: la lectura será más precisa."*
+- **Nada más.** No añadir OpenCV.js ni librerías de rectificación de imagen; no plantear wrapper nativo/TWA.
+
+**Pasos**
+- [ ] Añadir el hint en `scan-form.tsx` sin romper el layout móvil.
+
+**Criterios de aceptación**
+- El hint es visible, discreto, en español, y no afecta al estado `pending` del formulario.
+
+---
+
+### D7 — Hint de caducidad: "la fecha del que caduque antes"
+
+**Idea original:** las fechas de caducidad van asociadas al artículo, pero puedo tener varios bricks de leche con fechas distintas. (Decisión: NO se hace seguimiento por lotes — ver comentario en `supabase/migrations/20260719121808_inventory.sql` líneas 6–9; la convención es registrar la fecha del envase que caduque antes y actualizarla al consumirlo.)
+
+**Contexto actual**
+- El campo de caducidad se edita en `src/features/inventory/components/edit-item-drawer.tsx`, en el alta (`add-product-drawer.tsx`) y en la revisión post-compra (`src/features/inventory/components/expiry-review.tsx`). Ninguno explica qué fecha poner cuando hay varios envases.
+
+**Diseño propuesto**
+- Texto de ayuda bajo el campo de fecha en los tres formularios:
+  *"Si tienes varios, pon la fecha del que caduque antes."*
+  (patrón de hint: texto pequeño `text-muted-foreground` bajo el input, label visible siempre — nunca placeholder-only).
+- **No** implementar tabla de lotes ni tocar el esquema.
+
+**Pasos**
+- [ ] Hint en `edit-item-drawer.tsx`, `add-product-drawer.tsx` y `expiry-review.tsx` (si este último tiene campo de fecha por fila, basta una línea general sobre la lista).
+
+**Criterios de aceptación**
+- El hint aparece junto al campo de fecha en los tres puntos, con estilos de token y sin romper el layout del drawer.
+
+---
+
 ## Notas de alcance (decisiones tomadas)
 
 - **Desayunos:** la BD admite `breakfast` pero la UI de menús solo usa comida/cena; se mantiene así en todas estas tareas.
@@ -474,3 +696,30 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 - **Valoraciones por miembro** (no por hogar): "cuánto te gusta" es personal; el generador usa la media del hogar.
 - **Apetencia** se deriva del uso real (planificada/cocinada/recencia), no se pide al usuario un segundo rating.
 - **Reglas MVP:** frecuencia por receta + texto libre. Reglas por categoría ("legumbres 2×/semana") quedan fuera por ahora; el modelo de tabla (`kind`) permite añadirlas luego.
+- **Sin IA para la lista de la compra** (D3): el cálculo determinista + matching trigram cubre el caso; Gemini solo como fallback futuro y únicamente si el usuario lo pide (cero gasto en IA).
+- **Sin seguimiento de caducidad por lotes** (D7): una `expiry_date` por (producto, ubicación); la convención es "la fecha del que caduque antes". Reevaluar solo si el usuario lo pide (ampliación natural: tabla hija `inventory_lots` con FIFO).
+- **Sin rectificación de imagen en cliente ni wrapper nativo** para el escaneo (D6): el modo "escanear documento" del teléfono no es accesible desde una PWA; el flujo de subir PDF nativo lo cubre y Gemini Vision es robusto con fotos sin rectificar.
+
+---
+
+> **Prompt para el siguiente agente (Bloque D):**
+>
+> ```
+> Continúa con el proyecto Fill Good (C:\Users\Jorge\Desktop\Food). Lee primero AGENTS.md
+> (sistema de diseño: solo tokens semánticos, touch targets ≥44px, drawers en móvil, UI en
+> español) y las "Instrucciones para el agente" al inicio de TODO.md. Los bloques A, B y C
+> están terminados; implementa el Bloque D, tarea a tarea y con un commit por tarea,
+> empezando por D1 y D2 (el resto en cualquier orden).
+>
+> Estado de la BD: proyecto Supabase enlazado por CLI (supabase/.temp/linked-project.json).
+> Verifica el estado con `npx supabase migration list --linked` (solo lectura). Las
+> migraciones nuevas (D1 seguro; D3 según diseño) requieren AUTORIZACIÓN del usuario antes
+> de `npx supabase db push`. Los tipos en src/lib/supabase/types.ts se mantienen a mano.
+>
+> Cada tarea del Bloque D en TODO.md es autocontenida (contexto con rutas de archivo,
+> diseño propuesto, pasos y criterios de aceptación). No amplíes el alcance: lo descartado
+> está en "Notas de alcance". Al terminar cada tarea: `npx tsc --noEmit` y `npx eslint .`
+> limpios, verificar los criterios en el preview cuando sea posible (hay límite conocido:
+> login de Clerk no verificable en headless), marcar sus checkboxes y el estado global, y
+> dejar una "Nota de implementación" bajo la tarea siguiendo el formato de las de A–C.
+> ```

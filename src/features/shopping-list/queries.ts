@@ -64,6 +64,34 @@ export async function getActiveList(): Promise<ActiveList | null> {
   return data ? { id: data.id, name: data.name } : null;
 }
 
+/**
+ * Ids de producto del catálogo presentes en la lista activa. Se usa para mostrar
+ * el estado "En la lista" en el inventario sin duplicar ítems. Solo lee (no crea
+ * lista activa como `getActiveList`): si no hay lista, no hay nada que marcar.
+ */
+export async function getActiveListProductIds(): Promise<Set<string>> {
+  const supabase = createServerSupabaseClient();
+  const { data: list } = await supabase
+    .from("shopping_lists")
+    .select("id")
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!list) return new Set();
+
+  const { data } = await supabase
+    .from("shopping_list_items")
+    .select("product_id")
+    .eq("list_id", list.id)
+    .not("product_id", "is", null);
+  return new Set(
+    (data ?? [])
+      .map((i) => i.product_id)
+      .filter((id): id is string => Boolean(id)),
+  );
+}
+
 export async function getListItems(listId: string): Promise<ListItem[]> {
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
