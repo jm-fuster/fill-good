@@ -2,29 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  CalendarDays,
-  Package,
-  ScanLine,
-  Settings,
-  ShoppingCart,
-} from "lucide-react";
 
 import { cn } from "@/lib/utils";
-
-const tabs = [
-  { href: "/inventario", label: "Inventario", icon: Package },
-  { href: "/lista", label: "Lista", icon: ShoppingCart },
-  { href: "/escanear", label: "Escanear", icon: ScanLine, primary: true },
-  // El recetario vive bajo Menús: la pestaña se mantiene activa en /recetas*.
-  {
-    href: "/menus",
-    label: "Menús",
-    icon: CalendarDays,
-    matchPrefixes: ["/recetas"],
-  },
-  { href: "/ajustes", label: "Ajustes", icon: Settings },
-] as const;
+import { isNavItemActive, NAV_ITEMS } from "@/components/layout/nav-items";
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -32,21 +12,14 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Navegación principal"
-      className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 backdrop-blur-sm pb-safe"
+      className="fixed inset-x-0 bottom-0 z-50 border-t bg-background/95 backdrop-blur-sm pb-safe md:hidden"
     >
       <ul className="mx-auto grid h-16 max-w-lg grid-cols-5">
-        {tabs.map((tab) => {
-          const isActive =
-            pathname === tab.href ||
-            pathname.startsWith(`${tab.href}/`) ||
-            ("matchPrefixes" in tab &&
-              tab.matchPrefixes.some(
-                (prefix) =>
-                  pathname === prefix || pathname.startsWith(`${prefix}/`),
-              ));
+        {NAV_ITEMS.map((tab) => {
+          const isActive = isNavItemActive(tab, pathname);
           const Icon = tab.icon;
 
-          if ("primary" in tab && tab.primary) {
+          if (tab.primary) {
             return (
               <li key={tab.href} className="relative flex justify-center">
                 <Link
