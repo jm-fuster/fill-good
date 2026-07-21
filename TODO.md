@@ -44,7 +44,7 @@ el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene ha
 - [x] E6 — Matching difuso (candidatos con un toque) en el escaneo
 - [x] E7 — Sugerencia de producto por IA en la extracción (coste cero)
 - [x] E8 — Gestión de aliases aprendidos
-- [ ] E9 — Fusionar productos duplicados
+- [x] E9 — Fusionar productos duplicados
 - [ ] E10 — Robustez transaccional de la confirmación del ticket (menor)
 
 ---
@@ -1305,9 +1305,32 @@ es valiosa, no solo limpieza.
 - Migración con el RPC: pedir autorización antes de `npx supabase db push`; tipos a mano.
 
 **Pasos**
-- [ ] Migración con `merge_products` (+ guardas, revoke/grant patrón D1).
-- [ ] `mergeProductsAction` + UI en el drawer de edición con confirmación destructiva.
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Migración con `merge_products` (+ guardas, revoke/grant patrón D1) — aplicada al remoto.
+- [x] `mergeProductsAction` + UI en el drawer de edición con confirmación destructiva.
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (E9):** migración `supabase/migrations/20260721160000_merge_products.sql`
+> — RPC `merge_products(p_source, p_target)` plpgsql `security definer` (patrón de D1: `clerk_user_id()`
+> + `is_household_member`, `revoke … from public, anon` / `grant … to authenticated`). Guardas:
+> autenticado, `source <> target`, ambos productos existen, mismo hogar y el llamante es miembro (un
+> producto de otro hogar → excepción). Repunta TODAS las referencias al destino en una transacción:
+> `receipt_items.product_id` **y** `suggested_product_id` (E7), `recipe_ingredients`, `shopping_list_items`;
+> aliases con manejo del unique `(household_id, alias_normalized)` (borra los del origen que colisionarían,
+> repunta el resto y añade el `normalized_name` del origen como alias del destino con
+> `on conflict do nothing`, para que tickets futuros con el nombre del duplicado matcheen solos);
+> inventario respetando el unique `(household_id, product_id, location)` —suma solo si la unidad coincide
+> (política de E3: si difieren, conserva la del destino SIN sumar), borra las filas del origen que colisionan
+> por ubicación y repunta el resto—; `user_pinned_products` (pk `user_id, product_id`, borra colisiones y
+> repunta); suma `purchase_count` y `greatest(last_purchased_at)` al destino conservando sus `min_quantity`/
+> `default_*`; borra el producto origen. **Aplicada al remoto** (autorizada por el usuario 2026-07-21,
+> `local == remote`). Tipos: `merge_products` añadido a `Functions` en `types.ts`. En
+> `src/features/inventory/actions.ts`: `getMergeCandidatesAction(exclude)` (otros productos del hogar para
+> el combobox) y `mergeProductsAction(source, target)` (llama al RPC, mapea las excepciones a español).
+> UI en `edit-item-drawer.tsx`: sección "Fusionar con otro producto" (candidatos cargados al abrir) con el
+> `ProductCombobox` compartido de E1 + botón destructivo "Fusionar «actual» en «destino»" y aviso de que
+> une el historial y no se puede deshacer; al fusionar cierra y `router.refresh()`. `npx tsc --noEmit` y
+> `npx eslint .` limpios. Verificación funcional de la fusión (datos reales, gráficas de /precios) y de la
+> excepción por hogar ajeno: limitada por Clerk (headless); las guardas están garantizadas por el RPC.
 
 **Criterios de aceptación**
 - Fusionar "Leche Entera" en "Leche" deja un solo producto cuyo historial de precios (gráficas

@@ -25,12 +25,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import {
+  ProductCombobox,
+  type ComboboxProduct,
+} from "@/components/product-combobox";
 import { cn } from "@/lib/utils";
 import { formatQuantity, LOCATION_OPTIONS, UNIT_LABELS } from "@/lib/units";
 import type { LocationType } from "@/lib/supabase/types";
 import type { Category, InventoryEntry } from "../queries";
 import {
   deleteInventoryAction,
+  getMergeCandidatesAction,
+  mergeProductsAction,
   togglePinAction,
   updateInventoryAction,
 } from "../actions";
@@ -113,6 +119,38 @@ export function EditItemDrawer({
         toast.error(res.error);
         setAliases(prev);
       }
+    });
+  }
+
+  // Fusionar con otro producto (E9): candidatos cargados al abrir el drawer.
+  const [mergeCandidates, setMergeCandidates] = useState<ComboboxProduct[]>([]);
+  const [mergeTarget, setMergeTarget] = useState<string | null>(null);
+  const [merging, startMerge] = useTransition();
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    getMergeCandidatesAction(entry.productId).then((rows) => {
+      if (active) {
+        setMergeCandidates(rows);
+        setMergeTarget(null);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [open, entry.productId]);
+
+  function confirmMerge() {
+    if (!mergeTarget) return;
+    startMerge(async () => {
+      const res = await mergeProductsAction(entry.productId, mergeTarget);
+      if (res.error) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success("Productos fusionados");
+      onOpenChange(false);
+      router.refresh();
     });
   }
 
@@ -356,6 +394,41 @@ export function EditItemDrawer({
                     </li>
                   ))}
                 </ul>
+              </div>
+            ) : null}
+
+            {mergeCandidates.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium">
+                  Fusionar con otro producto
+                </span>
+                <p className="text-sm text-muted-foreground">
+                  Une este producto con otro: el historial de precios de ambos
+                  se juntará en el que elijas. Esta acción no se puede deshacer.
+                </p>
+                <ProductCombobox
+                  products={mergeCandidates}
+                  value={mergeTarget}
+                  onChange={setMergeTarget}
+                  ariaLabel="Producto con el que fusionar"
+                  placeholder="Buscar producto…"
+                  triggerLabel="Elegir producto…"
+                />
+                {mergeTarget ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={confirmMerge}
+                    disabled={merging}
+                  >
+                    {merging
+                      ? "Fusionando…"
+                      : `Fusionar «${entry.productName}» en «${
+                          mergeCandidates.find((p) => p.id === mergeTarget)
+                            ?.name ?? "…"
+                        }»`}
+                  </Button>
+                ) : null}
               </div>
             ) : null}
 

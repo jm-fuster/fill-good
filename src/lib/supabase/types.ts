@@ -742,6 +742,10 @@ export type Database = {
         Args: { pid: string };
         Returns: undefined;
       };
+      merge_products: {
+        Args: { p_source: string; p_target: string };
+        Returns: undefined;
+      };
     };
     Enums: {
       unit_type: UnitType;

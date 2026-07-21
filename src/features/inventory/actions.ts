@@ -6,6 +6,8 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import { getCurrentHousehold } from "@/features/household/queries";
+import { getProductCatalog } from "@/features/shopping-list/queries";
+import type { LocationType, UnitType } from "@/lib/supabase/types";
 import {
   addInventorySchema,
   editInventorySchema,
@@ -259,6 +261,64 @@ export async function togglePinAction(
   if (error) return { error: "No se pudo anclar." };
   revalidatePath("/inventario");
   return { ok: true, pinned: true };
+}
+
+/** Producto candidato para fusionar (forma mínima del combobox). */
+export type MergeCandidate = {
+  id: string;
+  name: string;
+  normalizedName: string;
+  defaultLocation: LocationType;
+  defaultUnit: UnitType;
+  purchaseCount: number;
+};
+
+/** Otros productos del hogar (todos menos el actual), para el combobox de fusión (E9). */
+export async function getMergeCandidatesAction(
+  excludeProductId: string,
+): Promise<MergeCandidate[]> {
+  const catalog = await getProductCatalog();
+  return catalog
+    .filter((p) => p.id !== excludeProductId)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      normalizedName: p.normalizedName,
+      defaultLocation: p.defaultLocation,
+      defaultUnit: p.defaultUnit,
+      purchaseCount: p.purchaseCount,
+    }));
+}
+
+/**
+ * Fusiona un producto (origen) en otro (destino) vía el RPC transaccional
+ * `merge_products` (E9): repunta historial de precios, inventario, aliases,
+ * recetas, lista y pines; suma habitualidad; borra el origen. Las guardas de
+ * hogar viven en el RPC (security definer).
+ */
+export async function mergeProductsAction(
+  sourceProductId: string,
+  targetProductId: string,
+): Promise<ActionState> {
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.rpc("merge_products", {
+    p_source: sourceProductId,
+    p_target: targetProductId,
+  });
+  if (error) {
+    const messages: Record<string, string> = {
+      same_product: "No puedes fusionar un producto consigo mismo.",
+      product_not_found: "Producto no encontrado.",
+      different_household: "Los productos son de hogares distintos.",
+      not_a_member: "No perteneces a este hogar.",
+      not_authenticated: "No autenticado.",
+    };
+    const key = Object.keys(messages).find((k) => error.message.includes(k));
+    return { error: key ? messages[key] : "No se pudieron fusionar los productos." };
+  }
+  revalidatePath("/inventario");
+  revalidatePath("/precios");
+  return { ok: true };
 }
 
 export async function deleteInventoryAction(id: string): Promise<ActionState> {
