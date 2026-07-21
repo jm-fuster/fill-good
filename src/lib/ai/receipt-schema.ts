@@ -29,6 +29,18 @@ export const receiptItemSchema = z.object({
   is_discount: z
     .boolean()
     .describe("true si la línea es un descuento/promoción, no un producto."),
+  suggested_product_id: z
+    .string()
+    .nullable()
+    .describe(
+      "Id EXACTO de un producto del catálogo proporcionado que corresponda a esta línea, o null si ninguno encaja. No inventes ids.",
+    ),
+  match_confidence: z
+    .enum(["high", "low"])
+    .nullable()
+    .describe(
+      "Confianza de suggested_product_id: 'high' si estás seguro, 'low' si es dudoso, null si no hay sugerencia.",
+    ),
 });
 
 export const receiptSchema = z.object({

@@ -365,6 +365,7 @@ export type Database = {
           unit_price: number | null;
           price_per_kg: number | null;
           product_id: string | null;
+          suggested_product_id: string | null;
           match_status: string;
           added_to_inventory: boolean;
           purchased_at: string | null;
@@ -385,6 +386,7 @@ export type Database = {
           unit_price?: number | null;
           price_per_kg?: number | null;
           product_id?: string | null;
+          suggested_product_id?: string | null;
           match_status?: string;
           added_to_inventory?: boolean;
           purchased_at?: string | null;
@@ -405,6 +407,7 @@ export type Database = {
           unit_price?: number | null;
           price_per_kg?: number | null;
           product_id?: string | null;
+          suggested_product_id?: string | null;
           match_status?: string;
           added_to_inventory?: boolean;
           purchased_at?: string | null;

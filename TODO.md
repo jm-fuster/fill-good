@@ -42,7 +42,7 @@ el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene ha
 - [x] E4 — Inventario: buscador + chips de filtro por estado
 - [x] E5 — "Mis habituales": pin de productos por usuario
 - [x] E6 — Matching difuso (candidatos con un toque) en el escaneo
-- [ ] E7 — Sugerencia de producto por IA en la extracción (coste cero)
+- [x] E7 — Sugerencia de producto por IA en la extracción (coste cero)
 - [ ] E8 — Gestión de aliases aprendidos
 - [ ] E9 — Fusionar productos duplicados
 - [ ] E10 — Robustez transaccional de la confirmación del ticket (menor)
@@ -1203,10 +1203,26 @@ aunque el texto del ticket varíe ligeramente.
   habituales por `purchase_count` y dejar el resto a E6).
 
 **Pasos**
-- [ ] Ampliar `receipt-schema.ts` y `receipt-prompt.ts` (catálogo + instrucciones de sugerencia).
-- [ ] Pasar el catálogo a la llamada en `scanReceiptAction` + validación server-side del id.
-- [ ] Integrar con la precedencia de matching (alias > exacto > IA/fuzzy) y la UI de revisión.
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Ampliar `receipt-schema.ts` y `receipt-prompt.ts` (catálogo + instrucciones de sugerencia).
+- [x] Pasar el catálogo a la llamada en `scanReceiptAction` + validación server-side del id.
+- [x] Integrar con la precedencia de matching (alias > exacto > IA/fuzzy) y la UI de revisión.
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (E7):** migración `supabase/migrations/20260721150000_receipt_items_suggestion.sql`
+> (`alter table receipt_items add column suggested_product_id uuid references products(id) on delete set null`)
+> — aplicada al remoto (autorizada por el usuario 2026-07-21, `local == remote`). Tipos a mano. **Coste cero:
+> misma llamada a Gemini.** `receipt-schema.ts`: cada línea gana `suggested_product_id: string|null` +
+> `match_confidence: 'high'|'low'|null`. `receipt-prompt.ts`: `RECEIPT_PROMPT` pasa a `buildReceiptPrompt(catalog)`
+> que embebe el catálogo del hogar (`id — nombre`) con instrucciones de sugerir el id exacto o null (no inventar
+> ids). `scanReceiptAction`: carga el catálogo (id+nombre) ordenado por `purchase_count` y capado a
+> `MAX_CATALOG_FOR_PROMPT`=300 (el resto lo cubre el fuzzy de E6), construye el prompt con él, y **valida
+> server-side** cada `suggested_product_id` contra el conjunto de ids mostrados —se persiste **solo** si el id
+> existe Y la línea NO tiene ya match exacto (`match_status === 'new_product'`), respetando la precedencia alias
+> > exacto > IA. Nunca auto-asocia: `product_id` sigue null hasta que el usuario confirma. `getReceiptItems`
+> devuelve `suggestedProductId`; `getReceiptSuggestions` (E6) prioriza la sugerencia IA persistida (si sigue
+> siendo producto válido del hogar) sobre el top-1 fuzzy. La IA **nunca ve la tabla de aliases** (solo el
+> catálogo id—nombre). `npx tsc --noEmit` y `npx eslint .` limpios. Verificación con imagen real + Gemini y
+> precisión de la sugerencia: pendiente del usuario (requiere sesión + llamada IA; no verificable en headless).
 
 **Criterios de aceptación**
 - Sin llamadas de IA adicionales, las líneas sin alias llegan a la revisión con sugerencia

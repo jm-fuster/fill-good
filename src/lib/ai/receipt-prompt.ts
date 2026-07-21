@@ -1,4 +1,4 @@
-export const RECEIPT_PROMPT = `Eres un asistente que extrae los datos de un ticket de compra de supermercado español (o de una factura de compra online). Te doy una imagen o un PDF del ticket.
+const BASE_PROMPT = `Eres un asistente que extrae los datos de un ticket de compra de supermercado español (o de una factura de compra online). Te doy una imagen o un PDF del ticket.
 
 Devuelve los datos siguiendo el esquema. Reglas importantes:
 
@@ -26,3 +26,29 @@ Avisos (warnings):
 - Si la imagen tiene mala calidad o hay líneas ilegibles, añade un aviso.
 
 Sé preciso con los precios: son la base del historial de precios del hogar.`;
+
+/**
+ * Instrucciones + catálogo del hogar para que la IA sugiera, por línea, a qué
+ * producto EXISTENTE corresponde (E7, coste cero: va en la misma llamada). Los
+ * ids se validan SIEMPRE en el servidor (la IA alucina ids); nunca auto-asocia.
+ */
+function catalogSection(catalog: { id: string; name: string }[]): string {
+  if (catalog.length === 0) return "";
+  const list = catalog.map((p) => `- ${p.id} — ${p.name}`).join("\n");
+  return `
+
+Catálogo de productos que YA tiene este hogar (id — nombre). Para cada línea,
+si corresponde CLARAMENTE a uno de estos productos, pon su id exacto en
+suggested_product_id y la confianza en match_confidence ('high'/'low'). Si
+ninguno encaja, deja suggested_product_id en null. NO inventes ids que no estén
+en esta lista.
+
+${list}`;
+}
+
+/** Prompt de extracción con el catálogo del hogar embebido (para E7). */
+export function buildReceiptPrompt(
+  catalog: { id: string; name: string }[] = [],
+): string {
+  return `${BASE_PROMPT}${catalogSection(catalog)}`;
+}

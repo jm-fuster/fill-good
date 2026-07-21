@@ -24,6 +24,7 @@ export type ReceiptItem = {
   totalPrice: number | null;
   pricePerKg: number | null;
   productId: string | null;
+  suggestedProductId: string | null;
   matchStatus: string;
   matchedProductName: string | null;
 };
@@ -38,6 +39,7 @@ type ItemRow = {
   total_price: number | null;
   price_per_kg: number | null;
   product_id: string | null;
+  suggested_product_id: string | null;
   match_status: string;
   product: { name: string } | null;
 };
@@ -70,7 +72,7 @@ export async function getReceiptItems(
   const { data, error } = await supabase
     .from("receipt_items")
     .select(
-      "id, raw_text, description, quantity, unit, is_weighted, total_price, price_per_kg, product_id, match_status, product:products(name)",
+      "id, raw_text, description, quantity, unit, is_weighted, total_price, price_per_kg, product_id, suggested_product_id, match_status, product:products(name)",
     )
     .eq("receipt_id", receiptId)
     .order("position", { ascending: true });
@@ -87,6 +89,7 @@ export async function getReceiptItems(
     totalPrice: r.total_price === null ? null : Number(r.total_price),
     pricePerKg: r.price_per_kg === null ? null : Number(r.price_per_kg),
     productId: r.product_id,
+    suggestedProductId: r.suggested_product_id,
     matchStatus: r.match_status,
     matchedProductName: r.product?.name ?? null,
   }));
@@ -132,9 +135,16 @@ export async function getReceiptSuggestions(
       aliasNormalized: a.alias_normalized,
     })),
   };
+  const productIds = new Set(matchData.products.map((p) => p.id));
 
   const out: ReceiptSuggestion[] = [];
   for (const it of targets) {
+    // Precedencia del candidato: sugerencia de la IA persistida (E7), si sigue
+    // siendo un producto válido del hogar; si no, top-1 fuzzy por trigramas (E6).
+    if (it.suggestedProductId && productIds.has(it.suggestedProductId)) {
+      out.push({ itemId: it.id, productId: it.suggestedProductId });
+      continue;
+    }
     const [top] = suggestCandidates(matchData, it.rawText, it.description, {
       topN: 1,
     });

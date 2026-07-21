@@ -6,7 +6,7 @@ import { generateObject } from "ai";
 
 import { getModel } from "@/lib/ai/models";
 import { receiptSchema } from "@/lib/ai/receipt-schema";
-import { RECEIPT_PROMPT } from "@/lib/ai/receipt-prompt";
+import { buildReceiptPrompt } from "@/lib/ai/receipt-prompt";
 import { loadHouseholdMatchData, matchLineExact } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
 import { formatQuantity, UNIT_LABELS } from "@/lib/units";
@@ -21,6 +21,10 @@ export type ScanState = {
 };
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+
+/** Tope del catálogo embebido en el prompt (los más habituales); el resto lo
+ *  cubre el fuzzy de la revisión (E6). Evita prompts enormes si el catálogo crece. */
+const MAX_CATALOG_FOR_PROMPT = 300;
 
 export async function scanReceiptAction(
   _prev: ScanState,
@@ -39,6 +43,22 @@ export async function scanReceiptAction(
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
+  const supabase = createServerSupabaseClient();
+
+  // Catálogo del hogar para la sugerencia de la IA (E7, coste cero: va en la
+  // misma llamada). Los más habituales primero, capado para no inflar el prompt.
+  const { data: catalogRows } = await supabase
+    .from("products")
+    .select("id, name")
+    .eq("household_id", household.id)
+    .order("purchase_count", { ascending: false })
+    .order("name", { ascending: true })
+    .limit(MAX_CATALOG_FOR_PROMPT);
+  const promptCatalog = (catalogRows ?? []).map((p) => ({
+    id: p.id,
+    name: p.name,
+  }));
+  const catalogIds = new Set(promptCatalog.map((p) => p.id));
 
   // Extracción con IA (visión / documento). FilePart sirve tanto para imagen
   // como para PDF; el mediaType lo toma del propio archivo.
@@ -51,7 +71,7 @@ export async function scanReceiptAction(
         {
           role: "user",
           content: [
-            { type: "text", text: RECEIPT_PROMPT },
+            { type: "text", text: buildReceiptPrompt(promptCatalog) },
             { type: "file", data: bytes, mediaType: file.type },
           ],
         },
@@ -65,8 +85,6 @@ export async function scanReceiptAction(
         "No se pudo leer el ticket. Prueba con una foto más nítida o vuelve a intentarlo.",
     };
   }
-
-  const supabase = createServerSupabaseClient();
 
   const { data: receipt, error: recErr } = await supabase
     .from("receipts")
@@ -94,6 +112,15 @@ export async function scanReceiptAction(
   let position = 0;
   for (const item of products) {
     const match = matchLineExact(matchData, item.raw_text, item.description);
+    // Sugerencia de la IA (E7), SIEMPRE validada server-side (la IA alucina ids):
+    // solo se guarda si el id existe en el catálogo mostrado y la línea NO tiene
+    // ya match exacto (precedencia: alias > exacto > IA). Nunca auto-asocia.
+    const suggestedProductId =
+      match.matchStatus === "new_product" &&
+      item.suggested_product_id &&
+      catalogIds.has(item.suggested_product_id)
+        ? item.suggested_product_id
+        : null;
     await supabase.from("receipt_items").insert({
       receipt_id: receipt.id,
       household_id: household.id,
@@ -106,6 +133,7 @@ export async function scanReceiptAction(
       unit_price: item.unit_price,
       price_per_kg: item.price_per_kg,
       product_id: match.productId,
+      suggested_product_id: suggestedProductId,
       match_status: match.matchStatus,
       position: position++,
     });
