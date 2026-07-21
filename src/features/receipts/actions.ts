@@ -14,6 +14,7 @@ import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import { getCurrentHousehold } from "@/features/household/queries";
+import { notifyPriceRises } from "@/features/push/notify";
 
 export type ScanState = {
   error?: string;
@@ -237,6 +238,7 @@ export async function confirmReceiptAction(
   let added = 0;
   const inventoryItemIds: string[] = [];
   const warnings: string[] = [];
+  const affectedProductIds = new Set<string>();
 
   // Robustez transaccional (E10): en vez de ~3 SELECTs por línea (N×8 round-trips
   // en un ticket de 40 líneas), se cargan por LOTE una sola vez el catálogo, el
@@ -413,6 +415,7 @@ export async function confirmReceiptAction(
     // se sumara por conflicto de unidades, la compra sí ocurrió).
     if (productId) {
       await supabase.rpc("bump_product_purchase", { pid: productId });
+      affectedProductIds.add(productId);
     }
     if (addedToInventory) added += 1;
   }
@@ -432,5 +435,10 @@ export async function confirmReceiptAction(
   revalidatePath("/inventario");
   revalidatePath("/precios");
   revalidatePath("/escanear");
+
+  // Aviso push de subidas de precio (M10c). Inerte sin claves VAPID; jamás
+  // rompe la confirmación (try/catch dentro).
+  await notifyPriceRises(household.id, [...affectedProductIds], userId ?? null);
+
   return { ok: true, added, inventoryItemIds, warnings };
 }

@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BudgetCard } from "@/features/household/components/budget-card";
 import { HouseholdCard } from "@/features/household/components/household-card";
+import { PushCard } from "@/features/push/components/push-card";
 import {
   getCurrentHousehold,
   getHouseholdMembers,
@@ -60,6 +61,8 @@ export default async function AjustesPage() {
         ) : null}
 
         {household ? <BudgetCard budget={household.monthlyBudget} /> : null}
+
+        <PushCard />
 
         <Card>
           <CardHeader>

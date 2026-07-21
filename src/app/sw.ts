@@ -34,3 +34,47 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// --- Web Push (M10c) -------------------------------------------------------
+// Muestra la notificación recibida. El payload es el JSON que envía el servidor
+// (lib/push/send.ts): { title, body, url?, tag? }. Si no hay datos, un aviso
+// genérico para no fallar en silencio.
+self.addEventListener("push", (event) => {
+  let data: { title?: string; body?: string; url?: string; tag?: string } = {};
+  try {
+    if (event.data) data = event.data.json();
+  } catch {
+    // Payload no-JSON: se ignora y se usa el genérico.
+  }
+  const title = data.title ?? "Fill Good";
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body: data.body ?? "",
+      tag: data.tag,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url: data.url ?? "/" },
+    }),
+  );
+});
+
+// Al tocar la notificación: enfoca una pestaña abierta de la app o abre una.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data as { url?: string } | null)?.url ?? "/";
+  event.waitUntil(
+    (async () => {
+      const clientsArr = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      const client = clientsArr[0] as WindowClient | undefined;
+      if (client) {
+        await client.focus();
+        await client.navigate(url);
+        return;
+      }
+      await self.clients.openWindow(url);
+    })(),
+  );
+});
