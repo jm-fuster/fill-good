@@ -10,10 +10,12 @@ import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
 import { RecipesList } from "@/features/recipes/components/recipes-list";
 import {
+  getRecipeCostsForIds,
   getRecipeSignals,
   getSavedRecipes,
   type RecipeSignals,
 } from "@/features/recipes/queries";
+import type { RecipeCost } from "@/features/recipes/cost";
 import { getCurrentHousehold } from "@/features/household/queries";
 
 export const metadata: Metadata = { title: "Mis recetas" };
@@ -23,10 +25,14 @@ export default async function RecetasPage() {
     getSavedRecipes(),
     getCurrentHousehold(),
   ]);
-  const signalsList = household ? await getRecipeSignals(household.id) : [];
+  const [signalsList, costMap] = await Promise.all([
+    household ? getRecipeSignals(household.id) : Promise.resolve([]),
+    getRecipeCostsForIds(recipes.map((r) => r.id)),
+  ]);
   const signals: Record<string, RecipeSignals> = Object.fromEntries(
     signalsList.map((s) => [s.recipeId, s]),
   );
+  const costs: Record<string, RecipeCost> = Object.fromEntries(costMap);
 
   return (
     <PageContainer variant="wide">
@@ -61,7 +67,7 @@ export default async function RecetasPage() {
           }
         />
       ) : (
-        <RecipesList recipes={recipes} signals={signals} />
+        <RecipesList recipes={recipes} signals={signals} costs={costs} />
       )}
 
       <Fab className="md:hidden">

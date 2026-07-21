@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { normalizeName } from "@/lib/normalize";
 import { relativeDaysLabel } from "@/lib/dates";
 import type { RecipeSignals, SavedRecipe } from "../queries";
+import type { RecipeCost } from "../cost";
+import { CostBadge } from "./cost-badge";
 import {
   formatRating,
   MEAL_TYPE_LABELS,
@@ -30,9 +32,11 @@ const MEAL_FILTERS: { value: MealFilter; label: string }[] = [
 export function RecipesList({
   recipes,
   signals,
+  costs,
 }: {
   recipes: SavedRecipe[];
   signals?: Record<string, RecipeSignals>;
+  costs?: Record<string, RecipeCost>;
 }) {
   const [query, setQuery] = useState("");
   const [meal, setMeal] = useState<MealFilter>("all");
@@ -125,6 +129,9 @@ export function RecipesList({
                       <span aria-hidden>{SEASON_ICONS[seasonChoice]}</span>{" "}
                       {SEASON_LABELS[seasonChoice]}
                     </Badge>
+                    {costs?.[recipe.id] ? (
+                      <CostBadge cost={costs[recipe.id]} />
+                    ) : null}
                   </div>
                   {sig && (hasRating || hasCooked) ? (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">

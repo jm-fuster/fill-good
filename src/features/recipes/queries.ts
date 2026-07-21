@@ -4,6 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { UnitType } from "@/lib/supabase/types";
+import { getLatestUnitPrices } from "@/features/prices/queries";
+import { computeRecipeCost, type CostIngredient, type RecipeCost } from "./cost";
 
 export type MealTypeValue = "lunch" | "dinner";
 export type SeasonValue = "all" | "winter" | "summer";
@@ -106,6 +108,64 @@ export async function getSavedRecipesForMenu(): Promise<SavedRecipeForMenu[]> {
       productId: i.product_id,
     })),
   }));
+}
+
+type CostIngredientRow = {
+  recipe_id: string;
+  product_id: string | null;
+  quantity: number | null;
+  unit: UnitType | null;
+};
+
+/**
+ * Coste estimado (M7) de un conjunto de recetas por id. Una sola consulta de
+ * ingredientes + el mapa de precios; sin N+1. Sirve para el listado del
+ * recetario y para el coste del menú semanal (recetas guardadas o efímeras).
+ */
+export async function getRecipeCostsForIds(
+  ids: string[],
+): Promise<Map<string, RecipeCost>> {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length === 0) return new Map();
+
+  const supabase = createServerSupabaseClient();
+  const [{ data: ings }, prices] = await Promise.all([
+    supabase
+      .from("recipe_ingredients")
+      .select("recipe_id, product_id, quantity, unit")
+      .in("recipe_id", uniqueIds),
+    getLatestUnitPrices(),
+  ]);
+
+  const byRecipe = new Map<string, CostIngredient[]>();
+  for (const i of (ings ?? []) as CostIngredientRow[]) {
+    const arr = byRecipe.get(i.recipe_id) ?? [];
+    arr.push({
+      productId: i.product_id,
+      quantity: i.quantity === null ? null : Number(i.quantity),
+      unit: i.unit,
+    });
+    byRecipe.set(i.recipe_id, arr);
+  }
+
+  const map = new Map<string, RecipeCost>();
+  for (const id of uniqueIds) {
+    map.set(id, computeRecipeCost(byRecipe.get(id) ?? [], prices));
+  }
+  return map;
+}
+
+/** Coste estimado de una sola receta (detalle). */
+export async function getRecipeCost(recipeId: string): Promise<RecipeCost> {
+  const map = await getRecipeCostsForIds([recipeId]);
+  return (
+    map.get(recipeId) ?? {
+      total: 0,
+      pricedCount: 0,
+      totalCount: 0,
+      complete: false,
+    }
+  );
 }
 
 type RecipeRow = {

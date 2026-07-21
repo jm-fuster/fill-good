@@ -77,14 +77,20 @@ type Editing = {
   cookedAt: string | null;
 };
 
+function euro(n: number) {
+  return `${n.toFixed(2).replace(".", ",")} €`;
+}
+
 export function MenuView({
   weekStart,
   menuId,
   entries,
+  weekCost,
 }: {
   weekStart: string;
   menuId: string | null;
   entries: MenuEntry[];
+  weekCost: { total: number; complete: boolean } | null;
 }) {
   const router = useRouter();
   const [generating, startGenerate] = useTransition();
@@ -231,6 +237,17 @@ export function MenuView({
           </Link>
         </Button>
       </div>
+
+      {weekCost ? (
+        <p className="-mt-2 text-center text-xs text-muted-foreground print:hidden">
+          Coste estimado de la semana:{" "}
+          <span className="font-medium text-chart-3">
+            {weekCost.complete ? "≈ " : "≥ "}
+            {euro(weekCost.total)}
+          </span>
+          {weekCost.complete ? "" : " (parcial)"}
+        </p>
+      ) : null}
 
       <div className="flex flex-col gap-2 print:hidden sm:flex-row">
         <Button

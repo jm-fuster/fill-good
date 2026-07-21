@@ -79,6 +79,34 @@ export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
   return [...byProduct.values()].sort((a, b) => b.totalSpent - a.totalSpent);
 }
 
+/**
+ * Último precio por unidad conocido de cada producto (total/cantidad de la
+ * compra más reciente) con su unidad. Base del coste por receta (M7). Coincide
+ * con el `lastUnitPrice` que muestra el overview de precios.
+ */
+export async function getLatestUnitPrices(): Promise<
+  Map<string, { price: number; unit: UnitType }>
+> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("receipt_items")
+    .select("product_id, total_price, quantity, unit, purchased_at")
+    .not("product_id", "is", null)
+    .not("total_price", "is", null)
+    .not("purchased_at", "is", null)
+    .order("purchased_at", { ascending: true });
+  if (error) throw error;
+
+  const map = new Map<string, { price: number; unit: UnitType }>();
+  for (const r of data ?? []) {
+    if (!r.product_id || r.total_price === null) continue;
+    const qty = Number(r.quantity) || 1;
+    // asc por fecha → la última compra pisa a las anteriores.
+    map.set(r.product_id, { price: Number(r.total_price) / qty, unit: r.unit });
+  }
+  return map;
+}
+
 export async function getProductPriceHistory(
   productId: string,
 ): Promise<{ name: string; points: PricePoint[] } | null> {

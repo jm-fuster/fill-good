@@ -21,6 +21,24 @@ export function isCountable(unit: UnitType): boolean {
   return unit === "ud";
 }
 
+export type UnitFamily = "count" | "weight" | "volume";
+
+/**
+ * Familia física de una unidad. Solo se puede operar (convertir, comparar
+ * precios) DENTRO de la misma familia: g↔kg y ml↔l son exactos, pero ud↔peso
+ * jamás se convierte (no se adivina el peso de una unidad).
+ */
+export function unitFamily(unit: UnitType): UnitFamily {
+  if (unit === "g" || unit === "kg") return "weight";
+  if (unit === "ml" || unit === "l") return "volume";
+  return "count";
+}
+
+/** Factor a la unidad base de su familia (g para peso, ml para volumen, ud). */
+export function baseUnitFactor(unit: UnitType): number {
+  return unit === "kg" || unit === "l" ? 1000 : 1;
+}
+
 export const LOCATION_LABELS: Record<LocationType, string> = {
   pantry: "Despensa",
   fridge: "Nevera",

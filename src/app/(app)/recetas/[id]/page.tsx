@@ -6,7 +6,12 @@ import { ArrowLeft } from "lucide-react";
 import { PageContainer } from "@/components/layout/page-container";
 import { RecipeForm } from "@/features/recipes/components/recipe-form";
 import { RecipeRating } from "@/features/recipes/components/recipe-rating";
-import { getRecipeForEdit, getRecipeRating } from "@/features/recipes/queries";
+import { CostBadge } from "@/features/recipes/components/cost-badge";
+import {
+  getRecipeCost,
+  getRecipeForEdit,
+  getRecipeRating,
+} from "@/features/recipes/queries";
 
 export const metadata: Metadata = { title: "Editar receta" };
 
@@ -18,7 +23,10 @@ export default async function EditarRecetaPage({
   const { id } = await params;
   const recipe = await getRecipeForEdit(id);
   if (!recipe) notFound();
-  const rating = await getRecipeRating(id);
+  const [rating, cost] = await Promise.all([
+    getRecipeRating(id),
+    getRecipeCost(id),
+  ]);
 
   return (
     <PageContainer variant="default">
@@ -28,9 +36,12 @@ export default async function EditarRecetaPage({
       >
         <ArrowLeft className="size-4" aria-hidden /> Mis recetas
       </Link>
-      <h1 className="mb-6 font-heading text-2xl font-semibold tracking-tight text-balance">
-        {recipe.name}
-      </h1>
+      <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="font-heading text-2xl font-semibold tracking-tight text-balance">
+          {recipe.name}
+        </h1>
+        <CostBadge cost={cost} />
+      </div>
       <div className="mb-6">
         <RecipeRating
           recipeId={recipe.id}
