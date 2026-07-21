@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
+import { PageContainer } from "@/components/layout/page-container";
 import { RecipeForm } from "@/features/recipes/components/recipe-form";
 import { RecipeRating } from "@/features/recipes/components/recipe-rating";
 import { getRecipeForEdit, getRecipeRating } from "@/features/recipes/queries";
@@ -20,7 +21,7 @@ export default async function EditarRecetaPage({
   const rating = await getRecipeRating(id);
 
   return (
-    <>
+    <PageContainer variant="default">
       <Link
         href="/recetas"
         className="mb-2 inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -39,6 +40,6 @@ export default async function EditarRecetaPage({
         />
       </div>
       <RecipeForm recipe={recipe} />
-    </>
+    </PageContainer>
   );
 }

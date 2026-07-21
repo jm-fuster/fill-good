@@ -4,6 +4,7 @@ import { BookOpen, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
@@ -28,7 +29,7 @@ export default async function RecetasPage() {
   );
 
   return (
-    <>
+    <PageContainer variant="wide">
       <PageHeader
         title="Mis recetas"
         description="El recetario de tu hogar para planificar los menús."
@@ -67,6 +68,6 @@ export default async function RecetasPage() {
           </Link>
         </Button>
       </Fab>
-    </>
+    </PageContainer>
   );
 }

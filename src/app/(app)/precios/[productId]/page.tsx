@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
+import { PageContainer } from "@/components/layout/page-container";
 import { PriceChart } from "@/features/prices/components/price-chart";
 import { CHAIN_LABELS } from "@/features/prices/chains";
 import { getProductPriceHistory } from "@/features/prices/queries";
@@ -33,7 +34,7 @@ export default async function PrecioDetallePage({
   const last = prices.length ? prices[prices.length - 1] : 0;
 
   return (
-    <>
+    <PageContainer variant="wide">
       <Link
         href="/precios"
         className="mb-2 inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
@@ -109,7 +110,7 @@ export default async function PrecioDetallePage({
           </div>
         </div>
       )}
-    </>
+    </PageContainer>
   );
 }
 

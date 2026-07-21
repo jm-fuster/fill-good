@@ -1,10 +1,11 @@
 import { LoadingStatus } from "@/components/layout/loading-status";
+import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function MenusLoading() {
   return (
-    <>
+    <PageContainer variant="wide">
       <LoadingStatus />
       <PageHeader
         title="Menús"
@@ -23,6 +24,6 @@ export default function MenusLoading() {
           ))}
         </div>
       </div>
-    </>
+    </PageContainer>
   );
 }

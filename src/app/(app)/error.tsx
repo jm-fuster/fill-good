@@ -1,6 +1,7 @@
 "use client";
 
 import { ErrorScreen } from "@/components/layout/error-screen";
+import { PageContainer } from "@/components/layout/page-container";
 
 /**
  * Barrera de error para las páginas de la app (inventario, lista, precios…).
@@ -14,5 +15,9 @@ export default function AppError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  return <ErrorScreen error={error} reset={reset} />;
+  return (
+    <PageContainer variant="default">
+      <ErrorScreen error={error} reset={reset} />
+    </PageContainer>
+  );
 }
