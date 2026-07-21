@@ -11,6 +11,7 @@ import { expiryLabel, getExpiryStatus } from "@/lib/dates";
 import { formatQuantity, isCountable } from "@/lib/units";
 import { addProductToListAction } from "@/features/shopping-list/actions";
 import type { Category, InventoryEntry } from "../queries";
+import { getInventoryStatus } from "../status";
 import { setInventoryQuantityAction } from "../actions";
 import { EditItemDrawer } from "./edit-item-drawer";
 
@@ -73,9 +74,16 @@ export function InventoryItemCard({
   }
 
   const expiry = getExpiryStatus(entry.expiryDate);
-  const belowMin = entry.minQuantity !== null && qty <= entry.minQuantity;
+  // Estado desde el helper compartido (misma clasificación que chips/página),
+  // con la cantidad EN VIVO del stepper.
+  const status = getInventoryStatus({
+    quantity: qty,
+    expiryDate: entry.expiryDate,
+    useSoon: entry.useSoon,
+    minQuantity: entry.minQuantity,
+  });
   const countable = isCountable(entry.unit);
-  const emptied = qty === 0;
+  const emptied = status.out;
   const inList = onList || addedToList;
 
   return (
@@ -129,7 +137,7 @@ export function InventoryItemCard({
                     {expiryLabel(expiry.days)}
                   </Badge>
                 ) : null}
-                {belowMin && qty > 0 ? (
+                {status.low ? (
                   <Badge className="border-transparent bg-warning/15 text-warning">
                     Quedan pocas
                   </Badge>

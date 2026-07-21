@@ -39,7 +39,7 @@ el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene ha
 - [x] E1 — Revisión de tickets: combobox buscable + estado del match visible
 - [x] E2 — Guardarraíl antiduplicados al crear producto desde el ticket
 - [x] E3 — BUG: unidades distintas al sumar cantidades al confirmar ticket
-- [ ] E4 — Inventario: buscador + chips de filtro por estado
+- [x] E4 — Inventario: buscador + chips de filtro por estado
 - [ ] E5 — "Mis habituales": pin de productos por usuario
 - [ ] E6 — Matching difuso (candidatos con un toque) en el escaneo
 - [ ] E7 — Sugerencia de producto por IA en la extracción (coste cero)
@@ -1012,11 +1012,34 @@ sistema (E1, E2, E6, E7), más líneas irán a productos existentes y más veces
   tras editar un producto.
 
 **Pasos**
-- [ ] Extraer listado a componente cliente conservando el render actual como caso base.
-- [ ] Buscador (producto + categoría) con grupos de ubicación preservados.
-- [ ] Chips de estado con contadores, un activo a la vez, helpers de estado compartidos.
-- [ ] Persistencia del filtro en URL sin recarga de servidor.
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios; contraste AA de los chips en ambos temas.
+- [x] Extraer listado a componente cliente conservando el render actual como caso base.
+- [x] Buscador (producto + categoría) con grupos de ubicación preservados.
+- [x] Chips de estado con contadores, un activo a la vez, helpers de estado compartidos.
+- [x] Persistencia del filtro en URL sin recarga de servidor.
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios; contraste AA de los chips en ambos temas.
+
+> **Nota de implementación (E4):** sin migración. Módulo PURO nuevo `src/features/inventory/status.ts`
+> como fuente ÚNICA de la clasificación de estado —`getInventoryStatus({quantity, expiryDate, useSoon,
+> minQuantity})` → flags `{expired, soon, out, low}` (soon incluye "consumir pronto"; low excluye
+> agotado y exige stock>0); `urgencyRank(flags)` (caducado 0 → caduca pronto 1 → resto 2 → agotado 3);
+> `STATUS_FILTERS`—, usado por la tarjeta (badges, con la cantidad EN VIVO del stepper), la página y
+> los chips, sin duplicar la lógica. La tarjeta (`inventory-item-card.tsx`) pasa a derivar `emptied`/
+> "Quedan pocas" del helper. El listado se extrae a un Client Component
+> `src/features/inventory/components/inventory-list.tsx` (los datos siguen leyéndose en el servidor y
+> se le pasan; `onListProductIds` como array serializable). **Buscador** con `normalizeName` sobre
+> nombre de producto **y** de categoría ("lácteos" encuentra Leche/Yogur), sin debounce, conservando
+> cabeceras de ubicación, ocultando grupos vacíos y el orden por urgencia; input con `<Label>` visible
+> + icono lupa + botón de borrar. **Chips** (Caducan pronto / Caducados / Agotados / Quedan pocas) con
+> contador sobre el conjunto ya buscado, uno activo a la vez (toggle), `aria-pressed`, deshabilitados a
+> 0 (salvo el activo), tokens semánticos al activarse (`destructive` caducados, `warning` el resto —
+> misma semántica que la tarjeta), `h-11` (44px), fila con scroll horizontal (`no-scrollbar`, utilidad
+> añadida a `globals.css`). **Persistencia en URL** con `window.history.replaceState` (patrón
+> documentado de Next 16, sin navegación de servidor): `?q=…&estado=…`; la página lee `searchParams`
+> (Promise en Next 16) y pasa los valores iniciales, así el filtro sobrevive a back/forward y a
+> `router.refresh()` tras editar. **Sin filtro por categoría** (fuera de alcance): solo el buscador
+> matchea categorías. Lógica de estado + búsqueda verificada con un arnés (node, 10 asserts).
+> `npx tsc --noEmit` y `npx eslint .` limpios. Verificación interactiva del preview limitada por Clerk
+> (headless): `/inventario` es ruta autenticada.
 
 **Criterios de aceptación**
 - Escribir "toma" filtra a "Tomate frito"/"Tomates" manteniendo su sección de ubicación;

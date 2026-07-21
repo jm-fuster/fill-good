@@ -166,6 +166,13 @@
 @utility pb-fab {
   padding-bottom: calc(env(safe-area-inset-bottom) + --spacing(12));
 }
+/* Oculta la barra de scroll (p. ej. fila de chips con scroll horizontal). */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
 
 @layer base {
   * {
