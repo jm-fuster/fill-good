@@ -29,5 +29,21 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "maskable",
       },
     ],
+    shortcuts: [
+      {
+        name: "Añadir a la lista",
+        short_name: "Lista",
+        description: "Abre tu lista de la compra",
+        url: "/lista",
+        icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+      },
+      {
+        name: "Escanear ticket",
+        short_name: "Escanear",
+        description: "Escanea un ticket de la compra",
+        url: "/escanear",
+        icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
+      },
+    ],
   };
 }
