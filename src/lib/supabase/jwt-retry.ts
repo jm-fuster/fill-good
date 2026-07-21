@@ -15,7 +15,10 @@
  */
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const RETRY_DELAYS_MS = [250, 600];
+// Backoff acumulado ~3,7 s: cubre desfases de reloj mayores en arranque en
+// frío antes de rendirse. Solo se dispara ante PGRST303, nunca en el camino
+// normal, así que no penaliza las peticiones que van bien.
+const RETRY_DELAYS_MS = [200, 500, 1000, 2000];
 
 export async function fetchWithJwtRetry(
   input: RequestInfo | URL,
