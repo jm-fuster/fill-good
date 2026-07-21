@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import {
   Card,
   CardContent,
@@ -16,12 +17,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  ProductCombobox,
+  type ComboboxProduct,
+} from "@/components/product-combobox";
+import { cn } from "@/lib/utils";
 import type { UnitType } from "@/lib/supabase/types";
 import type { ReceiptHeader, ReceiptItem } from "../queries";
 import { confirmReceiptAction, type ConfirmItemDecision } from "../actions";
@@ -35,7 +34,14 @@ type Row = {
   include: boolean;
   totalPrice: number | null;
   rawText: string | null;
+  /** Estado del match al escanear: fija el orden/agrupación (no cambia en vivo). */
+  initialStatus: string;
 };
+
+/** Una línea "necesita decisión" si la IA no la asoció a un producto existente. */
+function needsDecision(status: string): boolean {
+  return status !== "auto" && status !== "manual";
+}
 
 export function ReceiptReview({
   receipt,
@@ -44,7 +50,7 @@ export function ReceiptReview({
 }: {
   receipt: ReceiptHeader;
   items: ReceiptItem[];
-  products: { id: string; name: string }[];
+  products: ComboboxProduct[];
 }) {
   const router = useRouter();
   const [storeName, setStoreName] = useState(receipt.storeName ?? "");
@@ -53,17 +59,27 @@ export function ReceiptReview({
     receipt.total === null ? "" : String(receipt.total),
   );
   const [pending, setPending] = useState(false);
-  const [rows, setRows] = useState<Row[]>(
-    items.map((i) => ({
-      itemId: i.id,
-      description: i.description,
-      quantity: String(i.quantity),
-      unit: i.unit,
-      productId: i.productId,
-      include: true,
-      totalPrice: i.totalPrice,
-      rawText: i.rawText,
-    })),
+  const [rows, setRows] = useState<Row[]>(() =>
+    // Las líneas que necesitan decisión (new_product / sin match) van primero,
+    // para que no queden enterradas; dentro de cada grupo se respeta el orden
+    // del ticket (sort estable).
+    items
+      .map<Row>((i) => ({
+        itemId: i.id,
+        description: i.description,
+        quantity: String(i.quantity),
+        unit: i.unit,
+        productId: i.productId,
+        include: true,
+        totalPrice: i.totalPrice,
+        rawText: i.rawText,
+        initialStatus: i.matchStatus,
+      }))
+      .sort(
+        (a, b) =>
+          Number(needsDecision(b.initialStatus)) -
+          Number(needsDecision(a.initialStatus)),
+      ),
   );
 
   function update(id: string, patch: Partial<Row>) {
@@ -109,6 +125,88 @@ export function ReceiptReview({
   }
 
   const includedCount = rows.filter((r) => r.include).length;
+  const pendingRows = rows.filter((r) => needsDecision(r.initialStatus));
+  const matchedRows = rows.filter((r) => !needsDecision(r.initialStatus));
+
+  function renderRow(row: Row) {
+    const linked = row.productId !== null;
+    return (
+      <div
+        key={row.itemId}
+        className="flex flex-col gap-2 rounded-xl border p-3"
+      >
+        <div className="flex items-start gap-2">
+          <Checkbox
+            checked={row.include}
+            onCheckedChange={(v) => update(row.itemId, { include: v === true })}
+            aria-label="Incluir este producto"
+            className="mt-1 size-5"
+          />
+          <div className="flex-1">
+            <Input
+              value={row.description}
+              onChange={(e) =>
+                update(row.itemId, { description: e.target.value })
+              }
+              aria-label="Nombre del producto"
+              disabled={!row.include}
+            />
+            {row.rawText ? (
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {row.rawText}
+                {row.totalPrice !== null
+                  ? ` · ${row.totalPrice.toFixed(2)} €`
+                  : ""}
+              </p>
+            ) : null}
+          </div>
+          <Input
+            value={row.quantity}
+            onChange={(e) => update(row.itemId, { quantity: e.target.value })}
+            type="number"
+            inputMode="decimal"
+            step="any"
+            className="w-16"
+            aria-label="Cantidad"
+            disabled={!row.include}
+          />
+        </div>
+        {row.include ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Producto del catálogo
+              </span>
+              {linked ? (
+                <Badge
+                  className={cn(
+                    "border-transparent bg-success/15 text-success",
+                  )}
+                >
+                  <Check aria-hidden className="size-3" />
+                  {row.initialStatus === "auto"
+                    ? "Asociado automáticamente"
+                    : "Asociado"}
+                </Badge>
+              ) : (
+                <Badge className="border-transparent bg-warning/15 text-warning">
+                  Elegir producto
+                </Badge>
+              )}
+            </div>
+            <ProductCombobox
+              products={products}
+              value={row.productId}
+              onChange={(id) => update(row.itemId, { productId: id })}
+              allowCreateNew
+              createNewLabel="➕ Crear producto nuevo"
+              ariaLabel="Producto asociado"
+            />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4 pb-4">
@@ -154,75 +252,26 @@ export function ReceiptReview({
         <h2 className="mb-2 text-sm font-medium">
           Productos ({includedCount} de {rows.length})
         </h2>
-        <div className="flex flex-col gap-2">
-          {rows.map((row) => (
-            <div
-              key={row.itemId}
-              className="flex flex-col gap-2 rounded-xl border p-3"
-            >
-              <div className="flex items-start gap-2">
-                <Checkbox
-                  checked={row.include}
-                  onCheckedChange={(v) =>
-                    update(row.itemId, { include: v === true })
-                  }
-                  aria-label="Incluir este producto"
-                  className="mt-1 size-5"
-                />
-                <div className="flex-1">
-                  <Input
-                    value={row.description}
-                    onChange={(e) =>
-                      update(row.itemId, { description: e.target.value })
-                    }
-                    aria-label="Nombre del producto"
-                    disabled={!row.include}
-                  />
-                  {row.rawText ? (
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {row.rawText}
-                      {row.totalPrice !== null
-                        ? ` · ${row.totalPrice.toFixed(2)} €`
-                        : ""}
-                    </p>
-                  ) : null}
-                </div>
-                <Input
-                  value={row.quantity}
-                  onChange={(e) =>
-                    update(row.itemId, { quantity: e.target.value })
-                  }
-                  type="number"
-                  inputMode="decimal"
-                  step="any"
-                  className="w-16"
-                  aria-label="Cantidad"
-                  disabled={!row.include}
-                />
-              </div>
-              {row.include ? (
-                <Select
-                  value={row.productId ?? "new"}
-                  onValueChange={(v) =>
-                    update(row.itemId, { productId: v === "new" ? null : v })
-                  }
-                >
-                  <SelectTrigger className="w-full" aria-label="Producto asociado">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="new">➕ Crear producto nuevo</SelectItem>
-                    {products.map((p) => (
-                      <SelectItem key={p.id} value={p.id}>
-                        {p.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : null}
-            </div>
-          ))}
-        </div>
+
+        {pendingRows.length > 0 ? (
+          <div className="mb-3 flex flex-col gap-2">
+            <p className="text-xs font-medium text-warning">
+              Necesitan decisión ({pendingRows.length})
+            </p>
+            {pendingRows.map(renderRow)}
+          </div>
+        ) : null}
+
+        {matchedRows.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {pendingRows.length > 0 ? (
+              <p className="text-xs font-medium text-muted-foreground">
+                Asociados ({matchedRows.length})
+              </p>
+            ) : null}
+            {matchedRows.map(renderRow)}
+          </div>
+        ) : null}
       </div>
 
       <div className="fixed inset-x-0 bottom-16 z-40 mx-auto max-w-lg px-4 pb-safe">

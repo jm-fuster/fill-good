@@ -6,6 +6,9 @@ Ejecutar las tareas **en orden dentro de cada bloque**; los bloques A, B y C son
 (A = mejoras rápidas independientes, B = recetario, C = generador de menús 2.0, que depende de B).
 El bloque D (revisión de producto del 2026-07-21) contiene tareas **independientes entre sí**,
 ordenadas por prioridad; pueden hacerse en cualquier orden, pero D1 y D2 primero.
+El bloque E (análisis crítico del 2026-07-21: inventario + matching de tickets) está ordenado
+por prioridad: E1–E5 son independientes entre sí (E1 primero: protege el historial de precios,
+el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene hacerlas después.
 
 ## Instrucciones para el agente (leer antes de cada tarea)
 
@@ -33,6 +36,16 @@ ordenadas por prioridad; pueden hacerse en cualquier orden, pero D1 y D2 primero
 - [x] D5 — Compartir el menú semanal (imagen + Web Share, print CSS)
 - [x] D6 — Hint de escaneo: sugerir PDF escaneado con la app nativa
 - [x] D7 — Hint de caducidad: "la fecha del que caduque antes"
+- [x] E1 — Revisión de tickets: combobox buscable + estado del match visible
+- [ ] E2 — Guardarraíl antiduplicados al crear producto desde el ticket
+- [ ] E3 — BUG: unidades distintas al sumar cantidades al confirmar ticket
+- [ ] E4 — Inventario: buscador + chips de filtro por estado
+- [ ] E5 — "Mis habituales": pin de productos por usuario
+- [ ] E6 — Matching difuso (candidatos con un toque) en el escaneo
+- [ ] E7 — Sugerencia de producto por IA en la extracción (coste cero)
+- [ ] E8 — Gestión de aliases aprendidos
+- [ ] E9 — Fusionar productos duplicados
+- [ ] E10 — Robustez transaccional de la confirmación del ticket (menor)
 
 ---
 
@@ -783,6 +796,426 @@ entre sí. D1 y D2 son las de mayor impacto; D6 y D7 son microcopys de una tarde
 
 ---
 
+## Bloque E — Inventario y matching de tickets (análisis crítico 2026-07-21)
+
+Tareas surgidas de un análisis crítico de dos áreas: (1) el flujo de asociación
+ticket ↔ catálogo, cuyo punto débil real es que el matching exacto + el default
+"Crear producto nuevo" produce **duplicados de catálogo que fragmentan el historial
+de precios** (el mayor riesgo de calidad de datos de la app); y (2) el inventario,
+que sin buscador ni filtros escala mal a partir de ~50 productos. Orden recomendado:
+E1 → E2 → E3 → E4 → E5, y después E6–E10.
+
+**Decisión de alcance ya tomada (no reabrir):** NO implementar reordenación manual
+drag & drop del inventario — ver "Notas de alcance".
+
+### E1 — Revisión de tickets: combobox buscable + estado del match visible
+
+**Idea original:** al escanear un ticket, los nombres pueden diferir mucho de los del
+inventario; ¿habría que hacer el trabajo de asociarlos la primera vez? (Respuesta: la
+asociación ya existe —`product_aliases` se aprende al confirmar y la 2ª compra matchea
+sola—, pero la UI de revisión no ayuda a hacer bien esa primera asociación.)
+
+**Contexto actual**
+- `src/features/receipts/components/receipt-review.tsx` (~línea 203): el producto de cada
+  línea se elige con un `Select` de shadcn que lista TODO el catálogo **sin búsqueda**;
+  con 100+ productos es inutilizable en móvil. Las líneas sin match quedan por defecto en
+  "➕ Crear producto nuevo" — el usuario confirma tickets de 40 líneas sin revisar cada
+  desplegable y cada confirmación ciega crea un duplicado.
+- `receipt_items.match_status` (`auto` | `manual` | `new_product` | `skipped`) ya se guarda
+  y llega a la UI vía `getReceiptItems()` (`src/features/receipts/queries.ts`), pero **no se
+  muestra**: una línea asociada automáticamente y una que necesita decisión se ven casi igual.
+- Ya existe el componente exacto que hace falta: `ProductAutocomplete`
+  (`src/features/shopping-list/components/product-autocomplete.tsx`, de A2) — combobox
+  accesible que filtra con `normalizeName()` y ordena por habitualidad.
+
+**Diseño propuesto**
+- Sustituir el `Select` por línea por un **combobox buscable**: extraer `ProductAutocomplete`
+  (o una variante) a `src/components/` como componente compartido y usarlo aquí. Debe permitir
+  también la opción "Crear producto nuevo" y mostrar el producto asociado actual.
+- Hacer visible el estado por línea con badges de tokens semánticos: `success` "✓ Asociado"
+  (match `auto`, mostrando el nombre del producto), `warning` "Elegir producto" (`new_product`).
+- **Priorizar la atención**: ordenar o agrupar las líneas `new_product` arriba ("Necesitan
+  decisión") y las asociadas debajo, para que lo que exige decisión no quede enterrado.
+
+**Pasos**
+- [x] Extraer el combobox a `src/components/` (mantener la a11y: roles combobox/listbox,
+      `aria-activedescendant`, targets ≥ 44px) sin romper su uso en `/lista`.
+- [x] Integrarlo en `receipt-review.tsx` sustituyendo el `Select`.
+- [x] Badges de estado por línea + agrupación/orden "necesitan decisión primero".
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (E1):** sin migración. Componente compartido nuevo
+> `src/components/product-combobox.tsx` (`ProductCombobox`): combobox buscable de **selección**
+> (valor = id de producto o `null`) construido sobre `Command` (cmdk) + `Popover` de shadcn.
+> Filtra con `normalizeName` (ignora acentos/mayúsculas), ordena por `purchaseCount` y ofrece
+> opcionalmente "➕ Crear producto nuevo". cmdk aporta los roles combobox/listbox,
+> `aria-activedescendant` y navegación por teclado; opciones con `min-h-11` (44px); ancho del
+> popover atado al trigger con `--radix-popover-trigger-width`. **Decisión de diseño:** NO se
+> mueve `ProductAutocomplete` de `/lista` — sigue otro modelo de interacción (texto libre con
+> autocompletado, imprescindible para añadir ítems fuera de catálogo) y se deja intacto (su uso
+> en `/lista` no cambia). El `ProductCombobox` es la pieza reutilizable para los flujos de
+> "elegir un producto existente" (E1 y, más adelante, E9). En
+> `src/features/receipts/components/receipt-review.tsx`: se sustituye el `Select` sin búsqueda por
+> `<ProductCombobox allowCreateNew>`; cada línea muestra un badge de estado en vivo —`success`
+> "Asociado automáticamente"/"Asociado" cuando hay `productId`, `warning` "Elegir producto" cuando
+> no—; las filas se **agrupan y ordenan** con "Necesitan decisión" (match `new_product`/`skipped`)
+> arriba y "Asociados" (`auto`/`manual`) debajo, con orden fijado al montar (sort estable por
+> `initialStatus`, no salta al asignar). La página `revisar/page.tsx` pasa ahora `getProductCatalog()`
+> (id, nombre, `normalizedName`, ubicación, `purchaseCount`) en vez de `getProducts()` mapeado, para
+> que el combobox filtre y muestre ubicación. `npx tsc --noEmit` y `npx eslint .` limpios.
+> Verificación interactiva limitada: la ruta es autenticada (sesión Clerk + ticket real), no
+> verificable en headless (límite conocido de los bloques B–D).
+
+**Criterios de aceptación**
+- En la revisión de un ticket puedo escribir "lec" y elegir "Leche" en ≤ 2 interacciones.
+- De un vistazo distingo qué líneas matchearon solas y cuáles no; las dudosas van primero.
+- El autocompletado de `/lista` sigue funcionando igual tras la extracción del componente.
+
+---
+
+### E2 — Guardarraíl antiduplicados al crear producto desde el ticket
+
+**Idea original:** evitar que confirmar tickets sin revisar llene el catálogo de duplicados
+("Leche", "Leche Entera", "Leche Entera 6x1L") que fragmentan el historial de precios.
+
+**Contexto actual**
+- `confirmReceiptAction` (`src/features/receipts/actions.ts`, ~línea 184) solo reutiliza un
+  producto existente si el `normalized_name` es **idéntico**; cualquier variante crea producto
+  nuevo. Agravante: el nombre propuesto viene de la limpieza de la IA, que varía entre tickets
+  para el mismo artículo, y `normalizeName()` solo neutraliza mayúsculas/acentos.
+- Ya existe una función de similitud en TS: `trigramSimilarity` dentro de
+  `src/features/menus/missing.ts` (D3, aproxima a `pg_trgm.similarity`).
+
+**Diseño propuesto**
+- Extraer `trigramSimilarity` (y el umbral) de `missing.ts` a un módulo compartido
+  (p. ej. `src/lib/similarity.ts`) sin cambiar su comportamiento; `missing.ts` la reimporta.
+- En la revisión del ticket (sobre la UI de E1): cuando una línea queda en "Crear producto
+  nuevo" y existe un producto del catálogo con similitud por encima del umbral (~0.4, calibrar
+  con datos reales), mostrar aviso inline: *"Ya tienes «Leche», ¿es el mismo producto?"* con
+  acción de un toque para asociarla. **Umbral conservador**: mejor no avisar que avisar mal.
+- Aplicar el mismo aviso en el alta manual (`src/features/inventory/components/add-product-drawer.tsx`)
+  solo si sale barato; si no, dejarlo fuera.
+
+**Pasos**
+- [ ] Extraer `trigramSimilarity` a `src/lib/similarity.ts` (reimportar desde `missing.ts`).
+- [ ] Aviso inline + asociación de un toque en la revisión del ticket.
+- [ ] (Opcional) mismo aviso en `add-product-drawer.tsx`.
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios; el arnés de D3 sigue pasando conceptualmente
+      (la lógica de `missing.ts` no cambia).
+
+**Criterios de aceptación**
+- Con "Leche" en el catálogo, una línea "Leche Entera Hacendado" dejada en "nuevo" muestra el
+  aviso y se asocia a "Leche" con un toque (y al confirmar se aprende el alias, como siempre).
+- Productos genuinamente distintos (p. ej. "Leche" vs "Lechuga") NO disparan el aviso.
+
+---
+
+### E3 — BUG: unidades distintas al sumar cantidades al confirmar ticket
+
+**Idea original:** ninguna — bug detectado durante el análisis. Cuanto mejor matchee el
+sistema (E1, E2, E6, E7), más líneas irán a productos existentes y más veces se pisará.
+
+**Contexto actual**
+- `confirmReceiptAction` (`src/features/receipts/actions.ts`, ~líneas 248–264): si ya existe
+  fila de inventario para (producto, ubicación), hace `quantity: inv.quantity + dec.quantity`
+  y además **sobrescribe `unit` con la del ticket**. Con "Leche: 2 ud" en inventario y "1.5 L"
+  en el ticket, el resultado es "3.5 L": suma magnitudes de unidades distintas en silencio.
+
+**Diseño propuesto**
+- Definir una política explícita y documentarla en el código. Propuesta mínima (sin tabla de
+  conversiones): si `inv.unit !== dec.unit`, **no sumar a ciegas** — conservar la unidad
+  existente del inventario y o bien pedir decisión en la revisión (badge de aviso en la línea),
+  o bien no tocar la cantidad y devolver un aviso visible (toast/warning) para ajuste manual.
+  Elegir UNA de las dos y aplicarla de forma consistente.
+- No implementar conversión automática de unidades (ud↔kg↔L no es convertible sin densidad);
+  fuera de alcance.
+
+**Pasos**
+- [ ] Implementar la política elegida en `confirmReceiptAction` + comentario explicando la regla.
+- [ ] Aviso visible al usuario cuando se dé el caso (nunca silencioso).
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Confirmar un ticket cuya línea tiene unidad distinta a la del stock existente nunca produce
+  una cantidad sin sentido en silencio; el usuario recibe un aviso accionable.
+- El caso unidad-igual sigue sumando como hasta ahora.
+
+---
+
+### E4 — Inventario: buscador + chips de filtro por estado
+
+**Idea original:** añadir buscador y posibilidad de filtrar en el inventario.
+
+**Contexto actual**
+- `src/app/(app)/inventario/page.tsx` carga TODO el inventario (sin paginación) vía
+  `getInventory()`, lo agrupa por ubicación (`LOCATION_ORDER`) y ordena por urgencia
+  (`urgencyRank`, ~línea 27: caducado → caduca pronto/consumir pronto → resto → agotado)
+  + alfabético. No hay búsqueda ni filtros. El listado se renderiza en el Server Component.
+- Los estados ya están calculados: `getExpiryStatus` (`src/lib/dates.ts`), `useSoon`,
+  `belowMin` (en `inventory-item-card.tsx`), `quantity === 0`.
+
+**Diseño propuesto**
+- **Filtrado 100% en cliente** (los datos ya están todos cargados): extraer el listado a un
+  componente cliente (p. ej. `src/features/inventory/components/inventory-list.tsx`) que reciba
+  `entries`, `categories` y los ids en lista (`onListProductIds` como array serializable, no
+  `Set`) desde el Server Component. Las lecturas siguen en el servidor.
+- **Buscador**: filtra con `normalizeName()` sobre nombre de producto **y** nombre de categoría
+  ("limpieza" debe encontrar el lavavajillas). Sin debounce (es memoria). Al filtrar, conservar
+  las cabeceras de ubicación y ocultar grupos vacíos; mantener el orden por urgencia.
+- **Chips de estado** con contador sobre la lista: **Caducan pronto** (incluye `useSoon`),
+  **Caducados**, **Agotados**, **Quedan pocas**. Un chip activo a la vez; combinable con la
+  búsqueda. Tokens: `warning` caduca pronto, `destructive` caducado (misma semántica que los
+  badges de la tarjeta). Extraer la lógica de estado a helpers compartidos si hace falta —
+  **no duplicarla** entre página, tarjeta y chips.
+- **Layout móvil**: no robar viewport de forma permanente (lupa que expande o barra sticky que
+  colapsa al hacer scroll); respetar bottom nav y `pb-safe`; input con label accesible (nunca
+  placeholder-only), targets ≥ 44px.
+- **Estado en URL sin navegación de servidor** (`history.replaceState` o equivalente de Next 16
+  — consultar `node_modules/next/dist/docs/`), para que el filtro sobreviva al back/forward
+  tras editar un producto.
+
+**Pasos**
+- [ ] Extraer listado a componente cliente conservando el render actual como caso base.
+- [ ] Buscador (producto + categoría) con grupos de ubicación preservados.
+- [ ] Chips de estado con contadores, un activo a la vez, helpers de estado compartidos.
+- [ ] Persistencia del filtro en URL sin recarga de servidor.
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios; contraste AA de los chips en ambos temas.
+
+**Criterios de aceptación**
+- Escribir "toma" filtra a "Tomate frito"/"Tomates" manteniendo su sección de ubicación;
+  borrar la búsqueda restaura la vista completa.
+- Tocar "Caducan pronto" muestra solo esos ítems con contador correcto; tocar de nuevo lo quita.
+- Volver atrás desde editar un producto conserva búsqueda y chip activos.
+- El filtro por categoría NO se implementa (ver "Notas de alcance").
+
+---
+
+### E5 — "Mis habituales": pin de productos por usuario
+
+**Idea original:** poder ordenar el inventario por usuario, porque no todos los miembros del
+hogar usan los mismos insumos. (Decisión: se resuelve con pines por usuario, NO con
+reordenación manual drag & drop — ver "Notas de alcance".)
+
+**Contexto actual**
+- La app no sabe qué consume cada usuario: `products.purchase_count` es por hogar y
+  `inventory_items.updated_by` solo registra quién tocó el stepper. El pin explícito es la
+  única señal fiable de "esto es mío".
+- Sería la **primera tabla per-user** del proyecto (todo lo demás es por hogar). El helper
+  `public.clerk_user_id()` existe desde la migración init y ya se usa en RLS de
+  `household_members`.
+
+**Diseño propuesto**
+- **Migración** `user_pinned_products`:
+  - `create table user_pinned_products (user_id text not null, household_id uuid not null references households on delete cascade, product_id uuid not null references products on delete cascade, created_at timestamptz not null default now(), primary key (user_id, product_id));`
+  - RLS: `user_id = public.clerk_user_id() and is_household_member(household_id)` en
+    using/with check (patrón de las migraciones existentes) + grants a `authenticated`.
+  - Actualizar tipos a mano en `src/lib/supabase/types.ts` (se mantienen a mano).
+- **Server Action** `togglePinAction(productId)` en `src/features/inventory/actions.ts`
+  + `revalidatePath("/inventario")`; query de pines del usuario actual en `queries.ts`.
+- **UI**: toggle de pin en `edit-item-drawer.tsx` (la tarjeta ya tiene el área principal como
+  botón de editar y el stepper a la derecha — no añadir targets < 44px ni solapar gestos; si
+  cabe una estrella con target completo en la tarjeta, mejor, pero el drawer es el mínimo).
+  Sección "⭐ Mis habituales" **arriba del todo** en `/inventario` con los ítems anclados del
+  usuario actual (dentro, mismo orden por urgencia); el resto de secciones no cambia. Debe
+  convivir con el buscador/chips de E4 (los pines también se filtran).
+
+**Pasos**
+- [ ] Migración + RLS (pedir autorización antes de `npx supabase db push`) + tipos a mano.
+- [ ] `togglePinAction` + query de pines por usuario.
+- [ ] Toggle en el drawer de edición + sección "Mis habituales" en `/inventario`.
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Dos usuarios del mismo hogar ven secciones "Mis habituales" distintas.
+- Anclar/desanclar es un toque con feedback inmediato; icon buttons con `aria-label`.
+- Un `member` no puede leer/escribir pines de otro usuario ni por API directa (RLS).
+
+---
+
+### E6 — Matching difuso (candidatos con un toque) en el escaneo
+
+**Idea original:** que la 2ª y siguientes compras del mismo artículo no vuelvan a preguntar
+aunque el texto del ticket varíe ligeramente.
+
+**Contexto actual**
+- `matchProduct()` (`src/lib/matching.ts`) es solo-exacto: alias aprendido idéntico →
+  `normalized_name` idéntico → `new_product`. Un punto de más ("GAZPACHO HACEND." vs
+  "GAZPACHO HACEND"), un gramaje distinto o un OCR ligeramente diferente y el alias no dispara.
+- `pg_trgm` está habilitada desde la migración init (verificado), pero D3 sentó el precedente
+  de hacer la similitud **en TS** (catálogo por hogar pequeño, evita migración): reutilizar
+  `trigramSimilarity` extraída en E2.
+
+**Diseño propuesto**
+- Ampliar `matchProduct()`: si no hay match exacto, calcular candidatos por similitud
+  (`trigramSimilarity` de E2) del texto de la línea contra `products.normalized_name` **y**
+  `product_aliases.alias_normalized` del hogar; devolver top-1..3 con score (umbral orientativo
+  0.35–0.45, calibrar con tickets reales). Cargar catálogo + aliases una sola vez por ticket,
+  no por línea (hoy `matchProduct` hace 2 queries por línea).
+- **NUNCA auto-asociar por fuzzy**: los candidatos se proponen en la revisión (UI de E1) como
+  sugerencia preseleccionable de un toque ("¿Es *Leche*? ✓"); la confirmación del usuario
+  aprende el alias como hasta ahora (ese flywheel es correcto y se conserva).
+- Precedencia: **alias aprendido > nombre exacto > candidato fuzzy** (el alias es verdad
+  confirmada; el fuzzy, una conjetura).
+- Guardar la sugerencia en `receipt_items` (p. ej. `match_status` sigue `new_product` pero la
+  UI recibe el candidato) — decidir si hace falta columna nueva (`suggested_product_id`) o si
+  basta con calcularlo al cargar la revisión; preferir **sin migración** si el coste de
+  recalcular es trivial.
+
+**Pasos**
+- [ ] Refactor de `matchProduct` a candidatos con score, con catálogo/aliases cargados por ticket.
+- [ ] UI de sugerencia de un toque en la revisión (sobre E1).
+- [ ] Calibrar umbral con 2–3 tickets reales de Mercadona (incluir líneas al peso).
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Una línea "Leche Entera Hacendado" sin alias propone "Leche" como candidato; aceptarlo con un
+  toque crea el alias y la siguiente compra matchea sola (`auto`).
+- "GAZPACHO HACEND." matchea (vía candidato) aunque el alias aprendido fuera "GAZPACHO HACEND".
+- Ningún producto se asocia automáticamente solo por fuzzy sin confirmación del usuario.
+
+---
+
+### E7 — Sugerencia de producto por IA en la extracción (coste cero)
+
+**Idea original:** usar IA para asociar nombres del ticket con el catálogo, sin añadir gasto.
+
+**Contexto actual**
+- La extracción ya es UNA llamada a Gemini: `generateObject` en `scanReceiptAction`
+  (`src/features/receipts/actions.ts`) con `getModel("receipts")`, prompt en
+  `src/lib/ai/receipt-prompt.ts`, schema en `src/lib/ai/receipt-schema.ts`. El catálogo por
+  hogar (cientos de productos como mucho) cabe de sobra en el contexto de esa misma llamada.
+- Restricción del proyecto: **cero gasto extra en IA** (Gemini free tier, siempre vía
+  `getModel()` — nunca instanciar un provider en la feature).
+
+**Diseño propuesto**
+- Incluir en el prompt de extracción el catálogo del hogar (lista `id — nombre`) y ampliar
+  `receiptSchema` con, por línea: `suggested_product_id: string | null` y
+  `match_confidence: 'high' | 'low'` (o score). **Sin llamadas adicionales.**
+- **Validación en servidor obligatoria**: la IA alucina ids — descartar toda sugerencia cuyo id
+  no exista o no pertenezca al hogar (comprobación contra el catálogo ya cargado).
+- Precedencia: la sugerencia IA solo se usa si NO hay alias aprendido ni match exacto
+  (la IA nunca ve la tabla de aliases: no puede pisarla). Combinable con E6: mostrar como
+  candidato preseleccionado en la revisión; el usuario confirma y se aprende el alias.
+- Vigilar el tamaño del prompt si el catálogo crece (>500 productos: truncar a los más
+  habituales por `purchase_count` y dejar el resto a E6).
+
+**Pasos**
+- [ ] Ampliar `receipt-schema.ts` y `receipt-prompt.ts` (catálogo + instrucciones de sugerencia).
+- [ ] Pasar el catálogo a la llamada en `scanReceiptAction` + validación server-side del id.
+- [ ] Integrar con la precedencia de matching (alias > exacto > IA/fuzzy) y la UI de revisión.
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Sin llamadas de IA adicionales, las líneas sin alias llegan a la revisión con sugerencia
+  preseleccionada correcta la mayoría de veces.
+- Nunca llega a la UI (ni a la BD) un `product_id` inexistente o de otro hogar.
+- Un alias aprendido gana siempre a la sugerencia de la IA.
+
+---
+
+### E8 — Gestión de aliases aprendidos
+
+**Idea original:** ninguna directa — hueco detectado en el análisis: un alias mal aprendido
+envenena silenciosamente todos los escaneos futuros (matchea `auto` para siempre) y hoy no
+hay forma de verlo ni corregirlo salvo SQL a mano.
+
+**Contexto actual**
+- `product_aliases` (migración `20260719134500_receipts.sql`): unique por
+  `(household_id, alias_normalized)`, RLS por hogar ya existente. Se aprende en
+  `confirmReceiptAction` (upsert con `ignoreDuplicates`); no existe ninguna UI de lectura/borrado.
+
+**Diseño propuesto**
+- Gestión **mínima**, no CRUD completo: en el drawer de edición del producto
+  (`src/features/inventory/components/edit-item-drawer.tsx`) o en una sección propia, listar
+  los aliases que apuntan a ese producto ("Nombres en tickets: GAZPACHO HACEND. ×") con opción
+  de borrar cada uno. Server Action `deleteAliasAction(aliasId)` + `revalidatePath`.
+- Borrar un alias no toca historial de precios ni inventario: solo hace que el siguiente
+  escaneo de esa línea vuelva a pedir decisión.
+
+**Pasos**
+- [ ] Query de aliases por producto + `deleteAliasAction`.
+- [ ] Listado con borrado en el drawer de edición (targets ≥ 44px, `aria-label` en el botón ×).
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Puedo ver que "GAZPACHO HACEND." apunta a "Gazpacho" y borrar esa asociación.
+- El siguiente escaneo de esa línea vuelve a pedir decisión (ya no matchea `auto`).
+
+---
+
+### E9 — Fusionar productos duplicados
+
+**Idea original:** ninguna directa — consecuencia inevitable del análisis: los duplicados ya
+creados (antes de E1/E2) fragmentan el historial de precios, y con precios en juego la fusión
+es valiosa, no solo limpieza.
+
+**Contexto actual**
+- Referencias a `products`: `receipt_items.product_id` (historial de precios),
+  `product_aliases.product_id`, `inventory_items.product_id` (unique
+  `(household_id, product_id, location)`), `recipe_ingredients.product_id`,
+  `shopping_list_items` (verificar su esquema en `20260719131524_shopping_list.sql`),
+  `user_pinned_products` si E5 ya está hecha.
+
+**Diseño propuesto**
+- **RPC transaccional** en Postgres `merge_products(p_source uuid, p_target uuid)` (mismo
+  patrón de guardas y grants que los RPCs de D1): valida que ambos productos son del hogar del
+  llamante y son distintos; repunta TODAS las referencias al destino; casos especiales:
+  - `inventory_items`: si (target, location) ya existe, fusionar cantidades en la fila destino
+    y borrar la origen — si las unidades difieren, conservar la del destino SIN sumar y dejar
+    la cantidad del destino (documentar; coherente con la política de E3).
+  - `product_aliases`: repuntar con `on conflict (household_id, alias_normalized) do nothing`.
+  - Añadir un alias nuevo: el `normalized_name` del producto origen → destino (así los
+    tickets futuros que traían el nombre del duplicado matchean solos).
+  - `purchase_count`: sumar al destino; `min_quantity`/`default_*`: conservar los del destino.
+  - Borrar el producto origen al final.
+- **UI mínima**: "Fusionar con…" en el drawer de edición del producto + combobox buscable
+  (reutilizar el componente de E1) + confirmación clara ("El historial de precios de ambos se
+  unirá; esta acción no se puede deshacer").
+- Migración con el RPC: pedir autorización antes de `npx supabase db push`; tipos a mano.
+
+**Pasos**
+- [ ] Migración con `merge_products` (+ guardas, revoke/grant patrón D1).
+- [ ] `mergeProductsAction` + UI en el drawer de edición con confirmación destructiva.
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Fusionar "Leche Entera" en "Leche" deja un solo producto cuyo historial de precios (gráficas
+  de `/precios`) incluye las líneas de ambos; sin filas huérfanas ni violaciones de unique.
+- Tras fusionar, un ticket nuevo con el nombre del producto eliminado matchea al destino.
+- Un usuario de otro hogar no puede invocar el RPC sobre estos productos (excepción SQL).
+
+---
+
+### E10 — Robustez transaccional de la confirmación del ticket (menor)
+
+**Idea original:** ninguna directa — detectado en el análisis.
+
+**Contexto actual**
+- `confirmReceiptAction` hace ~6–8 queries por línea, en bucle secuencial y sin transacción:
+  un ticket de 40 líneas es lento, y un fallo a mitad deja el ticket a medias (algunas líneas
+  en inventario, otras no, y el receipt quizá sin marcar `confirmed`).
+
+**Diseño propuesto**
+- Opción preferente: mover la confirmación a un **RPC transaccional** de Postgres que reciba el
+  payload de decisiones y haga todo el trabajo (aliases, productos nuevos, inventario, precios,
+  `bump_product_purchase`, estado del receipt) en una transacción.
+- Alternativa mínima si el RPC crece demasiado: batching de queries por fase (todas las
+  lecturas juntas, todas las escrituras juntas) + manejo de errores que deje el estado
+  reintentable (no marcar `confirmed` hasta que todas las líneas estén procesadas).
+- Coordinar con E3 (la política de unidades debe vivir en un solo sitio, sea TS o SQL).
+
+**Pasos**
+- [ ] Elegir enfoque (RPC vs batching) y documentar el porqué en el código.
+- [ ] Implementar + migración si aplica (autorización antes de `db push`).
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Un fallo a mitad de confirmación no deja estado inconsistente (o queda claramente
+  reintentable sin duplicar inventario).
+- Confirmar un ticket de 40 líneas tarda un tiempo razonable (sin N×8 round-trips secuenciales).
+
+---
+
 ## Notas de alcance (decisiones tomadas)
 
 - **Desayunos:** la BD admite `breakfast` pero la UI de menús solo usa comida/cena; se mantiene así en todas estas tareas.
@@ -793,27 +1226,33 @@ entre sí. D1 y D2 son las de mayor impacto; D6 y D7 son microcopys de una tarde
 - **Sin IA para la lista de la compra** (D3): el cálculo determinista + matching trigram cubre el caso; Gemini solo como fallback futuro y únicamente si el usuario lo pide (cero gasto en IA).
 - **Sin seguimiento de caducidad por lotes** (D7): una `expiry_date` por (producto, ubicación); la convención es "la fecha del que caduque antes". Reevaluar solo si el usuario lo pide (ampliación natural: tabla hija `inventory_lots` con FIFO).
 - **Sin rectificación de imagen en cliente ni wrapper nativo** para el escaneo (D6): el modo "escanear documento" del teléfono no es accesible desde una PWA; el flujo de subir PDF nativo lo cubre y Gemini Vision es robusto con fotos sin rectificar.
+- **Sin reordenación manual drag & drop del inventario** (bloque E): choca con el orden por urgencia (que es una feature deliberada de la app, no un accidente), exige tabla de posiciones per-user + indexación fraccional + drag móvil en lista scrolleable (conflictos con tap-to-edit y stepper), y WCAG 2.2 §2.5.7 obligaría a construir además una alternativa sin arrastre. La necesidad real ("cada miembro usa insumos distintos") la cubren los pines de E5. Reevaluar solo si los pines se quedan cortos tras uso real.
+- **Sin filtro por categoría en el inventario** (E4): la agrupación por ubicación + buscador + chips de estado cubren el caso; si tras uso real hiciera falta, iría en un sheet de filtros (vaul), nunca como segunda fila permanente de chips.
+- **Precedencia de matching en tickets** (E6/E7): alias aprendido > nombre exacto > sugerencia IA / candidato fuzzy > producto nuevo. Solo los dos primeros asocian automáticamente; IA y fuzzy únicamente **sugieren** y es el usuario quien confirma (y esa confirmación aprende el alias). La IA nunca ve la tabla de aliases y sus ids se validan server-side siempre.
+- **Sin conversión automática de unidades** (E3/E9): ud↔kg↔L no es convertible sin datos por producto; la política es no sumar unidades distintas en silencio y avisar al usuario.
 
 ---
 
-> **Prompt para el siguiente agente (Bloque D):**
+> **Prompt para el siguiente agente (Bloque E):**
 >
 > ```
 > Continúa con el proyecto Fill Good (C:\Users\Jorge\Desktop\Food). Lee primero AGENTS.md
 > (sistema de diseño: solo tokens semánticos, touch targets ≥44px, drawers en móvil, UI en
-> español) y las "Instrucciones para el agente" al inicio de TODO.md. Los bloques A, B y C
-> están terminados; implementa el Bloque D, tarea a tarea y con un commit por tarea,
-> empezando por D1 y D2 (el resto en cualquier orden).
+> español) y las "Instrucciones para el agente" al inicio de TODO.md. Los bloques A, B, C y D
+> están terminados; implementa el Bloque E, tarea a tarea y con un commit por tarea, en este
+> orden: E1 → E2 → E3 → E4 → E5, y después E6–E10 (E6, E7 y E9 se apoyan en la UI de E1).
 >
 > Estado de la BD: proyecto Supabase enlazado por CLI (supabase/.temp/linked-project.json).
 > Verifica el estado con `npx supabase migration list --linked` (solo lectura). Las
-> migraciones nuevas (D1 seguro; D3 según diseño) requieren AUTORIZACIÓN del usuario antes
-> de `npx supabase db push`. Los tipos en src/lib/supabase/types.ts se mantienen a mano.
+> migraciones nuevas (E5 y E9 seguro; E6/E10 según diseño) requieren AUTORIZACIÓN del usuario
+> antes de `npx supabase db push`. Los tipos en src/lib/supabase/types.ts se mantienen a mano.
 >
-> Cada tarea del Bloque D en TODO.md es autocontenida (contexto con rutas de archivo,
+> Cada tarea del Bloque E en TODO.md es autocontenida (contexto con rutas de archivo,
 > diseño propuesto, pasos y criterios de aceptación). No amplíes el alcance: lo descartado
-> está en "Notas de alcance". Al terminar cada tarea: `npx tsc --noEmit` y `npx eslint .`
-> limpios, verificar los criterios en el preview cuando sea posible (hay límite conocido:
-> login de Clerk no verificable en headless), marcar sus checkboxes y el estado global, y
-> dejar una "Nota de implementación" bajo la tarea siguiendo el formato de las de A–C.
+> está en "Notas de alcance" (en particular: NADA de drag & drop en inventario, nada de
+> conversión de unidades, y la precedencia de matching alias > exacto > IA/fuzzy > nuevo es
+> fija). Al terminar cada tarea: `npx tsc --noEmit` y `npx eslint .` limpios, verificar los
+> criterios en el preview cuando sea posible (límite conocido: login de Clerk no verificable
+> en headless), marcar sus checkboxes y el estado global, y dejar una "Nota de implementación"
+> bajo la tarea siguiendo el formato de las de A–D.
 > ```

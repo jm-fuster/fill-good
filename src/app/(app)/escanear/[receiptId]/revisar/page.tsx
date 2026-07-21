@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { ReceiptReview } from "@/features/receipts/components/receipt-review";
 import { getReceipt, getReceiptItems } from "@/features/receipts/queries";
-import { getProducts } from "@/features/inventory/queries";
+import { getProductCatalog } from "@/features/shopping-list/queries";
 
 export const metadata: Metadata = { title: "Revisar ticket" };
 
@@ -20,7 +20,7 @@ export default async function RevisarPage({
 
   const [items, products] = await Promise.all([
     getReceiptItems(receiptId),
-    getProducts(),
+    getProductCatalog(),
   ]);
 
   return (
@@ -32,7 +32,13 @@ export default async function RevisarPage({
       <ReceiptReview
         receipt={receipt}
         items={items}
-        products={products.map((p) => ({ id: p.id, name: p.name }))}
+        products={products.map((p) => ({
+          id: p.id,
+          name: p.name,
+          normalizedName: p.normalizedName,
+          defaultLocation: p.defaultLocation,
+          purchaseCount: p.purchaseCount,
+        }))}
       />
     </>
   );
