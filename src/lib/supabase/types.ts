@@ -8,6 +8,7 @@
 export type UnitType = "ud" | "g" | "kg" | "ml" | "l";
 export type LocationType = "pantry" | "fridge" | "freezer" | "other";
 export type MemberRole = "owner" | "member";
+export type InventoryEventKind = "consumed" | "discarded";
 
 export type Database = {
   public: {
@@ -270,6 +271,46 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "inventory_items_product_id_fkey";
+            columns: ["product_id"];
+            referencedRelation: "products";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      inventory_events: {
+        Row: {
+          id: string;
+          household_id: string;
+          product_id: string;
+          quantity: number;
+          unit: UnitType;
+          kind: InventoryEventKind;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          product_id: string;
+          quantity: number;
+          unit?: UnitType;
+          kind: InventoryEventKind;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          product_id?: string;
+          quantity?: number;
+          unit?: UnitType;
+          kind?: InventoryEventKind;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "inventory_events_product_id_fkey";
             columns: ["product_id"];
             referencedRelation: "products";
             referencedColumns: ["id"];

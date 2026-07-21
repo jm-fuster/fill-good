@@ -3,9 +3,12 @@ import "server-only";
 import { addMonths, format, parseISO, startOfMonth, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 
+import { baseUnitFactor, unitFamily } from "@/lib/units";
+import type { UnitType } from "@/lib/supabase/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { CHAIN_LABELS } from "./chains";
+import { getLatestUnitPrices } from "./queries";
 
 export type SpendingBreakdownItem = {
   key: string;
@@ -31,6 +34,9 @@ export type MonthlySpending = {
   budget: number | null;
   byCategory: SpendingBreakdownItem[];
   byChain: SpendingBreakdownItem[];
+  /** Desperdicio del mes valorado en € (M8); 0 si no hay eventos valorables. */
+  discardedTotal: number;
+  discardedByProduct: SpendingBreakdownItem[];
 };
 
 const OTHER_KEY = "otros";
@@ -73,25 +79,34 @@ export async function getMonthlySpending(
   const nextStartStr = fmt(nextStart);
   const prevStartStr = fmt(prevStart);
 
-  // Una sola consulta para el mes objetivo Y el anterior (para el delta).
-  const [{ data: receiptRows }, { data: itemRows }] = await Promise.all([
-    supabase
-      .from("receipts")
-      .select("total_amount, discount_total, store_chain, purchased_at")
-      .eq("status", "confirmed")
-      .gte("purchased_at", prevStartStr)
-      .lt("purchased_at", nextStartStr),
-    supabase
-      .from("receipt_items")
-      .select(
-        // 2 FKs a products → hay que nombrar la relación (PGRST201). El embed
-        // products → categories es no ambiguo (una sola FK).
-        "total_price, purchased_at, product:products!receipt_items_product_id_fkey(category:categories(name))",
-      )
-      .not("total_price", "is", null)
-      .gte("purchased_at", monthStartStr)
-      .lt("purchased_at", nextStartStr),
-  ]);
+  // Una sola tanda: receipts (mes objetivo + anterior), líneas por categoría,
+  // eventos de desperdicio del mes y el mapa de precios para valorarlos.
+  const [{ data: receiptRows }, { data: itemRows }, { data: discardRows }, prices] =
+    await Promise.all([
+      supabase
+        .from("receipts")
+        .select("total_amount, discount_total, store_chain, purchased_at")
+        .eq("status", "confirmed")
+        .gte("purchased_at", prevStartStr)
+        .lt("purchased_at", nextStartStr),
+      supabase
+        .from("receipt_items")
+        .select(
+          // 2 FKs a products → hay que nombrar la relación (PGRST201). El embed
+          // products → categories es no ambiguo (una sola FK).
+          "total_price, purchased_at, product:products!receipt_items_product_id_fkey(category:categories(name))",
+        )
+        .not("total_price", "is", null)
+        .gte("purchased_at", monthStartStr)
+        .lt("purchased_at", nextStartStr),
+      supabase
+        .from("inventory_events")
+        .select("product_id, quantity, unit, product:products(name)")
+        .eq("kind", "discarded")
+        .gte("created_at", monthStartStr)
+        .lt("created_at", nextStartStr),
+      getLatestUnitPrices(),
+    ]);
 
   // Totales y desglose por cadena a partir de receipts.
   let total = 0;
@@ -140,6 +155,32 @@ export async function getMonthlySpending(
     .filter((c) => c.total > 0)
     .sort((a, b) => b.total - a.total);
 
+  // Desperdicio valorado en € (M8): cantidad tirada × último precio del producto,
+  // solo dentro de la misma familia de unidad (sin conversión ud↔peso).
+  type DiscardRow = {
+    product_id: string | null;
+    quantity: number;
+    unit: UnitType;
+    product: { name: string } | null;
+  };
+  const discardTotals = new Map<string, number>();
+  let discardedTotal = 0;
+  for (const e of (discardRows ?? []) as unknown as DiscardRow[]) {
+    if (!e.product_id) continue;
+    const price = prices.get(e.product_id);
+    if (!price || unitFamily(price.unit) !== unitFamily(e.unit)) continue;
+    const value =
+      (price.price / baseUnitFactor(price.unit)) *
+      (Number(e.quantity) * baseUnitFactor(e.unit));
+    if (!(value > 0)) continue;
+    discardedTotal += value;
+    const name = e.product?.name ?? "Producto";
+    discardTotals.set(name, (discardTotals.get(name) ?? 0) + value);
+  }
+  const discardedByProduct: SpendingBreakdownItem[] = [...discardTotals.entries()]
+    .map(([label, t]) => ({ key: label, label, total: t }))
+    .sort((a, b) => b.total - a.total);
+
   const canGoForward = nextStart <= currentMonthStart;
 
   return {
@@ -155,5 +196,7 @@ export async function getMonthlySpending(
     budget: household.monthlyBudget,
     byCategory,
     byChain,
+    discardedTotal,
+    discardedByProduct,
   };
 }

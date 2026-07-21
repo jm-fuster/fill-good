@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Receipt,
   Tag,
+  Trash2,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
@@ -145,6 +146,8 @@ export function SpendingPanel({ data }: { data: MonthlySpending }) {
     budget,
     byCategory,
     byChain,
+    discardedTotal,
+    discardedByProduct,
   } = data;
 
   const hasData = receiptCount > 0;
@@ -221,6 +224,37 @@ export function SpendingPanel({ data }: { data: MonthlySpending }) {
                 <Tag className="size-4" aria-hidden />
                 Has ahorrado {euro(discountTotal)} en descuentos
               </p>
+            ) : null}
+
+            {discardedTotal > 0 ? (
+              <details className="group">
+                <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm text-destructive">
+                  <Trash2 className="size-4" aria-hidden />
+                  Has tirado {euro(discardedTotal)} este mes
+                  {discardedByProduct.length > 0 ? (
+                    <span className="text-xs text-muted-foreground group-open:hidden">
+                      · ver detalle
+                    </span>
+                  ) : null}
+                </summary>
+                {discardedByProduct.length > 0 ? (
+                  <ul className="mt-2 flex flex-col gap-1 pl-6">
+                    {discardedByProduct.map((d) => (
+                      <li
+                        key={d.key}
+                        className="flex items-baseline justify-between gap-2 text-sm"
+                      >
+                        <span className="truncate text-muted-foreground">
+                          {d.label}
+                        </span>
+                        <span className="shrink-0 tabular-nums">
+                          {euro(d.total)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </details>
             ) : null}
 
             {budget != null ? <BudgetBar total={total} budget={budget} /> : null}

@@ -7,7 +7,11 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { getProductCatalog } from "@/features/shopping-list/queries";
-import type { LocationType, UnitType } from "@/lib/supabase/types";
+import type {
+  InventoryEventKind,
+  LocationType,
+  UnitType,
+} from "@/lib/supabase/types";
 import {
   addInventorySchema,
   editInventorySchema,
@@ -378,11 +382,44 @@ export async function mergeProductsAction(
   return { ok: true };
 }
 
-export async function deleteInventoryAction(id: string): Promise<ActionState> {
+/**
+ * Elimina un ítem del inventario y registra la baja (M8). `kind` distingue si
+ * lo que quedaba se consumió o se tiró: el desperdicio ('discarded') se valora
+ * en euros en el panel de gasto. Por defecto 'consumed' (caso feliz, sin
+ * fricción). Solo se registra evento si quedaba cantidad > 0.
+ */
+export async function deleteInventoryAction(
+  id: string,
+  kind: InventoryEventKind = "consumed",
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
   const supabase = createServerSupabaseClient();
+
+  // Cantidad/unidad/producto antes de borrar, para el evento de baja.
+  const { data: item } = await supabase
+    .from("inventory_items")
+    .select("product_id, quantity, unit")
+    .eq("id", id)
+    .maybeSingle();
+
   const { error } = await supabase.from("inventory_items").delete().eq("id", id);
   if (error) return { error: "No se pudo eliminar." };
+
+  if (item && Number(item.quantity) > 0) {
+    await supabase.from("inventory_events").insert({
+      household_id: household.id,
+      product_id: item.product_id,
+      quantity: Number(item.quantity),
+      unit: item.unit,
+      kind,
+      created_by: userId,
+    });
+  }
+
   revalidatePath("/inventario");
+  revalidatePath("/precios");
   return { ok: true };
 }
 
