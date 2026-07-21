@@ -6,6 +6,7 @@ import { generateObject } from "ai";
 
 import { getModel } from "@/lib/ai/models";
 import { receiptSchema } from "@/lib/ai/receipt-schema";
+import type { ReceiptItemExtraction } from "@/lib/ai/receipt-schema";
 import { buildReceiptPrompt } from "@/lib/ai/receipt-prompt";
 import { loadHouseholdMatchData, matchLineExact } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
@@ -210,7 +211,7 @@ export async function confirmReceiptAction(
 
   const { data: receipt } = await supabase
     .from("receipts")
-    .select("id, household_id, store_chain, purchased_at")
+    .select("id, household_id, store_chain, purchased_at, raw_extraction")
     .eq("id", payload.receiptId)
     .maybeSingle();
   if (!receipt || receipt.household_id !== household.id) {
@@ -219,6 +220,20 @@ export async function confirmReceiptAction(
 
   const purchasedAt = payload.purchaseDate ?? receipt.purchased_at;
   const storeChain = receipt.store_chain;
+
+  // Descuentos (M1): las líneas is_discount se filtran al escanear y no viven en
+  // receipt_items; su total sí se conserva aquí, sumando desde la extracción.
+  // Positivo = € ahorrados. abs() por si el modelo emite el importe con signo.
+  const rawItems =
+    (receipt.raw_extraction as { items?: ReceiptItemExtraction[] } | null)
+      ?.items ?? [];
+  const discountTotal = rawItems.reduce(
+    (sum, it) =>
+      it.is_discount && it.total_price != null
+        ? sum + Math.abs(Number(it.total_price))
+        : sum,
+    0,
+  );
   let added = 0;
   const inventoryItemIds: string[] = [];
   const warnings: string[] = [];
@@ -408,6 +423,7 @@ export async function confirmReceiptAction(
       store_name: payload.storeName,
       purchased_at: purchasedAt,
       total_amount: payload.total,
+      discount_total: discountTotal,
       status: "confirmed",
       confirmed_at: new Date().toISOString(),
     })

@@ -19,6 +19,7 @@ export type Database = {
           invite_code: string;
           created_by: string;
           created_at: string;
+          monthly_budget: number | null;
         };
         Insert: {
           id?: string;
@@ -26,6 +27,7 @@ export type Database = {
           invite_code: string;
           created_by: string;
           created_at?: string;
+          monthly_budget?: number | null;
         };
         Update: {
           id?: string;
@@ -33,6 +35,7 @@ export type Database = {
           invite_code?: string;
           created_by?: string;
           created_at?: string;
+          monthly_budget?: number | null;
         };
         Relationships: [];
       };
@@ -318,6 +321,7 @@ export type Database = {
           raw_extraction: unknown | null;
           created_at: string;
           confirmed_at: string | null;
+          discount_total: number;
         };
         Insert: {
           id?: string;
@@ -333,6 +337,7 @@ export type Database = {
           raw_extraction?: unknown | null;
           created_at?: string;
           confirmed_at?: string | null;
+          discount_total?: number;
         };
         Update: {
           id?: string;
@@ -348,6 +353,7 @@ export type Database = {
           raw_extraction?: unknown | null;
           created_at?: string;
           confirmed_at?: string | null;
+          discount_total?: number;
         };
         Relationships: [];
       };

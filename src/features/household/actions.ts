@@ -69,6 +69,43 @@ export async function joinHouseholdAction(
   redirect("/inventario");
 }
 
+export type BudgetState = { error?: string; ok?: boolean };
+
+/**
+ * Objetivo de gasto mensual del hogar (M1). Vacío = sin objetivo (null). El
+ * UPDATE va directo: households tiene política RLS de update para miembros.
+ */
+export async function updateMonthlyBudgetAction(
+  _prev: BudgetState,
+  formData: FormData,
+): Promise<BudgetState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const raw = String(formData.get("budget") ?? "")
+    .trim()
+    .replace(",", ".");
+  let budget: number | null = null;
+  if (raw !== "") {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) {
+      return { error: "Introduce un importe válido." };
+    }
+    budget = Math.round(n * 100) / 100;
+  }
+
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase
+    .from("households")
+    .update({ monthly_budget: budget })
+    .eq("id", household.id);
+  if (error) return { error: "No se pudo guardar el objetivo." };
+
+  revalidatePath("/ajustes");
+  revalidatePath("/precios");
+  return { ok: true };
+}
+
 export async function regenerateInviteCodeAction(): Promise<ActionState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };

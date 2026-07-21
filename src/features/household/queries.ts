@@ -10,6 +10,7 @@ export type CurrentHousehold = {
   name: string;
   inviteCode: string;
   role: MemberRole;
+  monthlyBudget: number | null;
 };
 
 export type HouseholdMember = {
@@ -27,6 +28,7 @@ type MembershipRow = {
     name: string;
     invite_code: string;
     created_at: string;
+    monthly_budget: number | null;
   } | null;
 };
 
@@ -41,7 +43,9 @@ export async function getCurrentHousehold(): Promise<CurrentHousehold | null> {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("household_members")
-    .select("role, household:households(id, name, invite_code, created_at)")
+    .select(
+      "role, household:households(id, name, invite_code, created_at, monthly_budget)",
+    )
     .eq("user_id", userId)
     .order("joined_at", { ascending: true })
     .limit(1)
@@ -57,6 +61,7 @@ export async function getCurrentHousehold(): Promise<CurrentHousehold | null> {
     name: row.household.name,
     inviteCode: row.household.invite_code,
     role: row.role,
+    monthlyBudget: row.household.monthly_budget,
   };
 }
 

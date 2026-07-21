@@ -7,6 +7,7 @@ import { ChevronRight, Palette } from "lucide-react";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BudgetCard } from "@/features/household/components/budget-card";
 import { HouseholdCard } from "@/features/household/components/household-card";
 import {
   getCurrentHousehold,
@@ -57,6 +58,8 @@ export default async function AjustesPage() {
         {household ? (
           <HouseholdCard household={household} members={members} />
         ) : null}
+
+        {household ? <BudgetCard budget={household.monthlyBudget} /> : null}
 
         <Card>
           <CardHeader>
