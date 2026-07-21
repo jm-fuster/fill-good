@@ -85,7 +85,11 @@ export default async function InventarioPage() {
               </h2>
               <div className="flex flex-col gap-2">
                 {group.items.map((entry) => (
-                  <InventoryItemCard key={entry.id} entry={entry} />
+                  <InventoryItemCard
+                    key={entry.id}
+                    entry={entry}
+                    categories={categories}
+                  />
                 ))}
               </div>
             </section>

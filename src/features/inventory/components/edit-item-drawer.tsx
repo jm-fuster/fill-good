@@ -17,17 +17,29 @@ import {
 } from "@/components/ui/drawer";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { formatQuantity, UNIT_LABELS } from "@/lib/units";
-import type { InventoryEntry } from "../queries";
+import { formatQuantity, LOCATION_OPTIONS, UNIT_LABELS } from "@/lib/units";
+import type { LocationType } from "@/lib/supabase/types";
+import type { Category, InventoryEntry } from "../queries";
 import { deleteInventoryAction, updateInventoryAction } from "../actions";
+
+const NO_CATEGORY = "__none__";
 
 export function EditItemDrawer({
   entry,
+  categories,
   open,
   onOpenChange,
 }: {
   entry: InventoryEntry;
+  categories: Category[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -36,13 +48,27 @@ export function EditItemDrawer({
   const [pending, setPending] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // "Consumir pronto": controlado, resincronizado cuando el servidor cambia
-  // (mismo patrón de ajuste en render que el stepper de la tarjeta).
+  // "Consumir pronto" y "Ubicación": controlados, resincronizados cuando el
+  // servidor cambia (mismo patrón de ajuste en render que el stepper).
   const [useSoon, setUseSoon] = useState(entry.useSoon);
   const [serverUseSoon, setServerUseSoon] = useState(entry.useSoon);
   if (serverUseSoon !== entry.useSoon) {
     setServerUseSoon(entry.useSoon);
     setUseSoon(entry.useSoon);
+  }
+
+  const [location, setLocation] = useState<LocationType>(entry.location);
+  const [serverLocation, setServerLocation] = useState(entry.location);
+  if (serverLocation !== entry.location) {
+    setServerLocation(entry.location);
+    setLocation(entry.location);
+  }
+
+  const [categoryId, setCategoryId] = useState(entry.categoryId ?? "");
+  const [serverCategoryId, setServerCategoryId] = useState(entry.categoryId);
+  if (serverCategoryId !== entry.categoryId) {
+    setServerCategoryId(entry.categoryId);
+    setCategoryId(entry.categoryId ?? "");
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -89,6 +115,63 @@ export function EditItemDrawer({
             <input type="hidden" name="inventoryId" value={entry.id} />
             <input type="hidden" name="productId" value={entry.productId} />
             <input type="hidden" name="useSoon" value={String(useSoon)} />
+
+            <input type="hidden" name="categoryId" value={categoryId} />
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-name">Producto</Label>
+              <Input
+                id="edit-name"
+                name="name"
+                required
+                maxLength={120}
+                autoComplete="off"
+                defaultValue={entry.productName}
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-category">Categoría</Label>
+              <Select
+                value={categoryId === "" ? NO_CATEGORY : categoryId}
+                onValueChange={(v) =>
+                  setCategoryId(v === NO_CATEGORY ? "" : v)
+                }
+              >
+                <SelectTrigger id="edit-category" className="w-full">
+                  <SelectValue placeholder="Sin categoría" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_CATEGORY}>Sin categoría</SelectItem>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.icon ? `${c.icon} ` : ""}
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-location">Ubicación</Label>
+              <Select
+                value={location}
+                onValueChange={(v) => setLocation(v as LocationType)}
+                name="location"
+              >
+                <SelectTrigger id="edit-location" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOCATION_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="edit-quantity">

@@ -44,6 +44,17 @@ export const addInventorySchema = z.object({
 export const editInventorySchema = z.object({
   inventoryId: z.string().uuid(),
   productId: z.string().uuid(),
+  name: z
+    .string()
+    .trim()
+    .min(1, "Escribe el nombre del producto.")
+    .max(120, "Nombre demasiado largo."),
+  categoryId: z
+    .string()
+    .trim()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : null)),
+  location,
   quantity: z
     .string()
     .trim()

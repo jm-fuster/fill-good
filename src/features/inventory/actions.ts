@@ -133,10 +133,14 @@ export async function updateInventoryAction(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
   const { userId } = await auth();
   const parsed = editInventorySchema.safeParse({
     inventoryId: formData.get("inventoryId"),
     productId: formData.get("productId"),
+    name: formData.get("name"),
+    location: formData.get("location"),
     quantity: formData.get("quantity"),
     expiryDate: formData.get("expiryDate") || undefined,
     useSoon: formData.get("useSoon") || undefined,
@@ -148,21 +152,68 @@ export async function updateInventoryAction(
   const d = parsed.data;
   const supabase = createServerSupabaseClient();
 
-  const { error: invErr } = await supabase
-    .from("inventory_items")
-    .update({
-      quantity: d.quantity,
-      expiry_date: d.expiryDate,
-      use_soon: d.useSoon,
-      updated_by: userId,
-    })
-    .eq("id", d.inventoryId);
-  if (invErr) return { error: "No se pudo guardar." };
-
-  await supabase
+  // Renombrar el producto si cambió el nombre. La unicidad es por
+  // (household_id, normalized_name): si el nuevo nombre choca con otro producto
+  // del catálogo, rechazamos en vez de fusionar (evita perder datos enlazados).
+  const normalized = normalizeName(d.name);
+  const { data: clash } = await supabase
     .from("products")
-    .update({ min_quantity: d.minQuantity })
+    .select("id")
+    .eq("household_id", household.id)
+    .eq("normalized_name", normalized)
+    .neq("id", d.productId)
+    .maybeSingle();
+  if (clash) {
+    return { error: "Ya existe otro producto con ese nombre." };
+  }
+  const { error: prodErr } = await supabase
+    .from("products")
+    .update({
+      name: d.name,
+      normalized_name: normalized,
+      category_id: d.categoryId,
+      min_quantity: d.minQuantity,
+    })
     .eq("id", d.productId);
+  if (prodErr) return { error: "No se pudo guardar el nombre." };
+
+  // Ubicación de destino: si ya existe una fila del mismo producto en esa
+  // ubicación (unique household_id, product_id, location), fusionamos sumando
+  // cantidades y borramos la fila movida; si no, movemos la fila.
+  const { data: target } = await supabase
+    .from("inventory_items")
+    .select("id, quantity")
+    .eq("household_id", household.id)
+    .eq("product_id", d.productId)
+    .eq("location", d.location)
+    .neq("id", d.inventoryId)
+    .maybeSingle();
+
+  if (target) {
+    const { error: mergeErr } = await supabase
+      .from("inventory_items")
+      .update({
+        quantity: Number(target.quantity) + d.quantity,
+        expiry_date: d.expiryDate,
+        use_soon: d.useSoon,
+        updated_by: userId,
+      })
+      .eq("id", target.id);
+    if (mergeErr) return { error: "No se pudo mover el producto." };
+    await supabase.from("inventory_items").delete().eq("id", d.inventoryId);
+  } else {
+    const { error: invErr } = await supabase
+      .from("inventory_items")
+      .update({
+        location: d.location,
+        quantity: d.quantity,
+        expiry_date: d.expiryDate,
+        use_soon: d.useSoon,
+        updated_by: userId,
+      })
+      .eq("id", d.inventoryId);
+    if (invErr) return { error: "No se pudo guardar." };
+  }
 
   revalidatePath("/inventario");
   return { ok: true };

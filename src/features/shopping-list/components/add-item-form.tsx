@@ -15,6 +15,7 @@ export function AddItemForm({ catalog }: { catalog: CatalogProduct[] }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [name, setName] = useState("");
+  const [quantity, setQuantity] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -31,21 +32,29 @@ export function AddItemForm({ catalog }: { catalog: CatalogProduct[] }) {
       }
       if (result.warning) toast.warning(result.warning);
       setName("");
+      setQuantity("");
       formRef.current?.reset();
       router.refresh();
     });
   }
 
-  // Elegir una sugerencia del catálogo: alta ya vinculada al producto.
+  // Elegir una sugerencia del catálogo: alta ya vinculada al producto, pero
+  // respetando la cantidad escrita (si la hay) y la unidad por defecto.
   function handleSelect(product: CatalogProduct) {
     setError(null);
+    const qty = quantity.trim().length > 0 ? Number(quantity.replace(",", ".")) : null;
     startTransition(async () => {
-      const result = await addProductToListAction(product.id);
+      const result = await addProductToListAction(
+        product.id,
+        qty,
+        product.defaultUnit,
+      );
       if (result.error) {
         setError(result.error);
         return;
       }
       setName("");
+      setQuantity("");
       formRef.current?.reset();
       router.refresh();
     });
@@ -70,6 +79,8 @@ export function AddItemForm({ catalog }: { catalog: CatalogProduct[] }) {
           placeholder="Cant."
           className="w-20"
           aria-label="Cantidad"
+          value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
         />
         <Button
           type="submit"

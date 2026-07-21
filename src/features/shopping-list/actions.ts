@@ -7,8 +7,9 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import { formatQuantity } from "@/lib/units";
 import { getCurrentHousehold } from "@/features/household/queries";
+import type { UnitType } from "@/lib/supabase/types";
 import { getActiveList } from "./queries";
-import { addListItemSchema } from "./schemas";
+import { addListItemSchema, updateListItemSchema } from "./schemas";
 
 export type ActionState = { error?: string; ok?: boolean; warning?: string };
 
@@ -84,6 +85,8 @@ export async function addListItemAction(
 
 export async function addProductToListAction(
   productId: string,
+  quantity?: number | null,
+  unit?: UnitType | null,
 ): Promise<ActionState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
@@ -100,15 +103,51 @@ export async function addProductToListAction(
     .maybeSingle();
   if (!product) return { error: "Producto no encontrado." };
 
+  const qty =
+    typeof quantity === "number" && Number.isFinite(quantity) && quantity > 0
+      ? quantity
+      : null;
+
   const { error } = await supabase.from("shopping_list_items").insert({
     list_id: list.id,
     household_id: household.id,
     product_id: product.id,
     name: product.name,
-    unit: product.default_unit,
+    quantity: qty,
+    unit: unit ?? product.default_unit,
     added_by: userId,
   });
   if (error) return { error: "No se pudo añadir a la lista." };
+
+  revalidatePath("/lista");
+  return { ok: true };
+}
+
+export async function updateListItemAction(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const parsed = updateListItemSchema.safeParse({
+    itemId: formData.get("itemId"),
+    name: formData.get("name"),
+    quantity: formData.get("quantity") || undefined,
+    unit: formData.get("unit") || undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  const d = parsed.data;
+  const supabase = createServerSupabaseClient();
+
+  const { error } = await supabase
+    .from("shopping_list_items")
+    .update({
+      name: d.name,
+      quantity: d.quantity,
+      unit: d.unit ?? null,
+    })
+    .eq("id", d.itemId);
+  if (error) return { error: "No se pudo guardar." };
 
   revalidatePath("/lista");
   return { ok: true };

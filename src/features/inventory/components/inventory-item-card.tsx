@@ -9,11 +9,17 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { expiryLabel, getExpiryStatus } from "@/lib/dates";
 import { formatQuantity, isCountable } from "@/lib/units";
-import type { InventoryEntry } from "../queries";
+import type { Category, InventoryEntry } from "../queries";
 import { setInventoryQuantityAction } from "../actions";
 import { EditItemDrawer } from "./edit-item-drawer";
 
-export function InventoryItemCard({ entry }: { entry: InventoryEntry }) {
+export function InventoryItemCard({
+  entry,
+  categories,
+}: {
+  entry: InventoryEntry;
+  categories: Category[];
+}) {
   const [qty, setQty] = useState(entry.quantity);
   const [serverQty, setServerQty] = useState(entry.quantity);
   const [editing, setEditing] = useState(false);
@@ -133,6 +139,7 @@ export function InventoryItemCard({ entry }: { entry: InventoryEntry }) {
 
       <EditItemDrawer
         entry={{ ...entry, quantity: qty }}
+        categories={categories}
         open={editing}
         onOpenChange={setEditing}
       />

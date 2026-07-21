@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { Check, Pencil, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -24,10 +24,11 @@ import {
   toggleItemAction,
 } from "../actions";
 import { AddItemForm } from "./add-item-form";
+import { EditListItemDrawer } from "./edit-list-item-drawer";
 
 function signatureOf(items: ListItem[]) {
   return items
-    .map((i) => `${i.id}:${i.isChecked}:${i.quantity}:${i.name}`)
+    .map((i) => `${i.id}:${i.isChecked}:${i.quantity}:${i.unit}:${i.name}`)
     .join("|");
 }
 
@@ -48,6 +49,8 @@ export function ShoppingListView({
   const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [sig, setSig] = useState(signatureOf(initialItems));
+  const [editMode, setEditMode] = useState(false);
+  const [editItem, setEditItem] = useState<ListItem | null>(null);
 
   // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh).
   const currentSig = signatureOf(initialItems);
@@ -86,41 +89,84 @@ export function ShoppingListView({
           description="Añade productos arriba. Al terminar la compra, lo que marques pasará a tu inventario."
         />
       ) : (
-        <div className="flex flex-col gap-1">
-          {pending.map((item) => (
-            <ListRow key={item.id} item={item} onToggle={toggle} />
-          ))}
-
-          {done.length > 0 ? (
-            <p className="mt-4 mb-1 text-xs font-medium text-muted-foreground">
-              En el carro ({done.length})
+        <>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground">
+              {editMode ? "Toca un producto para editarlo" : `${items.length} producto${items.length === 1 ? "" : "s"}`}
             </p>
-          ) : null}
-          {done.map((item) => (
-            <ListRow key={item.id} item={item} onToggle={toggle} />
-          ))}
-        </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditMode((v) => !v)}
+              aria-pressed={editMode}
+            >
+              {editMode ? <Check aria-hidden /> : <Pencil aria-hidden />}
+              {editMode ? "Hecho" : "Editar"}
+            </Button>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            {pending.map((item) => (
+              <ListRow
+                key={item.id}
+                item={item}
+                editMode={editMode}
+                onToggle={toggle}
+                onEdit={setEditItem}
+              />
+            ))}
+
+            {done.length > 0 ? (
+              <p className="mt-4 mb-1 text-xs font-medium text-muted-foreground">
+                En el carro ({done.length})
+              </p>
+            ) : null}
+            {done.map((item) => (
+              <ListRow
+                key={item.id}
+                item={item}
+                editMode={editMode}
+                onToggle={toggle}
+                onEdit={setEditItem}
+              />
+            ))}
+          </div>
+        </>
       )}
 
-      {suggestions.length > 0 ? (
+      {!editMode && suggestions.length > 0 ? (
         <Suggestions suggestions={suggestions} />
       ) : null}
 
-      {habitualChips.length > 0 ? (
+      {!editMode && habitualChips.length > 0 ? (
         <Habituales products={habitualChips} />
       ) : null}
 
-      {done.length > 0 ? <CheckoutBar count={done.length} /> : null}
+      {!editMode && done.length > 0 ? <CheckoutBar count={done.length} /> : null}
+
+      {editItem ? (
+        <EditListItemDrawer
+          item={editItem}
+          open={editItem !== null}
+          onOpenChange={(open) => {
+            if (!open) setEditItem(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
 function ListRow({
   item,
+  editMode,
   onToggle,
+  onEdit,
 }: {
   item: ListItem;
+  editMode: boolean;
   onToggle: (id: string, checked: boolean) => void;
+  onEdit: (item: ListItem) => void;
 }) {
   const router = useRouter();
   const [deleting, startDelete] = useTransition();
@@ -133,29 +179,49 @@ function ListRow({
     });
   }
 
+  const label = (
+    <>
+      {item.name}
+      {item.quantity ? (
+        <span className="ml-1.5 text-muted-foreground">
+          · {formatQuantity(item.quantity, item.unit ?? "ud")}
+        </span>
+      ) : null}
+    </>
+  );
+
   return (
     <div className="flex items-center gap-1 rounded-lg">
-      <label className="flex min-h-12 flex-1 cursor-pointer items-center gap-3 px-1">
-        <Checkbox
-          checked={item.isChecked}
-          onCheckedChange={(v) => onToggle(item.id, v === true)}
-          aria-label={`Marcar ${item.name}`}
-          className="size-5"
-        />
-        <span
-          className={cn(
-            "flex-1 text-sm",
-            item.isChecked && "text-muted-foreground line-through",
-          )}
+      {editMode ? (
+        // En modo edición no se puede marcar como comprado: la fila abre el
+        // editor de producto (nombre / cantidad / unidad).
+        <button
+          type="button"
+          onClick={() => onEdit(item)}
+          className="flex min-h-12 flex-1 items-center gap-3 px-1 text-left text-sm"
+          aria-label={`Editar ${item.name}`}
         >
-          {item.name}
-          {item.quantity ? (
-            <span className="ml-1.5 text-muted-foreground">
-              · {formatQuantity(item.quantity, item.unit ?? "ud")}
-            </span>
-          ) : null}
-        </span>
-      </label>
+          <Pencil aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1">{label}</span>
+        </button>
+      ) : (
+        <label className="flex min-h-12 flex-1 cursor-pointer items-center gap-3 px-1">
+          <Checkbox
+            checked={item.isChecked}
+            onCheckedChange={(v) => onToggle(item.id, v === true)}
+            aria-label={`Marcar ${item.name}`}
+            className="size-5"
+          />
+          <span
+            className={cn(
+              "flex-1 text-sm",
+              item.isChecked && "text-muted-foreground line-through",
+            )}
+          >
+            {label}
+          </span>
+        </label>
+      )}
       <Button
         variant="ghost"
         size="icon"
