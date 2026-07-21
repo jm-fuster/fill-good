@@ -16,6 +16,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import type { CurrentHousehold, HouseholdMember } from "../queries";
 import { leaveHouseholdAction, regenerateInviteCodeAction } from "../actions";
+import { TransferOwnershipDrawer } from "./transfer-ownership-drawer";
+import { DeleteHouseholdDrawer } from "./delete-household-drawer";
 
 export function HouseholdCard({
   household,
@@ -25,6 +27,9 @@ export function HouseholdCard({
   members: HouseholdMember[];
 }) {
   const [pending, startTransition] = useTransition();
+  const isOwner = household.role === "owner";
+  const otherMembers = members.filter((m) => !m.isCurrentUser);
+  const hasOtherMembers = otherMembers.length > 0;
   // navigator.share solo existe en cliente; useSyncExternalStore devuelve false
   // en servidor e hidratación, evitando el desajuste de hidratación.
   const canShare = useSyncExternalStore(
@@ -149,15 +154,35 @@ export function HouseholdCard({
 
         <Separator />
 
-        <Button
-          variant="destructive"
-          onClick={leave}
-          disabled={pending}
-          className="self-start"
-        >
-          <LogOut aria-hidden />
-          Abandonar hogar
-        </Button>
+        {isOwner ? (
+          <div className="flex flex-col gap-2">
+            {hasOtherMembers ? (
+              <>
+                <TransferOwnershipDrawer candidates={otherMembers} />
+                <p className="text-sm text-muted-foreground">
+                  Como propietario, para abandonar el hogar antes debes
+                  transferir la propiedad a otro miembro.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Eres el único miembro. Al eliminar el hogar se borrará todo su
+                contenido.
+              </p>
+            )}
+            <DeleteHouseholdDrawer householdName={household.name} />
+          </div>
+        ) : (
+          <Button
+            variant="destructive"
+            onClick={leave}
+            disabled={pending}
+            className="self-start"
+          >
+            <LogOut aria-hidden />
+            Abandonar hogar
+          </Button>
+        )}
       </CardContent>
     </Card>
   );

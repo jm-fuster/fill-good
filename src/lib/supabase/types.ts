@@ -683,6 +683,22 @@ export type Database = {
         Args: { p_household_id: string };
         Returns: string;
       };
+      is_household_owner: {
+        Args: { hid: string };
+        Returns: boolean;
+      };
+      transfer_household_ownership: {
+        Args: { p_household_id: string; p_new_owner_user_id: string };
+        Returns: undefined;
+      };
+      delete_household: {
+        Args: { p_household_id: string };
+        Returns: undefined;
+      };
+      leave_household: {
+        Args: { p_household_id: string };
+        Returns: undefined;
+      };
       seed_default_categories: {
         Args: { hid: string };
         Returns: undefined;

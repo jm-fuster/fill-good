@@ -26,7 +26,7 @@ ordenadas por prioridad; pueden hacerse en cualquier orden, pero D1 y D2 primero
 - [x] C1 — Varios platos por comida/cena
 - [x] C2 — Reglas del menú
 - [x] C3 — Generador de menús 2.0 (integra recetario, gustos, temporada, reglas y stock)
-- [ ] D1 — Gobernanza del hogar: transferir propiedad y eliminar hogar
+- [x] D1 — Gobernanza del hogar: transferir propiedad y eliminar hogar
 - [x] D2 — Estado "Agotado" visible + añadir a la lista de un toque
 - [ ] D3 — Mejorar "Añadir a la lista lo que falte" del menú (revisión + matching + stock real)
 - [ ] D4 — Recetario como pestaña dentro de Menús
@@ -505,17 +505,39 @@ entre sí. D1 y D2 son las de mayor impacto; D6 y D7 son microcopys de una tarde
   - Para un `member`, "Abandonar hogar" sigue como está; para el owner con más miembros, el botón de abandonar explica que antes debe transferir.
 
 **Pasos**
-- [ ] Migración (`is_household_owner` + 3 RPCs + revoke/grant) — pedir autorización antes de `npx supabase db push`.
-- [ ] Regenerar/actualizar tipos (`src/lib/supabase/types.ts`, se mantienen a mano).
-- [ ] Server Actions + rol del usuario y miembros en queries.
-- [ ] UI de Ajustes (transferir + eliminar, solo owner) con confirmaciones.
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Migración (`is_household_owner` + 3 RPCs + revoke/grant) — aplicada a la BD remota con autorización (`20260721130000_household_governance.sql`).
+- [x] Regenerar/actualizar tipos (`src/lib/supabase/types.ts`, se mantienen a mano).
+- [x] Server Actions + rol del usuario y miembros en queries (queries ya exponían `role` y `getHouseholdMembers`).
+- [x] UI de Ajustes (transferir + eliminar, solo owner) con confirmaciones.
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
 
 **Criterios de aceptación**
 - Un `member` que invoque los RPCs directamente recibe excepción de SQL (no basta con ocultar la UI).
 - El owner con más miembros no puede abandonar; tras transferir, sí (y el nuevo owner ve los controles).
 - El último miembro que abandona elimina el hogar sin dejar filas huérfanas.
 - Eliminar hogar pide confirmación explícita y redirige a `/onboarding`.
+
+> **Nota de implementación (D1):** migración `20260721130000_household_governance.sql`
+> (aplicada a remoto, sincronizada). `is_household_owner(hid)` replica el patrón de
+> `is_household_member` (SQL, stable, security definer). Tres RPCs plpgsql security definer con
+> las mismas guardas y `revoke … from public, anon; grant … to authenticated` de la init:
+> `transfer_household_ownership(p_household_id, p_new_owner_user_id)` valida owner + que el
+> destinatario sea miembro y hace el swap de roles en una transacción;
+> `delete_household(p_household_id)` valida owner y hace `delete from households` (los
+> `on delete cascade` de todas las tablas con `household_id` limpian el resto — verificado);
+> `leave_household(p_household_id)` mueve las reglas a la BD: último miembro → borra el hogar;
+> owner con otros miembros → excepción `owner_must_transfer`; member → sale. En
+> `src/features/household/actions.ts`: `transferOwnershipAction`, `deleteHouseholdAction` y
+> `leaveHouseholdAction` reescrita sobre `leave_household` (corrige el bug de borrar por solo
+> `user_id`, ahora filtra por hogar vía RPC) con mensaje en español para `owner_must_transfer`.
+> Las queries ya exponían `role` (`getCurrentHousehold`) y miembros (`getHouseholdMembers`), sin
+> cambios. UI en `household-card.tsx`: solo el owner ve `TransferOwnershipDrawer` (Select de otros
+> miembros) y `DeleteHouseholdDrawer` (escribir el nombre del hogar para habilitar el borrado
+> destructivo); el owner con otros miembros ve una nota de que debe transferir antes de abandonar;
+> el member conserva "Abandonar hogar". Tokens semánticos (`destructive`, `muted-foreground`),
+> drawers de vaul, touch targets por defecto. `npx tsc --noEmit` y `npx eslint .` limpios. La UI
+> autenticada de `/ajustes` queda para verificación manual (login de Clerk no verificable en
+> headless).
 
 ---
 

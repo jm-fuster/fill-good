@@ -85,17 +85,63 @@ export async function regenerateInviteCodeAction(): Promise<ActionState> {
   return {};
 }
 
-export async function leaveHouseholdAction(): Promise<ActionState> {
-  const { userId } = await auth();
-  if (!userId) return { error: "Debes iniciar sesión." };
+export async function transferOwnershipAction(
+  newOwnerUserId: string,
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  if (household.role !== "owner") {
+    return { error: "Solo el propietario puede transferir el hogar." };
+  }
+  if (!newOwnerUserId) return { error: "Elige un miembro." };
 
   const supabase = createServerSupabaseClient();
-  const { error } = await supabase
-    .from("household_members")
-    .delete()
-    .eq("user_id", userId);
+  const { error } = await supabase.rpc("transfer_household_ownership", {
+    p_household_id: household.id,
+    p_new_owner_user_id: newOwnerUserId,
+  });
   if (error) {
-    return { error: "No se pudo abandonar el hogar." };
+    return { error: "No se pudo transferir la propiedad. Inténtalo de nuevo." };
+  }
+
+  revalidatePath("/", "layout");
+  return {};
+}
+
+export async function deleteHouseholdAction(): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  if (household.role !== "owner") {
+    return { error: "Solo el propietario puede eliminar el hogar." };
+  }
+
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.rpc("delete_household", {
+    p_household_id: household.id,
+  });
+  if (error) {
+    return { error: "No se pudo eliminar el hogar. Inténtalo de nuevo." };
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/onboarding");
+}
+
+export async function leaveHouseholdAction(): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  // La garantía fuerte vive en la BD: leave_household aplica las reglas de
+  // propiedad y filtra por hogar (corrige el borrado por solo user_id).
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.rpc("leave_household", {
+    p_household_id: household.id,
+  });
+  if (error) {
+    const message = error.message?.includes("owner_must_transfer")
+      ? "Eres el propietario: transfiere la propiedad a otro miembro antes de abandonar el hogar."
+      : "No se pudo abandonar el hogar.";
+    return { error: message };
   }
 
   revalidatePath("/", "layout");
