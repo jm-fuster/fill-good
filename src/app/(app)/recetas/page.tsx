@@ -33,6 +33,14 @@ export default async function RecetasPage() {
       <PageHeader
         title="Mis recetas"
         description="El recetario de tu hogar para planificar los menús."
+        action={
+          <Button asChild className="hidden md:inline-flex">
+            <Link href="/recetas/nueva">
+              <Plus aria-hidden />
+              Nueva receta
+            </Link>
+          </Button>
+        }
       />
 
       <div className="mb-6">
@@ -56,7 +64,7 @@ export default async function RecetasPage() {
         <RecipesList recipes={recipes} signals={signals} />
       )}
 
-      <Fab>
+      <Fab className="md:hidden">
         <Button
           asChild
           size="icon"

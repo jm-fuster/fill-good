@@ -47,7 +47,7 @@ export function RecipesList({
   }, [recipes, query, meal]);
 
   return (
-    <div className="flex flex-col gap-4 pb-fab">
+    <div className="flex flex-col gap-4 pb-fab md:pb-0">
       <div className="relative">
         <Search
           className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
@@ -90,7 +90,7 @@ export function RecipesList({
           No hay recetas que coincidan con la búsqueda.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2 md:grid md:grid-cols-2 md:gap-3 lg:grid-cols-3">
           {filtered.map((recipe) => {
             const seasonChoice = seasonsToChoice(recipe.seasons);
             const sig = signals?.[recipe.id];
@@ -101,7 +101,7 @@ export function RecipesList({
                 <Link
                   href={`/recetas/${recipe.id}`}
                   className={cn(
-                    "flex flex-col gap-2 rounded-xl border bg-card p-3 transition-colors hover:bg-muted",
+                    "flex h-full flex-col gap-2 rounded-xl border bg-card p-3 transition-colors hover:bg-muted",
                   )}
                 >
                   <div className="flex items-start justify-between gap-2">
