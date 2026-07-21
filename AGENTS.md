@@ -20,7 +20,9 @@ Referencia viva en `/styleguide` (`src/app/styleguide/page.tsx`). Tokens en `src
 - Semántica: `success` = ok/en stock · `warning` = caduca pronto · `destructive` = caducado/eliminar · `chart-1..5` = series de datos (chart-3 = acento cálido de precios).
 - **Touch targets ≥ 44px**: los tamaños por defecto de Button/Input ya lo cumplen; `xs`/`sm` solo para contextos densos no táctiles.
 - Accesibilidad WCAG 2.2 AA: labels visibles (nunca placeholder-only), `aria-label` en icon buttons, foco visible, contraste AA en ambos temas, `prefers-reduced-motion` respetado.
-- Móvil: edición en bottom sheets (`Drawer` de vaul), no dialogs centrados; bottom nav fija con `pb-safe`.
+- **Responsive (E11) — adaptativo, no dos apps.** Un único árbol de componentes; breakpoint del shell `md` (768px). Móvil (`< md`): bottom nav fija con `pb-safe` + FAB + bottom sheets. Escritorio (`≥ md`): sidebar lateral colapsable (`AppSidebar`, Ctrl/Cmd+B) + acciones primarias en el header + diálogos centrados. Bottom nav y sidebar conviven en el árbol y se alternan **solo con CSS** (`md:hidden` / `hidden md:block`), nunca con `useIsMobile` para el shell.
+- **Overlays SIEMPRE vía `ResponsiveModal`** (`src/components/ui/responsive-modal.tsx`): bottom sheet (`Drawer`) en `< md`, dialog centrado (`Dialog`) en `≥ md`. Nunca `Drawer`/`Dialog` directos en features.
+- **Anchos de página SIEMPRE vía `PageContainer`** (`narrow` / `default` / `wide`); no pongas `max-w-*` a mano en páginas ni en el shell.
 - Radios: `rounded-lg` controles, `rounded-xl` tarjetas. Idioma UI: español.
 - `src/components/ui/*` son de shadcn: `button.tsx` e `input.tsx` llevan ajustes deliberados de touch target — no "resetear" a los defaults de shadcn.
 

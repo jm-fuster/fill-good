@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 
+import { PageContainer } from "@/components/layout/page-container";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,7 +71,7 @@ function Section({
 
 export default function StyleguidePage() {
   return (
-    <div className="mx-auto w-full max-w-lg px-4 py-6 pb-16">
+    <PageContainer variant="wide" className="px-4 py-6 pb-16">
       <header className="mb-8 flex items-center justify-between gap-4">
         <div>
           <Link
@@ -251,6 +252,77 @@ export default function StyleguidePage() {
         </div>
       </Section>
 
+      <Section
+        title="Responsive (E11)"
+        description="Adaptativo, no dos apps: un único árbol de componentes; las diferencias se resuelven con breakpoints. Punto de corte del shell: md (768px)."
+      >
+        <div className="flex flex-col gap-4 text-sm">
+          <div className="rounded-xl border p-4">
+            <p className="mb-1 font-medium">Shell</p>
+            <p className="text-muted-foreground">
+              &lt; md: bottom nav + FAB + bottom sheets (la experiencia móvil de
+              siempre). ≥ md: sidebar lateral colapsable (Ctrl/Cmd+B), acciones
+              en el header y diálogos centrados. Bottom nav y sidebar conviven
+              en el árbol y se alternan solo con CSS.
+            </p>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <p className="mb-2 font-medium">
+              <code>PageContainer</code> — ancho por tipo de página
+            </p>
+            <ul className="flex flex-col gap-1 text-muted-foreground">
+              <li>
+                <code>narrow</code> — <code>max-w-lg</code> siempre (formularios,
+                escanear, revisión de caducidades).
+              </li>
+              <li>
+                <code>default</code> — <code>max-w-lg</code> →{" "}
+                <code>md:max-w-2xl</code> (listas de 1 columna: lista, ajustes,
+                precios, revisar ticket).
+              </li>
+              <li>
+                <code>wide</code> — hasta <code>xl:max-w-6xl</code> (grids y
+                datos: inventario, menús, recetas, detalle de precios).
+              </li>
+            </ul>
+            <div className="mt-3 flex flex-col gap-2" aria-hidden>
+              <div className="mx-auto h-8 w-full max-w-[8rem] rounded-lg bg-muted text-center text-xs leading-8">
+                narrow
+              </div>
+              <div className="mx-auto h-8 w-full max-w-[16rem] rounded-lg bg-muted text-center text-xs leading-8">
+                default
+              </div>
+              <div className="h-8 w-full rounded-lg bg-muted text-center text-xs leading-8">
+                wide
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <p className="mb-1 font-medium">
+              <code>ResponsiveModal</code>
+            </p>
+            <p className="text-muted-foreground">
+              Todo overlay va por <code>ResponsiveModal</code>: bottom sheet
+              (<code>Drawer</code>) en &lt; md y diálogo centrado
+              (<code>Dialog</code>) en ≥ md, con la misma API de subcomponentes.
+              Las features nunca importan <code>Drawer</code>/<code>Dialog</code>{" "}
+              directamente.
+            </p>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <p className="mb-1 font-medium">FAB → header</p>
+            <p className="text-muted-foreground">
+              La acción primaria es un FAB flotante en móvil y un botón en el
+              header (junto al resto de acciones) en escritorio; ambos disparan
+              el mismo modal.
+            </p>
+          </div>
+        </div>
+      </Section>
+
       <Section title="Reglas del sistema">
         <ul className="list-inside list-disc space-y-2 text-sm text-muted-foreground">
           <li>
@@ -271,12 +343,17 @@ export default function StyleguidePage() {
             Animaciones respetan <code>prefers-reduced-motion</code>.
           </li>
           <li>
-            Edición en móvil: bottom sheet (<code>Drawer</code>), no modales
-            centrados.
+            Overlays siempre vía <code>ResponsiveModal</code>: bottom sheet en
+            móvil, diálogo centrado en escritorio (nunca{" "}
+            <code>Drawer</code>/<code>Dialog</code> directos en features).
+          </li>
+          <li>
+            Anchos de página siempre vía <code>PageContainer</code>{" "}
+            (narrow/default/wide), nunca <code>max-w-*</code> a mano.
           </li>
           <li>Radios: <code>rounded-lg</code> controles, <code>rounded-xl</code> tarjetas.</li>
         </ul>
       </Section>
-    </div>
+    </PageContainer>
   );
 }
