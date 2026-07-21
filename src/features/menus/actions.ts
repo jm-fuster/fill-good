@@ -30,6 +30,10 @@ import {
   type MissingCandidate,
 } from "./missing";
 import {
+  computeCookedDeductions,
+  type CookedDeduction,
+} from "./cooked";
+import {
   validateAndPatchRules,
   type MenuDay,
   type MenuDish,
@@ -500,6 +504,123 @@ export async function toggleEntryCookedAction(
 
   revalidatePath("/menus");
   return { ok: true };
+}
+
+export type CookedDeductionsState = {
+  error?: string;
+  deductions?: CookedDeduction[];
+};
+
+/**
+ * M2, fase 1: propone qué ingredientes de una receta descontar del inventario.
+ * Reutiliza el matching de `missing.ts` (product_id → exacto → fuzzy) pero en
+ * dirección inversa (lo que SÍ hay). No escribe nada: devuelve los candidatos
+ * para que el usuario revise cantidades antes de confirmar. Determinista, sin IA.
+ */
+export async function computeCookedDeductionsAction(
+  recipeId: string,
+): Promise<CookedDeductionsState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const { data: ingredients } = await supabase
+    .from("recipe_ingredients")
+    .select("name, quantity, unit, product_id")
+    .eq("recipe_id", recipeId);
+  if (!ingredients || ingredients.length === 0) return { deductions: [] };
+
+  const [inventory, catalog] = await Promise.all([
+    getInventory(),
+    getProductCatalog(),
+  ]);
+
+  // Stock (cantidad > 0) por producto y unidad, para el matching por unidad exacta.
+  const stockByProductUnit = new Map<string, Map<UnitType, number>>();
+  for (const i of inventory) {
+    if (i.quantity <= 0) continue;
+    let byUnit = stockByProductUnit.get(i.productId);
+    if (!byUnit) {
+      byUnit = new Map<UnitType, number>();
+      stockByProductUnit.set(i.productId, byUnit);
+    }
+    byUnit.set(i.unit, (byUnit.get(i.unit) ?? 0) + i.quantity);
+  }
+
+  const deductions = computeCookedDeductions({
+    ingredients: ingredients.map((i) => ({
+      name: i.name,
+      productId: i.product_id,
+      unit: i.unit,
+      quantity: i.quantity === null ? null : Number(i.quantity),
+    })),
+    catalog: catalog.map((c) => ({
+      id: c.id,
+      name: c.name,
+      normalizedName: c.normalizedName,
+      defaultUnit: c.defaultUnit,
+    })),
+    stockByProductUnit,
+  });
+
+  return { deductions };
+}
+
+export type CookedDeductionInput = {
+  productId: string;
+  unit: UnitType;
+  quantity: number;
+};
+
+/**
+ * M2, fase 2: descuenta del inventario las cantidades confirmadas. Consumo FIFO
+ * por caducidad (el lote que caduca antes primero; nulls al final), en cascada
+ * si un lote no cubre la cantidad. Nunca deja stock negativo (clamp a 0; el lote
+ * a 0 se conserva como agotado, igual que `setInventoryQuantityAction`). No hay
+ * conversión de unidades: se descuenta solo de lotes en la misma unidad.
+ */
+export async function confirmCookedDeductionsAction(
+  deductions: CookedDeductionInput[],
+): Promise<{ error?: string; ok?: boolean; deducted?: number }> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+  const supabase = createServerSupabaseClient();
+
+  let deducted = 0;
+  for (const d of deductions) {
+    if (!Number.isFinite(d.quantity) || d.quantity <= 0) continue;
+
+    // Lotes del producto en esa unidad, del que antes caduca al que después
+    // (nulls al final). Cada "lote" es una fila (ubicación) del mismo producto.
+    const { data: lots } = await supabase
+      .from("inventory_items")
+      .select("id, quantity, expiry_date")
+      .eq("household_id", household.id)
+      .eq("product_id", d.productId)
+      .eq("unit", d.unit)
+      .gt("quantity", 0)
+      .order("expiry_date", { ascending: true, nullsFirst: false });
+
+    let remaining = d.quantity;
+    for (const lot of lots ?? []) {
+      if (remaining <= 0) break;
+      const current = Number(lot.quantity);
+      const take = Math.min(current, remaining);
+      const newQty = Math.max(0, current - take);
+      const { error } = await supabase
+        .from("inventory_items")
+        .update({ quantity: newQty, updated_by: userId })
+        .eq("id", lot.id);
+      if (error) return { error: "No se pudo actualizar el inventario." };
+      remaining -= take;
+    }
+    if (remaining < d.quantity) deducted += 1;
+  }
+
+  revalidatePath("/inventario");
+  revalidatePath("/menus");
+  return { ok: true, deducted };
 }
 
 export type MissingState = {

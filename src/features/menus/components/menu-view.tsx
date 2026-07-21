@@ -35,11 +35,15 @@ import { Label } from "@/components/ui/label";
 import { getWeekDays, shiftWeek } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { saveGeneratedRecipeAction } from "@/features/recipes/actions";
+import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import type { MenuEntry } from "../queries";
 import type { MissingCandidate } from "../missing";
+import type { CookedDeduction } from "../cooked";
 import {
   addMenuEntryAction,
+  computeCookedDeductionsAction,
   computeMissingForMenuAction,
+  confirmCookedDeductionsAction,
   confirmMissingToListAction,
   generateMenuAction,
   removeMenuEntryAction,
@@ -83,6 +87,10 @@ export function MenuView({
   const [addingList, startAddList] = useTransition();
   const [editing, setEditing] = useState<Editing | null>(null);
   const [missing, setMissing] = useState<MissingCandidate[] | null>(null);
+  const [cookedDeductions, setCookedDeductions] = useState<{
+    recipeName: string;
+    items: CookedDeduction[];
+  } | null>(null);
 
   const days = getWeekDays(weekStart);
   // Varios platos por hueco: agrupamos por `date|slot` (ya vienen por posición).
@@ -321,6 +329,21 @@ export function MenuView({
           setEditing((prev) => (prev ? { ...prev, cookedAt } : prev));
           router.refresh();
         }}
+        onProposeDeductions={(recipeName, items) => {
+          // El plato queda cocinado; se cierra la edición y se propone descontar.
+          setEditing(null);
+          setCookedDeductions({ recipeName, items });
+          router.refresh();
+        }}
+      />
+
+      <CookedDeductionsDrawer
+        data={cookedDeductions}
+        onClose={() => setCookedDeductions(null)}
+        onDone={() => {
+          setCookedDeductions(null);
+          router.refresh();
+        }}
       />
     </div>
   );
@@ -332,12 +355,14 @@ function EditEntryDrawer({
   onClose,
   onSaved,
   onCookedChange,
+  onProposeDeductions,
 }: {
   editing: Editing | null;
   weekStart: string;
   onClose: () => void;
   onSaved: () => void;
   onCookedChange: (cookedAt: string | null) => void;
+  onProposeDeductions: (recipeName: string, items: CookedDeduction[]) => void;
 }) {
   const [value, setValue] = useState("");
   const [pending, startTransition] = useTransition();
@@ -401,12 +426,31 @@ function EditEntryDrawer({
   function toggleCooked() {
     if (!editing?.entryId) return;
     const next = !cooked;
+    const entryId = editing.entryId;
+    const recipeId = editing.recipeId;
+    const recipeName = editing.current;
+    const date = editing.date;
     startCooking(async () => {
-      const r = await toggleEntryCookedAction(editing.entryId!, next);
-      if (r.error) toast.error(r.error);
-      else {
+      const r = await toggleEntryCookedAction(entryId, next);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      // Al desmarcar (o si es texto libre) no se toca el inventario.
+      if (!next || !recipeId) {
         toast.success(next ? "Marcado como cocinado" : "Ya no está cocinado");
-        onCookedChange(next ? editing.date : null);
+        onCookedChange(next ? date : null);
+        return;
+      }
+      // Receta cocinada: proponer descontar ingredientes (M2). El descuento es
+      // opt-out por gesto; el plato queda cocinado pase lo que pase.
+      toast.success("Marcado como cocinado");
+      const d = await computeCookedDeductionsAction(recipeId);
+      const items = d.deductions ?? [];
+      if (items.some((it) => it.deductible)) {
+        onProposeDeductions(recipeName, items);
+      } else {
+        onCookedChange(date);
       }
     });
   }
@@ -623,6 +667,168 @@ function MissingReviewDrawer({
           <ResponsiveModalClose asChild>
             <Button type="button" variant="ghost">
               Cancelar
+            </Button>
+          </ResponsiveModalClose>
+        </ResponsiveModalFooter>
+      </ResponsiveModalContent>
+    </ResponsiveModal>
+  );
+}
+
+/**
+ * "Lo cocinamos" descuenta ingredientes (M2). Lista los ingredientes con match y
+ * stock (cantidad editable, prellenada con la de la receta) y, aparte, los que
+ * no se pueden descontar (sin match, sin stock o unidad incompatible). Confirmar
+ * ejecuta el descuento FIFO por caducidad. Es opt-out por gesto: el plato ya
+ * quedó cocinado; "No descontar" cierra sin tocar el inventario.
+ */
+function CookedDeductionsDrawer({
+  data,
+  onClose,
+  onDone,
+}: {
+  data: { recipeName: string; items: CookedDeduction[] } | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [qty, setQty] = useState<Record<string, string>>({});
+  const [pending, startTransition] = useTransition();
+
+  // Al abrir con un conjunto nuevo, prellenar cantidades de los descontables.
+  const [lastKey, setLastKey] = useState<string | null>(null);
+  const key = data ? data.items.map((i) => i.key).join(",") : null;
+  if (key !== lastKey) {
+    setLastKey(key);
+    const init: Record<string, string> = {};
+    for (const it of data?.items ?? []) {
+      if (it.deductible) init[it.key] = String(it.suggestedQty);
+    }
+    setQty(init);
+  }
+
+  const items = data?.items ?? [];
+  const deductibles = items.filter((i) => i.deductible);
+  const informational = items.filter((i) => !i.deductible);
+  const count = deductibles.filter(
+    (it) => (Number(qty[it.key]) || 0) > 0,
+  ).length;
+
+  function confirm() {
+    if (!data) return;
+    const payload = deductibles
+      .map((it) => ({
+        productId: it.productId!,
+        unit: it.unit!,
+        quantity: Number(qty[it.key]) || 0,
+      }))
+      .filter((p) => p.quantity > 0);
+    startTransition(async () => {
+      const r = await confirmCookedDeductionsAction(payload);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      const n = r.deducted ?? 0;
+      toast.success(
+        n === 0
+          ? "No se descontó nada"
+          : n === 1
+            ? "Descontado 1 ingrediente"
+            : `Descontados ${n} ingredientes`,
+      );
+      onDone();
+    });
+  }
+
+  return (
+    <ResponsiveModal open={data !== null} onOpenChange={(o) => !o && onClose()}>
+      <ResponsiveModalContent>
+        <ResponsiveModalHeader>
+          <ResponsiveModalTitle>Descontar del inventario</ResponsiveModalTitle>
+          <ResponsiveModalDescription>
+            Ajusta lo que has gastado de «{data?.recipeName}». Se descuenta del
+            lote que caduca antes. Desmarcar «cocinado» no repone el stock.
+          </ResponsiveModalDescription>
+        </ResponsiveModalHeader>
+
+        <div className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto px-4">
+          {deductibles.length > 0 ? (
+            <ul className="flex flex-col gap-2">
+              {deductibles.map((it) => (
+                <li
+                  key={it.key}
+                  className="flex items-center justify-between gap-3 rounded-xl border p-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {it.productName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Tienes {formatQuantity(it.availableQty, it.unit!)}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      aria-label={`Cantidad a descontar de ${it.productName}`}
+                      min={0}
+                      max={it.availableQty}
+                      step={it.unit === "ud" ? 1 : 0.01}
+                      value={qty[it.key] ?? ""}
+                      onChange={(e) =>
+                        setQty((prev) => ({ ...prev, [it.key]: e.target.value }))
+                      }
+                      className="w-20 text-right"
+                    />
+                    <span className="w-7 text-sm text-muted-foreground">
+                      {UNIT_LABELS[it.unit!]}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {informational.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs font-medium text-muted-foreground">
+                No se descuenta
+              </p>
+              <ul className="flex flex-col gap-1.5">
+                {informational.map((it) => (
+                  <li
+                    key={it.key}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-dashed p-2 text-sm"
+                  >
+                    <span className="min-w-0 truncate">{it.ingredientName}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {it.reason}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+
+        <ResponsiveModalFooter className="gap-2">
+          <Button
+            type="button"
+            size="lg"
+            onClick={confirm}
+            disabled={pending || count === 0}
+          >
+            <Check aria-hidden />
+            {pending
+              ? "Descontando…"
+              : count <= 1
+                ? "Descontar 1 ingrediente"
+                : `Descontar ${count} ingredientes`}
+          </Button>
+          <ResponsiveModalClose asChild>
+            <Button type="button" variant="ghost">
+              No descontar
             </Button>
           </ResponsiveModalClose>
         </ResponsiveModalFooter>
