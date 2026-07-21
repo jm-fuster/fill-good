@@ -210,11 +210,18 @@
    es oscuro (los navegadores no imprimen fondos por defecto).
    --------------------------------------------------------------------------- */
 @media print {
-  nav[aria-label="Navegación principal"] {
+  /* Bottom nav (móvil) y sidebar (escritorio): ambas fuera al imprimir. */
+  nav[aria-label="Navegación principal"],
+  [data-slot="sidebar"],
+  [data-slot="sidebar-gap"] {
     display: none !important;
   }
   main {
     padding-bottom: 0 !important;
+  }
+  /* El contenido vive en #contenido dentro del inset; sin reservas de nav. */
+  #contenido {
+    padding: 0 !important;
   }
   html,
   body {
