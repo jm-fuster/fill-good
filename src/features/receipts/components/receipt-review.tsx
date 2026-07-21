@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check } from "lucide-react";
+import { Check, Link2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -21,9 +21,60 @@ import {
   type ComboboxProduct,
 } from "@/components/product-combobox";
 import { cn } from "@/lib/utils";
+import { normalizeName } from "@/lib/normalize";
+import {
+  MIN_FUZZY_LENGTH,
+  trigramSimilarity,
+} from "@/lib/similarity";
 import type { UnitType } from "@/lib/supabase/types";
 import type { ReceiptHeader, ReceiptItem } from "../queries";
 import { confirmReceiptAction, type ConfirmItemDecision } from "../actions";
+
+/**
+ * Umbral de trigramas para el AVISO antiduplicados (E2). Más alto que el fuzzy
+ * de faltantes (D3, 0,4): aquí preferimos NO avisar a avisar mal (el aviso
+ * ofrece asociar con un toque, pero un falso positivo molesta).
+ */
+const WARN_TRIGRAM_THRESHOLD = 0.5;
+
+function tokenize(norm: string): string[] {
+  return norm.split(" ").filter(Boolean);
+}
+
+/**
+ * Busca un producto del catálogo que probablemente sea el MISMO que el nombre
+ * propuesto para una línea "nueva", para prevenir duplicados que fragmentan el
+ * historial de precios ("Leche" vs "Leche Entera Hacendado"). Señales (sin IA):
+ *  - contención de tokens en cualquier dirección (uno es subconjunto del otro):
+ *    "leche" ⊆ "leche entera hacendado" ✓, "leche" vs "lechuga" ✗ (tokens ≠).
+ *  - o similitud de trigramas ≥ {@link WARN_TRIGRAM_THRESHOLD} (variantes/erratas).
+ * Devuelve el mejor candidato o null. Conservador: "Leche" vs "Lechuga" no casa.
+ */
+function findDuplicateCandidate(
+  description: string,
+  products: ComboboxProduct[],
+): ComboboxProduct | null {
+  const norm = normalizeName(description);
+  if (norm.length < MIN_FUZZY_LENGTH) return null;
+  const lineTokens = tokenize(norm);
+  const lineSet = new Set(lineTokens);
+
+  let best: { product: ComboboxProduct; score: number } | null = null;
+  for (const p of products) {
+    const pnorm = p.normalizedName;
+    if (!pnorm || pnorm === norm || pnorm.length < MIN_FUZZY_LENGTH) continue;
+    const pTokens = tokenize(pnorm);
+    const pSet = new Set(pTokens);
+    const containment =
+      (pTokens.length > 0 && pTokens.every((t) => lineSet.has(t))) ||
+      (lineTokens.length > 0 && lineTokens.every((t) => pSet.has(t)));
+    const sim = trigramSimilarity(norm, pnorm);
+    if (!containment && sim < WARN_TRIGRAM_THRESHOLD) continue;
+    const score = (containment ? 100 : 0) + pTokens.length + sim;
+    if (!best || score > best.score) best = { product: p, score };
+  }
+  return best?.product ?? null;
+}
 
 type Row = {
   itemId: string;
@@ -128,8 +179,23 @@ export function ReceiptReview({
   const pendingRows = rows.filter((r) => needsDecision(r.initialStatus));
   const matchedRows = rows.filter((r) => !needsDecision(r.initialStatus));
 
+  // Guardarraíl antiduplicados (E2): para las líneas que quedarían como producto
+  // nuevo, un posible producto del catálogo que sea el mismo (para asociar con
+  // un toque y no fragmentar el historial de precios).
+  const duplicateCandidates = useMemo(() => {
+    const map = new Map<string, ComboboxProduct>();
+    for (const r of rows) {
+      if (r.include && r.productId === null) {
+        const candidate = findDuplicateCandidate(r.description, products);
+        if (candidate) map.set(r.itemId, candidate);
+      }
+    }
+    return map;
+  }, [rows, products]);
+
   function renderRow(row: Row) {
     const linked = row.productId !== null;
+    const duplicate = duplicateCandidates.get(row.itemId) ?? null;
     return (
       <div
         key={row.itemId}
@@ -202,6 +268,24 @@ export function ReceiptReview({
               createNewLabel="➕ Crear producto nuevo"
               ariaLabel="Producto asociado"
             />
+            {duplicate ? (
+              <div className="flex items-center gap-2 rounded-lg bg-warning/10 p-2">
+                <p className="flex-1 text-xs text-warning">
+                  Ya tienes «{duplicate.name}», ¿es el mismo producto?
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    update(row.itemId, { productId: duplicate.id })
+                  }
+                >
+                  <Link2 aria-hidden />
+                  Asociar
+                </Button>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </div>

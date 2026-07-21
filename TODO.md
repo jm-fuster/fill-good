@@ -37,7 +37,7 @@ el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene ha
 - [x] D6 — Hint de escaneo: sugerir PDF escaneado con la app nativa
 - [x] D7 — Hint de caducidad: "la fecha del que caduque antes"
 - [x] E1 — Revisión de tickets: combobox buscable + estado del match visible
-- [ ] E2 — Guardarraíl antiduplicados al crear producto desde el ticket
+- [x] E2 — Guardarraíl antiduplicados al crear producto desde el ticket
 - [ ] E3 — BUG: unidades distintas al sumar cantidades al confirmar ticket
 - [ ] E4 — Inventario: buscador + chips de filtro por estado
 - [ ] E5 — "Mis habituales": pin de productos por usuario
@@ -897,11 +897,31 @@ sola—, pero la UI de revisión no ayuda a hacer bien esa primera asociación.)
   solo si sale barato; si no, dejarlo fuera.
 
 **Pasos**
-- [ ] Extraer `trigramSimilarity` a `src/lib/similarity.ts` (reimportar desde `missing.ts`).
-- [ ] Aviso inline + asociación de un toque en la revisión del ticket.
-- [ ] (Opcional) mismo aviso en `add-product-drawer.tsx`.
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios; el arnés de D3 sigue pasando conceptualmente
-      (la lógica de `missing.ts` no cambia).
+- [x] Extraer `trigramSimilarity` a `src/lib/similarity.ts` (reimportar desde `missing.ts`).
+- [x] Aviso inline + asociación de un toque en la revisión del ticket.
+- [~] (Opcional) mismo aviso en `add-product-drawer.tsx` — **dejado fuera** a propósito (ver nota).
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios; la lógica de `missing.ts` no cambia (solo
+      reimporta), así que el arnés de D3 sigue pasando conceptualmente.
+
+> **Nota de implementación (E2):** sin migración. `trigramSimilarity`, `trigrams` (privada) y las
+> constantes `DEFAULT_FUZZY_THRESHOLD`/`MIN_FUZZY_LENGTH` se mueven de `src/features/menus/missing.ts`
+> a un módulo compartido nuevo `src/lib/similarity.ts` sin cambiar comportamiento; `missing.ts` las
+> reimporta y **reexporta** `DEFAULT_FUZZY_THRESHOLD`/`trigramSimilarity` para no romper importadores.
+> En `src/features/receipts/components/receipt-review.tsx` (sobre la UI de E1): helper PURO
+> `findDuplicateCandidate(description, catalog)` que, para las líneas que quedarían como producto
+> nuevo (`productId === null`, incluidas), busca el mejor candidato del catálogo por (a) **contención
+> de tokens en cualquier dirección** (un nombre es subconjunto de tokens del otro: "leche" ⊆ "leche
+> entera hacendado" ✓; "leche" vs "lechuga" ✗, tokens distintos) o (b) **trigramas ≥ 0,5**
+> (`WARN_TRIGRAM_THRESHOLD`, más alto que el 0,4 de faltantes: aquí conviene NO avisar a avisar mal).
+> Los candidatos se calculan en un `useMemo` por línea; se muestra un aviso inline en `bg-warning/10
+> text-warning` — "Ya tienes «Leche», ¿es el mismo producto?" — con un botón "Asociar" que fija el
+> `productId` con un toque (al confirmar, el alias se aprende como siempre). **La parte opcional del
+> alta manual (`add-product-drawer.tsx`) se deja fuera**: ese flujo solo recibe `productNames:
+> string[]`, crea por nombre y el servidor ya fusiona el nombre exacto; no hay una acción limpia de
+> "asociar" y el riesgo real de duplicados (confirmación de tickets) queda cubierto aquí. Lógica del
+> guardarraíl verificada con un arnés (node): "Leche Entera Hacendado"→sugiere "Leche"; NO confunde
+> con "Lechuga" (sim 0,33 < 0,5); "Gazpacho Hacend" (errata) casa por trigramas; "Chorizo" no avisa.
+> `npx tsc --noEmit` y `npx eslint .` limpios. Verificación interactiva limitada por Clerk (headless).
 
 **Criterios de aceptación**
 - Con "Leche" en el catálogo, una línea "Leche Entera Hacendado" dejada en "nuevo" muestra el
