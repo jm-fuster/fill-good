@@ -72,7 +72,9 @@ export async function getReceiptItems(
   const { data, error } = await supabase
     .from("receipt_items")
     .select(
-      "id, raw_text, description, quantity, unit, is_weighted, total_price, price_per_kg, product_id, suggested_product_id, match_status, product:products(name)",
+      // receipt_items tiene DOS FKs a products (product_id y suggested_product_id,
+      // esta última de E7): hay que nombrar la relación o PostgREST da PGRST201.
+      "id, raw_text, description, quantity, unit, is_weighted, total_price, price_per_kg, product_id, suggested_product_id, match_status, product:products!receipt_items_product_id_fkey(name)",
     )
     .eq("receipt_id", receiptId)
     .order("position", { ascending: true });

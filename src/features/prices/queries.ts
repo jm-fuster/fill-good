@@ -38,7 +38,9 @@ export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
   const { data, error } = await supabase
     .from("receipt_items")
     .select(
-      "product_id, total_price, quantity, unit, purchased_at, store_chain, product:products(name)",
+      // receipt_items tiene DOS FKs a products (product_id y suggested_product_id,
+      // esta última de E7): hay que nombrar la relación o PostgREST da PGRST201.
+      "product_id, total_price, quantity, unit, purchased_at, store_chain, product:products!receipt_items_product_id_fkey(name)",
     )
     .not("product_id", "is", null)
     .not("total_price", "is", null)
