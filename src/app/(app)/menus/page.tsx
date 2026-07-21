@@ -35,13 +35,17 @@ export default async function MenusPage({
         description="Planifica la semana con lo que tienes en casa."
       />
       <div className="flex flex-col gap-4">
-        <MenuSectionTabs active="semana" />
+        <div className="print:hidden">
+          <MenuSectionTabs active="semana" />
+        </div>
         <MenuView
           weekStart={weekStart}
           menuId={menu?.id ?? null}
           entries={entries}
         />
-        <MenuRules rules={rules} recipes={recipes} />
+        <div className="print:hidden">
+          <MenuRules rules={rules} recipes={recipes} />
+        </div>
       </div>
     </>
   );

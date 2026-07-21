@@ -195,3 +195,23 @@
     }
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Impresión (D5): el menú semanal debe salir limpio, sin navegación ni
+   controles. Los controles interactivos ya llevan `print:hidden`; aquí se
+   oculta la navegación fija y se fuerzan colores claros por si el tema activo
+   es oscuro (los navegadores no imprimen fondos por defecto).
+   --------------------------------------------------------------------------- */
+@media print {
+  nav[aria-label="Navegación principal"] {
+    display: none !important;
+  }
+  main {
+    padding-bottom: 0 !important;
+  }
+  html,
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+}

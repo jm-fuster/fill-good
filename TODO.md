@@ -30,7 +30,7 @@ ordenadas por prioridad; pueden hacerse en cualquier orden, pero D1 y D2 primero
 - [x] D2 — Estado "Agotado" visible + añadir a la lista de un toque
 - [x] D3 — Mejorar "Añadir a la lista lo que falte" del menú (revisión + matching + stock real)
 - [x] D4 — Recetario como pestaña dentro de Menús
-- [ ] D5 — Compartir el menú semanal (imagen + Web Share, print CSS)
+- [x] D5 — Compartir el menú semanal (imagen + Web Share, print CSS)
 - [x] D6 — Hint de escaneo: sugerir PDF escaneado con la app nativa
 - [x] D7 — Hint de caducidad: "la fecha del que caduque antes"
 
@@ -696,10 +696,30 @@ entre sí. D1 y D2 son las de mayor impacto; D6 y D7 son microcopys de una tarde
 - **PDF (barato):** hoja `@media print` para la vista del menú (ocultar bottom nav, FABs, botones y drawers; tipografía legible en A4, una semana por página) + opción "Imprimir o guardar PDF" que llame a `window.print()`.
 
 **Pasos**
-- [ ] Route handler de imagen con `ImageResponse` + validación de sesión/hogar.
-- [ ] Botón "Compartir" con Web Share API + fallback de descarga.
-- [ ] Estilos `@media print` + opción de imprimir.
-- [ ] Verificar en preview: imagen correcta, 401/404 sin sesión, print limpio.
+- [x] Route handler de imagen con `ImageResponse` + validación de sesión/hogar.
+- [x] Botón "Compartir" con Web Share API + fallback de descarga.
+- [x] Estilos `@media print` + opción de imprimir.
+- [x] Verificar: imagen correcta (renderizada con datos de ejemplo vía arnés), 401/404 por diseño; print limpio por código. Flujo interactivo (Web Share/print con sesión) limitado por Clerk headless.
+
+> **Nota de implementación (D5):** sin migración. Primer route handler del proyecto:
+> `src/app/api/menus/[menuId]/imagen/route.tsx` (`runtime = "nodejs"`) renderiza la semana con
+> `ImageResponse` de `next/og` (1080×1600, retrato para compartir). Solo flexbox (Satori no admite
+> grid): cabecera (nombre del hogar en verde de marca + "Menú de la semana" + rango de fechas) y una
+> columna de 7 días, cada uno con dos columnas Comida/Cena que listan los platos (o "—" si vacío) y un
+> pie "Fill Good · Compra lo justo, ahorra más". Colores FIJOS claros (una imagen no puede leer las CSS
+> vars del tema). **Autorización:** `auth()` (sin `userId` → 401) + cliente Supabase con RLS (un
+> `menuId` de otro hogar no devuelve fila → 404); además el `proxy.ts` (middleware) ya protege `/api/*`,
+> así que sin sesión se bloquea antes de llegar. En `menu-view.tsx`: botones "Compartir" (fetch de la
+> ruta → `blob` → `navigator.share({files})` si `navigator.canShare` lo admite; fallback a descarga en
+> escritorio; ignora `AbortError` al cancelar) e "Imprimir" (`window.print()`), visibles cuando el menú
+> tiene entradas. **Print CSS:** los controles llevan `print:hidden` (nav de semana, generar, añadir a
+> la lista, compartir/imprimir, "Añadir plato"; en `menus/page.tsx` el conmutador y las reglas), y un
+> bloque `@media print` en `globals.css` oculta la bottom nav (`nav[aria-label="Navegación principal"]`),
+> quita el `padding-bottom` del `main` y fuerza fondo/tinta claros. Verificación: la imagen se renderizó
+> con datos de ejemplo mediante un arnés (esbuild→CJS + `next/og`) produciendo un PNG válido de ~107 KB
+> con el layout correcto (inspeccionado visualmente); Satori aceptó todo el flexbox. `npx tsc --noEmit`
+> y `npx eslint .` limpios. El flujo interactivo (hoja de compartir nativa / print) con sesión queda
+> para verificación manual (límite headless/Clerk del bloque D).
 
 **Criterios de aceptación**
 - En móvil, "Compartir" abre la hoja nativa con la imagen del menú de la semana visible.

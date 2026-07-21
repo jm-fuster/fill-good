@@ -10,6 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Plus,
+  Printer,
+  Share2,
   Sparkles,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
@@ -92,6 +94,7 @@ export function MenuView({
     else bySlot.set(key, [e]);
   }
   const hasRecipes = entries.some((e) => e.recipeId);
+  const hasEntries = entries.length > 0;
 
   function generate() {
     startGenerate(async () => {
@@ -119,6 +122,40 @@ export function MenuView({
       }
       setMissing(candidates);
     });
+  }
+
+  async function share() {
+    if (!menuId) return;
+    try {
+      const res = await fetch(`/api/menus/${menuId}/imagen`);
+      if (!res.ok) throw new Error("fetch failed");
+      const blob = await res.blob();
+      const file = new File([blob], "menu-semanal.png", { type: "image/png" });
+
+      if (
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files: [file] })
+      ) {
+        await navigator.share({ files: [file], title: "Menú semanal" });
+        return;
+      }
+
+      // Fallback (escritorio): descarga directa de la imagen.
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "menu-semanal.png";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      // El usuario cancela el diálogo nativo → no es un error.
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      toast.error("No se pudo generar la imagen del menú.");
+    }
+  }
+
+  function print() {
+    window.print();
   }
 
   function openAdd(date: string, slot: (typeof SLOTS)[number]) {
@@ -153,7 +190,7 @@ export function MenuView({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between print:hidden">
         <Button variant="ghost" size="icon" asChild aria-label="Semana anterior">
           <Link href={`/menus?week=${shiftWeek(weekStart, -1)}`}>
             <ChevronLeft aria-hidden />
@@ -170,7 +207,12 @@ export function MenuView({
         </Button>
       </div>
 
-      <Button onClick={generate} disabled={generating} size="lg">
+      <Button
+        onClick={generate}
+        disabled={generating}
+        size="lg"
+        className="print:hidden"
+      >
         <Sparkles aria-hidden />
         {generating ? "Generando menú…" : "Generar menú con IA"}
       </Button>
@@ -212,7 +254,7 @@ export function MenuView({
                       type="button"
                       onClick={() => openAdd(date, slot)}
                       className={cn(
-                        "flex min-h-11 items-center gap-1 rounded-lg border border-dashed p-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted",
+                        "flex min-h-11 items-center gap-1 rounded-lg border border-dashed p-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted print:hidden",
                       )}
                     >
                       <Plus className="size-3.5" aria-hidden /> Añadir plato
@@ -231,9 +273,33 @@ export function MenuView({
           size="lg"
           onClick={reviewMissing}
           disabled={addingList}
+          className="print:hidden"
         >
           {addingList ? "Calculando…" : "Añadir a la lista lo que falte"}
         </Button>
+      ) : null}
+
+      {hasEntries ? (
+        <div className="flex gap-2 print:hidden">
+          <Button
+            variant="outline"
+            size="lg"
+            className="flex-1"
+            onClick={share}
+          >
+            <Share2 aria-hidden />
+            Compartir
+          </Button>
+          <Button
+            variant="outline"
+            size="lg"
+            className="flex-1"
+            onClick={print}
+          >
+            <Printer aria-hidden />
+            Imprimir
+          </Button>
+        </div>
       ) : null}
 
       <MissingReviewDrawer
