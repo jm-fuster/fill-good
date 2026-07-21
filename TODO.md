@@ -28,7 +28,7 @@ ordenadas por prioridad; pueden hacerse en cualquier orden, pero D1 y D2 primero
 - [x] C3 — Generador de menús 2.0 (integra recetario, gustos, temporada, reglas y stock)
 - [x] D1 — Gobernanza del hogar: transferir propiedad y eliminar hogar
 - [x] D2 — Estado "Agotado" visible + añadir a la lista de un toque
-- [ ] D3 — Mejorar "Añadir a la lista lo que falte" del menú (revisión + matching + stock real)
+- [x] D3 — Mejorar "Añadir a la lista lo que falte" del menú (revisión + matching + stock real)
 - [ ] D4 — Recetario como pestaña dentro de Menús
 - [ ] D5 — Compartir el menú semanal (imagen + Web Share, print CSS)
 - [ ] D6 — Hint de escaneo: sugerir PDF escaneado con la app nativa
@@ -606,11 +606,34 @@ entre sí. D1 y D2 son las de mayor impacto; D6 y D7 son microcopys de una tarde
 - **Insertar vinculado**: cuando hay match, insertar el ítem de lista con la referencia al producto (verificar el esquema de `shopping_list_items` en `supabase/migrations/20260719131524_shopping_list.sql`; reutilizar la acción de A2 que añade producto del catálogo si encaja).
 
 **Pasos**
-- [ ] RPC/función SQL de matching trigram (migración pequeña; pedir autorización para `db push`) o, si se prefiere sin migración, matching en servidor cargando el catálogo ligero y usando una similitud en TS — decidir y documentar.
-- [ ] Refactor de `addMissingToListAction` en dos fases: `computeMissingIngredients` (cálculo, testeable) + acción de confirmación que recibe la selección.
-- [ ] UI de revisión con checkboxes (patrón `receipt-review`).
-- [ ] Corregir el filtro de stock (`quantity > 0`) y vincular ítems insertados al catálogo.
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Matching en servidor (TS puro, sin migración): decidido cargar el catálogo ligero y usar similitud de trigramas en TS. Documentado el porqué (catálogo pequeño por hogar, evita el round-trip de `db push`) y dejado un `TODO` proponiendo RPC `pg_trgm`/Gemini como fallback futuro, sin implementarlo.
+- [x] Refactor de `addMissingToListAction` en dos fases: `computeMissingIngredients` (puro, testeable, en `missing.ts`) + `computeMissingForMenuAction` (I/O) + `confirmMissingToListAction` (recibe la selección).
+- [x] UI de revisión con checkboxes (drawer sobre `/menus`, patrón `receipt-review`).
+- [x] Corregir el filtro de stock (`quantity > 0`) y vincular ítems insertados al catálogo (`product_id`).
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (D3):** sin migración (decisión de diseño: matching en TS).
+> Módulo PURO nuevo `src/features/menus/missing.ts`: `computeMissingIngredients(input)` con
+> matching en tres niveles —(1) `recipe_ingredients.product_id`, (2) `normalized_name` exacto,
+> (3) fuzzy por `trigramSimilarity` (índice de Jaccard sobre trigramas con relleno de espacios,
+> aproxima a `pg_trgm.similarity`, umbral `DEFAULT_FUZZY_THRESHOLD = 0.4`)— que descarta lo que ya
+> está en stock (por `product_id` o nombre) o en la lista, y deduplica por producto emparejado o por
+> nombre. Corrige el bug de stock: "en stock" = suma de cantidades del producto **> 0** (antes contaba
+> los productos a 0 como disponibles). En `src/features/menus/actions.ts`: se sustituye
+> `addMissingToListAction` por `computeMissingForMenuAction(menuId)` (reúne ingredientes del menú +
+> `getInventory` + `getProductCatalog` + lista activa y llama al módulo puro; devuelve candidatos, no
+> inserta) y `confirmMissingToListAction(menuId, includedKeys)` (RECALCULA en el servidor y solo usa
+> `includedKeys` para filtrar —nunca confía en los datos de producto del cliente—; inserta vinculando
+> `product_id` y usando `product.default_unit`/nombre del catálogo cuando hay match, o texto libre si
+> no). UI en `menu-view.tsx`: el botón "Añadir a la lista lo que falte" ahora calcula y abre
+> `MissingReviewDrawer` (checkboxes marcados por defecto, badge del producto emparejado o "Texto libre",
+> nota "coincidencia aproximada" en los fuzzy; `Label htmlFor` para target táctil amplio; botón
+> "Añadir N a la lista"). `npx tsc --noEmit` y `npx eslint .` limpios. Lógica pura verificada con un
+> arnés (esbuild+node, 20 asserts: leche a 0 → falta; leche con stock → no; fuzzy tomate frito ↔
+> "Tomate frito Orlando" con y sin stock; ya en lista; texto libre; dedup a un producto; exacto
+> ignorando mayúsculas; red de seguridad por nombre; sanity de `trigramSimilarity`). Preview: `/menus`
+> compila y sirve (redirige al login de Clerk, sin 500 ni error de esquema); el flujo interactivo del
+> drawer queda para verificación manual con sesión iniciada (límite headless/Clerk conocido del bloque D).
 
 **Criterios de aceptación**
 - Con "Leche" a 0 en inventario y una receta con leche, el ingrediente SÍ aparece como faltante.

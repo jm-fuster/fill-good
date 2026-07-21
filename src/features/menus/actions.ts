@@ -19,12 +19,16 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, UnitType } from "@/lib/supabase/types";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { getInventory } from "@/features/inventory/queries";
-import { getActiveList } from "@/features/shopping-list/queries";
+import { getActiveList, getProductCatalog } from "@/features/shopping-list/queries";
 import {
   getRecipeSignals,
   getSavedRecipesForMenu,
 } from "@/features/recipes/queries";
 import { getMenuRules } from "./queries";
+import {
+  computeMissingIngredients,
+  type MissingCandidate,
+} from "./missing";
 import {
   validateAndPatchRules,
   type MenuDay,
@@ -498,18 +502,30 @@ export async function toggleEntryCookedAction(
   return { ok: true };
 }
 
-export async function addMissingToListAction(
+export type MissingState = {
+  error?: string;
+  candidates?: MissingCandidate[];
+};
+
+/**
+ * Fase 1 de "Añadir a la lista lo que falte" (D3): calcula qué ingredientes del
+ * menú faltan, con matching en tres niveles (product_id → nombre exacto → fuzzy
+ * trigram; ver `missing.ts`) y descartando lo que ya está en stock (cantidad >
+ * 0, corrige el bug anterior que contaba productos a 0 como disponibles) o ya en
+ * la lista. No inserta nada: devuelve los candidatos para que el usuario revise
+ * y desmarque antes de confirmar.
+ */
+export async function computeMissingForMenuAction(
   menuId: string,
-): Promise<MenuState> {
+): Promise<MissingState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
-  const { userId } = await auth();
   const supabase = createServerSupabaseClient();
 
   const list = await getActiveList();
   if (!list) return { error: "No hay lista activa." };
 
-  // Ingredientes de las recetas del menú.
+  // Ingredientes de las recetas del menú (con su product_id si B1 lo vinculó).
   const { data: entries } = await supabase
     .from("menu_entries")
     .select("recipe_id")
@@ -524,41 +540,117 @@ export async function addMissingToListAction(
 
   const { data: ingredients } = await supabase
     .from("recipe_ingredients")
-    .select("name, quantity, unit")
+    .select("name, quantity, unit, product_id")
     .in("recipe_id", recipeIds);
 
-  // Lo que ya hay en inventario y lo que ya está en la lista (por nombre).
-  const inventory = await getInventory();
-  const inStock = new Set(inventory.map((i) => normalizeName(i.productName)));
-  const { data: listItems } = await supabase
-    .from("shopping_list_items")
-    .select("name")
-    .eq("list_id", list.id);
-  const onList = new Set((listItems ?? []).map((i) => normalizeName(i.name)));
+  const [inventory, catalog] = await Promise.all([
+    getInventory(),
+    getProductCatalog(),
+  ]);
 
-  // Ingredientes faltantes, deduplicados por nombre normalizado.
-  const toAdd = new Map<string, { name: string; unit: UnitType | null }>();
-  for (const ing of ingredients ?? []) {
-    const key = normalizeName(ing.name);
-    if (!key || inStock.has(key) || onList.has(key) || toAdd.has(key)) continue;
-    toAdd.set(key, { name: ing.name, unit: ing.unit });
+  // Stock real: suma por producto > 0 (no basta con que exista la fila).
+  const stockByProduct = new Map<string, number>();
+  for (const i of inventory) {
+    stockByProduct.set(
+      i.productId,
+      (stockByProduct.get(i.productId) ?? 0) + i.quantity,
+    );
+  }
+  const stockProductIds = new Set<string>();
+  for (const [pid, qty] of stockByProduct) {
+    if (qty > 0) stockProductIds.add(pid);
+  }
+  const stockNames = new Set<string>();
+  for (const i of inventory) {
+    if (i.quantity > 0) stockNames.add(normalizeName(i.productName));
   }
 
-  if (toAdd.size === 0) return { ok: true, added: 0 };
+  // Lo que ya está en la lista activa (por producto y por nombre).
+  const { data: listItems } = await supabase
+    .from("shopping_list_items")
+    .select("name, product_id")
+    .eq("list_id", list.id);
+  const listProductIds = new Set<string>();
+  const listNames = new Set<string>();
+  for (const it of listItems ?? []) {
+    if (it.product_id) listProductIds.add(it.product_id);
+    listNames.add(normalizeName(it.name));
+  }
 
-  const { error } = await supabase.from("shopping_list_items").insert(
-    [...toAdd.values()].map((v) => ({
-      list_id: list.id,
-      household_id: household.id,
-      name: v.name,
-      unit: v.unit,
-      added_by: userId,
+  const candidates = computeMissingIngredients({
+    ingredients: (ingredients ?? []).map((i) => ({
+      name: i.name,
+      productId: i.product_id,
+      unit: i.unit,
     })),
+    catalog: catalog.map((c) => ({
+      id: c.id,
+      name: c.name,
+      normalizedName: c.normalizedName,
+      defaultUnit: c.defaultUnit,
+    })),
+    stockProductIds,
+    stockNames,
+    listProductIds,
+    listNames,
+  });
+
+  return { candidates };
+}
+
+/**
+ * Fase 2 de "Añadir a la lista lo que falte" (D3): inserta en la lista los
+ * ingredientes que el usuario dejó marcados. Recalcula los faltantes en el
+ * servidor y solo usa `includedKeys` para filtrar (nunca confía en los datos de
+ * producto que envíe el cliente). Los que casaron con el catálogo se insertan
+ * vinculados (`product_id`), para que "Finalizar compra" los mande a su
+ * ubicación por defecto; los sin match entran como texto libre.
+ */
+export async function confirmMissingToListAction(
+  menuId: string,
+  includedKeys: string[],
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+  const supabase = createServerSupabaseClient();
+
+  const list = await getActiveList();
+  if (!list) return { error: "No hay lista activa." };
+
+  const computed = await computeMissingForMenuAction(menuId);
+  if (computed.error) return { error: computed.error };
+
+  const included = new Set(includedKeys);
+  const toInsert = (computed.candidates ?? []).filter((c) =>
+    included.has(c.key),
   );
+  if (toInsert.length === 0) return { ok: true, added: 0 };
+
+  const { data: last } = await supabase
+    .from("shopping_list_items")
+    .select("position")
+    .eq("list_id", list.id)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  let position = (last?.position ?? 0) + 1;
+
+  const rows = toInsert.map((c) => ({
+    list_id: list.id,
+    household_id: household.id,
+    product_id: c.match?.productId ?? null,
+    name: c.match?.productName ?? c.ingredientName,
+    unit: c.match?.defaultUnit ?? c.unit ?? null,
+    added_by: userId,
+    position: position++,
+  }));
+
+  const { error } = await supabase.from("shopping_list_items").insert(rows);
   if (error) return { error: "No se pudieron añadir los ingredientes." };
 
   revalidatePath("/lista");
-  return { ok: true, added: toAdd.size };
+  return { ok: true, added: rows.length };
 }
 
 // ---------------------------------------------------------------------------

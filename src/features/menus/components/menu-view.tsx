@@ -16,7 +16,9 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Drawer,
   DrawerClose,
@@ -32,9 +34,11 @@ import { getWeekDays, shiftWeek } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { saveGeneratedRecipeAction } from "@/features/recipes/actions";
 import type { MenuEntry } from "../queries";
+import type { MissingCandidate } from "../missing";
 import {
   addMenuEntryAction,
-  addMissingToListAction,
+  computeMissingForMenuAction,
+  confirmMissingToListAction,
   generateMenuAction,
   removeMenuEntryAction,
   toggleEntryCookedAction,
@@ -76,6 +80,7 @@ export function MenuView({
   const [generating, startGenerate] = useTransition();
   const [addingList, startAddList] = useTransition();
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [missing, setMissing] = useState<MissingCandidate[] | null>(null);
 
   const days = getWeekDays(weekStart);
   // Varios platos por hueco: agrupamos por `date|slot` (ya vienen por posición).
@@ -99,13 +104,20 @@ export function MenuView({
     });
   }
 
-  function addMissing() {
+  function reviewMissing() {
     if (!menuId) return;
     startAddList(async () => {
-      const r = await addMissingToListAction(menuId);
-      if (r.error) toast.error(r.error);
-      else if (r.added === 0) toast.info("Ya tienes todos los ingredientes");
-      else toast.success(`${r.added} ingredientes añadidos a la lista`);
+      const r = await computeMissingForMenuAction(menuId);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      const candidates = r.candidates ?? [];
+      if (candidates.length === 0) {
+        toast.info("Ya tienes todos los ingredientes");
+        return;
+      }
+      setMissing(candidates);
     });
   }
 
@@ -217,12 +229,18 @@ export function MenuView({
         <Button
           variant="outline"
           size="lg"
-          onClick={addMissing}
+          onClick={reviewMissing}
           disabled={addingList}
         >
-          {addingList ? "Añadiendo…" : "Añadir a la lista lo que falte"}
+          {addingList ? "Calculando…" : "Añadir a la lista lo que falte"}
         </Button>
       ) : null}
+
+      <MissingReviewDrawer
+        menuId={menuId}
+        candidates={missing}
+        onClose={() => setMissing(null)}
+      />
 
       <EditEntryDrawer
         editing={editing}
@@ -410,6 +428,136 @@ function EditEntryDrawer({
               </DrawerClose>
             </DrawerFooter>
           </form>
+        </div>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+/**
+ * Revisión de "lo que falta" (D3): lista con checkboxes (todo marcado por
+ * defecto). Cada fila muestra el ingrediente y el producto del catálogo al que
+ * ha casado (o "texto libre" si no hay coincidencia). Al confirmar, el servidor
+ * recalcula e inserta solo lo marcado.
+ */
+function MissingReviewDrawer({
+  menuId,
+  candidates,
+  onClose,
+}: {
+  menuId: string | null;
+  candidates: MissingCandidate[] | null;
+  onClose: () => void;
+}) {
+  const [included, setIncluded] = useState<Set<string>>(new Set());
+  const [pending, startTransition] = useTransition();
+
+  // Al abrir con un conjunto nuevo de candidatos, marcar todos por defecto.
+  const [lastKey, setLastKey] = useState<string | null>(null);
+  const key = candidates ? candidates.map((c) => c.key).join(",") : null;
+  if (key !== lastKey) {
+    setLastKey(key);
+    setIncluded(new Set(candidates?.map((c) => c.key) ?? []));
+  }
+
+  function toggle(k: string, on: boolean) {
+    setIncluded((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(k);
+      else next.delete(k);
+      return next;
+    });
+  }
+
+  function confirm() {
+    if (!menuId) return;
+    startTransition(async () => {
+      const r = await confirmMissingToListAction(menuId, [...included]);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      const n = r.added ?? 0;
+      toast.success(
+        n === 1
+          ? "1 ingrediente añadido a la lista"
+          : `${n} ingredientes añadidos a la lista`,
+      );
+      onClose();
+    });
+  }
+
+  const count = included.size;
+
+  return (
+    <Drawer open={candidates !== null} onOpenChange={(o) => !o && onClose()}>
+      <DrawerContent>
+        <div className="mx-auto flex w-full max-w-md flex-col">
+          <DrawerHeader>
+            <DrawerTitle>Añadir a la lista</DrawerTitle>
+            <DrawerDescription>
+              Revisa lo que falta para el menú. Desmarca lo que no quieras.
+            </DrawerDescription>
+          </DrawerHeader>
+
+          <ul className="flex max-h-[55vh] flex-col gap-2 overflow-y-auto px-4">
+            {(candidates ?? []).map((c) => {
+              const cbId = `missing-${c.key}`;
+              const checked = included.has(c.key);
+              return (
+                <li
+                  key={c.key}
+                  className="flex items-start gap-3 rounded-xl border p-3"
+                >
+                  <Checkbox
+                    id={cbId}
+                    checked={checked}
+                    onCheckedChange={(v) => toggle(c.key, v === true)}
+                    className="mt-0.5 size-5"
+                  />
+                  <Label
+                    htmlFor={cbId}
+                    className="flex flex-1 cursor-pointer flex-col items-start gap-1 font-normal"
+                  >
+                    <span className="text-sm font-medium">
+                      {c.ingredientName}
+                    </span>
+                    {c.match ? (
+                      <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                        <Badge variant="secondary">{c.match.productName}</Badge>
+                        {c.match.kind === "fuzzy"
+                          ? "coincidencia aproximada"
+                          : null}
+                      </span>
+                    ) : (
+                      <Badge variant="outline">Texto libre</Badge>
+                    )}
+                  </Label>
+                </li>
+              );
+            })}
+          </ul>
+
+          <DrawerFooter className="gap-2">
+            <Button
+              type="button"
+              size="lg"
+              onClick={confirm}
+              disabled={pending || count === 0}
+            >
+              <Check aria-hidden />
+              {pending
+                ? "Añadiendo…"
+                : count === 1
+                  ? "Añadir 1 a la lista"
+                  : `Añadir ${count} a la lista`}
+            </Button>
+            <DrawerClose asChild>
+              <Button type="button" variant="ghost">
+                Cancelar
+              </Button>
+            </DrawerClose>
+          </DrawerFooter>
         </div>
       </DrawerContent>
     </Drawer>
