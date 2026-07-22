@@ -14,6 +14,7 @@ import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import { getCurrentHousehold } from "@/features/household/queries";
+import { recordStockEvent } from "@/features/inventory/events";
 import { notifyPriceRises } from "@/features/push/notify";
 
 export type ScanState = {
@@ -421,6 +422,20 @@ export async function confirmReceiptAction(
         inventoryItemIds.push(created.id);
         addedToInventory = true;
       }
+    }
+
+    // Historial (F5): "repuesto" por línea realmente añadida al inventario, con
+    // la cantidad ya convertida por pack. Las líneas no sumadas por conflicto de
+    // unidad (E3) no generan evento.
+    if (addedToInventory && productId) {
+      await recordStockEvent(supabase, {
+        householdId: household.id,
+        productId,
+        quantity: invQty,
+        unit: dec.unit,
+        kind: "restocked",
+        userId,
+      });
     }
 
     // Memoria de habitualidad: este producto se ha comprado (aunque el stock no

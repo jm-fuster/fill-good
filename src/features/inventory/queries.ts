@@ -1,8 +1,16 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import type { LocationType, UnitType } from "@/lib/supabase/types";
+import type {
+  InventoryEventKind,
+  LocationType,
+  UnitType,
+} from "@/lib/supabase/types";
 import { baseUnitFactor, unitFamily } from "@/lib/units";
+import {
+  getCurrentHousehold,
+  getHouseholdMembers,
+} from "@/features/household/queries";
 
 export type Category = {
   id: string;
@@ -218,6 +226,75 @@ export async function getStockByProduct(): Promise<
     if (qty > 0) result[pid] = { quantity: qty, unit: defaultUnit.get(pid)! };
   }
   return result;
+}
+
+/** Un movimiento de stock del historial (F5). */
+export type InventoryEvent = {
+  id: string;
+  productName: string;
+  quantity: number;
+  unit: UnitType;
+  kind: InventoryEventKind;
+  createdAt: string;
+  authorName: string | null;
+};
+
+/** Días que abarca el historial de movimientos (el índice ya cubre el rango). */
+export const HISTORY_WINDOW_DAYS = 30;
+
+type HistoryRow = {
+  id: string;
+  quantity: number;
+  unit: UnitType;
+  kind: InventoryEventKind;
+  created_by: string | null;
+  created_at: string;
+  product: { name: string } | null;
+};
+
+/**
+ * Movimientos de inventario de los últimos {@link HISTORY_WINDOW_DAYS} días
+ * (F5), con el nombre del producto y quién lo hizo. La RLS ya restringe al
+ * hogar; el filtro por fecha usa el índice `(household_id, created_at)`.
+ * Devuelve también `nowMs` (referencia temporal calculada aquí, no en el
+ * componente de render, para no romper la regla de pureza).
+ */
+export async function getInventoryHistory(): Promise<{
+  events: InventoryEvent[];
+  nowMs: number;
+}> {
+  const nowMs = Date.now();
+  const household = await getCurrentHousehold();
+  if (!household) return { events: [], nowMs };
+  const supabase = createServerSupabaseClient();
+  const since = new Date(
+    nowMs - HISTORY_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const [{ data, error }, members] = await Promise.all([
+    supabase
+      .from("inventory_events")
+      .select(
+        "id, quantity, unit, kind, created_by, created_at, product:products(name)",
+      )
+      .gte("created_at", since)
+      .order("created_at", { ascending: false }),
+    getHouseholdMembers(household.id),
+  ]);
+  if (error) throw error;
+
+  const nameByUser = new Map(members.map((m) => [m.userId, m.displayName]));
+  const rows = (data ?? []) as unknown as HistoryRow[];
+  const events = rows.map((e) => ({
+    id: e.id,
+    productName: e.product?.name ?? "Producto",
+    quantity: Number(e.quantity),
+    unit: e.unit,
+    kind: e.kind,
+    createdAt: e.created_at,
+    authorName: e.created_by ? (nameByUser.get(e.created_by) ?? null) : null,
+  }));
+  return { events, nowMs };
 }
 
 type InventoryRow = {

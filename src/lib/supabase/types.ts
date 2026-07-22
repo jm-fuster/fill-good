@@ -8,7 +8,7 @@
 export type UnitType = "ud" | "g" | "kg" | "ml" | "l";
 export type LocationType = "pantry" | "fridge" | "freezer" | "other";
 export type MemberRole = "owner" | "member";
-export type InventoryEventKind = "consumed" | "discarded";
+export type InventoryEventKind = "consumed" | "discarded" | "restocked";
 
 export type Database = {
   public: {

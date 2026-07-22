@@ -7,6 +7,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import { formatQuantity } from "@/lib/units";
 import { getCurrentHousehold } from "@/features/household/queries";
+import { recordStockEvent } from "@/features/inventory/events";
 import type { UnitType } from "@/lib/supabase/types";
 import { getActiveList } from "./queries";
 import { addListItemSchema, updateListItemSchema } from "./schemas";
@@ -296,6 +297,19 @@ export async function checkoutAction(): Promise<
         .select("id")
         .single();
       if (created) inventoryItemIds.push(created.id);
+    }
+
+    // Historial (F5): un evento "repuesto" por producto añadido, con la cantidad
+    // ya convertida por pack. Sin folding (es una compra puntual, no el stepper).
+    if (productId) {
+      await recordStockEvent(supabase, {
+        householdId: household.id,
+        productId,
+        quantity: qty,
+        unit: defaultUnit,
+        kind: "restocked",
+        userId,
+      });
     }
 
     // Memoria de habitualidad: este producto se ha comprado.

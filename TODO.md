@@ -53,7 +53,7 @@ checkout, stepper) y, si se hacen ambas, F4 va primero (F5 registra cantidades y
 - [x] F2 — Chips de caducidad aditivos (cada toque suma tiempo)
 - [x] F3 — Ingredientes de receta vinculados al catálogo con stock visible
 - [x] F4 — Pack de compra: "1 caja = N unidades" al entrar al inventario
-- [ ] F5 — Historial de movimientos de stock (consumido / tirado / repuesto)
+- [x] F5 — Historial de movimientos de stock (consumido / tirado / repuesto)
 
 ---
 
@@ -1794,11 +1794,36 @@ gastando esta semana o reponiendo.
   corto, se añade luego un filtro; no construirlo ahora).
 
 **Pasos**
-- [ ] Migración (`restocked` + política/grant de UPDATE) con autorización + tipos a mano.
-- [ ] Eventos con folding en `setInventoryQuantityAction` (delta server-side).
-- [ ] Eventos `restocked` en `checkoutAction` y `confirmReceiptAction`.
-- [ ] Página `/inventario/historial` (30 días, agrupada por día, resumen semanal) + enlace.
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Migración (`restocked` + política/grant de UPDATE) con autorización + tipos a mano.
+- [x] Eventos con folding en `setInventoryQuantityAction` (delta server-side).
+- [x] Eventos `restocked` en `checkoutAction` y `confirmReceiptAction`.
+- [x] Página `/inventario/historial` (30 días, agrupada por día, resumen semanal) + enlace.
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (F5):** migración `supabase/migrations/20260722130000_inventory_events_history.sql`
+> (`alter type inventory_event_kind add value if not exists 'restocked'` —no se usa el valor en la
+> misma migración, sin backfills, seguro— + política y grant de UPDATE sobre `inventory_events` para
+> el folding). **YA APLICADA en remoto** (autorizada por el usuario 2026-07-22 y verificada con
+> `npx supabase migration list --linked`: `local == remote`). Tipos a mano: `InventoryEventKind`
+> gana `'restocked'`. Módulo compartido nuevo `src/features/inventory/events.ts`: `recordStockEvent`
+> (best-effort, nunca lanza) con `EVENT_FOLD_WINDOW_MS = 15 min`; con `fold`, si el último evento del
+> mismo (hogar, producto, tipo, autor) es reciente y de la misma unidad, ACUMULA sobre él (UPDATE) y
+> refresca su `created_at` en vez de insertar otra fila. Escrituras: `setInventoryQuantityAction`
+> (inventory/actions) lee la cantidad previa, calcula el delta server-side y registra `consumed`
+> (delta<0) / `restocked` (delta>0) con `fold: true` (stepper); `checkoutAction` (shopping-list) y
+> `confirmReceiptAction` (receipts) registran un `restocked` por producto realmente añadido, con la
+> cantidad YA convertida por pack (F4) y SIN folding; las líneas no sumadas por conflicto de unidad
+> (E3) no generan evento; `deleteInventoryAction` sin cambios (M8 intacto). Lectura:
+> `getInventoryHistory()` (30 días, índice `(household_id, created_at)`, join con producto + display
+> names de `getHouseholdMembers`) devuelve `{events, nowMs}` (el `now` se calcula en la query, no en
+> el render, por la regla de pureza de React). UI: `components/inventory-history.tsx` (server-safe)
+> agrupa por día ("Hoy"/"Ayer"/fecha, zona Europe/Madrid), icono/color por tipo (`success` repuesto,
+> neutro consumido, `destructive` tirado), `±cantidad unidad`, autor y hora; cabecera con resumen
+> semanal ("+X repuestos · −Y consumidos · −Z tirados", conteo simple). Página
+> `src/app/(app)/inventario/historial/page.tsx` con estado vacío; enlace desde la cabecera de
+> `/inventario` (icono `History` con `aria-label`, junto a "Ver precios"). El panel de gasto de M8 no
+> se toca. `npx tsc --noEmit` y `npx eslint .` limpios. Verificación interactiva en preview pendiente
+> (login de Clerk no verificable en headless).
 
 **Criterios de aceptación**
 - Bajar 3 ud con el stepper (3 toques seguidos) produce UN evento `consumed` de 3 ud

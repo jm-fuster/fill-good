@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LineChart, Package } from "lucide-react";
+import { History, LineChart, Package } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -49,6 +49,16 @@ export default async function InventarioPage({
         description="Tu despensa, nevera y congelador."
         action={
           <div className="flex items-center gap-2">
+            <Button
+              asChild
+              variant="outline"
+              size="icon"
+              aria-label="Historial de movimientos"
+            >
+              <Link href="/inventario/historial">
+                <History aria-hidden />
+              </Link>
+            </Button>
             <Button
               asChild
               variant="outline"

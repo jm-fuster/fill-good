@@ -18,6 +18,7 @@ import {
   expiryReviewSchema,
   starterItemsSchema,
 } from "./schemas";
+import { recordStockEvent } from "./events";
 
 export type ActionState = { error?: string; ok?: boolean };
 
@@ -194,11 +195,38 @@ export async function setInventoryQuantityAction(
   }
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
+
+  // Cantidad previa para calcular el delta del evento (F5). El delta se calcula
+  // SIEMPRE en el servidor (no confiamos en el cliente para el historial).
+  const { data: prev } = await supabase
+    .from("inventory_items")
+    .select("household_id, product_id, quantity, unit")
+    .eq("id", id)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("inventory_items")
     .update({ quantity, updated_by: userId })
     .eq("id", id);
   if (error) return { error: "No se pudo actualizar la cantidad." };
+
+  // Evento de movimiento con folding anti-ruido (F5): delta<0 = consumido,
+  // delta>0 = repuesto. Best-effort, no bloquea el stepper optimista.
+  if (prev) {
+    const delta = quantity - Number(prev.quantity);
+    if (delta !== 0) {
+      await recordStockEvent(supabase, {
+        householdId: prev.household_id,
+        productId: prev.product_id,
+        quantity: Math.abs(delta),
+        unit: prev.unit,
+        kind: delta < 0 ? "consumed" : "restocked",
+        userId,
+        fold: true,
+      });
+    }
+  }
+
   // Sin revalidatePath: el stepper es optimista en el cliente y persiste en
   // segundo plano; evita un refetch de toda la página en cada pulsación.
   return { ok: true };
