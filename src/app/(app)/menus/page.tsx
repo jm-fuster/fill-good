@@ -17,7 +17,7 @@ import {
 } from "@/features/menus/queries";
 import { activeSlots } from "@/features/menus/slots";
 import { getRecipeCostsForIds, getSavedRecipes } from "@/features/recipes/queries";
-import { getWeekStart } from "@/lib/dates";
+import { getWeekStart, shiftWeek } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Menús" };
 
@@ -40,6 +40,17 @@ export default async function MenusPage({
     getMenuPrefs(),
   ]);
   const slots = activeSlots(prefs.planBreakfast);
+
+  // "Copiar la semana anterior" (N5): solo si la visible está vacía y la
+  // anterior tiene platos.
+  let canCopyPrevious = false;
+  if (entries.length === 0) {
+    const prevMenu = await getWeekMenu(shiftWeek(weekStart, -1));
+    if (prevMenu) {
+      const prevEntries = await getMenuEntries(prevMenu.id);
+      canCopyPrevious = prevEntries.length > 0;
+    }
+  }
 
   // Coste estimado de la semana (M7): suma de los platos con receta. Es parcial
   // si algún plato no tiene precio de todos sus ingredientes o no tiene receta.
@@ -84,6 +95,7 @@ export default async function MenusPage({
           entries={entries}
           weekCost={weekCost}
           slots={slots}
+          canCopyPrevious={canCopyPrevious}
         />
         <div className="flex flex-col gap-4 print:hidden">
           <MenuPrefs prefs={prefs} />

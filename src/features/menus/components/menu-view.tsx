@@ -7,6 +7,7 @@ import {
   BookmarkPlus,
   Check,
   ChefHat,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -55,6 +56,7 @@ import {
   computeTonightAction,
   confirmCookedDeductionsAction,
   confirmMissingToListAction,
+  copyPreviousWeekAction,
   duplicateMenuEntryAction,
   generateMenuAction,
   moveMenuEntryAction,
@@ -93,12 +95,14 @@ export function MenuView({
   entries,
   weekCost,
   slots,
+  canCopyPrevious,
 }: {
   weekStart: string;
   menuId: string | null;
   entries: MenuEntry[];
   weekCost: { total: number; complete: boolean } | null;
   slots: SlotDef[];
+  canCopyPrevious: boolean;
 }) {
   const router = useRouter();
   const [generating, startGenerate] = useTransition();
@@ -127,6 +131,18 @@ export function MenuView({
   // solo entonces tiene sentido ofrecer el "Rehacer todo" destructivo.
   const hasPreservable = entries.some((e) => e.pinned || e.source === "manual");
   const [confirmReplace, setConfirmReplace] = useState(false);
+  const [copying, startCopy] = useTransition();
+
+  function copyPrevious() {
+    startCopy(async () => {
+      const r = await copyPreviousWeekAction(weekStart);
+      if (r.error) toast.error(r.error);
+      else {
+        toast.success("Semana copiada de la anterior");
+        router.refresh();
+      }
+    });
+  }
 
   function generate(mode: "fill" | "replace") {
     setConfirmReplace(false);
@@ -285,6 +301,19 @@ export function MenuView({
           {askingTonight ? "Pensando…" : "¿Qué hago hoy?"}
         </Button>
       </div>
+
+      {canCopyPrevious ? (
+        <Button
+          onClick={copyPrevious}
+          disabled={copying}
+          variant="outline"
+          size="lg"
+          className="print:hidden"
+        >
+          <CalendarDays aria-hidden />
+          {copying ? "Copiando…" : "Copiar la semana anterior"}
+        </Button>
+      ) : null}
 
       {hasPreservable ? (
         <p className="-mt-2 text-center text-xs text-muted-foreground print:hidden">

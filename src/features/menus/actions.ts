@@ -22,6 +22,7 @@ import {
   getWeekDays,
   getWeekStart,
   relativeDaysLabel,
+  shiftWeek,
 } from "@/lib/dates";
 import { normalizeName } from "@/lib/normalize";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -646,6 +647,76 @@ export async function duplicateMenuEntryAction(
     source: "manual",
   });
   if (error) return { error: "No se pudo duplicar el plato." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * Copia la semana anterior en la semana visible (N5). Solo actúa si la semana
+ * visible está vacía y la anterior tiene entradas. Duplica cada entrada al mismo
+ * hueco 7 días después conservando `recipe_id`/`free_text` y `position`; nunca
+ * copia `cooked_at`; escribe `source = 'manual'` y `pinned = false`. Para hogares
+ * con rutina estable, es el 80% del plan en un toque.
+ */
+export async function copyPreviousWeekAction(
+  weekStart: string,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const prevWeekStart = shiftWeek(weekStart, -1);
+  const prevMenu = await supabase
+    .from("weekly_menus")
+    .select("id")
+    .eq("week_start", prevWeekStart)
+    .maybeSingle();
+  const prevMenuId = prevMenu.data?.id;
+  if (!prevMenuId) return { error: "No hay semana anterior que copiar." };
+
+  const prevEntries = await getMenuEntries(prevMenuId);
+  if (prevEntries.length === 0) {
+    return { error: "La semana anterior no tiene platos." };
+  }
+
+  const menuId = await ensureMenu(supabase, household.id, weekStart);
+  if (!menuId) return { error: "No se pudo crear el menú." };
+
+  // No pisar una semana con contenido: copiar es solo para semanas vacías.
+  const { data: existing } = await supabase
+    .from("menu_entries")
+    .select("id")
+    .eq("menu_id", menuId)
+    .limit(1);
+  if (existing && existing.length > 0) {
+    return { error: "La semana ya tiene platos." };
+  }
+
+  const prevDays = getWeekDays(prevWeekStart);
+  const destDays = getWeekDays(weekStart);
+
+  const rows = prevEntries
+    .map((e) => {
+      const idx = prevDays.indexOf(e.date);
+      const date = destDays[idx];
+      if (!date) return null;
+      return {
+        menu_id: menuId,
+        household_id: household.id,
+        date,
+        meal_slot: e.slot,
+        recipe_id: e.recipeId,
+        free_text: e.freeText,
+        position: e.position,
+        source: "manual",
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+  if (rows.length === 0) return { error: "No se pudo copiar la semana." };
+
+  const { error } = await supabase.from("menu_entries").insert(rows);
+  if (error) return { error: "No se pudo copiar la semana." };
 
   revalidatePath("/menus");
   return { ok: true };
