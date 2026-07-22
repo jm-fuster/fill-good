@@ -24,6 +24,8 @@ export type RecipeIngredient = {
   quantity: number | null;
   unit: UnitType | null;
   optional: boolean;
+  /** Vínculo al catálogo (F3), si el ingrediente está enlazado a un producto. */
+  productId: string | null;
 };
 
 /** Receta completa para el formulario de edición. */
@@ -202,7 +204,7 @@ export async function getRecipeForEdit(
 
   const { data: ingredients } = await supabase
     .from("recipe_ingredients")
-    .select("name, quantity, unit, optional")
+    .select("name, quantity, unit, optional, product_id")
     .eq("recipe_id", id)
     .order("id", { ascending: true });
 
@@ -220,6 +222,7 @@ export async function getRecipeForEdit(
       quantity: i.quantity === null ? null : Number(i.quantity),
       unit: i.unit,
       optional: i.optional,
+      productId: i.product_id,
     })),
   };
 }

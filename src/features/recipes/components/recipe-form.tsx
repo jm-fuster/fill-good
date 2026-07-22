@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   ResponsiveModal,
@@ -26,8 +27,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UNIT_OPTIONS } from "@/lib/units";
+import {
+  baseUnitFactor,
+  formatQuantity,
+  UNIT_OPTIONS,
+  unitFamily,
+} from "@/lib/units";
+import { normalizeName } from "@/lib/normalize";
+import { cn } from "@/lib/utils";
 import type { UnitType } from "@/lib/supabase/types";
+import type { ProductStock } from "@/features/inventory/queries";
+import type { CatalogProduct } from "@/features/shopping-list/queries";
+import { ProductAutocomplete } from "@/features/shopping-list/components/product-autocomplete";
 import type { RecipeForEdit, MealTypeValue, SeasonValue } from "../queries";
 import type { RecipeInput } from "../schemas";
 import { MEAL_TYPE_OPTIONS, SEASON_OPTIONS, seasonsToChoice } from "../constants";
@@ -43,15 +54,66 @@ type IngredientRow = {
   quantity: string;
   unit: string; // "none" o UnitType
   optional: boolean;
+  productId: string | null;
 };
 
 const NO_UNIT = "none";
 
 function emptyRow(key: number): IngredientRow {
-  return { key, name: "", quantity: "", unit: NO_UNIT, optional: false };
+  return {
+    key,
+    name: "",
+    quantity: "",
+    unit: NO_UNIT,
+    optional: false,
+    productId: null,
+  };
 }
 
-export function RecipeForm({ recipe }: { recipe?: RecipeForEdit }) {
+/** Tono del badge de stock por ingrediente (tokens semánticos). */
+type StockTone = "muted" | "success" | "warning";
+
+/**
+ * Veredicto de stock para un ingrediente ya resuelto a un producto del catálogo.
+ * Devuelve `null` cuando el ingrediente no está vinculado (texto libre sin
+ * match): en ese caso no se muestra badge, igual que antes de F3.
+ */
+function stockInfo(
+  stock: ProductStock | undefined,
+  quantity: string,
+  unit: string,
+): { text: string; tone: StockTone } | null {
+  if (!stock) return { text: "No lo tienes", tone: "muted" };
+
+  const have = formatQuantity(stock.quantity, stock.unit);
+  const qty = quantity.trim() ? Number(quantity.replace(",", ".")) : null;
+
+  // Sin cantidad pedida en la receta → solo presencia.
+  if (qty === null || !Number.isFinite(qty) || qty <= 0) {
+    return { text: "En casa", tone: "success" };
+  }
+  // Cantidad sin unidad, o familias distintas → mostramos stock sin veredicto.
+  if (unit === NO_UNIT || unitFamily(unit as UnitType) !== unitFamily(stock.unit)) {
+    return { text: `Tienes ${have}`, tone: "muted" };
+  }
+  // Misma familia → comparamos en unidad base con exactitud.
+  const need = qty * baseUnitFactor(unit as UnitType);
+  const stockBase = stock.quantity * baseUnitFactor(stock.unit);
+  return {
+    text: `Tienes ${have}`,
+    tone: stockBase >= need ? "success" : "warning",
+  };
+}
+
+export function RecipeForm({
+  recipe,
+  catalog = [],
+  stock = {},
+}: {
+  recipe?: RecipeForEdit;
+  catalog?: CatalogProduct[];
+  stock?: Record<string, ProductStock>;
+}) {
   const router = useRouter();
   const isEdit = Boolean(recipe);
 
@@ -79,10 +141,26 @@ export function RecipeForm({ recipe }: { recipe?: RecipeForEdit }) {
           quantity: ing.quantity != null ? String(ing.quantity) : "",
           unit: ing.unit ?? NO_UNIT,
           optional: ing.optional,
+          productId: ing.productId,
         }))
       : [emptyRow(0)];
   const [rows, setRows] = useState<IngredientRow[]>(initialRows);
   const nextKey = useRef(initialRows.length);
+
+  // Índice del catálogo por nombre normalizado, para resolver el vínculo en vivo
+  // mientras se escribe (además del id explícito elegido en el autocompletado).
+  const catalogByNorm = useMemo(() => {
+    const map = new Map<string, CatalogProduct>();
+    for (const p of catalog) map.set(p.normalizedName, p);
+    return map;
+  }, [catalog]);
+
+  /** Producto vinculado a una fila: id explícito o match exacto por nombre. */
+  function resolveProductId(row: IngredientRow): string | null {
+    if (row.productId) return row.productId;
+    const norm = normalizeName(row.name);
+    return norm ? (catalogByNorm.get(norm)?.id ?? null) : null;
+  }
 
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -129,6 +207,7 @@ export function RecipeForm({ recipe }: { recipe?: RecipeForEdit }) {
             : null,
           unit: r.unit === NO_UNIT ? null : (r.unit as UnitType),
           optional: r.optional,
+          productId: r.productId,
         })),
     };
   }
@@ -292,20 +371,30 @@ export function RecipeForm({ recipe }: { recipe?: RecipeForEdit }) {
       <fieldset className="flex flex-col gap-3">
         <legend className="mb-1 text-sm font-medium">Ingredientes</legend>
         <ul className="flex flex-col gap-3">
-          {rows.map((row) => (
+          {rows.map((row) => {
+            const resolved = resolveProductId(row);
+            const info = resolved
+              ? stockInfo(stock[resolved], row.quantity, row.unit)
+              : null;
+            return (
             <li
               key={row.key}
               className="flex flex-col gap-2 rounded-lg border p-3"
             >
               <div className="flex items-start gap-2">
-                <Input
+                <ProductAutocomplete
+                  products={catalog}
                   value={row.name}
-                  onChange={(e) => patchRow(row.key, { name: e.target.value })}
-                  maxLength={120}
-                  autoComplete="off"
-                  aria-label="Nombre del ingrediente"
+                  onValueChange={(v) =>
+                    patchRow(row.key, { name: v, productId: null })
+                  }
+                  onSelect={(p) =>
+                    patchRow(row.key, { name: p.name, productId: p.id })
+                  }
+                  required={false}
+                  inputName="ingredient-name"
                   placeholder="Ingrediente"
-                  className="flex-1"
+                  ariaLabel="Nombre del ingrediente"
                 />
                 <Button
                   type="button"
@@ -317,6 +406,18 @@ export function RecipeForm({ recipe }: { recipe?: RecipeForEdit }) {
                   <Trash2 aria-hidden />
                 </Button>
               </div>
+              {info ? (
+                <Badge
+                  className={cn(
+                    "self-start border-transparent",
+                    info.tone === "success" && "bg-success/15 text-success",
+                    info.tone === "warning" && "bg-warning/15 text-warning",
+                    info.tone === "muted" && "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {info.text}
+                </Badge>
+              ) : null}
               <div className="flex items-center gap-2">
                 <Input
                   value={row.quantity}
@@ -364,7 +465,8 @@ export function RecipeForm({ recipe }: { recipe?: RecipeForEdit }) {
                 </Label>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
         <Button
           type="button"

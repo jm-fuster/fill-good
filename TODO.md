@@ -51,7 +51,7 @@ checkout, stepper) y, si se hacen ambas, F4 va primero (F5 registra cantidades y
 - [x] E10 — Robustez transaccional de la confirmación del ticket (menor)
 - [x] F1 — Nombres de producto legibles en las tarjetas (2 líneas en vez de recorte)
 - [x] F2 — Chips de caducidad aditivos (cada toque suma tiempo)
-- [ ] F3 — Ingredientes de receta vinculados al catálogo con stock visible
+- [x] F3 — Ingredientes de receta vinculados al catálogo con stock visible
 - [ ] F4 — Pack de compra: "1 caja = N unidades" al entrar al inventario
 - [ ] F5 — Historial de movimientos de stock (consumido / tirado / repuesto)
 
@@ -1619,11 +1619,36 @@ para saber si tienes suficiente o no.
   precisión gratis.
 
 **Pasos**
-- [ ] Estado + schema: `productId` por fila de ingrediente, validado server-side.
-- [ ] Autocompletado del catálogo en el campo ingrediente (reutilizar/adaptar A2).
-- [ ] Badge de stock con las reglas de familia de unidades (helpers de `src/lib/units.ts`).
-- [ ] Guardar con prioridad del id explícito sobre el matching por nombre.
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Estado + schema: `productId` por fila de ingrediente, validado server-side.
+- [x] Autocompletado del catálogo en el campo ingrediente (reutilizar/adaptar A2).
+- [x] Badge de stock con las reglas de familia de unidades (helpers de `src/lib/units.ts`).
+- [x] Guardar con prioridad del id explícito sobre el matching por nombre.
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (F3):** sin migración (la infraestructura ya existía).
+> `schemas.ts`: `recipeIngredientSchema` gana `productId: z.string().nullable().catch(null)`.
+> `actions.ts`: `buildIngredientRows` valida los ids explícitos contra `products` del hogar
+> (`in id`) y les da PRIORIDAD sobre el matching por nombre normalizado (que queda como
+> fallback para texto libre) — cumple "validar server-side que pertenece al hogar" (patrón E7).
+> `src/features/inventory/queries.ts`: nueva `getStockByProduct()` → `Record<productId,
+> {quantity, unit}>` sumando todas las ubicaciones y convirtiendo a la unidad por defecto del
+> producto SOLO dentro de su familia (`unitFamily`/`baseUnitFactor`); solo productos con
+> cantidad > 0. `queries.ts` (recipes): `RecipeIngredient` gana `productId` y `getRecipeForEdit`
+> lo selecciona (persistencia al reabrir). `ProductAutocomplete` (A2) se REUTILIZA (no se
+> duplica el filtrado): se parametrizó con `required`/`placeholder`/`ariaLabel`/`inputName` sin
+> cambiar su comportamiento por defecto. `recipe-form.tsx`: `IngredientRow` gana `productId`;
+> el campo de nombre pasa a `ProductAutocomplete` (`required={false}` para no bloquear el submit
+> nativo con filas vacías) — elegir sugerencia fija `productId`, seguir escribiendo lo pone a
+> null; `resolveProductId(row)` resuelve el vínculo en vivo (id explícito o match exacto por
+> nombre normalizado contra el catálogo); `stockInfo(stock, qty, unit)` decide el badge con las
+> reglas de familia (sin stock → "No lo tienes" neutro; sin cantidad → "En casa" success; misma
+> familia → "Tienes N u." success/warning comparando en unidad base; unidad ausente o familia
+> distinta → "Tienes N u." neutro, sin veredicto). Las páginas `/recetas/nueva` y `/recetas/[id]`
+> cargan `getProductCatalog()` + `getStockByProduct()` y los pasan al form. **Matiz:** el badge de
+> stock aparece por fila (junto al nombre), no dentro del desplegable de sugerencias (que sigue
+> mostrando ubicación + unidad como en A2); la vinculación por `product_id` explícito es ya el
+> nivel 1 del matching de D3 gratis. `npx tsc --noEmit` y `npx eslint .` limpios. Verificación en
+> preview pendiente (login de Clerk no verificable en headless).
 
 **Criterios de aceptación**
 - Escribir "le" sugiere "Leche" con su stock; elegirla vincula el ingrediente y al

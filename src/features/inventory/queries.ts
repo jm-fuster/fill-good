@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
+import { baseUnitFactor, unitFamily } from "@/lib/units";
 
 export type Category = {
   id: string;
@@ -172,6 +173,49 @@ export async function getStarterCatalog(): Promise<StarterGroup[]> {
       categoryIcon: group.categoryIcon,
       products: group.products,
     }));
+}
+
+/** Stock agregado de un producto, expresado en su unidad por defecto. */
+export type ProductStock = { quantity: number; unit: UnitType };
+
+/**
+ * Stock total por producto (suma de todas las ubicaciones), expresado en la
+ * unidad por defecto del producto. Solo se suman filas de la MISMA familia de
+ * unidades que la unidad por defecto (g↔kg, ml↔l se convierten con exactitud;
+ * ud↔peso nunca se mezcla). Solo devuelve productos con cantidad > 0. Lo usa el
+ * formulario de recetas (F3) para el badge de stock por ingrediente.
+ */
+export async function getStockByProduct(): Promise<
+  Record<string, ProductStock>
+> {
+  const supabase = createServerSupabaseClient();
+  const [{ data: inv, error: invErr }, { data: prods, error: prodErr }] =
+    await Promise.all([
+      supabase.from("inventory_items").select("product_id, quantity, unit"),
+      supabase.from("products").select("id, default_unit"),
+    ]);
+  if (invErr) throw invErr;
+  if (prodErr) throw prodErr;
+
+  const defaultUnit = new Map<string, UnitType>();
+  for (const p of prods ?? []) defaultUnit.set(p.id, p.default_unit);
+
+  const totals = new Map<string, number>();
+  for (const row of inv ?? []) {
+    const target = defaultUnit.get(row.product_id);
+    if (!target) continue;
+    if (unitFamily(row.unit) !== unitFamily(target)) continue;
+    const inTarget =
+      (Number(row.quantity) * baseUnitFactor(row.unit)) /
+      baseUnitFactor(target);
+    totals.set(row.product_id, (totals.get(row.product_id) ?? 0) + inTarget);
+  }
+
+  const result: Record<string, ProductStock> = {};
+  for (const [pid, qty] of totals) {
+    if (qty > 0) result[pid] = { quantity: qty, unit: defaultUnit.get(pid)! };
+  }
+  return result;
 }
 
 type InventoryRow = {

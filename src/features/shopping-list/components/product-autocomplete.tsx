@@ -24,6 +24,9 @@ export function ProductAutocomplete({
   onSelect,
   disabled,
   inputName = "name",
+  required = true,
+  placeholder = "Añadir a la lista…",
+  ariaLabel = "Producto a añadir",
 }: {
   products: CatalogProduct[];
   value: string;
@@ -31,6 +34,9 @@ export function ProductAutocomplete({
   onSelect: (product: CatalogProduct) => void;
   disabled?: boolean;
   inputName?: string;
+  required?: boolean;
+  placeholder?: string;
+  ariaLabel?: string;
 }) {
   const listboxId = useId();
   const [open, setOpen] = useState(false);
@@ -105,11 +111,11 @@ export function ProductAutocomplete({
         }}
         onKeyDown={handleKeyDown}
         disabled={disabled}
-        required
+        required={required}
         maxLength={120}
         autoComplete="off"
-        placeholder="Añadir a la lista…"
-        aria-label="Producto a añadir"
+        placeholder={placeholder}
+        aria-label={ariaLabel}
         role="combobox"
         aria-expanded={showList}
         aria-controls={listboxId}

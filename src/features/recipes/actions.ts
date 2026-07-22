@@ -33,6 +33,15 @@ async function buildIngredientRows(
   const norms = [
     ...new Set(ingredients.map((i) => normalizeName(i.name)).filter(Boolean)),
   ];
+  const explicitIds = [
+    ...new Set(
+      ingredients
+        .map((i) => i.productId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  // Fallback por nombre normalizado (texto libre sin vínculo explícito).
   const productByNorm = new Map<string, string>();
   if (norms.length > 0) {
     const { data: products } = await supabase
@@ -42,15 +51,31 @@ async function buildIngredientRows(
       .in("normalized_name", norms);
     for (const p of products ?? []) productByNorm.set(p.normalized_name, p.id);
   }
-  return ingredients.map((i) => ({
-    recipe_id: recipeId,
-    household_id: householdId,
-    name: i.name,
-    quantity: i.quantity,
-    unit: i.unit,
-    optional: i.optional,
-    product_id: productByNorm.get(normalizeName(i.name)) ?? null,
-  }));
+
+  // Valida que los ids explícitos (F3) pertenecen al hogar antes de confiar en ellos.
+  const validIds = new Set<string>();
+  if (explicitIds.length > 0) {
+    const { data: owned } = await supabase
+      .from("products")
+      .select("id")
+      .eq("household_id", householdId)
+      .in("id", explicitIds);
+    for (const p of owned ?? []) validIds.add(p.id);
+  }
+
+  return ingredients.map((i) => {
+    // El id explícito y validado tiene prioridad; si no, matching por nombre.
+    const explicit = i.productId && validIds.has(i.productId) ? i.productId : null;
+    return {
+      recipe_id: recipeId,
+      household_id: householdId,
+      name: i.name,
+      quantity: i.quantity,
+      unit: i.unit,
+      optional: i.optional,
+      product_id: explicit ?? productByNorm.get(normalizeName(i.name)) ?? null,
+    };
+  });
 }
 
 /** Valida la entrada descartando filas de ingrediente sin nombre. */

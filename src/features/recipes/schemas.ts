@@ -23,6 +23,13 @@ export const recipeIngredientSchema = z.object({
     .catch(null),
   unit: unit.nullable(),
   optional: z.boolean(),
+  /**
+   * Vínculo explícito al producto del catálogo (F3), elegido en el
+   * autocompletado. Tiene prioridad sobre el matching por nombre; se valida
+   * server-side que pertenece al hogar. `null` = texto libre / se resolverá por
+   * nombre normalizado.
+   */
+  productId: z.string().nullable().catch(null),
 });
 
 /**

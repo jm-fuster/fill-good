@@ -12,6 +12,8 @@ import {
   getRecipeForEdit,
   getRecipeRating,
 } from "@/features/recipes/queries";
+import { getStockByProduct } from "@/features/inventory/queries";
+import { getProductCatalog } from "@/features/shopping-list/queries";
 
 export const metadata: Metadata = { title: "Editar receta" };
 
@@ -23,9 +25,11 @@ export default async function EditarRecetaPage({
   const { id } = await params;
   const recipe = await getRecipeForEdit(id);
   if (!recipe) notFound();
-  const [rating, cost] = await Promise.all([
+  const [rating, cost, catalog, stock] = await Promise.all([
     getRecipeRating(id),
     getRecipeCost(id),
+    getProductCatalog(),
+    getStockByProduct(),
   ]);
 
   return (
@@ -50,7 +54,7 @@ export default async function EditarRecetaPage({
           count={rating.count}
         />
       </div>
-      <RecipeForm recipe={recipe} />
+      <RecipeForm recipe={recipe} catalog={catalog} stock={stock} />
     </PageContainer>
   );
 }

@@ -4,10 +4,16 @@ import { ArrowLeft } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
 import { RecipeForm } from "@/features/recipes/components/recipe-form";
+import { getStockByProduct } from "@/features/inventory/queries";
+import { getProductCatalog } from "@/features/shopping-list/queries";
 
 export const metadata: Metadata = { title: "Nueva receta" };
 
-export default function NuevaRecetaPage() {
+export default async function NuevaRecetaPage() {
+  const [catalog, stock] = await Promise.all([
+    getProductCatalog(),
+    getStockByProduct(),
+  ]);
   return (
     <PageContainer variant="default">
       <Link
@@ -22,7 +28,7 @@ export default function NuevaRecetaPage() {
       <p className="mb-6 text-sm text-muted-foreground">
         Añade los datos del plato y sus ingredientes.
       </p>
-      <RecipeForm />
+      <RecipeForm catalog={catalog} stock={stock} />
     </PageContainer>
   );
 }
