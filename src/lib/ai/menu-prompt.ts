@@ -24,6 +24,16 @@ export type MenuRuleLine =
   | { kind: "recipe_max_week"; recipeName: string; value: number }
   | { kind: "free_text"; text: string };
 
+/** Un plato ya fijado/conservado en la semana (regeneración respetuosa, N2). */
+export type MenuPinnedLine = {
+  /** Etiqueta del día ("lunes 22"). */
+  day: string;
+  /** "comida" | "cena". */
+  slot: string;
+  /** Nombre del plato conservado. */
+  name: string;
+};
+
 export type MenuPromptContext = {
   /** Fecha de hoy (YYYY-MM-DD), para que los platos nuevos sean de temporada. */
   today: string;
@@ -33,6 +43,8 @@ export type MenuPromptContext = {
   recipes: MenuRecipeLine[];
   /** Reglas activas del hogar. */
   rules: MenuRuleLine[];
+  /** Platos que la regeneración conserva (fijados o manuales); vacío al rehacer. */
+  pinned?: MenuPinnedLine[];
 };
 
 const SEASON_LABEL: Record<"winter" | "summer", string> = {
@@ -87,6 +99,7 @@ function ruleLine(rule: MenuRuleLine): string {
 
 export function buildMenuPrompt(context: MenuPromptContext): string {
   const { today, season, inventory, recipes, rules } = context;
+  const pinned = context.pinned ?? [];
 
   const inventoryText =
     inventory.length > 0
@@ -115,6 +128,14 @@ export function buildMenuPrompt(context: MenuPromptContext): string {
       ? rules.map(ruleLine).join("\n")
       : "(no hay reglas; planifica con libertad)";
 
+  // Sección de platos conservados: solo aparece si regeneramos en modo "completar".
+  const pinnedSection =
+    pinned.length > 0
+      ? `\nPlatos ya fijados esta semana (NO los cambies; cuéntalos para la variedad y las reglas, y NO repitas esos mismos platos en otros huecos):
+${pinned.map((p) => `- ${p.day}, ${p.slot}: "${p.name}"`).join("\n")}
+`
+      : "";
+
   return `Eres un cocinero que planifica un menú semanal saludable y equilibrado para un hogar en España.
 Hoy es ${today} (temporada actual: ${SEASON_LABEL[season]}).
 
@@ -136,10 +157,92 @@ Si un plato es una de estas recetas, copia su id EXACTO en el campo saved_recipe
 
 Reglas obligatorias del hogar:
 ${rulesText}
-
+${pinnedSection}
 Cada comida y cena es una lista de platos. La comida (lunch) puede llevar 1 o 2 platos (por ejemplo un primero ligero y un segundo) cuando tenga sentido; la cena (dinner) normalmente 1 plato. Nunca más de 2 platos por hueco.
 
 Para cada plato indica: nombre claro en español, saved_recipe_id (id del recetario o null), una descripción breve y la lista de ingredientes con cantidad y unidad aproximadas (para 2 raciones). Usa ingredientes comunes; puedes proponer ingredientes que no estén en el inventario (se añadirán a la lista de la compra).
 
 Devuelve exactamente 7 días (day_index 0 a 6) y en cada día las dos comidas (slot "lunch" y "dinner"), cada una con su lista de platos.`;
+}
+
+export type RerollPromptContext = {
+  today: string;
+  season: "winter" | "summer";
+  /** "lunch" | "dinner": el hueco del plato a sustituir. */
+  slot: string;
+  /** Nombre del plato actual (lo que el usuario quiere cambiar). */
+  currentDish: string;
+  inventory: MenuInventoryLine[];
+  /** Recetario ya filtrado por la temporada actual. */
+  recipes: MenuRecipeLine[];
+  rules: MenuRuleLine[];
+  /** Nombres del resto de platos de la semana, para no repetir. */
+  otherDishes: string[];
+};
+
+/**
+ * Prompt del re-roll "otra idea" (N2): pide UN solo plato alternativo para un
+ * hueco concreto, con el contexto reducido (inventario, recetario de temporada,
+ * reglas y los demás platos de la semana para evitar repetir).
+ */
+export function buildRerollPrompt(context: RerollPromptContext): string {
+  const { today, season, slot, currentDish, inventory, recipes, rules } =
+    context;
+  const slotLabel = slot === "dinner" ? "cena" : "comida";
+
+  const inventoryText =
+    inventory.length > 0
+      ? inventory
+          .map((i) => {
+            const flags: string[] = [];
+            if (i.expiresInDays !== null) {
+              flags.push(`caduca en ${i.expiresInDays} días`);
+            }
+            if (i.useSoon) flags.push("consumir pronto");
+            const suffix = flags.length > 0 ? ` (${flags.join(", ")})` : "";
+            return `- ${i.name}: ${i.quantity} ${i.unit}${suffix}`;
+          })
+          .join("\n")
+      : "(el inventario está vacío)";
+
+  const recipesText =
+    recipes.length > 0
+      ? recipes.map(recipeLine).join("\n")
+      : "(no hay recetas guardadas de esta temporada)";
+
+  const rulesText =
+    rules.length > 0
+      ? rules.map(ruleLine).join("\n")
+      : "(no hay reglas; propón con libertad)";
+
+  const otherText =
+    context.otherDishes.length > 0
+      ? context.otherDishes.map((n) => `- "${n}"`).join("\n")
+      : "(ninguno todavía)";
+
+  return `Eres un cocinero que planifica menús para un hogar en España.
+Hoy es ${today} (temporada actual: ${SEASON_LABEL[season]}).
+
+Propón UN ÚNICO plato alternativo para la ${slotLabel}, DISTINTO de "${currentDish}".
+
+Objetivos, POR ORDEN DE PRIORIDAD:
+1. Respetar las reglas del hogar (más abajo).
+2. Aprovechar el inventario, sobre todo lo que caduca pronto o hay que consumir pronto.
+3. Preferir una receta del recetario si encaja con la ${slotLabel}; si no, inventa un plato de temporada.
+4. NO repetir ninguno de los otros platos ya planificados esta semana.
+
+Inventario actual del hogar:
+${inventoryText}
+
+Recetario del hogar (solo recetas de la temporada actual):
+${recipesText}
+Si el plato es una de estas recetas, copia su id EXACTO en saved_recipe_id; si lo inventas, deja saved_recipe_id en null.
+
+Reglas del hogar:
+${rulesText}
+
+Otros platos de la semana (NO los repitas):
+${otherText}
+
+Devuelve un solo plato: nombre en español, saved_recipe_id (o null), descripción breve y la lista de ingredientes con cantidad y unidad aproximadas (para 2 raciones).`;
 }

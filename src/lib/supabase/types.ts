@@ -646,6 +646,8 @@ export type Database = {
           servings: number;
           position: number;
           cooked_at: string | null;
+          source: string;
+          pinned: boolean;
         };
         Insert: {
           id?: string;
@@ -658,6 +660,8 @@ export type Database = {
           servings?: number;
           position?: number;
           cooked_at?: string | null;
+          source?: string;
+          pinned?: boolean;
         };
         Update: {
           id?: string;
@@ -670,6 +674,8 @@ export type Database = {
           servings?: number;
           position?: number;
           cooked_at?: string | null;
+          source?: string;
+          pinned?: boolean;
         };
         Relationships: [
           {

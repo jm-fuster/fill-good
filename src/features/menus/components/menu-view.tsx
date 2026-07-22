@@ -12,8 +12,11 @@ import {
   Copy,
   Lightbulb,
   MoveRight,
+  Pin,
+  PinOff,
   Plus,
   Printer,
+  RefreshCw,
   Share2,
   Sparkles,
 } from "lucide-react";
@@ -55,7 +58,9 @@ import {
   generateMenuAction,
   moveMenuEntryAction,
   removeMenuEntryAction,
+  rerollMenuEntryAction,
   toggleEntryCookedAction,
+  toggleEntryPinnedAction,
   updateMenuEntryAction,
 } from "../actions";
 
@@ -79,6 +84,7 @@ type Editing = {
   recipeId: string | null;
   canSaveToRecipes: boolean;
   cookedAt: string | null;
+  pinned: boolean;
 };
 
 function euro(n: number) {
@@ -119,13 +125,18 @@ export function MenuView({
   }
   const hasRecipes = entries.some((e) => e.recipeId);
   const hasEntries = entries.length > 0;
+  // Hay trabajo que la regeneración respetuosa conservaría (fijado o manual):
+  // solo entonces tiene sentido ofrecer el "Rehacer todo" destructivo.
+  const hasPreservable = entries.some((e) => e.pinned || e.source === "manual");
+  const [confirmReplace, setConfirmReplace] = useState(false);
 
-  function generate() {
+  function generate(mode: "fill" | "replace") {
+    setConfirmReplace(false);
     startGenerate(async () => {
-      const r = await generateMenuAction(weekStart);
+      const r = await generateMenuAction(weekStart, mode);
       if (r.error) toast.error(r.error);
       else {
-        toast.success("Menú generado");
+        toast.success(mode === "replace" ? "Menú rehecho" : "Menú generado");
         router.refresh();
       }
     });
@@ -203,6 +214,7 @@ export function MenuView({
       recipeId: null,
       canSaveToRecipes: false,
       cookedAt: null,
+      pinned: false,
     });
   }
 
@@ -220,6 +232,7 @@ export function MenuView({
       recipeId: entry.recipeId,
       canSaveToRecipes: Boolean(entry.recipeId && entry.recipeIsSaved === false),
       cookedAt: entry.cookedAt,
+      pinned: entry.pinned,
     });
   }
 
@@ -255,13 +268,17 @@ export function MenuView({
 
       <div className="flex flex-col gap-2 print:hidden sm:flex-row">
         <Button
-          onClick={generate}
+          onClick={() => generate("fill")}
           disabled={generating}
           size="lg"
           className="sm:flex-1"
         >
           <Sparkles aria-hidden />
-          {generating ? "Generando menú…" : "Generar menú con IA"}
+          {generating
+            ? "Generando menú…"
+            : hasPreservable
+              ? "Completar menú con IA"
+              : "Generar menú con IA"}
         </Button>
         <Button
           onClick={askTonight}
@@ -274,6 +291,53 @@ export function MenuView({
           {askingTonight ? "Pensando…" : "¿Qué hago hoy?"}
         </Button>
       </div>
+
+      {hasPreservable ? (
+        <p className="-mt-2 text-center text-xs text-muted-foreground print:hidden">
+          Completar respeta tus platos fijados y manuales.{" "}
+          <button
+            type="button"
+            onClick={() => setConfirmReplace(true)}
+            disabled={generating}
+            className="font-medium text-foreground underline underline-offset-2 disabled:opacity-50"
+          >
+            Rehacer todo desde cero
+          </button>
+        </p>
+      ) : null}
+
+      <ResponsiveModal
+        open={confirmReplace}
+        onOpenChange={(o) => !o && setConfirmReplace(false)}
+      >
+        <ResponsiveModalContent>
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle>Rehacer todo el menú</ResponsiveModalTitle>
+            <ResponsiveModalDescription>
+              Se borrará toda la semana —incluidos tus platos fijados y los que
+              has editado o añadido a mano— y se generará un menú nuevo. Esta
+              acción no se puede deshacer.
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
+          <ResponsiveModalFooter className="gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              size="lg"
+              onClick={() => generate("replace")}
+              disabled={generating}
+            >
+              <Sparkles aria-hidden />
+              {generating ? "Rehaciendo…" : "Rehacer todo"}
+            </Button>
+            <ResponsiveModalClose asChild>
+              <Button type="button" variant="ghost">
+                Cancelar
+              </Button>
+            </ResponsiveModalClose>
+          </ResponsiveModalFooter>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
 
       <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 xl:grid-cols-3 print:!flex print:!flex-col">
         {days.map((date) => (
@@ -302,6 +366,12 @@ export function MenuView({
                             <Check
                               className="mt-0.5 size-3.5 shrink-0 text-success"
                               aria-label="Cocinado"
+                            />
+                          ) : null}
+                          {entry.pinned ? (
+                            <Pin
+                              className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                              aria-label="Fijado"
                             />
                           ) : null}
                           <span className="line-clamp-2">{text}</span>
@@ -429,9 +499,12 @@ function EditEntryDrawer({
   const [savingRecipe, startSaveRecipe] = useTransition();
   const [cooking, startCooking] = useTransition();
   const [picking, startPicking] = useTransition();
+  const [pinningPending, startPinning] = useTransition();
+  const [rerolling, startReroll] = useTransition();
 
   const isNew = editing?.entryId == null;
   const cooked = Boolean(editing?.cookedAt);
+  const pinned = Boolean(editing?.pinned);
   // "Lo cocinamos" solo tiene sentido en entradas ya guardadas y de hoy/pasado.
   const canMarkCooked = Boolean(editing?.entryId && editing.date <= todayISO());
   const days = getWeekDays(weekStart);
@@ -530,6 +603,33 @@ function EditEntryDrawer({
       if (r.error) toast.error(r.error);
       else {
         toast.success(mode === "move" ? "Plato movido" : "Plato duplicado");
+        onSaved();
+      }
+    });
+  }
+
+  function togglePinned() {
+    if (!editing?.entryId) return;
+    const entryId = editing.entryId;
+    const next = !pinned;
+    startPinning(async () => {
+      const r = await toggleEntryPinnedAction(entryId, next);
+      if (r.error) toast.error(r.error);
+      else {
+        toast.success(next ? "Plato fijado" : "Plato desfijado");
+        onSaved();
+      }
+    });
+  }
+
+  function reroll() {
+    if (!editing?.entryId) return;
+    const entryId = editing.entryId;
+    startReroll(async () => {
+      const r = await rerollMenuEntryAction(entryId);
+      if (r.error) toast.error(r.error);
+      else {
+        toast.success("Nueva idea lista");
         onSaved();
       }
     });
@@ -641,6 +741,29 @@ function EditEntryDrawer({
             </Button>
             {!isNew ? (
               <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={reroll}
+                  disabled={rerolling}
+                >
+                  <RefreshCw aria-hidden />
+                  {rerolling ? "Pensando otra idea…" : "Otra idea"}
+                </Button>
+                <Button
+                  type="button"
+                  variant={pinned ? "secondary" : "outline"}
+                  onClick={togglePinned}
+                  disabled={pinningPending}
+                  aria-pressed={pinned}
+                >
+                  {pinned ? <PinOff aria-hidden /> : <Pin aria-hidden />}
+                  {pinningPending
+                    ? "Guardando…"
+                    : pinned
+                      ? "Fijado · quitar"
+                      : "Fijar"}
+                </Button>
                 <Button
                   type="button"
                   variant="outline"

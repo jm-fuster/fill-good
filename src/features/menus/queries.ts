@@ -16,6 +16,10 @@ export type MenuEntry = {
   recipeSource: string | null;
   freeText: string | null;
   cookedAt: string | null;
+  /** Origen de la entrada: 'manual' | 'ai' (N2). Protege lo manual al regenerar. */
+  source: string;
+  /** El usuario la fija: la regeneración nunca la toca (N2). */
+  pinned: boolean;
 };
 
 export type WeekMenu = {
@@ -31,6 +35,8 @@ type EntryRow = {
   recipe_id: string | null;
   free_text: string | null;
   cooked_at: string | null;
+  source: string;
+  pinned: boolean;
   recipe: { name: string; is_saved: boolean; source: string } | null;
 };
 
@@ -50,7 +56,7 @@ export async function getMenuEntries(menuId: string): Promise<MenuEntry[]> {
   const { data, error } = await supabase
     .from("menu_entries")
     .select(
-      "id, date, meal_slot, position, recipe_id, free_text, cooked_at, recipe:recipes(name, is_saved, source)",
+      "id, date, meal_slot, position, recipe_id, free_text, cooked_at, source, pinned, recipe:recipes(name, is_saved, source)",
     )
     .eq("menu_id", menuId)
     .order("date", { ascending: true })
@@ -70,6 +76,8 @@ export async function getMenuEntries(menuId: string): Promise<MenuEntry[]> {
     recipeSource: r.recipe?.source ?? null,
     freeText: r.free_text,
     cookedAt: r.cooked_at,
+    source: r.source,
+    pinned: r.pinned,
   }));
 }
 

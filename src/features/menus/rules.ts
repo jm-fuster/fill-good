@@ -33,6 +33,12 @@ export type MenuDish = {
   name: string;
   /** true si es un marcador "(elegir plato)" creado al recortar un exceso. */
   placeholder?: boolean;
+  /**
+   * true si el plato está fijado o es manual (N2): el validador lo CUENTA para
+   * los min/max pero nunca lo recorta, sustituye ni comparte hueco con nuevos
+   * platos. Representa entradas que la regeneración conserva intactas.
+   */
+  immutable?: boolean;
   /** Datos opacos de C3; el validador no los interpreta. */
   payload?: unknown;
 };
@@ -77,6 +83,7 @@ function cloneMenu(menu: MenuStructure): MenuStructure {
       dayIndex: day.dayIndex,
       meals: day.meals.map((meal) => ({
         slot: meal.slot,
+        // Copia superficial de cada plato; `immutable`/`placeholder` se copian.
         dishes: meal.dishes.map((dish) => ({ ...dish })),
       })),
     })),
@@ -116,6 +123,8 @@ function enforceMax(menu: MenuStructure, recipeId: string, max: number): void {
     for (let m = day.meals.length - 1; m >= 0 && excess > 0; m -= 1) {
       const meal = day.meals[m];
       for (let i = meal.dishes.length - 1; i >= 0 && excess > 0; i -= 1) {
+        // Los platos fijados/manuales cuentan pero no se recortan.
+        if (meal.dishes[i].immutable) continue;
         if (meal.dishes[i].savedRecipeId === recipeId) {
           meal.dishes[i] = {
             savedRecipeId: null,
@@ -164,6 +173,8 @@ function enforceMin(
       if (placed) break;
       for (const meal of day.meals) {
         if (!slotAcceptsRecipe(meal.slot, recipe.mealTypes)) continue;
+        // Un hueco con un plato fijado/manual está reservado: no se amplía.
+        if (meal.dishes.some((x) => x.immutable)) continue;
         const alreadyHas = meal.dishes.some((x) => x.savedRecipeId === recipeId);
         if (alreadyHas || meal.dishes.length >= MAX_DISHES_PER_SLOT) continue;
         meal.dishes.push(makeDish());
@@ -181,6 +192,7 @@ function enforceMin(
       if (placed) break;
       for (const meal of day.meals) {
         if (!slotAcceptsRecipe(meal.slot, recipe.mealTypes)) continue;
+        if (meal.dishes.some((x) => x.immutable)) continue;
         if (meal.dishes.some((x) => x.savedRecipeId === recipeId)) continue;
         const idx = meal.dishes.findIndex((dish) =>
           isReplaceable(dish, recipeId, minByRecipe, menu),
@@ -204,6 +216,8 @@ function isReplaceable(
   minByRecipe: Map<string, number>,
   menu: MenuStructure,
 ): boolean {
+  // Los platos fijados/manuales nunca se sustituyen.
+  if (dish.immutable) return false;
   // La propia receta requerida nunca se sustituye (no aumentaría su recuento).
   if (dish.savedRecipeId === requiredRecipeId) return false;
   // Marcadores y platos inventados son libremente reemplazables.

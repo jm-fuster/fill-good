@@ -5,9 +5,17 @@ import { revalidatePath } from "next/cache";
 import { generateObject } from "ai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { format, parseISO } from "date-fns";
+import { es } from "date-fns/locale";
+
 import { getModel } from "@/lib/ai/models";
-import { menuSchema } from "@/lib/ai/menu-schema";
-import { buildMenuPrompt, type MenuRuleLine } from "@/lib/ai/menu-prompt";
+import { menuSchema, singleDishSchema } from "@/lib/ai/menu-schema";
+import {
+  buildMenuPrompt,
+  buildRerollPrompt,
+  type MenuPinnedLine,
+  type MenuRuleLine,
+} from "@/lib/ai/menu-prompt";
 import {
   getCurrentSeason,
   getExpiryStatus,
@@ -27,7 +35,7 @@ import {
   getSavedRecipesForMenu,
 } from "@/features/recipes/queries";
 import { rankTonight, type TonightCard, type TonightSoonInfo } from "./tonight";
-import { getMenuRules } from "./queries";
+import { getMenuEntries, getMenuRules } from "./queries";
 import {
   computeMissingIngredients,
   type MissingCandidate,
@@ -139,8 +147,18 @@ async function cleanupOrphanEphemeralRecipes(
   }
 }
 
+/**
+ * Genera el menú de la semana (C3 + N2). Dos modos:
+ *   - "fill" (por defecto): regeneración RESPETUOSA. Conserva las entradas
+ *     fijadas (`pinned`) y las manuales (`source = 'manual'`) y solo rellena los
+ *     huecos libres con platos de IA. Los conservados se pasan al prompt (para
+ *     variedad) y se cuentan en la validación de reglas.
+ *   - "replace": rehace TODA la semana (comportamiento destructivo original),
+ *     borrando también lo manual y lo fijado. La UI lo pide con confirmación.
+ */
 export async function generateMenuAction(
   weekStart: string,
+  mode: "fill" | "replace" = "fill",
 ): Promise<MenuState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
@@ -149,6 +167,26 @@ export async function generateMenuAction(
 
   const menuId = await ensureMenu(supabase, household.id, weekStart);
   if (!menuId) return { error: "No se pudo crear el menú." };
+
+  const weekDays = getWeekDays(weekStart);
+
+  // Entradas conservadas (solo en modo "fill"): fijadas o manuales. La
+  // regeneración no las toca; se cuentan para las reglas y se listan en el prompt.
+  const existingEntries = mode === "fill" ? await getMenuEntries(menuId) : [];
+  const preserved = existingEntries.filter(
+    (e) => e.pinned || e.source === "manual",
+  );
+  const occupiedSlots = new Set(preserved.map((e) => `${e.date}|${e.slot}`));
+  const pinnedLines: MenuPinnedLine[] = preserved
+    .map((e): MenuPinnedLine | null => {
+      if (!weekDays.includes(e.date)) return null;
+      return {
+        day: format(parseISO(e.date), "EEEE d", { locale: es }),
+        slot: e.slot === "dinner" ? "cena" : "comida",
+        name: e.recipeName ?? e.freeText ?? "",
+      };
+    })
+    .filter((l): l is MenuPinnedLine => l !== null && l.name !== "");
 
   // --- Contexto completo para el prompt ---
   const [inventory, savedRecipes, signals, allRules] = await Promise.all([
@@ -230,6 +268,7 @@ export async function generateMenuAction(
         inventory: invLines,
         recipes: recipeLines,
         rules: ruleLines,
+        pinned: pinnedLines,
       }),
     });
     generated = object;
@@ -237,8 +276,6 @@ export async function generateMenuAction(
     console.error("Error al generar el menú:", err);
     return { error: "No se pudo generar el menú. Inténtalo de nuevo." };
   }
-
-  const weekDays = getWeekDays(weekStart);
 
   // --- Construir la estructura para validar reglas ---
   // Resolución de saved_recipe_id contra TODO el recetario (no solo el de
@@ -260,14 +297,29 @@ export async function generateMenuAction(
   };
 
   // Cada día lleva SIEMPRE comida y cena (aunque vacías) para que las reglas de
-  // mínimo puedan colocar platos en cualquiera de los dos huecos.
+  // mínimo puedan colocar platos en cualquiera de los dos huecos. En modo "fill",
+  // un hueco ocupado por platos conservados se rellena con esos platos marcados
+  // como `immutable` (el validador los cuenta pero no los toca) y se ignoran los
+  // platos que la IA haya propuesto para ese mismo hueco.
   const slots: ("lunch" | "dinner")[] = ["lunch", "dinner"];
+  const generatedByIndex = new Map(generated.days.map((d) => [d.day_index, d]));
   const structDays: MenuDay[] = [];
-  for (const day of generated.days) {
-    const date = weekDays[day.day_index];
-    if (!date) continue;
+  for (let dayIndex = 0; dayIndex < weekDays.length; dayIndex += 1) {
+    const date = weekDays[dayIndex];
+    const genDay = generatedByIndex.get(dayIndex);
     const meals: MenuMeal[] = slots.map((slot) => {
-      const m = day.meals.find((x) => x.slot === slot);
+      // Hueco conservado: sus platos son inmutables; ignoramos la propuesta IA.
+      if (occupiedSlots.has(`${date}|${slot}`)) {
+        const dishes: MenuDish[] = preserved
+          .filter((e) => e.date === date && e.slot === slot)
+          .map((e) => ({
+            savedRecipeId: e.recipeId,
+            name: e.recipeName ?? e.freeText ?? "",
+            immutable: true,
+          }));
+        return { slot, dishes };
+      }
+      const m = genDay?.meals.find((x) => x.slot === slot);
       const dishes: MenuDish[] = (m?.dishes ?? []).slice(0, 2).map((dish) => {
         const payload: DishPayload = {
           description: dish.description,
@@ -285,7 +337,7 @@ export async function generateMenuAction(
       });
       return { slot, dishes };
     });
-    structDays.push({ dayIndex: day.day_index, meals });
+    structDays.push({ dayIndex, meals });
   }
 
   // Reglas de frecuencia enriquecidas con los metadatos de su receta.
@@ -302,15 +354,29 @@ export async function generateMenuAction(
   const patched = validateAndPatchRules({ days: structDays }, validatable);
 
   // --- Inserción sin contaminar la tabla recipes ---
-  // Regenerar reemplaza el menú de la semana.
-  await supabase.from("menu_entries").delete().eq("menu_id", menuId);
+  // "replace" arrasa toda la semana; "fill" borra solo lo generado por IA que no
+  // esté fijado y deja intactas las entradas conservadas.
+  if (mode === "replace") {
+    await supabase.from("menu_entries").delete().eq("menu_id", menuId);
+  } else {
+    await supabase
+      .from("menu_entries")
+      .delete()
+      .eq("menu_id", menuId)
+      .eq("source", "ai")
+      .eq("pinned", false);
+  }
 
   for (const day of patched.days) {
     const date = weekDays[day.dayIndex];
     if (!date) continue;
     for (const meal of day.meals) {
+      // Los huecos conservados ya están en la BD: no se tocan.
+      if (occupiedSlots.has(`${date}|${meal.slot}`)) continue;
       let position = 0;
       for (const dish of meal.dishes) {
+        // Los platos inmutables (conservados) no se reinsertan.
+        if (dish.immutable) continue;
         // Receta guardada: enlace directo, sin crear fila nueva.
         if (dish.savedRecipeId) {
           await supabase.from("menu_entries").insert({
@@ -320,6 +386,7 @@ export async function generateMenuAction(
             meal_slot: meal.slot,
             recipe_id: dish.savedRecipeId,
             position,
+            source: "ai",
           });
           position += 1;
           continue;
@@ -333,6 +400,7 @@ export async function generateMenuAction(
             meal_slot: meal.slot,
             free_text: dish.name,
             position,
+            source: "ai",
           });
           position += 1;
           continue;
@@ -375,6 +443,7 @@ export async function generateMenuAction(
           meal_slot: meal.slot,
           recipe_id: recipe.id,
           position,
+          source: "ai",
         });
         position += 1;
       }
@@ -446,9 +515,11 @@ export async function updateMenuEntryAction(
   // Sin texto = quitar el plato (misma semántica que el botón "Quitar").
   if (!text) return removeMenuEntryAction(entryId);
 
+  // Editar una entrada la vuelve manual (ya se desvinculaba de la receta): así la
+  // regeneración respetuosa (N2) no la pisa.
   const { error } = await supabase
     .from("menu_entries")
-    .update({ free_text: text, recipe_id: null })
+    .update({ free_text: text, recipe_id: null, source: "manual" })
     .eq("id", entryId);
   if (error) return { error: "No se pudo guardar el plato." };
 
@@ -514,9 +585,10 @@ export async function moveMenuEntryAction(
 
   const position = await nextPosition(supabase, entry.menu_id, date, slot);
 
+  // Mover es un gesto manual: la entrada pasa a protegerse de la regeneración (N2).
   const { error } = await supabase
     .from("menu_entries")
-    .update({ date, meal_slot: slot, position })
+    .update({ date, meal_slot: slot, position, source: "manual" })
     .eq("id", entryId);
   if (error) return { error: "No se pudo mover el plato." };
 
@@ -555,8 +627,217 @@ export async function duplicateMenuEntryAction(
     recipe_id: entry.recipe_id,
     free_text: entry.free_text,
     position,
+    // La copia es una entrada manual nueva (sin fijar, sin cocinar).
+    source: "manual",
   });
   if (error) return { error: "No se pudo duplicar el plato." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * Fija o desfija una entrada del menú (N2). Una entrada fijada nunca la toca la
+ * regeneración, sea de IA o manual.
+ */
+export async function toggleEntryPinnedAction(
+  entryId: string,
+  pinned: boolean,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const { error } = await supabase
+    .from("menu_entries")
+    .update({ pinned })
+    .eq("id", entryId);
+  if (error) return { error: "No se pudo actualizar el plato." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * "Otra idea" por hueco (N2): pide UN plato alternativo a la IA para una entrada
+ * concreta y la reemplaza en su misma posición (source = 'ai'), sin tocar el
+ * resto de la semana. Es 1 llamada pequeña a Gemini (aceptable en free tier).
+ * Tras reemplazar, limpia la receta efímera que pudiera quedar huérfana.
+ */
+export async function rerollMenuEntryAction(
+  entryId: string,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+  const supabase = createServerSupabaseClient();
+
+  const { data: entry } = await supabase
+    .from("menu_entries")
+    .select("menu_id, date, meal_slot, position")
+    .eq("id", entryId)
+    .maybeSingle();
+  if (!entry) return { error: "No se encontró la entrada del menú." };
+
+  const [inventory, savedRecipes, signals, allRules, menuEntries] =
+    await Promise.all([
+      getInventory(),
+      getSavedRecipesForMenu(),
+      getRecipeSignals(household.id),
+      getMenuRules(),
+      getMenuEntries(entry.menu_id),
+    ]);
+
+  const season = getCurrentSeason();
+  const activeRules = allRules.filter((r) => r.active);
+
+  const inStockProductIds = new Set(
+    inventory.filter((i) => i.quantity > 0).map((i) => i.productId),
+  );
+  const inStockNames = new Set(
+    inventory
+      .filter((i) => i.quantity > 0)
+      .map((i) => normalizeName(i.productName)),
+  );
+  const isIngredientInStock = (name: string, productId: string | null) =>
+    (productId != null && inStockProductIds.has(productId)) ||
+    inStockNames.has(normalizeName(name));
+
+  const signalsById = new Map(signals.map((s) => [s.recipeId, s]));
+  const seasonalRecipes = savedRecipes.filter(
+    (r) => r.seasons.includes("all") || r.seasons.includes(season),
+  );
+  const recipeLines = seasonalRecipes.map((r) => {
+    const sig = signalsById.get(r.id);
+    return {
+      id: r.id,
+      name: r.name,
+      mealTypes: r.mealTypes,
+      avgRating: sig?.avgRating ?? null,
+      timesCooked: sig?.timesCooked ?? 0,
+      lastCookedLabel: sig?.lastCookedAt
+        ? relativeDaysLabel(sig.lastCookedAt)
+        : null,
+      ingredients: r.ingredients.map((ing) => ({
+        name: ing.name,
+        inStock: isIngredientInStock(ing.name, ing.productId),
+      })),
+    };
+  });
+
+  const invLines = inventory.map((i) => {
+    const exp = getExpiryStatus(i.expiryDate, 7);
+    return {
+      name: i.productName,
+      quantity: i.quantity,
+      unit: i.unit as string,
+      expiresInDays: exp ? exp.days : null,
+      useSoon: i.useSoon,
+    };
+  });
+
+  const ruleLines: MenuRuleLine[] = activeRules.flatMap((r): MenuRuleLine[] => {
+    if (r.kind === "free_text") {
+      return r.textRule ? [{ kind: "free_text", text: r.textRule }] : [];
+    }
+    if (r.recipeName && r.value != null) {
+      return [{ kind: r.kind, recipeName: r.recipeName, value: r.value }];
+    }
+    return [];
+  });
+
+  // El plato actual (a cambiar) y el resto de la semana (para no repetir).
+  const current = menuEntries.find((e) => e.id === entryId);
+  const currentDish = current?.recipeName ?? current?.freeText ?? "este plato";
+  const otherDishes = menuEntries
+    .filter((e) => e.id !== entryId)
+    .map((e) => e.recipeName ?? e.freeText ?? "")
+    .filter((n) => n !== "");
+
+  let dish;
+  try {
+    const { object } = await generateObject({
+      model: getModel("menus"),
+      schema: singleDishSchema,
+      prompt: buildRerollPrompt({
+        today: todayLocalISO(),
+        season,
+        slot: entry.meal_slot,
+        currentDish,
+        inventory: invLines,
+        recipes: recipeLines,
+        rules: ruleLines,
+        otherDishes,
+      }),
+    });
+    dish = object;
+  } catch (err) {
+    console.error("Error al generar el plato alternativo:", err);
+    return { error: "No se pudo generar otra idea. Inténtalo de nuevo." };
+  }
+
+  // Resolución de saved_recipe_id: id explícito o, como fallback, por nombre.
+  const savedById = new Map(savedRecipes.map((r) => [r.id, r]));
+  const savedByNorm = new Map<string, string>();
+  for (const r of savedRecipes) {
+    const norm = normalizeName(r.name);
+    if (norm && !savedByNorm.has(norm)) savedByNorm.set(norm, r.id);
+  }
+  const savedId =
+    dish.saved_recipe_id && savedById.has(dish.saved_recipe_id)
+      ? dish.saved_recipe_id
+      : (savedByNorm.get(normalizeName(dish.recipe_name)) ?? null);
+
+  // Determina el recipe_id destino: receta guardada o receta efímera nueva.
+  let newRecipeId: string;
+  if (savedId) {
+    newRecipeId = savedId;
+  } else {
+    const { data: recipe } = await supabase
+      .from("recipes")
+      .insert({
+        household_id: household.id,
+        name: dish.recipe_name,
+        normalized_name: normalizeName(dish.recipe_name),
+        description: dish.description ?? null,
+        servings: 2,
+        meal_types: [entry.meal_slot],
+        source: "ai",
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    if (!recipe) return { error: "No se pudo crear el plato alternativo." };
+    newRecipeId = recipe.id;
+
+    if (dish.ingredients.length > 0) {
+      await supabase.from("recipe_ingredients").insert(
+        dish.ingredients.map((ing) => ({
+          recipe_id: recipe.id,
+          household_id: household.id,
+          name: ing.name,
+          quantity: ing.quantity,
+          unit: ing.unit,
+        })),
+      );
+    }
+  }
+
+  // Reemplaza la entrada en su sitio: nueva receta, sin texto libre, source 'ai'
+  // y sin cocinar (es un plato distinto).
+  const { error } = await supabase
+    .from("menu_entries")
+    .update({
+      recipe_id: newRecipeId,
+      free_text: null,
+      source: "ai",
+      cooked_at: null,
+    })
+    .eq("id", entryId);
+  if (error) return { error: "No se pudo cambiar el plato." };
+
+  // La receta efímera anterior puede haber quedado huérfana.
+  await cleanupOrphanEphemeralRecipes(supabase, household.id);
 
   revalidatePath("/menus");
   return { ok: true };
