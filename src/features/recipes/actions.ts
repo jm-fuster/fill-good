@@ -14,6 +14,7 @@ import {
   type RecipeInput,
   type RecipeIngredientInput,
 } from "./schemas";
+import { getSeedRecipeById } from "./seed";
 
 export type RecipeActionState = { error?: string; ok?: boolean; id?: string };
 
@@ -296,6 +297,74 @@ export async function saveGeneratedRecipeAction(
   revalidatePath("/recetas");
   revalidatePath("/menus");
   return { ok: true, id: recipeId };
+}
+
+/**
+ * Importa una receta del pack curado del repo (N4) al recetario del hogar.
+ * Inserta la receta (is_saved = true, source = 'seed') y sus ingredientes,
+ * vinculando product_id SOLO por nombre normalizado exacto (nunca fuzzy: un
+ * vínculo equivocado contaminaría lista y stock). Rechaza duplicados por nombre.
+ */
+export async function importSeedRecipeAction(
+  seedId: string,
+): Promise<RecipeActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+
+  const seed = getSeedRecipeById(seedId);
+  if (!seed) return { error: "Receta no encontrada." };
+
+  const supabase = createServerSupabaseClient();
+  const normalized = normalizeName(seed.name);
+
+  if (await findSavedDuplicate(supabase, household.id, normalized)) {
+    return { error: "Ya tienes esta receta en tu recetario." };
+  }
+
+  const { data: recipe, error: insErr } = await supabase
+    .from("recipes")
+    .insert({
+      household_id: household.id,
+      name: seed.name,
+      normalized_name: normalized,
+      description: seed.description,
+      servings: seed.servings,
+      meal_types: seed.mealTypes,
+      seasons: seed.seasons,
+      source: "seed",
+      is_saved: true,
+      created_by: userId,
+    })
+    .select("id")
+    .single();
+  if (insErr || !recipe) return { error: "No se pudo importar la receta." };
+
+  if (seed.ingredients.length > 0) {
+    const rows = await buildIngredientRows(
+      supabase,
+      household.id,
+      recipe.id,
+      seed.ingredients.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+        unit: i.unit,
+        optional: false,
+        productId: null,
+      })),
+    );
+    const { error: ingErr } = await supabase
+      .from("recipe_ingredients")
+      .insert(rows);
+    if (ingErr) {
+      await supabase.from("recipes").delete().eq("id", recipe.id);
+      return { error: "No se pudieron guardar los ingredientes." };
+    }
+  }
+
+  revalidatePath("/recetas");
+  revalidatePath("/menus");
+  return { ok: true, id: recipe.id };
 }
 
 /**

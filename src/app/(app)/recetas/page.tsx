@@ -9,10 +9,12 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
 import { RecipesList } from "@/features/recipes/components/recipes-list";
+import { ExploreRecipes } from "@/features/recipes/components/explore-recipes";
 import {
   getRecipeCostsForIds,
   getRecipeSignals,
   getSavedRecipes,
+  getSeedRecipeCards,
   type RecipeSignals,
 } from "@/features/recipes/queries";
 import type { RecipeCost } from "@/features/recipes/cost";
@@ -21,9 +23,10 @@ import { getCurrentHousehold } from "@/features/household/queries";
 export const metadata: Metadata = { title: "Mis recetas" };
 
 export default async function RecetasPage() {
-  const [recipes, household] = await Promise.all([
+  const [recipes, household, seedCards] = await Promise.all([
     getSavedRecipes(),
     getCurrentHousehold(),
+    getSeedRecipeCards(),
   ]);
   const [signalsList, costMap] = await Promise.all([
     household ? getRecipeSignals(household.id) : Promise.resolve([]),
@@ -53,22 +56,26 @@ export default async function RecetasPage() {
         <MenuSectionTabs active="recetario" />
       </div>
 
-      {recipes.length === 0 ? (
-        <EmptyState
-          icon={BookOpen}
-          title="Aún no tienes recetas"
-          description="Añade las recetas de tu hogar para que los menús las tengan en cuenta. También puedes guardar las que genere la IA."
-          action={
-            <Button asChild>
-              <Link href="/recetas/nueva">
-                <Plus aria-hidden /> Añade tu primera receta
-              </Link>
-            </Button>
-          }
-        />
-      ) : (
-        <RecipesList recipes={recipes} signals={signals} costs={costs} />
-      )}
+      <div className="flex flex-col gap-6">
+        {recipes.length === 0 ? (
+          <EmptyState
+            icon={BookOpen}
+            title="Aún no tienes recetas"
+            description="Explora el pack de recetas de abajo para empezar, añade las tuyas o guarda las que genere la IA."
+            action={
+              <Button asChild>
+                <Link href="/recetas/nueva">
+                  <Plus aria-hidden /> Añade tu primera receta
+                </Link>
+              </Button>
+            }
+          />
+        ) : (
+          <RecipesList recipes={recipes} signals={signals} costs={costs} />
+        )}
+
+        <ExploreRecipes cards={seedCards} defaultOpen={recipes.length === 0} />
+      </div>
 
       <Fab className="md:hidden">
         <Button

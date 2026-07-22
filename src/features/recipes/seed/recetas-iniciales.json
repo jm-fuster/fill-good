@@ -1,0 +1,835 @@
+[
+  {
+    "id": "lentejas-estofadas",
+    "name": "Lentejas estofadas",
+    "description": "Guiso de cuchara con lentejas y verduras, de toda la vida.",
+    "meal_types": ["lunch"],
+    "seasons": ["winter"],
+    "vegetarian": true,
+    "vegan": true,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Lentejas", "quantity": 160, "unit": "g" },
+      { "name": "Zanahorias", "quantity": 1, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Patatas", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Tomate frito", "quantity": 60, "unit": "g" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "potaje-de-garbanzos",
+    "name": "Potaje de garbanzos",
+    "description": "Garbanzos guisados con verduras y un toque de pimentón.",
+    "meal_types": ["lunch"],
+    "seasons": ["winter"],
+    "vegetarian": true,
+    "vegan": true,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Garbanzos cocidos", "quantity": 400, "unit": "g" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Pimientos", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Tomate frito", "quantity": 60, "unit": "g" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "sopa-de-pollo-con-arroz",
+    "name": "Sopa de pollo con arroz",
+    "description": "Caldo reconfortante con pollo, arroz y verduras.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["winter"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Caldo de pollo", "quantity": 1, "unit": "l" },
+      { "name": "Pechugas de pollo", "quantity": 200, "unit": "g" },
+      { "name": "Arroz", "quantity": 80, "unit": "g" },
+      { "name": "Zanahorias", "quantity": 1, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "pollo-al-ajillo",
+    "name": "Pollo al ajillo",
+    "description": "Pollo dorado con mucho ajo y un chorrito de limón.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Pechugas de pollo", "quantity": 350, "unit": "g" },
+      { "name": "Ajos", "quantity": 4, "unit": "ud" },
+      { "name": "Limones", "quantity": 1, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 30, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "merluza-al-horno",
+    "name": "Merluza al horno con patatas",
+    "description": "Lomos de merluza sobre cama de patatas y cebolla.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Merluza", "quantity": 400, "unit": "g" },
+      { "name": "Patatas", "quantity": 2, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Limones", "quantity": 1, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 30, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "tortilla-de-patatas",
+    "name": "Tortilla de patatas",
+    "description": "La clásica tortilla española, jugosa por dentro.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["all"],
+    "vegetarian": true,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Patatas", "quantity": 3, "unit": "ud" },
+      { "name": "Huevos", "quantity": 4, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 40, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "macarrones-con-tomate",
+    "name": "Macarrones con tomate",
+    "description": "Pasta con salsa de tomate y queso rallado por encima.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["all"],
+    "vegetarian": true,
+    "vegan": false,
+    "gluten_free": false,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Macarrones", "quantity": 180, "unit": "g" },
+      { "name": "Tomate frito", "quantity": 150, "unit": "g" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Queso rallado", "quantity": 40, "unit": "g" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 15, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "espaguetis-bolonesa",
+    "name": "Espaguetis a la boloñesa",
+    "description": "Espaguetis con salsa de carne picada y tomate.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": false,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Espaguetis", "quantity": 180, "unit": "g" },
+      { "name": "Carne picada", "quantity": 250, "unit": "g" },
+      { "name": "Tomate frito", "quantity": 150, "unit": "g" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Zanahorias", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Queso rallado", "quantity": 30, "unit": "g" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 15, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "arroz-a-la-cubana",
+    "name": "Arroz a la cubana",
+    "description": "Arroz blanco con tomate frito, huevo frito y plátano.",
+    "meal_types": ["lunch"],
+    "seasons": ["all"],
+    "vegetarian": true,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Arroz", "quantity": 160, "unit": "g" },
+      { "name": "Huevos", "quantity": 2, "unit": "ud" },
+      { "name": "Tomate frito", "quantity": 120, "unit": "g" },
+      { "name": "Plátanos", "quantity": 2, "unit": "ud" },
+      { "name": "Ajos", "quantity": 1, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "lomo-a-la-plancha-con-patatas",
+    "name": "Lomo a la plancha con patatas",
+    "description": "Filetes de lomo de cerdo con patatas al ajillo.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Lomo de cerdo", "quantity": 350, "unit": "g" },
+      { "name": "Patatas", "quantity": 3, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 30, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "crema-de-calabacin",
+    "name": "Crema de calabacín",
+    "description": "Crema suave de calabacín con un toque de nata.",
+    "meal_types": ["dinner"],
+    "seasons": ["all"],
+    "vegetarian": true,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Calabacines", "quantity": 2, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Patatas", "quantity": 1, "unit": "ud" },
+      { "name": "Nata para cocinar", "quantity": 50, "unit": "ml" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 15, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "crema-de-zanahoria",
+    "name": "Crema de zanahoria",
+    "description": "Crema dulzona de zanahoria y patata, ideal en invierno.",
+    "meal_types": ["dinner"],
+    "seasons": ["winter"],
+    "vegetarian": true,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Zanahorias", "quantity": 4, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Patatas", "quantity": 1, "unit": "ud" },
+      { "name": "Nata para cocinar", "quantity": 50, "unit": "ml" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 15, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "albondigas-en-salsa",
+    "name": "Albóndigas en salsa",
+    "description": "Albóndigas caseras en salsa de tomate y verduras.",
+    "meal_types": ["lunch"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": false,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Carne picada", "quantity": 300, "unit": "g" },
+      { "name": "Huevos", "quantity": 1, "unit": "ud" },
+      { "name": "Pan rallado", "quantity": 40, "unit": "g" },
+      { "name": "Tomate frito", "quantity": 150, "unit": "g" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "guisantes-con-jamon",
+    "name": "Guisantes con jamón",
+    "description": "Guisantes salteados con jamón serrano y huevo.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["winter"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Guisantes congelados", "quantity": 400, "unit": "g" },
+      { "name": "Jamón serrano", "quantity": 80, "unit": "g" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Huevos", "quantity": 2, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "arroz-con-verduras",
+    "name": "Arroz con verduras",
+    "description": "Arroz salteado con pimiento, calabacín y guisantes.",
+    "meal_types": ["lunch"],
+    "seasons": ["all"],
+    "vegetarian": true,
+    "vegan": true,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Arroz", "quantity": 160, "unit": "g" },
+      { "name": "Pimientos", "quantity": 1, "unit": "ud" },
+      { "name": "Calabacines", "quantity": 1, "unit": "ud" },
+      { "name": "Zanahorias", "quantity": 1, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Guisantes congelados", "quantity": 100, "unit": "g" },
+      { "name": "Tomate frito", "quantity": 60, "unit": "g" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "salmon-al-horno-con-verduras",
+    "name": "Salmón al horno con verduras",
+    "description": "Salmón al horno con calabacín y pimiento.",
+    "meal_types": ["dinner"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Salmón", "quantity": 400, "unit": "g" },
+      { "name": "Calabacines", "quantity": 1, "unit": "ud" },
+      { "name": "Pimientos", "quantity": 1, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Limones", "quantity": 1, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "pisto",
+    "name": "Pisto de verduras",
+    "description": "Calabacín, pimiento y cebolla pochados en tomate.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["summer"],
+    "vegetarian": true,
+    "vegan": true,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Calabacines", "quantity": 1, "unit": "ud" },
+      { "name": "Pimientos", "quantity": 2, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Tomate frito", "quantity": 200, "unit": "g" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 25, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "huevos-rotos-con-jamon",
+    "name": "Huevos rotos con jamón",
+    "description": "Patatas fritas con huevos rotos y jamón serrano.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Patatas", "quantity": 3, "unit": "ud" },
+      { "name": "Huevos", "quantity": 4, "unit": "ud" },
+      { "name": "Jamón serrano", "quantity": 80, "unit": "g" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 40, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "ensalada-mixta",
+    "name": "Ensalada mixta con atún",
+    "description": "Lechuga, tomate y cebolla con atún y huevo duro.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["summer"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Lechuga", "quantity": 1, "unit": "ud" },
+      { "name": "Tomates", "quantity": 2, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Atún en lata", "quantity": 120, "unit": "g" },
+      { "name": "Huevos", "quantity": 2, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Vinagre", "quantity": 10, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "gazpacho",
+    "name": "Gazpacho andaluz",
+    "description": "Sopa fría de tomate, pepino y pimiento. Puro verano.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["summer"],
+    "vegetarian": true,
+    "vegan": true,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Tomates", "quantity": 6, "unit": "ud" },
+      { "name": "Pepinos", "quantity": 1, "unit": "ud" },
+      { "name": "Pimientos", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 1, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 30, "unit": "ml" },
+      { "name": "Vinagre", "quantity": 15, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "salmorejo",
+    "name": "Salmorejo cordobés",
+    "description": "Crema fría de tomate y pan con huevo duro por encima.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["summer"],
+    "vegetarian": true,
+    "vegan": false,
+    "gluten_free": false,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Tomates", "quantity": 6, "unit": "ud" },
+      { "name": "Pan", "quantity": 100, "unit": "g" },
+      { "name": "Ajos", "quantity": 1, "unit": "ud" },
+      { "name": "Huevos", "quantity": 2, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 40, "unit": "ml" },
+      { "name": "Vinagre", "quantity": 10, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "ensalada-de-garbanzos",
+    "name": "Ensalada de garbanzos",
+    "description": "Garbanzos con tomate, pepino y pimiento, en frío.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["summer"],
+    "vegetarian": true,
+    "vegan": true,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Garbanzos cocidos", "quantity": 400, "unit": "g" },
+      { "name": "Tomates", "quantity": 2, "unit": "ud" },
+      { "name": "Pepinos", "quantity": 1, "unit": "ud" },
+      { "name": "Pimientos", "quantity": 1, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Vinagre", "quantity": 10, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "tomates-rellenos-de-atun",
+    "name": "Tomates rellenos de atún",
+    "description": "Tomates rellenos de atún con mayonesa y huevo.",
+    "meal_types": ["dinner"],
+    "seasons": ["summer"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Tomates", "quantity": 4, "unit": "ud" },
+      { "name": "Atún en lata", "quantity": 160, "unit": "g" },
+      { "name": "Mayonesa", "quantity": 40, "unit": "g" },
+      { "name": "Huevos", "quantity": 2, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "gambas-al-ajillo",
+    "name": "Gambas al ajillo",
+    "description": "Gambas salteadas con ajo y aceite de oliva.",
+    "meal_types": ["dinner"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Gambas congeladas", "quantity": 300, "unit": "g" },
+      { "name": "Ajos", "quantity": 4, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 40, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "arroz-con-gambas",
+    "name": "Arroz con gambas",
+    "description": "Arroz meloso con gambas y sofrito de verduras.",
+    "meal_types": ["lunch"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Arroz", "quantity": 160, "unit": "g" },
+      { "name": "Gambas congeladas", "quantity": 200, "unit": "g" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Pimientos", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Tomate frito", "quantity": 60, "unit": "g" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "pechuga-a-la-plancha-con-ensalada",
+    "name": "Pechuga a la plancha con ensalada",
+    "description": "Pechuga de pollo a la plancha con ensalada verde.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["summer"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Pechugas de pollo", "quantity": 350, "unit": "g" },
+      { "name": "Lechuga", "quantity": 1, "unit": "ud" },
+      { "name": "Tomates", "quantity": 2, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Limones", "quantity": 1, "unit": "ud" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "revuelto-de-gambas",
+    "name": "Revuelto de gambas",
+    "description": "Huevos revueltos con gambas y ajo.",
+    "meal_types": ["dinner"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Huevos", "quantity": 4, "unit": "ud" },
+      { "name": "Gambas congeladas", "quantity": 150, "unit": "g" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 15, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "brocoli-salteado-con-ajo",
+    "name": "Brócoli salteado con ajo",
+    "description": "Brócoli al dente salteado con ajo y frutos secos.",
+    "meal_types": ["dinner"],
+    "seasons": ["winter"],
+    "vegetarian": true,
+    "vegan": true,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Brócoli", "quantity": 400, "unit": "g" },
+      { "name": "Ajos", "quantity": 3, "unit": "ud" },
+      { "name": "Frutos secos", "quantity": 40, "unit": "g" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "pure-de-patata",
+    "name": "Puré de patata",
+    "description": "Puré cremoso de patata con leche y mantequilla.",
+    "meal_types": ["dinner"],
+    "seasons": ["winter"],
+    "vegetarian": true,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Patatas", "quantity": 4, "unit": "ud" },
+      { "name": "Leche", "quantity": 100, "unit": "ml" },
+      { "name": "Mantequilla", "quantity": 30, "unit": "g" },
+      { "name": "Queso rallado", "quantity": 30, "unit": "g" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "pollo-al-horno-con-patatas",
+    "name": "Pollo al horno con patatas",
+    "description": "Pollo asado con patatas, cebolla y limón.",
+    "meal_types": ["lunch"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Pechugas de pollo", "quantity": 400, "unit": "g" },
+      { "name": "Patatas", "quantity": 3, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 3, "unit": "ud" },
+      { "name": "Limones", "quantity": 1, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 30, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "merluza-a-la-plancha",
+    "name": "Merluza a la plancha",
+    "description": "Filetes de merluza a la plancha con ajo y limón.",
+    "meal_types": ["dinner"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Merluza", "quantity": 400, "unit": "g" },
+      { "name": "Patatas", "quantity": 2, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Limones", "quantity": 1, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "huevos-a-la-flamenca",
+    "name": "Huevos a la flamenca",
+    "description": "Huevos al horno sobre sofrito con guisantes y jamón.",
+    "meal_types": ["lunch"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Huevos", "quantity": 4, "unit": "ud" },
+      { "name": "Tomate frito", "quantity": 150, "unit": "g" },
+      { "name": "Guisantes congelados", "quantity": 100, "unit": "g" },
+      { "name": "Pimientos", "quantity": 1, "unit": "ud" },
+      { "name": "Jamón serrano", "quantity": 60, "unit": "g" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 15, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "patatas-guisadas",
+    "name": "Patatas guisadas",
+    "description": "Patatas en salsa con verduras y guisantes.",
+    "meal_types": ["lunch"],
+    "seasons": ["winter"],
+    "vegetarian": true,
+    "vegan": true,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Patatas", "quantity": 4, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Zanahorias", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Tomate frito", "quantity": 60, "unit": "g" },
+      { "name": "Guisantes congelados", "quantity": 100, "unit": "g" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "crema-de-guisantes",
+    "name": "Crema de guisantes",
+    "description": "Crema verde de guisantes con patata y cebolla.",
+    "meal_types": ["dinner"],
+    "seasons": ["winter"],
+    "vegetarian": true,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Guisantes congelados", "quantity": 400, "unit": "g" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Patatas", "quantity": 1, "unit": "ud" },
+      { "name": "Nata para cocinar", "quantity": 50, "unit": "ml" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 15, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "salteado-de-verduras-con-arroz",
+    "name": "Salteado de verduras con arroz",
+    "description": "Arroz salteado con calabacín, zanahoria y pimiento.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["all"],
+    "vegetarian": true,
+    "vegan": true,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Arroz", "quantity": 160, "unit": "g" },
+      { "name": "Calabacines", "quantity": 1, "unit": "ud" },
+      { "name": "Zanahorias", "quantity": 1, "unit": "ud" },
+      { "name": "Pimientos", "quantity": 1, "unit": "ud" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "atun-con-tomate",
+    "name": "Atún con tomate",
+    "description": "Atún guisado en salsa de tomate con pimiento.",
+    "meal_types": ["lunch"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Atún en lata", "quantity": 200, "unit": "g" },
+      { "name": "Tomate frito", "quantity": 200, "unit": "g" },
+      { "name": "Cebollas", "quantity": 1, "unit": "ud" },
+      { "name": "Pimientos", "quantity": 1, "unit": "ud" },
+      { "name": "Ajos", "quantity": 2, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 15, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "macarrones-gratinados",
+    "name": "Macarrones gratinados con jamón",
+    "description": "Macarrones con jamón cocido gratinados al horno.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": false,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Macarrones", "quantity": 180, "unit": "g" },
+      { "name": "Tomate frito", "quantity": 120, "unit": "g" },
+      { "name": "Jamón cocido", "quantity": 80, "unit": "g" },
+      { "name": "Queso rallado", "quantity": 60, "unit": "g" },
+      { "name": "Nata para cocinar", "quantity": 50, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "sandwich-mixto",
+    "name": "Sándwich mixto",
+    "description": "Sándwich de jamón cocido y queso a la plancha.",
+    "meal_types": ["dinner"],
+    "seasons": ["all"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": false,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Pan de molde", "quantity": 4, "unit": "ud" },
+      { "name": "Jamón cocido", "quantity": 80, "unit": "g" },
+      { "name": "Queso curado", "quantity": 60, "unit": "g" },
+      { "name": "Mantequilla", "quantity": 15, "unit": "g" }
+    ]
+  },
+  {
+    "id": "ensalada-de-pasta",
+    "name": "Ensalada de pasta",
+    "description": "Macarrones fríos con atún, tomate y mayonesa.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["summer"],
+    "vegetarian": false,
+    "vegan": false,
+    "gluten_free": false,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Macarrones", "quantity": 180, "unit": "g" },
+      { "name": "Atún en lata", "quantity": 120, "unit": "g" },
+      { "name": "Tomates", "quantity": 2, "unit": "ud" },
+      { "name": "Huevos", "quantity": 2, "unit": "ud" },
+      { "name": "Mayonesa", "quantity": 40, "unit": "g" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 15, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "ensalada-de-lechuga-y-zanahoria",
+    "name": "Ensalada de lechuga y zanahoria",
+    "description": "Ensalada sencilla de lechuga, zanahoria y tomate.",
+    "meal_types": ["lunch", "dinner"],
+    "seasons": ["summer"],
+    "vegetarian": true,
+    "vegan": true,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Lechuga", "quantity": 1, "unit": "ud" },
+      { "name": "Zanahorias", "quantity": 2, "unit": "ud" },
+      { "name": "Tomates", "quantity": 2, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Vinagre", "quantity": 10, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "tostadas-con-tomate",
+    "name": "Tostadas con tomate",
+    "description": "Pan tostado con tomate y aceite de oliva.",
+    "meal_types": ["breakfast"],
+    "seasons": ["all"],
+    "vegetarian": true,
+    "vegan": true,
+    "gluten_free": false,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Pan", "quantity": 4, "unit": "ud" },
+      { "name": "Tomates", "quantity": 2, "unit": "ud" },
+      { "name": "Aceite de oliva virgen extra", "quantity": 20, "unit": "ml" },
+      { "name": "Sal", "quantity": null, "unit": null }
+    ]
+  },
+  {
+    "id": "yogur-con-fruta",
+    "name": "Yogur con fruta y frutos secos",
+    "description": "Yogur natural con plátano, manzana y frutos secos.",
+    "meal_types": ["breakfast"],
+    "seasons": ["all"],
+    "vegetarian": true,
+    "vegan": false,
+    "gluten_free": true,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Yogures", "quantity": 2, "unit": "ud" },
+      { "name": "Plátanos", "quantity": 1, "unit": "ud" },
+      { "name": "Manzanas", "quantity": 1, "unit": "ud" },
+      { "name": "Frutos secos", "quantity": 30, "unit": "g" },
+      { "name": "Miel", "quantity": 15, "unit": "g" }
+    ]
+  },
+  {
+    "id": "leche-con-cereales",
+    "name": "Leche con cereales",
+    "description": "Un tazón de leche con cereales y cacao.",
+    "meal_types": ["breakfast"],
+    "seasons": ["all"],
+    "vegetarian": true,
+    "vegan": false,
+    "gluten_free": false,
+    "servings": 2,
+    "ingredients": [
+      { "name": "Leche", "quantity": 400, "unit": "ml" },
+      { "name": "Cereales", "quantity": 80, "unit": "g" },
+      { "name": "Cacao soluble", "quantity": 20, "unit": "g" }
+    ]
+  }
+]

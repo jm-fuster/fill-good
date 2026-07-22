@@ -3,9 +3,11 @@ import "server-only";
 import { auth } from "@clerk/nextjs/server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { normalizeName } from "@/lib/normalize";
 import type { UnitType } from "@/lib/supabase/types";
 import { getLatestUnitPrices } from "@/features/prices/queries";
 import { computeRecipeCost, type CostIngredient, type RecipeCost } from "./cost";
+import { SEED_RECIPES } from "./seed";
 
 export type MealTypeValue = "lunch" | "dinner";
 export type SeasonValue = "all" | "winter" | "summer";
@@ -66,6 +68,52 @@ export async function getSavedRecipes(): Promise<SavedRecipe[]> {
     mealTypes: r.meal_types ?? [],
     seasons: r.seasons ?? [],
     ingredientCount: r.recipe_ingredients[0]?.count ?? 0,
+  }));
+}
+
+/** Tarjeta del pack curado para la sección "Explorar" (N4). */
+export type SeedRecipeCard = {
+  id: string;
+  name: string;
+  description: string;
+  mealTypes: string[];
+  seasons: string[];
+  vegetarian: boolean;
+  vegan: boolean;
+  glutenFree: boolean;
+  /** true si el hogar ya tiene una receta guardada con ese nombre normalizado. */
+  alreadySaved: boolean;
+};
+
+/**
+ * Recetas del pack curado (N4) con el flag de si el hogar ya tiene cada una en
+ * su recetario (por nombre normalizado). El JSON solo se lee en servidor: al
+ * cliente solo llegan estas tarjetas. RLS limita las filas del hogar.
+ */
+export async function getSeedRecipeCards(): Promise<SeedRecipeCard[]> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("recipes")
+    .select("normalized_name")
+    .eq("is_saved", true);
+  if (error) throw error;
+
+  const savedNorms = new Set(
+    (data ?? [])
+      .map((r) => r.normalized_name)
+      .filter((n): n is string => Boolean(n)),
+  );
+
+  return SEED_RECIPES.map((r) => ({
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    mealTypes: r.mealTypes,
+    seasons: r.seasons,
+    vegetarian: r.vegetarian,
+    vegan: r.vegan,
+    glutenFree: r.glutenFree,
+    alreadySaved: savedNorms.has(normalizeName(r.name)),
   }));
 }
 
