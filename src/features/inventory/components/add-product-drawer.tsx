@@ -233,6 +233,28 @@ function AddProductFields({
         onChange={setExpiryDate}
       />
 
+      {unit === "ud" ? (
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="add-pack">
+            Unidades por compra{" "}
+            <span className="text-muted-foreground">(opcional)</span>
+          </Label>
+          <Input
+            id="add-pack"
+            name="packSize"
+            type="number"
+            inputMode="numeric"
+            min={1}
+            step="any"
+            placeholder="p. ej. 30"
+          />
+          <p className="text-sm text-muted-foreground">
+            Si lo compras en cajas (p. ej. 30 sobres), pon cuántas unidades trae
+            cada compra.
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-2">
         <Label htmlFor="add-min">
           Avísame cuando queden menos de{" "}

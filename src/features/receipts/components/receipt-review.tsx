@@ -21,6 +21,7 @@ import {
   type ComboboxProduct,
 } from "@/components/product-combobox";
 import { cn } from "@/lib/utils";
+import { formatQuantity } from "@/lib/units";
 import { normalizeName } from "@/lib/normalize";
 import {
   MIN_FUZZY_LENGTH,
@@ -102,11 +103,14 @@ export function ReceiptReview({
   receipt,
   items,
   products,
+  packByProduct = {},
   suggestions = [],
 }: {
   receipt: ReceiptHeader;
   items: ReceiptItem[];
   products: ComboboxProduct[];
+  /** Unidades por pack por producto (F4); solo los que tienen pack. */
+  packByProduct?: Record<string, number>;
   /** Candidatos fuzzy del servidor por línea (E6): catálogo + aliases. */
   suggestions?: ReceiptSuggestion[];
 }) {
@@ -219,6 +223,15 @@ export function ReceiptReview({
   function renderRow(row: Row) {
     const linked = row.productId !== null;
     const duplicate = duplicateCandidates.get(row.itemId) ?? null;
+    // Pack (F4): si la línea está en ud y su producto tiene pack, avisamos de la
+    // conversión que se aplicará al inventario (el precio no se toca).
+    const pack =
+      row.unit === "ud" && row.productId
+        ? packByProduct[row.productId]
+        : undefined;
+    const packQty = Number(row.quantity.replace(",", "."));
+    const packTotal =
+      pack && Number.isFinite(packQty) && packQty > 0 ? packQty * pack : null;
     return (
       <div
         key={row.itemId}
@@ -308,6 +321,15 @@ export function ReceiptReview({
                   Asociar
                 </Button>
               </div>
+            ) : null}
+            {packTotal !== null ? (
+              <p className="text-xs text-muted-foreground">
+                {formatQuantity(packQty, "ud")} × pack de {pack} → entran{" "}
+                <span className="font-medium text-foreground">
+                  {formatQuantity(packTotal, "ud")}
+                </span>{" "}
+                al inventario
+              </p>
             ) : null}
           </div>
         ) : null}

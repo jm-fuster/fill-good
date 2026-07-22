@@ -217,22 +217,24 @@ export async function checkoutAction(): Promise<
     let productId = item.product_id;
     let defaultUnit = item.unit ?? "ud";
     let location: "pantry" | "fridge" | "freezer" | "other" = "pantry";
+    let packSize: number | null = null;
 
     if (productId) {
       const { data: p } = await supabase
         .from("products")
-        .select("default_unit, default_location")
+        .select("default_unit, default_location, pack_size")
         .eq("id", productId)
         .maybeSingle();
       if (p) {
         defaultUnit = item.unit ?? p.default_unit;
         location = p.default_location;
+        packSize = p.pack_size;
       }
     } else {
       const normalized = normalizeName(item.name);
       const { data: existing } = await supabase
         .from("products")
-        .select("id, default_unit, default_location")
+        .select("id, default_unit, default_location, pack_size")
         .eq("household_id", household.id)
         .eq("normalized_name", normalized)
         .maybeSingle();
@@ -240,6 +242,7 @@ export async function checkoutAction(): Promise<
         productId = existing.id;
         defaultUnit = item.unit ?? existing.default_unit;
         location = existing.default_location;
+        packSize = existing.pack_size;
       } else {
         const { data: created } = await supabase
           .from("products")
@@ -257,7 +260,9 @@ export async function checkoutAction(): Promise<
       }
     }
 
-    const qty = item.quantity ?? 1;
+    // Pack (F4): con pack y movimiento en ud, entran `cantidad × pack` unidades.
+    const baseQty = item.quantity ?? 1;
+    const qty = defaultUnit === "ud" && packSize ? baseQty * packSize : baseQty;
 
     const { data: inv } = await supabase
       .from("inventory_items")

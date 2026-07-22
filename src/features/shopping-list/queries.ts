@@ -39,6 +39,8 @@ export type CatalogProduct = {
   defaultUnit: UnitType;
   defaultLocation: LocationType;
   purchaseCount: number;
+  /** Unidades por compra (F4); null = sin pack. */
+  packSize: number | null;
 };
 
 /** Producto habitual sugerido como chip de un toque. */
@@ -334,7 +336,7 @@ export async function getProductCatalog(): Promise<CatalogProduct[]> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, normalized_name, default_unit, default_location, purchase_count",
+      "id, name, normalized_name, default_unit, default_location, purchase_count, pack_size",
     )
     .order("purchase_count", { ascending: false })
     .order("name", { ascending: true });
@@ -346,6 +348,7 @@ export async function getProductCatalog(): Promise<CatalogProduct[]> {
     defaultUnit: p.default_unit,
     defaultLocation: p.default_location,
     purchaseCount: p.purchase_count,
+    packSize: p.pack_size === null ? null : Number(p.pack_size),
   }));
 }
 

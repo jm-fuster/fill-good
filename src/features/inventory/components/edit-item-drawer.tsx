@@ -340,6 +340,29 @@ export function EditItemDrawer({
             />
           </div>
 
+          {entry.unit === "ud" ? (
+            <div className="flex flex-col gap-2">
+              <input type="hidden" name="unit" value={entry.unit} />
+              <Label htmlFor="edit-pack">
+                Unidades por compra{" "}
+                <span className="text-muted-foreground">(opcional)</span>
+              </Label>
+              <Input
+                id="edit-pack"
+                name="packSize"
+                type="number"
+                inputMode="numeric"
+                min={1}
+                step="any"
+                defaultValue={entry.packSize ?? ""}
+              />
+              <p className="text-sm text-muted-foreground">
+                Si lo compras en cajas (p. ej. 30 sobres), pon cuántas unidades
+                trae cada compra.
+              </p>
+            </div>
+          ) : null}
+
           <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
             <Label htmlFor="edit-use-soon" className="flex flex-col gap-0.5">
               <span>Consumir pronto</span>

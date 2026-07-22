@@ -52,7 +52,7 @@ checkout, stepper) y, si se hacen ambas, F4 va primero (F5 registra cantidades y
 - [x] F1 — Nombres de producto legibles en las tarjetas (2 líneas en vez de recorte)
 - [x] F2 — Chips de caducidad aditivos (cada toque suma tiempo)
 - [x] F3 — Ingredientes de receta vinculados al catálogo con stock visible
-- [ ] F4 — Pack de compra: "1 caja = N unidades" al entrar al inventario
+- [x] F4 — Pack de compra: "1 caja = N unidades" al entrar al inventario
 - [ ] F5 — Historial de movimientos de stock (consumido / tirado / repuesto)
 
 ---
@@ -1702,12 +1702,35 @@ gastándolos de uno en uno.
   pocas" operan sobre unidades sueltas, que es lo que el usuario cuenta.
 
 **Pasos**
-- [ ] Migración `pack_size` (autorización antes de `npx supabase db push`) + tipos a mano.
-- [ ] Campo "Unidades por compra" en los dos drawers (solo `ud`, con hint).
-- [ ] Multiplicador en `confirmReceiptAction` y `checkoutAction` + aviso de conversión
+- [x] Migración `pack_size` (autorización antes de `npx supabase db push`) + tipos a mano.
+- [x] Campo "Unidades por compra" en los dos drawers (solo `ud`, con hint).
+- [x] Multiplicador en `confirmReceiptAction` y `checkoutAction` + aviso de conversión
       visible en la revisión del ticket.
-- [ ] (Opcional) €/unidad en `/precios` cuando hay pack.
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [ ] (Opcional) €/unidad en `/precios` cuando hay pack. — NO implementado (opcional; se
+      dejó fuera para no ampliar alcance, el resto de F4 no lo necesita).
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+> **Nota de implementación (F4):** migración `supabase/migrations/20260722120000_products_pack_size.sql`
+> (`alter table products add column pack_size numeric(10,2) check (pack_size > 0)`, null = sin
+> pack). **YA APLICADA en remoto** (autorizada por el usuario 2026-07-22 y verificada con
+> `npx supabase migration list --linked`: `local == remote`). Tipos a mano en
+> `src/lib/supabase/types.ts` (`products.pack_size` en Row/Insert/Update). Semántica: cada unidad
+> COMPRADA añade `pack_size` unidades al inventario; solo aplica a movimientos en `ud`; el precio
+> del ticket NO se toca. `inventory/schemas.ts`: `positiveOptionalNumber` (>0) + `packSize` en
+> add/edit; `editInventorySchema` gana `unit?` para saber si el pack aplica. `inventory/actions.ts`:
+> `addInventoryAction`/`updateInventoryAction` PERSISTEN `pack_size` solo para productos `ud` (el
+> alta manual NO multiplica: solo guarda el pack para futuras compras). Multiplicador de ENTRADA en
+> `confirmReceiptAction` (carga `pack_size` por lote en `packByProduct`; `invQty = dec.quantity ×
+> pack` cuando `dec.unit === "ud"`; la línea de `receipt_items` conserva `dec.quantity` para el
+> historial de precios) y en `checkoutAction` (`qty = baseQty × pack` cuando `defaultUnit === "ud"`).
+> UI: campo "Unidades por compra" (solo visible con unidad `ud`, con hint sobre cajas) en
+> `add-product-drawer.tsx` y `edit-item-drawer.tsx` (prefill con `entry.packSize`; hidden `unit`
+> para gatear la persistencia). Transparencia en `receipt-review.tsx`: en líneas en `ud` con pack se
+> muestra "N ud × pack de M → entran N×M al inventario" antes de confirmar (nuevo prop opcional
+> `packByProduct`, alimentado desde `getProductCatalog` que ahora trae `pack_size` en
+> `CatalogProduct`). `InventoryEntry.packSize` añadido a `getInventory`. `npx tsc --noEmit` y
+> `npx eslint .` limpios. Verificación interactiva en preview pendiente (login de Clerk no
+> verificable en headless). €/unidad en `/precios` queda como mejora opcional futura.
 
 **Criterios de aceptación**
 - Con "Croquetas" configurado a pack 30: confirmar un ticket con 1 ud añade 30 ud al

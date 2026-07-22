@@ -37,6 +37,7 @@ export async function addInventoryAction(
     quantity: formData.get("quantity"),
     expiryDate: formData.get("expiryDate") || undefined,
     minQuantity: formData.get("minQuantity") || undefined,
+    packSize: formData.get("packSize") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
@@ -54,12 +55,22 @@ export async function addInventoryAction(
     .maybeSingle();
   if (selErr) return { error: "Error al buscar el producto." };
 
+  // Pack (F4): solo aplica a productos contables (ud). El multiplicador de
+  // entrada se usa en la compra (checkout / ticket), no en el alta manual: aquí
+  // solo se PERSISTE el tamaño de pack para futuras compras.
+  const packSize = d.unit === "ud" ? d.packSize : null;
+
   let productId: string;
   if (existing) {
     productId = existing.id;
-    const updates: { min_quantity?: number | null; category_id?: string } = {};
+    const updates: {
+      min_quantity?: number | null;
+      category_id?: string;
+      pack_size?: number | null;
+    } = {};
     if (d.minQuantity !== null) updates.min_quantity = d.minQuantity;
     if (d.categoryId) updates.category_id = d.categoryId;
+    if (d.unit === "ud") updates.pack_size = packSize;
     if (Object.keys(updates).length > 0) {
       await supabase.from("products").update(updates).eq("id", productId);
     }
@@ -74,6 +85,7 @@ export async function addInventoryAction(
         default_unit: d.unit,
         default_location: d.location,
         min_quantity: d.minQuantity,
+        pack_size: packSize,
       })
       .select("id")
       .single();
@@ -208,6 +220,8 @@ export async function updateInventoryAction(
     expiryDate: formData.get("expiryDate") || undefined,
     useSoon: formData.get("useSoon") || undefined,
     minQuantity: formData.get("minQuantity") || undefined,
+    packSize: formData.get("packSize") || undefined,
+    unit: formData.get("unit") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
@@ -229,14 +243,23 @@ export async function updateInventoryAction(
   if (clash) {
     return { error: "Ya existe otro producto con ese nombre." };
   }
+  const productUpdate: {
+    name: string;
+    normalized_name: string;
+    category_id: string | null;
+    min_quantity: number | null;
+    pack_size?: number | null;
+  } = {
+    name: d.name,
+    normalized_name: normalized,
+    category_id: d.categoryId,
+    min_quantity: d.minQuantity,
+  };
+  // Pack (F4): solo se toca para filas contables (ud); null lo limpia.
+  if (d.unit === "ud") productUpdate.pack_size = d.packSize;
   const { error: prodErr } = await supabase
     .from("products")
-    .update({
-      name: d.name,
-      normalized_name: normalized,
-      category_id: d.categoryId,
-      min_quantity: d.minQuantity,
-    })
+    .update(productUpdate)
     .eq("id", d.productId);
   if (prodErr) return { error: "No se pudo guardar el nombre." };
 

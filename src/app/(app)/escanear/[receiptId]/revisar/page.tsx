@@ -45,6 +45,11 @@ export default async function RevisarPage({
           defaultLocation: p.defaultLocation,
           purchaseCount: p.purchaseCount,
         }))}
+        packByProduct={Object.fromEntries(
+          products
+            .filter((p) => p.packSize != null)
+            .map((p) => [p.id, p.packSize as number]),
+        )}
         suggestions={suggestions}
       />
     </PageContainer>

@@ -12,6 +12,16 @@ const optionalNumber = z
     message: "Cantidad no válida.",
   });
 
+/** Como optionalNumber pero estrictamente > 0 (p. ej. unidades por pack, F4). */
+const positiveOptionalNumber = z
+  .string()
+  .trim()
+  .optional()
+  .transform((v) => (v && v.length > 0 ? Number(v.replace(",", ".")) : null))
+  .refine((v) => v === null || (Number.isFinite(v) && v > 0), {
+    message: "Debe ser mayor que 0.",
+  });
+
 export const addInventorySchema = z.object({
   name: z
     .string()
@@ -39,6 +49,7 @@ export const addInventorySchema = z.object({
     .optional()
     .transform((v) => (v && v.length > 0 ? v : null)),
   minQuantity: optionalNumber,
+  packSize: positiveOptionalNumber,
 });
 
 export const editInventorySchema = z.object({
@@ -72,6 +83,9 @@ export const editInventorySchema = z.object({
     .optional()
     .transform((v) => v === "true"),
   minQuantity: optionalNumber,
+  packSize: positiveOptionalNumber,
+  // Unidad de la fila editada; solo sirve para saber si el pack aplica (ud).
+  unit: unit.optional(),
 });
 
 /** Selector inicial "¿Qué tienes ya en casa?": ids de producto a añadir en lote. */

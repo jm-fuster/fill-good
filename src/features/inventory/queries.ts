@@ -24,6 +24,8 @@ export type InventoryEntry = {
   expiryDate: string | null;
   useSoon: boolean;
   minQuantity: number | null;
+  /** Unidades que entran por compra (F4); null = sin pack. */
+  packSize: number | null;
 };
 
 /** Item de inventario para la revisión de caducidades tras la compra. */
@@ -229,6 +231,7 @@ type InventoryRow = {
   product: {
     name: string;
     min_quantity: number | null;
+    pack_size: number | null;
     category: { id: string; name: string; icon: string | null } | null;
   } | null;
 };
@@ -238,7 +241,7 @@ export async function getInventory(): Promise<InventoryEntry[]> {
   const { data, error } = await supabase
     .from("inventory_items")
     .select(
-      "id, product_id, location, quantity, unit, expiry_date, use_soon, product:products(name, min_quantity, category:categories(id, name, icon))",
+      "id, product_id, location, quantity, unit, expiry_date, use_soon, product:products(name, min_quantity, pack_size, category:categories(id, name, icon))",
     )
     .order("updated_at", { ascending: false });
   if (error) throw error;
@@ -260,6 +263,8 @@ export async function getInventory(): Promise<InventoryEntry[]> {
       useSoon: r.use_soon,
       minQuantity:
         r.product!.min_quantity === null ? null : Number(r.product!.min_quantity),
+      packSize:
+        r.product!.pack_size === null ? null : Number(r.product!.pack_size),
     }));
 }
 

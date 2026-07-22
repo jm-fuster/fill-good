@@ -260,7 +260,7 @@ export async function confirmReceiptAction(
       .eq("receipt_id", payload.receiptId),
     supabase
       .from("products")
-      .select("id, normalized_name, default_location")
+      .select("id, normalized_name, default_location, pack_size")
       .eq("household_id", household.id),
     supabase
       .from("inventory_items")
@@ -273,6 +273,10 @@ export async function confirmReceiptAction(
     (productRows ?? []).map((p) => [p.normalized_name, p]),
   );
   const productById = new Map((productRows ?? []).map((p) => [p.id, p]));
+  // Pack (F4): unidades por compra por producto (solo aplica a movimientos en ud).
+  const packByProduct = new Map<string, number | null>(
+    (productRows ?? []).map((p) => [p.id, p.pack_size]),
+  );
   const invKey = (pid: string, loc: LocationType) => `${pid}::${loc}`;
   const invByKey = new Map(
     (invRows ?? []).map((r) => [invKey(r.product_id, r.location), r]),
@@ -318,7 +322,7 @@ export async function confirmReceiptAction(
             default_unit: dec.unit,
             default_location: "pantry",
           })
-          .select("id, normalized_name, default_location")
+          .select("id, normalized_name, default_location, pack_size")
           .single();
         if (!created) continue;
         productId = created.id;
@@ -327,6 +331,7 @@ export async function confirmReceiptAction(
         // nombre reutiliza el producto recién creado (dedup dentro del ticket).
         productById.set(created.id, created);
         productByNorm.set(created.normalized_name, created);
+        packByProduct.set(created.id, created.pack_size);
       }
     }
 
@@ -361,6 +366,13 @@ export async function confirmReceiptAction(
       })
       .eq("id", dec.itemId);
 
+    // Pack (F4): si el producto tiene pack y la compra es en ud, entran
+    // `cantidad × pack` unidades al inventario. El precio y la línea del ticket
+    // NO se tocan (siguen registrando la cantidad de compra por caja, arriba).
+    const packSize =
+      dec.unit === "ud" ? (packByProduct.get(productId) ?? null) : null;
+    const invQty = packSize ? dec.quantity * packSize : dec.quantity;
+
     // Inventario con la política de unidades de E3 (única, en TS).
     const key = invKey(productId, location);
     const inv = invByKey.get(key);
@@ -369,7 +381,7 @@ export async function confirmReceiptAction(
       // NO sumar magnitudes de unidades distintas (ud + l = disparate). Si
       // difieren, se conserva la unidad y cantidad del inventario y se avisa.
       if (inv.unit === dec.unit) {
-        const newQty = Number(inv.quantity) + dec.quantity;
+        const newQty = Number(inv.quantity) + invQty;
         await supabase
           .from("inventory_items")
           .update({ quantity: newQty, updated_by: userId })
@@ -392,7 +404,7 @@ export async function confirmReceiptAction(
           household_id: household.id,
           product_id: productId,
           location,
-          quantity: dec.quantity,
+          quantity: invQty,
           unit: dec.unit,
           updated_by: userId,
         })
@@ -403,7 +415,7 @@ export async function confirmReceiptAction(
           id: created.id,
           product_id: productId,
           location,
-          quantity: dec.quantity,
+          quantity: invQty,
           unit: dec.unit,
         });
         inventoryItemIds.push(created.id);
