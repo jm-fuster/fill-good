@@ -111,7 +111,7 @@ export function InventoryItemCard({
             <span className="min-w-0 flex-1">
               <span
                 className={cn(
-                  "block truncate font-medium",
+                  "block font-medium break-words line-clamp-2",
                   emptied && "text-muted-foreground",
                 )}
               >

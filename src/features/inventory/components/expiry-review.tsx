@@ -104,7 +104,9 @@ export function ExpiryReview({ entries }: { entries: ReviewEntry[] }) {
                   {entry.categoryIcon ?? "📦"}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{entry.productName}</p>
+                  <p className="font-medium break-words line-clamp-2">
+                    {entry.productName}
+                  </p>
                   <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
                     <span>{formatQuantity(entry.quantity, entry.unit)}</span>
                     <Badge variant="secondary">

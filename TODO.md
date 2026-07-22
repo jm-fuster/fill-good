@@ -9,6 +9,9 @@ ordenadas por prioridad; pueden hacerse en cualquier orden, pero D1 y D2 primero
 El bloque E (análisis crítico del 2026-07-21: inventario + matching de tickets) está ordenado
 por prioridad: E1–E5 son independientes entre sí (E1 primero: protege el historial de precios,
 el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene hacerlas después.
+El bloque F (feedback de usuarios del 2026-07-22) está ordenado por impacto/esfuerzo:
+F1–F3 son independientes entre sí; F4 y F5 tocan los mismos puntos de escritura (ticket,
+checkout, stepper) y, si se hacen ambas, F4 va primero (F5 registra cantidades ya convertidas).
 
 ## Instrucciones para el agente (leer antes de cada tarea)
 
@@ -46,6 +49,11 @@ el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene ha
 - [x] E8 — Gestión de aliases aprendidos
 - [x] E9 — Fusionar productos duplicados
 - [x] E10 — Robustez transaccional de la confirmación del ticket (menor)
+- [x] F1 — Nombres de producto legibles en las tarjetas (2 líneas en vez de recorte)
+- [ ] F2 — Chips de caducidad aditivos (cada toque suma tiempo)
+- [ ] F3 — Ingredientes de receta vinculados al catálogo con stock visible
+- [ ] F4 — Pack de compra: "1 caja = N unidades" al entrar al inventario
+- [ ] F5 — Historial de movimientos de stock (consumido / tirado / repuesto)
 
 ---
 
@@ -1402,6 +1410,11 @@ es valiosa, no solo limpieza.
 - **Sin filtro por categoría en el inventario** (E4): la agrupación por ubicación + buscador + chips de estado cubren el caso; si tras uso real hiciera falta, iría en un sheet de filtros (vaul), nunca como segunda fila permanente de chips.
 - **Precedencia de matching en tickets** (E6/E7): alias aprendido > nombre exacto > sugerencia IA / candidato fuzzy > producto nuevo. Solo los dos primeros asocian automáticamente; IA y fuzzy únicamente **sugieren** y es el usuario quien confirma (y esa confirmación aprende el alias). La IA nunca ve la tabla de aliases y sus ids se validan server-side siempre.
 - **Sin conversión automática de unidades** (E3/E9): ud↔kg↔L no es convertible sin datos por producto; la política es no sumar unidades distintas en silencio y avisar al usuario.
+- **Presets de caducidad aditivos, no más presets** (F2): la petición "2 semanas, 3 semanas, 1 mes y una semana" se resuelve haciendo que los 3 chips existentes SUMEN sobre la fecha actual, no añadiendo más chips fijos (que no escalan y saturan la fila en móvil).
+- **Suficiencia de ingredientes solo dentro de la misma familia de unidades** (F3): comparar "¿tengo bastante?" solo cuando receta e inventario comparten familia (`unitFamily` de `src/lib/units.ts`: g↔kg, ml↔l, ud↔ud); entre familias solo se muestra el stock, sin veredicto. Coherente con E3/E9.
+- **`pack_size` NO es conversión de unidades** (F4): es un multiplicador de ENTRADA para productos contables (`ud`) — "1 compra = N unidades". No convierte entre familias ni toca la política de E3; el consumo sigue siendo de 1 en 1.
+- **Sin un evento por pulsación del stepper** (F5): los cambios rápidos se pliegan en un solo evento por ventana de tiempo (folding); un historial con 10 filas de "−1 ud" en 20 segundos es ruido, no información.
+- **Historial sin lotes ni edición** (F5): los eventos son un registro append-only simplificado (producto, delta, tipo, quién, cuándo); no se editan ni se enlazan a lotes/caducidades (coherente con D7).
 
 ---
 
@@ -1427,4 +1440,337 @@ es valiosa, no solo limpieza.
 > criterios en el preview cuando sea posible (límite conocido: login de Clerk no verificable
 > en headless), marcar sus checkboxes y el estado global, y dejar una "Nota de implementación"
 > bajo la tarea siguiendo el formato de las de A–D.
+> ```
+
+---
+
+## Bloque F — Feedback de usuarios (2026-07-22)
+
+Tareas surgidas de feedback directo de usuarios sobre la app en uso real. Ordenadas
+por impacto/esfuerzo: F1 y F2 son mejoras pequeñas de UI, F3 expone infraestructura
+que ya existe, F4 y F5 tocan el modelo de datos. F1–F3 son independientes entre sí;
+**F4 y F5 comparten puntos de escritura** (confirmación de ticket, checkout, stepper):
+si se hacen ambas, implementar F4 primero para que los eventos del historial (F5)
+registren cantidades ya convertidas por pack.
+
+### F1 — Nombres de producto legibles en las tarjetas (2 líneas en vez de recorte)
+
+**Idea original:** en la lista de inventario se cortan los nombres y hay que entrar
+pulsando en cada producto para leerlo entero.
+
+**Contexto actual**
+- `src/features/inventory/components/inventory-item-card.tsx` (~línea 114): el nombre
+  lleva `block truncate font-medium` — una sola línea con elipsis. El stepper de la
+  derecha (2 botones de 44px + número) es fijo y NO puede encogerse (touch targets
+  obligatorios del sistema de diseño), así que a nombres reales de ticket ("Bolsas de
+  pimientos tricolor", "Contramuslos de pollo") les quedan pocos caracteres visibles.
+- El mismo patrón `truncate` está en `expiry-review.tsx` (~línea 107) y probablemente
+  en otras tarjetas de features (lista de la compra, revisión de ticket) — auditar con
+  `grep -rn "truncate" src/features/`.
+
+**Diseño propuesto**
+- Sustituir `truncate` por **`line-clamp-2 break-words`** en el nombre de producto de
+  la tarjeta de inventario y de la revisión de caducidades. El contenedor ya tiene
+  `min-w-0 flex-1` (necesario para que el clamp funcione dentro del flex; conservarlo).
+- Nombres de una línea se ven exactamente igual que hoy; los largos pasan a dos líneas
+  y solo los extremos (> 2 líneas) recortan con elipsis al final de la segunda.
+- **No** reducir el stepper, ni el tamaño de fuente, ni añadir tooltips (inútiles en táctil).
+- Auditar el resto de `truncate` en `src/features/**` y aplicar el mismo criterio SOLO
+  donde el texto recortado sea un nombre de producto/receta que el usuario necesita leer
+  (badges y metadatos de una palabra pueden seguir truncando).
+
+**Pasos**
+- [x] `line-clamp-2 break-words` en `inventory-item-card.tsx` y `expiry-review.tsx`.
+- [x] Auditoría de `truncate` en `src/features/**` y aplicar el criterio donde toque
+      (documentar en la nota de implementación qué se cambió y qué se dejó).
+- [ ] Verificar en preview móvil (375px) con nombres largos reales del catálogo.
+      — PENDIENTE de verificación manual (login de Clerk no verificable en headless).
+
+**Criterios de aceptación**
+- "Bolsas de pimientos tricolor" se lee completo en la tarjeta sin entrar a editar.
+- Los nombres cortos no cambian de aspecto; el stepper no se mueve ni pierde tamaño.
+- La fila de badges (caducidad, "Quedan pocas"…) sigue sin solaparse con el nombre.
+
+> **Nota de implementación (F1):** sin migración (solo clases de Tailwind). Se cambió
+> `truncate` por `line-clamp-2 break-words` en el nombre de producto de tres tarjetas donde
+> el usuario necesita leer el nombre completo: `inventory-item-card.tsx` (~línea 114, el
+> caso principal del feedback), `expiry-review.tsx` (~línea 107, revisión post-compra) y
+> `menu-view.tsx` (~línea 818, nombre de producto en el diálogo de descuento de stock del
+> menú). El contenedor conserva `min-w-0 flex-1` (necesario para que el clamp funcione dentro
+> del flex) y el stepper no cambia de tamaño. **Se dejó `truncate` a propósito** donde una
+> sola línea es el patrón correcto y el texto no es un nombre que haya que leer entero:
+> `product-autocomplete.tsx:140` (sugerencia de dropdown, UX estándar de una línea),
+> `edit-item-drawer.tsx:393` (alias, normalmente una palabra), `menu-view.tsx:859`
+> (ingrediente en la lista secundaria "No se descuenta", con su razón a la derecha),
+> `receipt-review.tsx:244` (metadato `xs` atenuado), `household-card.tsx:141` (nombre de
+> hogar en chip) y `spending-panel.tsx:68,247` (labels/metadatos del panel de gasto).
+> `npx tsc --noEmit` y `npx eslint .` limpios.
+
+---
+
+### F2 — Chips de caducidad aditivos (cada toque suma tiempo)
+
+**Idea original:** en la pantalla de caducidades, poder añadir más tiempo con los
+botones — 2 semanas, 3 semanas, o 1 mes y una semana.
+
+**Contexto actual**
+- `src/features/inventory/components/expiry-review.tsx`: `useExpiryPresets()` (~líneas
+  27–47) genera 3 presets **exclusivos** que fijan una fecha absoluta (hoy+3d, hoy+7d,
+  hoy+1mes); el render (~líneas 123–139) los pinta como toggles (`aria-pressed`,
+  `variant="default"` si la fecha coincide exactamente; repulsar deselecciona).
+- **El desajuste de fondo:** la etiqueta "+1 semana" ya sugiere suma; el usuario espera
+  que dos toques den 2 semanas y hoy el segundo toque DESELECCIONA. El feedback confirma
+  ese modelo mental aditivo.
+- El drawer de edición (`edit-item-drawer.tsx`) y el alta (`add-product-drawer.tsx`)
+  tienen `<input type="date">` sin presets — mismo campo, sin atajos.
+
+**Diseño propuesto**
+- **Semántica aditiva:** cada toque suma sobre la fecha seleccionada actual (o sobre HOY
+  si está vacía). "+1 semana" ×2 → hoy+14 días; "+1 mes" y luego "+1 semana" → hoy+1mes+7d.
+  Mantener los 3 chips actuales (+3 días · +1 semana · +1 mes); NO añadir más presets
+  (ver "Notas de alcance").
+- Los chips dejan de ser toggles: quitar `aria-pressed` y el estado seleccionado; son
+  **botones de acción** (siempre `variant="outline"`). La fecha resultante ya se ve en el
+  `<input type="date">` de debajo (feedback inmediato); editarla a mano sigue funcionando
+  y los chips suman sobre lo editado.
+- Botón **"Borrar"** (texto, no solo icono) junto a los chips, visible solo cuando hay
+  fecha, que resetea a null (la caducidad es opcional y debe poder quitarse fácil).
+- Sumar meses con la misma lógica actual (`setMonth`, que ya maneja fin de mes); cap
+  defensivo: ignorar toques que dejarían la fecha a más de +5 años.
+- **Extraer el grupo** (chips + input + borrar + hint de D7) a un componente compartido
+  `src/features/inventory/components/expiry-quick-picker.tsx` y usarlo en los TRES
+  puntos: revisión post-compra, `edit-item-drawer.tsx` y `add-product-drawer.tsx`
+  (estos dos ganan los atajos que hoy no tienen).
+
+**Pasos**
+- [ ] Componente `ExpiryQuickPicker` (chips aditivos + input date + borrar + hint D7).
+- [ ] Integrarlo en `expiry-review.tsx` (sustituye a los presets exclusivos).
+- [ ] Integrarlo en `edit-item-drawer.tsx` y `add-product-drawer.tsx`.
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Dos toques a "+1 semana" → fecha = hoy + 14 días, visible en el input.
+- "+1 mes" y luego "+1 semana" → hoy + 1 mes + 7 días.
+- "Borrar" limpia la fecha; guardar sin fecha sigue siendo válido (es opcional).
+- Los mismos atajos aparecen al editar un producto y al darlo de alta.
+
+---
+
+### F3 — Ingredientes de receta vinculados al catálogo con stock visible
+
+**Idea original:** en recetas, que el ingrediente se sincronice con los que ya tienes,
+para saber si tienes suficiente o no.
+
+**Contexto actual — la infraestructura ya existe casi entera**
+- `recipe_ingredients.product_id` existe desde `20260719143638_menus.sql`; al guardar,
+  `src/features/recipes/actions.ts` ya vincula por `normalized_name` exacto (B1), pero
+  de forma **silenciosa**: el usuario no ve ni controla el vínculo.
+- El campo ingrediente de `src/features/recipes/components/recipe-form.tsx` es un
+  `<Input>` de texto libre sin sugerencias.
+- Componentes reutilizables: `ProductAutocomplete`
+  (`src/features/shopping-list/components/product-autocomplete.tsx`, A2 — texto libre
+  con sugerencias) y `ProductCombobox` (`src/components/product-combobox.tsx`, E1 —
+  selección pura). Para este caso encaja el patrón **autocomplete** (el ingrediente DEBE
+  poder ser texto libre: "perejil fresco" puede no estar en el catálogo).
+- Stock: `getInventory()` (`src/features/inventory/queries.ts`); `unitFamily` y
+  `baseUnitFactor` en `src/lib/units.ts` permiten comparar g↔kg y ml↔l con exactitud.
+
+**Diseño propuesto**
+- **Autocompletado en el campo ingrediente:** al escribir, sugerencias del catálogo del
+  hogar (patrón A2: filtro con `normalizeName`, orden por habitualidad). Elegir una
+  sugerencia fija `productId` explícito en el estado de la fila (`IngredientRow` gana
+  `productId: string | null`); seguir escribiendo texto libre lo deja en null. Adaptar
+  `ProductAutocomplete` o crear una variante ligera — decidir al implementar y documentar;
+  NO duplicar la lógica de filtrado.
+- **Badge de stock por fila** (en vivo, junto al nombre): con `productId` resuelto
+  (elegido, o match exacto por nombre normalizado mientras escribe):
+  - Sin stock → badge neutro "No lo tienes".
+  - Con stock y **misma familia de unidades** que la cantidad pedida → comparar en unidad
+    base (`baseUnitFactor`): "Tienes 500 g" en `success` si alcanza, `warning` si no.
+  - Con stock y familia distinta (receta en g, inventario en ud) → mostrar SOLO el stock
+    ("Tienes 2 ud"), sin veredicto de suficiencia (ver "Notas de alcance").
+  - Sin cantidad en la receta → solo presencia ("En casa" / "No lo tienes").
+- **Persistencia:** `RecipeInput`/`recipeInputSchema` (`schemas.ts`) ganan `productId`
+  opcional por ingrediente; al guardar, el id explícito tiene **prioridad** sobre el
+  linkado silencioso por nombre (que queda como fallback para filas de texto libre).
+  Validar server-side que el `productId` pertenece al hogar (mismo patrón que E7).
+- **Datos:** la página del formulario (Server Component) carga catálogo ligero + stock
+  agregado por producto (suma de cantidades de todas las ubicaciones + unidad) y los pasa
+  al form. Snapshot al abrir es suficiente; sin realtime.
+- **Beneficio lateral:** los ingredientes con `product_id` explícito son el nivel 1 del
+  matching de `computeMissingIngredients` (D3) — "añadir a la lista lo que falte" gana
+  precisión gratis.
+
+**Pasos**
+- [ ] Estado + schema: `productId` por fila de ingrediente, validado server-side.
+- [ ] Autocompletado del catálogo en el campo ingrediente (reutilizar/adaptar A2).
+- [ ] Badge de stock con las reglas de familia de unidades (helpers de `src/lib/units.ts`).
+- [ ] Guardar con prioridad del id explícito sobre el matching por nombre.
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Escribir "le" sugiere "Leche" con su stock; elegirla vincula el ingrediente y al
+  reabrir la receta el vínculo persiste.
+- Receta que pide 300 g teniendo 500 g en inventario → "Tienes 500 g" en verde;
+  teniendo 100 g → aviso de insuficiente.
+- Receta que pide 300 g de algo que el inventario mide en ud → muestra el stock sin
+  veredicto (nunca compara familias distintas).
+- Un ingrediente de texto libre sin match sigue funcionando exactamente como hoy.
+- Tras vincular, "añadir a la lista lo que falte" del menú matchea ese ingrediente por
+  nivel 1 (product_id).
+
+---
+
+### F4 — Pack de compra: "1 caja = N unidades" al entrar al inventario
+
+**Idea original:** para productos que vienen en cajas, un medidor de conversión tipo
+1 caja = 30 unidades, para que al comprarlo entren 30 sobres al inventario y luego ir
+gastándolos de uno en uno.
+
+**Contexto actual**
+- `products` solo tiene `default_unit` (`20260719121808_inventory.sql`); no hay noción
+  de pack. El ticket dice "1 ud" (la caja) y entra 1 ud al inventario, aunque dentro
+  haya 30 sobres que se consumen sueltos con el stepper.
+- Puntos de entrada al inventario por compra: `confirmReceiptAction`
+  (`src/features/receipts/actions.ts`) y `checkoutAction`
+  (`src/features/shopping-list/actions.ts`, ~líneas 255–290). La cantidad de línea ya es
+  editable en la revisión del ticket (`receipt-review.tsx`).
+- Política E3 vigente: unidades distintas no se suman en silencio. El pack NO la toca
+  (ver "Notas de alcance"): es un multiplicador de entrada para contables, no una
+  conversión entre familias.
+
+**Diseño propuesto**
+- **Migración** `products_pack_size`:
+  - `alter table public.products add column pack_size numeric(10, 2) check (pack_size > 0);`
+  - `null` = sin pack (comportamiento actual intacto). Semántica: *"cada unidad comprada
+    añade `pack_size` unidades al inventario"*. Tipos a mano en `src/lib/supabase/types.ts`.
+- **UI de producto:** campo numérico opcional "Unidades por compra" en
+  `edit-item-drawer.tsx` y `add-product-drawer.tsx`, con hint:
+  *"Si lo compras en cajas (p. ej. 30 sobres), pon cuántas unidades trae cada compra."*
+  Solo visible/aplicable cuando la unidad del producto es `ud` (`isCountable`).
+- **Aplicar en la entrada:** en `confirmReceiptAction` y `checkoutAction`, si el producto
+  tiene `pack_size` y el movimiento es en `ud`, la cantidad que entra al inventario es
+  `cantidad × pack_size`. El precio del ticket NO se toca (sigue siendo por línea/caja).
+- **Transparencia en la revisión del ticket:** en la línea afectada, mostrar la conversión
+  ("1 ud × pack de 30 → entran 30 ud") ANTES de confirmar; si un día se compra suelto,
+  el usuario edita la cantidad o el resultado a mano (la cantidad de línea ya es editable).
+- **(Opcional, si sale barato)** en `/precios`: mostrar €/unidad junto al precio de compra
+  dividiendo por `pack_size` cuando exista (coherente con `unitFamily`: solo contables).
+- **Consumo sin cambios:** el stepper sigue gastando de 1 en 1; `min_quantity` y "Quedan
+  pocas" operan sobre unidades sueltas, que es lo que el usuario cuenta.
+
+**Pasos**
+- [ ] Migración `pack_size` (autorización antes de `npx supabase db push`) + tipos a mano.
+- [ ] Campo "Unidades por compra" en los dos drawers (solo `ud`, con hint).
+- [ ] Multiplicador en `confirmReceiptAction` y `checkoutAction` + aviso de conversión
+      visible en la revisión del ticket.
+- [ ] (Opcional) €/unidad en `/precios` cuando hay pack.
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Con "Croquetas" configurado a pack 30: confirmar un ticket con 1 ud añade 30 ud al
+  inventario y la revisión muestra la conversión antes de confirmar.
+- Checkout de la lista con 2 ud de ese producto → entran 60 ud.
+- Productos sin `pack_size` no cambian en absoluto (null = hoy).
+- El historial de precios sigue registrando el precio por línea de ticket (por caja),
+  sin duplicar ni dividir importes.
+
+---
+
+### F5 — Historial de movimientos de stock (consumido / tirado / repuesto)
+
+**Idea original:** un historial de movimientos con fecha para revisar qué se ha ido
+gastando esta semana o reponiendo.
+
+**Contexto actual**
+- `inventory_events` existe desde M8 (`20260721190000_inventory_events.sql`): household,
+  producto, cantidad, unidad, `kind ('consumed'|'discarded')`, `created_by`, `created_at`,
+  con índice `(household_id, created_at)`. **Pero solo registra bajas por borrado**
+  (`deleteInventoryAction`, `src/features/inventory/actions.ts` ~línea 391).
+- Los dos flujos principales NO dejan rastro: el stepper +/−
+  (`setInventoryQuantityAction`, ~línea 176 — optimista, alta frecuencia, sin
+  `revalidatePath`) y las altas por compra (`checkoutAction`, `confirmReceiptAction`).
+- La RLS de `inventory_events` solo tiene políticas de select/insert/delete (sin UPDATE)
+  — el folding del diseño necesita añadirla.
+- `getHouseholdMembers` (D1) ya da los display names para mostrar quién hizo cada movimiento.
+
+**Diseño propuesto**
+- **Migración** `inventory_events_history`:
+  - `alter type public.inventory_event_kind add value if not exists 'restocked';`
+    (ojo Postgres: el valor nuevo NO puede usarse en la misma migración/transacción que
+    lo crea — no meter backfills que lo usen en este archivo).
+  - Política y grant de **UPDATE** sobre `inventory_events` (miembros del hogar), necesarios
+    para el folding.
+- **Escrituras** (todas las cantidades ya convertidas por pack si F4 está hecha):
+  - `setInventoryQuantityAction`: leer la cantidad previa en la misma acción, calcular el
+    delta y registrar `consumed` (delta negativo) o `restocked` (positivo) con `|delta|`.
+    **Folding anti-ruido:** si el último evento del mismo (household, product, kind,
+    created_by) tiene `created_at` en los últimos ~15 minutos, actualizar su cantidad
+    sumando en vez de insertar otro (por eso la política de UPDATE). Documentar la ventana
+    como constante.
+  - `checkoutAction` y `confirmReceiptAction`: un evento `restocked` por producto realmente
+    añadido al inventario (respetando E3: las líneas no sumadas por unidad distinta no
+    generan evento).
+  - `deleteInventoryAction`: sin cambios (ya registra `consumed`/`discarded`).
+  - Los fallos al registrar evento NO deben romper la operación principal (mismo patrón
+    best-effort que el insert actual de M8).
+- **Lectura/UI:** página `src/app/(app)/inventario/historial/page.tsx` enlazada desde la
+  cabecera de `/inventario` (icono reloj con `aria-label`, no robar espacio a E4):
+  - Server Component; query de eventos de los últimos 30 días (el índice
+    `(household_id, created_at)` ya lo cubre), join con producto y miembros.
+  - Lista agrupada por día ("Hoy", "Ayer", fecha) con icono/color por tipo — semántica de
+    tokens: `success` repuesto, neutro consumido, `destructive` tirado —, producto,
+    `±cantidad unidad` y quién.
+  - Resumen de la semana en cabecera: "Esta semana: +X repuestos · −Y consumidos ·
+    −Z tirados" (conteo simple de eventos; la valorización en euros del desperdicio ya
+    vive en el panel de gasto de M8 — no duplicarla aquí).
+- **Fuera de alcance:** editar/borrar eventos desde la UI, retención/purga (>30 días solo
+  deja de mostrarse, no se borra), historial por producto individual (si el global se queda
+  corto, se añade luego un filtro; no construirlo ahora).
+
+**Pasos**
+- [ ] Migración (`restocked` + política/grant de UPDATE) con autorización + tipos a mano.
+- [ ] Eventos con folding en `setInventoryQuantityAction` (delta server-side).
+- [ ] Eventos `restocked` en `checkoutAction` y `confirmReceiptAction`.
+- [ ] Página `/inventario/historial` (30 días, agrupada por día, resumen semanal) + enlace.
+- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+
+**Criterios de aceptación**
+- Bajar 3 ud con el stepper (3 toques seguidos) produce UN evento `consumed` de 3 ud
+  (folding), visible en el historial con fecha y autor.
+- Confirmar un ticket genera un `restocked` por producto añadido; finalizar compra de la
+  lista, también.
+- El historial distingue de un vistazo consumido/tirado/repuesto con tokens semánticos y
+  agrupa por día; el resumen semanal cuadra con los eventos listados.
+- Borrar un item tirándolo sigue apareciendo como `discarded` (M8 intacto) y el panel de
+  gasto no cambia.
+
+---
+
+> **Prompt para el siguiente agente (Bloque F):**
+>
+> ```
+> Continúa con el proyecto Fill Good (C:\Users\Jorge\Desktop\Food). Lee primero AGENTS.md
+> (sistema de diseño: solo tokens semánticos, touch targets ≥44px, ResponsiveModal para
+> overlays, UI en español) y las "Instrucciones para el agente" al inicio de TODO.md.
+> Los bloques A–E están terminados; implementa el Bloque F, tarea a tarea y con un commit
+> por tarea, en este orden: F1 → F2 → F3 → F4 → F5 (F1–F3 son independientes; F4 antes
+> que F5 porque el historial debe registrar cantidades ya convertidas por pack).
+>
+> Estado de la BD: proyecto Supabase enlazado por CLI (supabase/.temp/linked-project.json).
+> Verifica el estado con `npx supabase migration list --linked` (solo lectura). Las
+> migraciones nuevas (F4 y F5) requieren AUTORIZACIÓN del usuario antes de
+> `npx supabase db push`. Los tipos en src/lib/supabase/types.ts se mantienen a mano
+> (NO regenerar con la CLI).
+>
+> Cada tarea del Bloque F en TODO.md es autocontenida (contexto con rutas de archivo,
+> diseño propuesto, pasos y criterios de aceptación). No amplíes el alcance: lo descartado
+> está en "Notas de alcance" (en particular: chips de caducidad ADITIVOS en vez de más
+> presets; suficiencia de ingredientes solo dentro de la misma familia de unidades;
+> pack_size NO es conversión de unidades; folding de eventos del stepper, nunca un evento
+> por pulsación; historial append-only sin lotes). Al terminar cada tarea:
+> `npx tsc --noEmit` y `npx eslint .` limpios, verificar los criterios en el preview
+> cuando sea posible (límite conocido: login de Clerk no verificable en headless), marcar
+> sus checkboxes y el estado global, y dejar una "Nota de implementación" bajo la tarea
+> siguiendo el formato de las de A–E.
 > ```

@@ -815,7 +815,7 @@ function CookedDeductionsDrawer({
                   className="flex items-center justify-between gap-3 rounded-xl border p-3"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
+                    <p className="text-sm font-medium break-words line-clamp-2">
                       {it.productName}
                     </p>
                     <p className="text-xs text-muted-foreground">
