@@ -5,7 +5,17 @@ import { PageHeader } from "@/components/layout/page-header";
 import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
 import { MenuView } from "@/features/menus/components/menu-view";
 import { MenuRules } from "@/features/menus/components/menu-rules";
-import { getMenuEntries, getMenuRules, getWeekMenu } from "@/features/menus/queries";
+import {
+  MenuPrefs,
+  MenuPrefsOnboarding,
+} from "@/features/menus/components/menu-prefs";
+import {
+  getMenuEntries,
+  getMenuPrefs,
+  getMenuRules,
+  getWeekMenu,
+} from "@/features/menus/queries";
+import { activeSlots } from "@/features/menus/slots";
 import { getRecipeCostsForIds, getSavedRecipes } from "@/features/recipes/queries";
 import { getWeekStart } from "@/lib/dates";
 
@@ -23,11 +33,13 @@ export default async function MenusPage({
       : getWeekStart();
 
   const menu = await getWeekMenu(weekStart);
-  const [entries, rules, recipes] = await Promise.all([
+  const [entries, rules, recipes, prefs] = await Promise.all([
     menu ? getMenuEntries(menu.id) : Promise.resolve([]),
     getMenuRules(),
     getSavedRecipes(),
+    getMenuPrefs(),
   ]);
+  const slots = activeSlots(prefs.planBreakfast);
 
   // Coste estimado de la semana (M7): suma de los platos con receta. Es parcial
   // si algún plato no tiene precio de todos sus ingredientes o no tiene receta.
@@ -71,11 +83,14 @@ export default async function MenusPage({
           menuId={menu?.id ?? null}
           entries={entries}
           weekCost={weekCost}
+          slots={slots}
         />
-        <div className="print:hidden">
+        <div className="flex flex-col gap-4 print:hidden">
+          <MenuPrefs prefs={prefs} />
           <MenuRules rules={rules} recipes={recipes} />
         </div>
       </div>
+      {!prefs.configured ? <MenuPrefsOnboarding /> : null}
     </PageContainer>
   );
 }

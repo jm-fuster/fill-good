@@ -133,6 +133,56 @@ export async function getMenuRules(): Promise<MenuRule[]> {
   }));
 }
 
+// ---------------------------------------------------------------------------
+// Preferencias del menú del hogar (N3)
+// ---------------------------------------------------------------------------
+
+export type MenuGoal = "balanced" | "light" | "muscle" | "gain";
+export type DietStyle = "omnivore" | "vegetarian" | "vegan" | "gluten_free";
+
+export type MenuPrefs = {
+  goal: MenuGoal;
+  dietStyle: DietStyle;
+  avoidText: string | null;
+  servings: number;
+  planBreakfast: boolean;
+  /** Si existe fila: el onboarding ya se resolvió (aunque fuese "Ahora no"). */
+  configured: boolean;
+};
+
+/** Defaults del perfil de menús cuando el hogar aún no lo ha configurado. */
+export const DEFAULT_MENU_PREFS: MenuPrefs = {
+  goal: "balanced",
+  dietStyle: "omnivore",
+  avoidText: null,
+  servings: 2,
+  planBreakfast: false,
+  configured: false,
+};
+
+/**
+ * Preferencias del menú del hogar. Sin fila → defaults con `configured: false`
+ * (el generador se comporta como antes y la UI ofrece el onboarding). RLS
+ * limita la fila al hogar del usuario.
+ */
+export async function getMenuPrefs(): Promise<MenuPrefs> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("household_menu_prefs")
+    .select("goal, diet_style, avoid_text, servings, plan_breakfast")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return DEFAULT_MENU_PREFS;
+  return {
+    goal: data.goal as MenuGoal,
+    dietStyle: data.diet_style as DietStyle,
+    avoidText: data.avoid_text,
+    servings: data.servings,
+    planBreakfast: data.plan_breakfast,
+    configured: true,
+  };
+}
+
 export type RecipeDetail = {
   name: string;
   description: string | null;

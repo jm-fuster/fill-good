@@ -74,6 +74,43 @@ export type Database = {
           },
         ];
       };
+      household_menu_prefs: {
+        Row: {
+          household_id: string;
+          goal: string;
+          diet_style: string;
+          avoid_text: string | null;
+          servings: number;
+          plan_breakfast: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          household_id: string;
+          goal?: string;
+          diet_style?: string;
+          avoid_text?: string | null;
+          servings?: number;
+          plan_breakfast?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          household_id?: string;
+          goal?: string;
+          diet_style?: string;
+          avoid_text?: string | null;
+          servings?: number;
+          plan_breakfast?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "household_menu_prefs_household_id_fkey";
+            columns: ["household_id"];
+            referencedRelation: "households";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       categories: {
         Row: {
           id: string;

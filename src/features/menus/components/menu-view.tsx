@@ -43,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { saveGeneratedRecipeAction } from "@/features/recipes/actions";
 import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import type { MenuEntry } from "../queries";
+import type { SlotDef } from "../slots";
 import type { MissingCandidate } from "../missing";
 import type { CookedDeduction } from "../cooked";
 import type { TonightCard } from "../tonight";
@@ -69,11 +70,6 @@ function todayISO(): string {
   return format(new Date(), "yyyy-MM-dd");
 }
 
-const SLOTS = [
-  { key: "lunch", label: "Comida" },
-  { key: "dinner", label: "Cena" },
-] as const;
-
 /** Estado de edición del drawer. `entryId === null` ⇒ añadir un plato nuevo. */
 type Editing = {
   entryId: string | null;
@@ -96,11 +92,13 @@ export function MenuView({
   menuId,
   entries,
   weekCost,
+  slots,
 }: {
   weekStart: string;
   menuId: string | null;
   entries: MenuEntry[];
   weekCost: { total: number; complete: boolean } | null;
+  slots: SlotDef[];
 }) {
   const router = useRouter();
   const [generating, startGenerate] = useTransition();
@@ -204,7 +202,7 @@ export function MenuView({
     window.print();
   }
 
-  function openAdd(date: string, slot: (typeof SLOTS)[number]) {
+  function openAdd(date: string, slot: SlotDef) {
     setEditing({
       entryId: null,
       date,
@@ -218,11 +216,7 @@ export function MenuView({
     });
   }
 
-  function openEdit(
-    date: string,
-    slot: (typeof SLOTS)[number],
-    entry: MenuEntry,
-  ) {
+  function openEdit(date: string, slot: SlotDef, entry: MenuEntry) {
     setEditing({
       entryId: entry.id,
       date,
@@ -345,8 +339,13 @@ export function MenuView({
             <p className="mb-2 text-sm font-semibold capitalize">
               {format(parseISO(date), "EEEE d", { locale: es })}
             </p>
-            <div className="grid grid-cols-2 items-start gap-2">
-              {SLOTS.map((slot) => {
+            <div
+              className={cn(
+                "grid items-start gap-2",
+                slots.length === 3 ? "grid-cols-3" : "grid-cols-2",
+              )}
+            >
+              {slots.map((slot) => {
                 const slotEntries = bySlot.get(`${date}|${slot.key}`) ?? [];
                 return (
                   <div key={slot.key} className="flex flex-col gap-1.5">
@@ -439,6 +438,7 @@ export function MenuView({
       <EditEntryDrawer
         editing={editing}
         weekStart={weekStart}
+        slots={slots}
         onClose={() => setEditing(null)}
         onSaved={() => {
           setEditing(null);
@@ -481,6 +481,7 @@ export function MenuView({
 function EditEntryDrawer({
   editing,
   weekStart,
+  slots,
   onClose,
   onSaved,
   onCookedChange,
@@ -488,6 +489,7 @@ function EditEntryDrawer({
 }: {
   editing: Editing | null;
   weekStart: string;
+  slots: SlotDef[];
   onClose: () => void;
   onSaved: () => void;
   onCookedChange: (cookedAt: string | null) => void;
@@ -661,9 +663,14 @@ function EditEntryDrawer({
 
         {picker ? (
           <div className="flex flex-col gap-3 px-4">
-            <div className="grid grid-cols-2 gap-2">
+            <div
+              className={cn(
+                "grid gap-2",
+                slots.length === 3 ? "grid-cols-3" : "grid-cols-2",
+              )}
+            >
               {days.flatMap((date) =>
-                SLOTS.map((slot) => {
+                slots.map((slot) => {
                   const isOrigin =
                     editing?.date === date && editing.slot === slot.key;
                   // Mover: no al propio hueco, ni a un futuro un plato cocinado.

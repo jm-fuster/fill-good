@@ -4,7 +4,8 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getMenuEntries } from "@/features/menus/queries";
+import { getMenuEntries, getMenuPrefs } from "@/features/menus/queries";
+import { activeSlots } from "@/features/menus/slots";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { getWeekDays } from "@/lib/dates";
 
@@ -21,11 +22,6 @@ const COLORS = {
   border: "#e5e7eb",
   slotBg: "#f6f8f7",
 };
-
-const SLOTS = [
-  { key: "lunch", label: "Comida" },
-  { key: "dinner", label: "Cena" },
-] as const;
 
 function capitalize(value: string): string {
   return value.length > 0 ? value[0]!.toUpperCase() + value.slice(1) : value;
@@ -53,12 +49,14 @@ export async function GET(
     return new Response("Menú no encontrado", { status: 404 });
   }
 
-  const [household, entries] = await Promise.all([
+  const [household, entries, prefs] = await Promise.all([
     getCurrentHousehold(),
     getMenuEntries(menuId),
+    getMenuPrefs(),
   ]);
 
   const days = getWeekDays(menu.week_start);
+  const slots = activeSlots(prefs.planBreakfast);
 
   // Platos por hueco (ya vienen ordenados por fecha, slot y posición).
   const bySlot = new Map<string, string[]>();
@@ -150,7 +148,7 @@ export async function GET(
               <div
                 style={{ display: "flex", flexDirection: "row", flex: 1, gap: 12 }}
               >
-                {SLOTS.map((slot) => {
+                {slots.map((slot) => {
                   const dishes = bySlot.get(`${date}|${slot.key}`) ?? [];
                   return (
                     <div

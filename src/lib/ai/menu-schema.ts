@@ -36,8 +36,8 @@ export const menuSchema = z.object({
         meals: z.array(
           z.object({
             slot: z
-              .enum(["lunch", "dinner"])
-              .describe("lunch = comida, dinner = cena."),
+              .enum(["breakfast", "lunch", "dinner"])
+              .describe("breakfast = desayuno, lunch = comida, dinner = cena."),
             dishes: z
               .array(
                 z.object({

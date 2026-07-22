@@ -35,7 +35,8 @@ import {
   getSavedRecipesForMenu,
 } from "@/features/recipes/queries";
 import { rankTonight, type TonightCard, type TonightSoonInfo } from "./tonight";
-import { getMenuEntries, getMenuRules } from "./queries";
+import { getMenuEntries, getMenuPrefs, getMenuRules } from "./queries";
+import { activeSlots } from "./slots";
 import {
   computeMissingIngredients,
   type MissingCandidate,
@@ -51,7 +52,12 @@ import {
   type MenuMeal,
   type ValidatableRule,
 } from "./rules";
-import { menuRuleInputSchema, type MenuRuleInput } from "./schemas";
+import {
+  menuPrefsInputSchema,
+  menuRuleInputSchema,
+  type MenuPrefsInput,
+  type MenuRuleInput,
+} from "./schemas";
 
 export type MenuState = { error?: string; ok?: boolean; added?: number };
 
@@ -189,15 +195,18 @@ export async function generateMenuAction(
     .filter((l): l is MenuPinnedLine => l !== null && l.name !== "");
 
   // --- Contexto completo para el prompt ---
-  const [inventory, savedRecipes, signals, allRules] = await Promise.all([
-    getInventory(),
-    getSavedRecipesForMenu(),
-    getRecipeSignals(household.id),
-    getMenuRules(),
-  ]);
+  const [inventory, savedRecipes, signals, allRules, prefs] =
+    await Promise.all([
+      getInventory(),
+      getSavedRecipesForMenu(),
+      getRecipeSignals(household.id),
+      getMenuRules(),
+      getMenuPrefs(),
+    ]);
 
   const season = getCurrentSeason();
   const activeRules = allRules.filter((r) => r.active);
+  const slotKeys = activeSlots(prefs.planBreakfast).map((s) => s.key);
 
   // Ingredientes "en stock": por product_id o por nombre normalizado (cantidad > 0).
   const inStockProductIds = new Set(
@@ -269,6 +278,13 @@ export async function generateMenuAction(
         recipes: recipeLines,
         rules: ruleLines,
         pinned: pinnedLines,
+        prefs: {
+          goal: prefs.goal,
+          dietStyle: prefs.dietStyle,
+          avoidText: prefs.avoidText,
+          servings: prefs.servings,
+          planBreakfast: prefs.planBreakfast,
+        },
       }),
     });
     generated = object;
@@ -301,13 +317,12 @@ export async function generateMenuAction(
   // un hueco ocupado por platos conservados se rellena con esos platos marcados
   // como `immutable` (el validador los cuenta pero no los toca) y se ignoran los
   // platos que la IA haya propuesto para ese mismo hueco.
-  const slots: ("lunch" | "dinner")[] = ["lunch", "dinner"];
   const generatedByIndex = new Map(generated.days.map((d) => [d.day_index, d]));
   const structDays: MenuDay[] = [];
   for (let dayIndex = 0; dayIndex < weekDays.length; dayIndex += 1) {
     const date = weekDays[dayIndex];
     const genDay = generatedByIndex.get(dayIndex);
-    const meals: MenuMeal[] = slots.map((slot) => {
+    const meals: MenuMeal[] = slotKeys.map((slot) => {
       // Hueco conservado: sus platos son inmutables; ignoramos la propuesta IA.
       if (occupiedSlots.has(`${date}|${slot}`)) {
         const dishes: MenuDish[] = preserved
@@ -414,7 +429,7 @@ export async function generateMenuAction(
             name: dish.name,
             normalized_name: normalizeName(dish.name),
             description: payload?.description ?? null,
-            servings: 2,
+            servings: prefs.servings,
             meal_types: [meal.slot],
             source: "ai",
             created_by: userId,
@@ -679,13 +694,14 @@ export async function rerollMenuEntryAction(
     .maybeSingle();
   if (!entry) return { error: "No se encontró la entrada del menú." };
 
-  const [inventory, savedRecipes, signals, allRules, menuEntries] =
+  const [inventory, savedRecipes, signals, allRules, menuEntries, prefs] =
     await Promise.all([
       getInventory(),
       getSavedRecipesForMenu(),
       getRecipeSignals(household.id),
       getMenuRules(),
       getMenuEntries(entry.menu_id),
+      getMenuPrefs(),
     ]);
 
   const season = getCurrentSeason();
@@ -768,6 +784,13 @@ export async function rerollMenuEntryAction(
         recipes: recipeLines,
         rules: ruleLines,
         otherDishes,
+        prefs: {
+          goal: prefs.goal,
+          dietStyle: prefs.dietStyle,
+          avoidText: prefs.avoidText,
+          servings: prefs.servings,
+          planBreakfast: prefs.planBreakfast,
+        },
       }),
     });
     dish = object;
@@ -800,7 +823,7 @@ export async function rerollMenuEntryAction(
         name: dish.recipe_name,
         normalized_name: normalizeName(dish.recipe_name),
         description: dish.description ?? null,
-        servings: 2,
+        servings: prefs.servings,
         meal_types: [entry.meal_slot],
         source: "ai",
         created_by: userId,
@@ -1373,6 +1396,47 @@ export async function deleteRuleAction(ruleId: string): Promise<RuleState> {
 
   const { error } = await supabase.from("menu_rules").delete().eq("id", ruleId);
   if (error) return { error: "No se pudo borrar la regla." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Perfil de menús del hogar (N3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Guarda (upsert) el perfil de menús del hogar. Crear la fila —aunque sea con
+ * defaults ("Ahora no")— marca el onboarding como resuelto y no vuelve a
+ * aparecer. Revalida /menus para que el nuevo nº de huecos (desayuno) y el
+ * sesgo del prompt tengan efecto inmediato.
+ */
+export async function saveMenuPrefsAction(
+  input: MenuPrefsInput,
+): Promise<RuleState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const parsed = menuPrefsInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  const d = parsed.data;
+  const supabase = createServerSupabaseClient();
+
+  const { error } = await supabase.from("household_menu_prefs").upsert(
+    {
+      household_id: household.id,
+      goal: d.goal,
+      diet_style: d.dietStyle,
+      avoid_text: d.avoidText,
+      servings: d.servings,
+      plan_breakfast: d.planBreakfast,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "household_id" },
+  );
+  if (error) return { error: "No se pudieron guardar las preferencias." };
 
   revalidatePath("/menus");
   return { ok: true };
