@@ -46,6 +46,7 @@ import {
   getProductAliasesAction,
   type ProductAlias,
 } from "@/features/receipts/actions";
+import { ExpiryQuickPicker } from "./expiry-quick-picker";
 
 const NO_CATEGORY = "__none__";
 
@@ -178,6 +179,15 @@ export function EditItemDrawer({
     setCategoryId(entry.categoryId ?? "");
   }
 
+  const [expiryDate, setExpiryDate] = useState<string | null>(
+    entry.expiryDate,
+  );
+  const [serverExpiryDate, setServerExpiryDate] = useState(entry.expiryDate);
+  if (serverExpiryDate !== entry.expiryDate) {
+    setServerExpiryDate(entry.expiryDate);
+    setExpiryDate(entry.expiryDate);
+  }
+
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -307,21 +317,12 @@ export function EditItemDrawer({
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-expiry">
-              Caducidad{" "}
-              <span className="text-muted-foreground">(opcional)</span>
-            </Label>
-            <Input
-              id="edit-expiry"
-              name="expiryDate"
-              type="date"
-              defaultValue={entry.expiryDate ?? ""}
-            />
-            <p className="text-sm text-muted-foreground">
-              Si tienes varios, pon la fecha del que caduque antes.
-            </p>
-          </div>
+          <ExpiryQuickPicker
+            id="edit-expiry"
+            name="expiryDate"
+            value={expiryDate}
+            onChange={setExpiryDate}
+          />
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit-min">

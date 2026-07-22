@@ -29,6 +29,7 @@ import { LOCATION_OPTIONS, UNIT_OPTIONS } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import type { Category } from "../queries";
 import { addInventoryAction } from "../actions";
+import { ExpiryQuickPicker } from "./expiry-quick-picker";
 
 export function AddProductDrawer({
   categories,
@@ -127,6 +128,7 @@ function AddProductFields({
   const [location, setLocation] = useState<LocationType>("pantry");
   const [unit, setUnit] = useState<UnitType>("ud");
   const [categoryId, setCategoryId] = useState<string>("");
+  const [expiryDate, setExpiryDate] = useState<string | null>(null);
 
   return (
     <>
@@ -224,15 +226,12 @@ function AddProductFields({
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="add-expiry">
-          Caducidad <span className="text-muted-foreground">(opcional)</span>
-        </Label>
-        <Input id="add-expiry" name="expiryDate" type="date" />
-        <p className="text-sm text-muted-foreground">
-          Si tienes varios, pon la fecha del que caduque antes.
-        </p>
-      </div>
+      <ExpiryQuickPicker
+        id="add-expiry"
+        name="expiryDate"
+        value={expiryDate}
+        onChange={setExpiryDate}
+      />
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="add-min">

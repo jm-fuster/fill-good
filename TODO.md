@@ -50,7 +50,7 @@ checkout, stepper) y, si se hacen ambas, F4 va primero (F5 registra cantidades y
 - [x] E9 — Fusionar productos duplicados
 - [x] E10 — Robustez transaccional de la confirmación del ticket (menor)
 - [x] F1 — Nombres de producto legibles en las tarjetas (2 líneas en vez de recorte)
-- [ ] F2 — Chips de caducidad aditivos (cada toque suma tiempo)
+- [x] F2 — Chips de caducidad aditivos (cada toque suma tiempo)
 - [ ] F3 — Ingredientes de receta vinculados al catálogo con stock visible
 - [ ] F4 — Pack de compra: "1 caja = N unidades" al entrar al inventario
 - [ ] F5 — Historial de movimientos de stock (consumido / tirado / repuesto)
@@ -1543,16 +1543,33 @@ botones — 2 semanas, 3 semanas, o 1 mes y una semana.
   (estos dos ganan los atajos que hoy no tienen).
 
 **Pasos**
-- [ ] Componente `ExpiryQuickPicker` (chips aditivos + input date + borrar + hint D7).
-- [ ] Integrarlo en `expiry-review.tsx` (sustituye a los presets exclusivos).
-- [ ] Integrarlo en `edit-item-drawer.tsx` y `add-product-drawer.tsx`.
-- [ ] `npx tsc --noEmit` y `npx eslint .` limpios.
+- [x] Componente `ExpiryQuickPicker` (chips aditivos + input date + borrar + hint D7).
+- [x] Integrarlo en `expiry-review.tsx` (sustituye a los presets exclusivos).
+- [x] Integrarlo en `edit-item-drawer.tsx` y `add-product-drawer.tsx`.
+- [x] `npx tsc --noEmit` y `npx eslint .` limpios.
 
 **Criterios de aceptación**
 - Dos toques a "+1 semana" → fecha = hoy + 14 días, visible en el input.
 - "+1 mes" y luego "+1 semana" → hoy + 1 mes + 7 días.
 - "Borrar" limpia la fecha; guardar sin fecha sigue siendo válido (es opcional).
 - Los mismos atajos aparecen al editar un producto y al darlo de alta.
+
+> **Nota de implementación (F2):** sin migración. Componente compartido nuevo
+> `src/features/inventory/components/expiry-quick-picker.tsx` (controlado: `value`/`onChange`;
+> opcional `name` para que el `<input type="date">` lo recoja en formularios por FormData).
+> Los 3 chips (+3 días · +1 semana · +1 mes) dejan de ser toggles: son botones de acción
+> (`variant="outline"`, sin `aria-pressed`) que SUMAN sobre la fecha actual (o sobre hoy si está
+> vacía) vía `addTime(current, kind, amount)` — `setDate`/`setMonth`, este último maneja fin de
+> mes; cap defensivo que ignora el toque si el resultado superaría +5 años. Botón "Borrar"
+> (icono `X` + texto, `variant="ghost"`) visible solo cuando hay fecha, resetea a null. El input
+> de fecha sigue editable a mano y los chips suman sobre lo editado (feedback inmediato en el
+> propio input). Integrado en los TRES puntos: `expiry-review.tsx` (sustituye los presets
+> exclusivos; `showHint={false}` porque la lista ya muestra el hint D7 una vez arriba),
+> `edit-item-drawer.tsx` (estado `expiryDate` con el patrón de sincronización server ya usado
+> para `useSoon`/`location`/`categoryId`) y `add-product-drawer.tsx` (estado local en
+> `AddProductFields`, se resetea con `key={fieldsKey}`) — estos dos ganan los atajos que antes
+> no tenían. `npx tsc --noEmit` y `npx eslint .` limpios. Verificación en preview móvil pendiente
+> (login de Clerk no verificable en headless).
 
 ---
 
