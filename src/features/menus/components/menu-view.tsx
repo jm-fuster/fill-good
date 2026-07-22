@@ -9,7 +9,9 @@ import {
   ChefHat,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Lightbulb,
+  MoveRight,
   Plus,
   Printer,
   Share2,
@@ -49,7 +51,9 @@ import {
   computeTonightAction,
   confirmCookedDeductionsAction,
   confirmMissingToListAction,
+  duplicateMenuEntryAction,
   generateMenuAction,
+  moveMenuEntryAction,
   removeMenuEntryAction,
   toggleEntryCookedAction,
   updateMenuEntryAction,
@@ -420,14 +424,17 @@ function EditEntryDrawer({
   onProposeDeductions: (recipeName: string, items: CookedDeduction[]) => void;
 }) {
   const [value, setValue] = useState("");
+  const [mode, setMode] = useState<"edit" | "move" | "duplicate">("edit");
   const [pending, startTransition] = useTransition();
   const [savingRecipe, startSaveRecipe] = useTransition();
   const [cooking, startCooking] = useTransition();
+  const [picking, startPicking] = useTransition();
 
   const isNew = editing?.entryId == null;
   const cooked = Boolean(editing?.cookedAt);
   // "Lo cocinamos" solo tiene sentido en entradas ya guardadas y de hoy/pasado.
   const canMarkCooked = Boolean(editing?.entryId && editing.date <= todayISO());
+  const days = getWeekDays(weekStart);
 
   // Sincroniza el input al abrir con un plato distinto (o al pasar a "añadir").
   const [lastKey, setLastKey] = useState<string | null>(null);
@@ -437,6 +444,7 @@ function EditEntryDrawer({
   if (key !== lastKey) {
     setLastKey(key);
     setValue(editing?.current ?? "");
+    setMode("edit");
   }
 
   function save(text: string) {
@@ -510,17 +518,98 @@ function EditEntryDrawer({
     });
   }
 
+  /** Mueve o duplica el plato al hueco (date, slot) elegido en el picker. */
+  function pick(date: string, slot: string) {
+    if (!editing?.entryId) return;
+    const entryId = editing.entryId;
+    startPicking(async () => {
+      const r =
+        mode === "move"
+          ? await moveMenuEntryAction(entryId, date, slot)
+          : await duplicateMenuEntryAction(entryId, date, slot);
+      if (r.error) toast.error(r.error);
+      else {
+        toast.success(mode === "move" ? "Plato movido" : "Plato duplicado");
+        onSaved();
+      }
+    });
+  }
+
+  const picker = mode !== "edit";
+
   return (
     <ResponsiveModal open={editing !== null} onOpenChange={(o) => !o && onClose()}>
       <ResponsiveModalContent>
         <ResponsiveModalHeader>
-          <ResponsiveModalTitle className="capitalize">
-            {editing?.label}
+          <ResponsiveModalTitle className={picker ? undefined : "capitalize"}>
+            {mode === "move"
+              ? "Mover a…"
+              : mode === "duplicate"
+                ? "Duplicar en…"
+                : editing?.label}
           </ResponsiveModalTitle>
           <ResponsiveModalDescription>
-            {isNew ? "Añade un plato a este hueco." : "Edita o quita este plato."}
+            {mode === "move"
+              ? "Elige el día y el hueco de destino."
+              : mode === "duplicate"
+                ? "Elige dónde añadir una copia de este plato."
+                : isNew
+                  ? "Añade un plato a este hueco."
+                  : "Edita o quita este plato."}
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
+
+        {picker ? (
+          <div className="flex flex-col gap-3 px-4">
+            <div className="grid grid-cols-2 gap-2">
+              {days.flatMap((date) =>
+                SLOTS.map((slot) => {
+                  const isOrigin =
+                    editing?.date === date && editing.slot === slot.key;
+                  // Mover: no al propio hueco, ni a un futuro un plato cocinado.
+                  const blocked =
+                    mode === "move" &&
+                    (isOrigin || (cooked && date > todayISO()));
+                  const disabled = blocked || picking;
+                  return (
+                    <button
+                      key={`${date}|${slot.key}`}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => pick(date, slot.key)}
+                      aria-current={isOrigin ? "true" : undefined}
+                      className={cn(
+                        "flex min-h-11 flex-col items-start gap-0.5 rounded-lg border p-2 text-left transition-colors",
+                        disabled
+                          ? "opacity-50"
+                          : "hover:bg-muted hover:border-primary",
+                        isOrigin && mode === "move" && "border-primary bg-muted",
+                      )}
+                    >
+                      <span className="text-sm font-medium capitalize">
+                        {format(parseISO(date), "EEE d", { locale: es })}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {isOrigin && mode === "move" ? "Aquí" : slot.label}
+                      </span>
+                    </button>
+                  );
+                }),
+              )}
+            </div>
+            <ResponsiveModalFooter className="gap-2 px-0">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setMode("edit")}
+                disabled={picking}
+              >
+                <ChevronLeft aria-hidden />
+                Volver
+              </Button>
+            </ResponsiveModalFooter>
+          </div>
+        ) : (
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -550,6 +639,26 @@ function EditEntryDrawer({
                   ? "Añadir plato"
                   : "Guardar"}
             </Button>
+            {!isNew ? (
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setMode("move")}
+                >
+                  <MoveRight aria-hidden />
+                  Mover a…
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setMode("duplicate")}
+                >
+                  <Copy aria-hidden />
+                  Duplicar en…
+                </Button>
+              </>
+            ) : null}
             {canMarkCooked ? (
               <Button
                 type="button"
@@ -594,6 +703,7 @@ function EditEntryDrawer({
             </ResponsiveModalClose>
           </ResponsiveModalFooter>
         </form>
+        )}
       </ResponsiveModalContent>
     </ResponsiveModal>
   );

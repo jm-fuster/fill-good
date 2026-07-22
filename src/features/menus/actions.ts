@@ -67,6 +67,29 @@ async function ensureMenu(
   return created?.id ?? null;
 }
 
+/**
+ * Siguiente posición libre (0..n) dentro de un hueco (día + slot) de un menú.
+ * Varios platos comparten hueco distinguiéndose por `position`; el unique
+ * `(menu_id, date, meal_slot, position)` obliga a recalcularla al insertar/mover.
+ */
+async function nextPosition(
+  supabase: SupabaseClient<Database>,
+  menuId: string,
+  date: string,
+  slot: string,
+): Promise<number> {
+  const { data: last } = await supabase
+    .from("menu_entries")
+    .select("position")
+    .eq("menu_id", menuId)
+    .eq("date", date)
+    .eq("meal_slot", slot)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return last ? last.position + 1 : 0;
+}
+
 /** Datos del plato inventado que se transportan por la validación (rules.ts). */
 type DishPayload = {
   description: string | null;
@@ -390,17 +413,7 @@ export async function addMenuEntryAction(
   const menuId = await ensureMenu(supabase, household.id, weekStart);
   if (!menuId) return { error: "No se pudo crear el menú." };
 
-  // Siguiente posición dentro del hueco.
-  const { data: last } = await supabase
-    .from("menu_entries")
-    .select("position")
-    .eq("menu_id", menuId)
-    .eq("date", date)
-    .eq("meal_slot", slot)
-    .order("position", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const position = last ? last.position + 1 : 0;
+  const position = await nextPosition(supabase, menuId, date, slot);
 
   const { error } = await supabase.from("menu_entries").insert({
     menu_id: menuId,
@@ -456,6 +469,94 @@ export async function removeMenuEntryAction(
     .delete()
     .eq("id", entryId);
   if (error) return { error: "No se pudo quitar el plato." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * Mueve un plato a otro hueco de la MISMA semana (N1). Actualiza `date`,
+ * `meal_slot` y `position` (siguiente libre del destino, para no colisionar con
+ * el unique del hueco); conserva `recipe_id`/`free_text` intactos, de modo que
+ * el coste (M7) y el descuento de stock (M2) siguen funcionando. Mover a su
+ * propio hueco es un no-op silencioso; no se puede mover a un día futuro un
+ * plato ya cocinado.
+ */
+export async function moveMenuEntryAction(
+  entryId: string,
+  date: string,
+  slot: string,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const { data: entry } = await supabase
+    .from("menu_entries")
+    .select("menu_id, date, meal_slot, cooked_at")
+    .eq("id", entryId)
+    .maybeSingle();
+  if (!entry) return { error: "No se encontró la entrada del menú." };
+
+  // Mover al hueco de origen: nada que hacer.
+  if (entry.date === date && entry.meal_slot === slot) return { ok: true };
+
+  // Un plato ya cocinado no puede viajar a un día futuro.
+  if (entry.cooked_at) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (new Date(`${date}T00:00:00`) > today) {
+      return {
+        error: "No puedes mover a un día futuro un plato ya cocinado.",
+      };
+    }
+  }
+
+  const position = await nextPosition(supabase, entry.menu_id, date, slot);
+
+  const { error } = await supabase
+    .from("menu_entries")
+    .update({ date, meal_slot: slot, position })
+    .eq("id", entryId);
+  if (error) return { error: "No se pudo mover el plato." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * Duplica un plato en otro hueco de la misma semana (N1): inserta una copia con
+ * el mismo `recipe_id` o `free_text` en el destino. Nunca copia `cooked_at`: la
+ * copia siempre nace sin cocinar.
+ */
+export async function duplicateMenuEntryAction(
+  entryId: string,
+  date: string,
+  slot: string,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const { data: entry } = await supabase
+    .from("menu_entries")
+    .select("menu_id, recipe_id, free_text")
+    .eq("id", entryId)
+    .maybeSingle();
+  if (!entry) return { error: "No se encontró la entrada del menú." };
+
+  const position = await nextPosition(supabase, entry.menu_id, date, slot);
+
+  const { error } = await supabase.from("menu_entries").insert({
+    menu_id: entry.menu_id,
+    household_id: household.id,
+    date,
+    meal_slot: slot,
+    recipe_id: entry.recipe_id,
+    free_text: entry.free_text,
+    position,
+  });
+  if (error) return { error: "No se pudo duplicar el plato." };
 
   revalidatePath("/menus");
   return { ok: true };
@@ -742,16 +843,7 @@ export async function addRecipeToMenuAction(
   const date = todayLocalISO();
   const slot = new Date().getHours() < 16 ? "lunch" : "dinner";
 
-  const { data: last } = await supabase
-    .from("menu_entries")
-    .select("position")
-    .eq("menu_id", menuId)
-    .eq("date", date)
-    .eq("meal_slot", slot)
-    .order("position", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const position = last ? last.position + 1 : 0;
+  const position = await nextPosition(supabase, menuId, date, slot);
 
   const { error } = await supabase.from("menu_entries").insert({
     menu_id: menuId,
