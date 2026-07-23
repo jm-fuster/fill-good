@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { ShoppingCart, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { formatQuantity } from "@/lib/units";
 import { useRealtimeList } from "../use-realtime-list";
 import { toggleItemAction } from "../actions";
 import type { ShoppingModeItem } from "../queries";
+import { useCheckout } from "./use-checkout";
 
 function euro(n: number) {
   return `${n.toFixed(2).replace(".", ",")} €`;
@@ -118,6 +119,11 @@ export function ShoppingMode({
     .filter((i) => !i.isChecked && i.lineCost != null)
     .reduce((s, i) => s + (i.lineCost ?? 0), 0);
   const totalPending = items.filter((i) => !i.isChecked).length;
+  const checkedCount = items.filter((i) => i.isChecked).length;
+
+  // L7 — Finalizar la compra desde aquí (al salir, el wake lock se libera en
+  // el cleanup del efecto). Sin ids que revisar → vuelve a `/lista`.
+  const { checkout, pending: checkingOut } = useCheckout("/lista");
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-background">
@@ -220,6 +226,24 @@ export function ShoppingMode({
           </div>
         )}
       </div>
+
+      {checkedCount > 0 ? (
+        <footer className="border-t bg-background px-4 py-3 pb-safe">
+          <div className="mx-auto w-full max-w-2xl">
+            <Button
+              size="lg"
+              className="w-full shadow-lg"
+              disabled={checkingOut}
+              onClick={checkout}
+            >
+              <ShoppingCart aria-hidden />
+              {checkingOut
+                ? "Guardando…"
+                : `Finalizar compra (${checkedCount}) → inventario`}
+            </Button>
+          </div>
+        </footer>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, ShoppingCart, Store, Trash2 } from "lucide-react";
@@ -22,12 +22,12 @@ import type {
 import {
   addListItemAction,
   addProductToListAction,
-  checkoutAction,
   deleteListItemAction,
   toggleItemAction,
 } from "../actions";
 import { AddItemForm } from "./add-item-form";
 import type { AutocompleteOption } from "./product-autocomplete";
+import { useCheckout } from "./use-checkout";
 import { EditListItemDrawer } from "./edit-list-item-drawer";
 
 function signatureOf(items: ListItem[]) {
@@ -569,30 +569,7 @@ function Habituales({
 }
 
 function CheckoutBar({ count }: { count: number }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-
-  function checkout() {
-    startTransition(async () => {
-      const r = await checkoutAction();
-      if (r?.error) {
-        toast.error(r.error);
-      } else {
-        toast.success(
-          `${r.added} producto${r.added === 1 ? "" : "s"} añadido${
-            r.added === 1 ? "" : "s"
-          } al inventario`,
-        );
-        // Revisión opcional de caducidades de lo recién comprado.
-        const ids = r.inventoryItemIds ?? [];
-        if (ids.length > 0) {
-          router.push(`/inventario/revision?items=${ids.join(",")}`);
-        } else {
-          router.refresh();
-        }
-      }
-    });
-  }
+  const { checkout, pending } = useCheckout();
 
   return (
     <div className="fixed inset-x-0 bottom-16 z-40 mx-auto max-w-lg px-4 pb-safe md:sticky md:inset-x-auto md:bottom-0 md:mx-0 md:max-w-none md:border-t md:bg-background/95 md:px-0 md:pt-3 md:pb-3 md:backdrop-blur-sm">
