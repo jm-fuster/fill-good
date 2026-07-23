@@ -343,8 +343,9 @@ export function ReceiptReview({
         <CardHeader>
           <CardTitle className="text-base">Datos del ticket</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
+        {/* En escritorio los tres campos caben en una fila; en móvil se apilan. */}
+        <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="col-span-2 flex flex-col gap-1.5 sm:col-span-1">
             <Label htmlFor="rv-store">Tienda</Label>
             <Input
               id="rv-store"
@@ -352,27 +353,25 @@ export function ReceiptReview({
               onChange={(e) => setStoreName(e.target.value)}
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="rv-date">Fecha</Label>
-              <Input
-                id="rv-date"
-                type="date"
-                value={purchaseDate}
-                onChange={(e) => setPurchaseDate(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="rv-total">Total (€)</Label>
-              <Input
-                id="rv-total"
-                type="number"
-                inputMode="decimal"
-                step="any"
-                value={total}
-                onChange={(e) => setTotal(e.target.value)}
-              />
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="rv-date">Fecha</Label>
+            <Input
+              id="rv-date"
+              type="date"
+              value={purchaseDate}
+              onChange={(e) => setPurchaseDate(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="rv-total">Total (€)</Label>
+            <Input
+              id="rv-total"
+              type="number"
+              inputMode="decimal"
+              step="any"
+              value={total}
+              onChange={(e) => setTotal(e.target.value)}
+            />
           </div>
         </CardContent>
       </Card>
@@ -387,7 +386,11 @@ export function ReceiptReview({
             <p className="text-xs font-medium text-warning">
               Necesitan decisión ({pendingRows.length})
             </p>
-            {pendingRows.map(renderRow)}
+            {/* 2 columnas en escritorio; items-start evita estirar la tarjeta
+                corta a la altura de la alta (las filas varían mucho). */}
+            <div className="flex flex-col gap-2 md:grid md:grid-cols-2 md:items-start md:gap-3">
+              {pendingRows.map(renderRow)}
+            </div>
           </div>
         ) : null}
 
@@ -398,7 +401,9 @@ export function ReceiptReview({
                 Asociados ({matchedRows.length})
               </p>
             ) : null}
-            {matchedRows.map(renderRow)}
+            <div className="flex flex-col gap-2 md:grid md:grid-cols-2 md:items-start md:gap-3">
+              {matchedRows.map(renderRow)}
+            </div>
           </div>
         ) : null}
       </div>

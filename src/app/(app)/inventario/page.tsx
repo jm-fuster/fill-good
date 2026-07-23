@@ -85,7 +85,7 @@ export default async function InventarioPage({
           <EmptyState
             icon={Package}
             title="Aún no hay productos"
-            description="Pulsa el botón + para añadir tu primer producto, o escanea un ticket para llenar el inventario de golpe."
+            description="Añade tu primer producto, o escanea un ticket para llenar el inventario de golpe."
           />
         )
       ) : (

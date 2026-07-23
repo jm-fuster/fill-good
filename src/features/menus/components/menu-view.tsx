@@ -362,7 +362,14 @@ export function MenuView({
         </ResponsiveModalContent>
       </ResponsiveModal>
 
-      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 xl:grid-cols-3 print:!flex print:!flex-col">
+      {/*
+        Progresión responsive de la semana: móvil 1 columna (días apilados) →
+        lg 2 → xl 3 tarjetas de día (con sus slots en fila). En 2xl hay sitio
+        para el planificador clásico: 7 columnas, una por día, con los slots
+        apilados en vertical (2xl:grid-cols-1 en el grid interior). En impresión
+        siempre se apila. Solo cambia el CSS; el DOM y la lógica son los mismos.
+      */}
+      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 xl:grid-cols-3 2xl:grid-cols-7 2xl:gap-2 print:!flex print:!flex-col">
         {days.map((date) => (
           <div key={date} className="rounded-xl border p-3">
             <p className="mb-2 text-sm font-semibold capitalize">
@@ -370,7 +377,7 @@ export function MenuView({
             </p>
             <div
               className={cn(
-                "grid items-start gap-2",
+                "grid items-start gap-2 2xl:grid-cols-1",
                 slots.length === 3 ? "grid-cols-3" : "grid-cols-2",
               )}
             >

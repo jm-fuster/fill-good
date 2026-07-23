@@ -93,7 +93,7 @@ export function ShoppingListView({
         <>
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-muted-foreground">
-              {editMode ? "Toca un producto para editarlo" : `${items.length} producto${items.length === 1 ? "" : "s"}`}
+              {editMode ? "Elige un producto para editarlo" : `${items.length} producto${items.length === 1 ? "" : "s"}`}
             </p>
             <Button
               variant="ghost"

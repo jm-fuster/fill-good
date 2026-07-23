@@ -1,7 +1,10 @@
 import { cookies } from "next/headers";
+import { UserButton } from "@clerk/nextjs";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
+import { CommandPalette } from "@/components/layout/command-palette";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   SidebarInset,
   SidebarProvider,
@@ -35,9 +38,16 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
         </a>
         <AppSidebar />
         <SidebarInset className="min-w-0">
-          {/* Header sticky solo en escritorio: alberga el toggle del sidebar. */}
+          {/* Header sticky solo en escritorio: toggle del sidebar a la izquierda
+              y acciones de cuenta a la derecha (tema + cuenta), que en móvil
+              viven en Ajustes. */}
           <header className="sticky top-0 z-30 hidden h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur-sm md:flex print:hidden">
             <SidebarTrigger aria-label="Mostrar u ocultar el menú lateral" />
+            <CommandPalette />
+            <div className="ml-auto flex items-center gap-2">
+              <ThemeToggle />
+              <UserButton />
+            </div>
           </header>
           {/* `SidebarInset` ya es el <main>; este es el objetivo del skip link. */}
           <div

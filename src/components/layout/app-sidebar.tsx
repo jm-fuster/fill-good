@@ -57,16 +57,15 @@ export function AppSidebar() {
                   const Icon = item.icon;
                   return (
                     <SidebarMenuItem key={item.href}>
+                      {/*
+                        En escritorio todos los ítems se ven igual: "Añadir
+                        ticket" no recibe tratamiento CTA (ese énfasis es solo el
+                        botón central de la bottom nav en móvil).
+                      */}
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
                         tooltip={item.label}
-                        // "Escanear" destaca como CTA con el token de marca.
-                        className={
-                          item.primary
-                            ? "bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground active:bg-sidebar-primary active:text-sidebar-primary-foreground data-active:bg-sidebar-primary data-active:text-sidebar-primary-foreground"
-                            : undefined
-                        }
                       >
                         <Link
                           href={item.href}

@@ -16,7 +16,10 @@ export type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
-  /** "Escanear": tratamiento visual destacado (CTA). */
+  /**
+   * "Añadir ticket": en móvil se muestra como botón central destacado de la
+   * bottom nav. En escritorio es un ítem normal más del sidebar (sin CTA).
+   */
   primary?: boolean;
   /** Prefijos extra que también marcan la entrada como activa. */
   matchPrefixes?: readonly string[];
@@ -25,7 +28,7 @@ export type NavItem = {
 export const NAV_ITEMS: readonly NavItem[] = [
   { href: "/inventario", label: "Inventario", icon: Package },
   { href: "/lista", label: "Lista", icon: ShoppingCart },
-  { href: "/escanear", label: "Escanear", icon: ScanLine, primary: true },
+  { href: "/escanear", label: "Añadir ticket", icon: ScanLine, primary: true },
   {
     href: "/menus",
     label: "Menús",

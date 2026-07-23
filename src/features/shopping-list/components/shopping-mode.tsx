@@ -121,49 +121,57 @@ export function ShoppingMode({
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-background">
-      <header className="flex items-center justify-between gap-3 border-b px-4 py-3 pt-safe">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold">Modo compra</h1>
-          <p className="text-xs text-muted-foreground">
-            {totalPending > 0
-              ? `Quedan ${totalPending} por coger`
-              : "Todo en el carro"}
-          </p>
+      {/* Bandas a todo el ancho (borde/fondo), con el contenido acotado a una
+          columna centrada: en escritorio el modo compra deja de estirarse por
+          todo el monitor. En móvil max-w-2xl es más ancho que la pantalla, así
+          que no cambia nada. */}
+      <header className="border-b px-4 py-3 pt-safe">
+        <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold">Modo compra</h1>
+            <p className="text-xs text-muted-foreground">
+              {totalPending > 0
+                ? `Quedan ${totalPending} por coger`
+                : "Todo en el carro"}
+            </p>
+          </div>
+          <Button asChild variant="ghost" size="icon" aria-label="Salir del modo compra">
+            <Link href="/lista">
+              <X className="size-5" aria-hidden />
+            </Link>
+          </Button>
         </div>
-        <Button asChild variant="ghost" size="icon" aria-label="Salir del modo compra">
-          <Link href="/lista">
-            <X className="size-5" aria-hidden />
-          </Link>
-        </Button>
       </header>
 
       {priced.length > 0 ? (
-        <div className="flex items-end justify-between gap-3 border-b bg-muted/40 px-4 py-3">
-          <div>
-            <p className="text-2xl font-semibold tabular-nums">{euro(total)}</p>
-            <p className="text-xs text-muted-foreground">
-              estimado sobre {priced.length} de {items.length} ítems
-            </p>
+        <div className="border-b bg-muted/40 px-4 py-3">
+          <div className="mx-auto flex w-full max-w-2xl items-end justify-between gap-3">
+            <div>
+              <p className="text-2xl font-semibold tabular-nums">{euro(total)}</p>
+              <p className="text-xs text-muted-foreground">
+                estimado sobre {priced.length} de {items.length} ítems
+              </p>
+            </div>
+            {remaining > 0 && remaining !== total ? (
+              <p className="text-right text-sm text-muted-foreground">
+                Queda por coger
+                <br />
+                <span className="font-medium text-foreground tabular-nums">
+                  ≈ {euro(remaining)}
+                </span>
+              </p>
+            ) : null}
           </div>
-          {remaining > 0 && remaining !== total ? (
-            <p className="text-right text-sm text-muted-foreground">
-              Queda por coger
-              <br />
-              <span className="font-medium text-foreground tabular-nums">
-                ≈ {euro(remaining)}
-              </span>
-            </p>
-          ) : null}
         </div>
       ) : null}
 
       <div className="flex-1 overflow-y-auto px-4 py-3 pb-safe">
         {items.length === 0 ? (
-          <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+          <p className="mx-auto w-full max-w-2xl rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
             La lista está vacía.
           </p>
         ) : (
-          <div className="flex flex-col gap-4">
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
             {groups.map((g) => (
               <section key={g.name} aria-label={g.name}>
                 <h2 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">

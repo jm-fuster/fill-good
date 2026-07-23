@@ -32,7 +32,7 @@ export function BottomNav() {
                 </Link>
                 <span
                   aria-hidden
-                  className="self-end pb-1.5 text-[11px] font-medium text-muted-foreground"
+                  className="max-w-full self-end px-0.5 pb-1.5 text-center text-[11px] leading-tight font-medium text-muted-foreground"
                 >
                   {tab.label}
                 </span>

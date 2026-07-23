@@ -51,13 +51,12 @@ export function StarterPicker({ groups }: { groups: StarterGroup[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-6 pb-24">
+    <div className="flex flex-col gap-6 pb-24 md:pb-0">
       <div>
         <h2 className="text-base font-semibold">¿Qué tienes ya en casa?</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Marca lo que haya ahora mismo; las cantidades las ajustas luego.
-          También puedes escanear un ticket o añadir a mano con el botón{" "}
-          <span aria-hidden>+</span>.
+          También puedes escanear un ticket o añadir productos a mano.
         </p>
       </div>
 
@@ -99,13 +98,16 @@ export function StarterPicker({ groups }: { groups: StarterGroup[] }) {
       ))}
 
       {/*
-        Barra fija de confirmación, alineada con el FAB de alta manual: el hueco
-        de la derecha (size-14) reserva el sitio del FAB para que no se solapen.
+        Barra de confirmación. Móvil: fija sobre la bottom nav, alineada con el
+        FAB de alta manual (el hueco size-14 de la derecha reserva su sitio para
+        que no se solapen). Escritorio (≥ md): en el flujo, sticky al fondo del
+        contenido a todo el ancho, como el resto de barras de acción; el FAB no
+        existe (es md:hidden), así que su hueco se oculta.
       */}
-      <div className="fixed inset-x-0 bottom-fab z-40 mx-auto flex max-w-lg items-center gap-3 px-4">
+      <div className="fixed inset-x-0 bottom-fab z-40 mx-auto flex max-w-lg items-center gap-3 px-4 md:sticky md:inset-x-auto md:bottom-0 md:mx-0 md:max-w-none md:border-t md:bg-background/95 md:px-0 md:pt-3 md:pb-3 md:backdrop-blur-sm">
         <Button
           size="lg"
-          className="h-14 flex-1 shadow-lg"
+          className="h-14 flex-1 shadow-lg md:h-12"
           disabled={count === 0 || pending}
           onClick={confirm}
         >
@@ -115,7 +117,7 @@ export function StarterPicker({ groups }: { groups: StarterGroup[] }) {
               ? "Añadir productos"
               : `Añadir ${count} producto${count === 1 ? "" : "s"}`}
         </Button>
-        <div className="size-14 shrink-0" aria-hidden />
+        <div className="size-14 shrink-0 md:hidden" aria-hidden />
       </div>
     </div>
   );

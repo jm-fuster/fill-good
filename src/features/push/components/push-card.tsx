@@ -151,7 +151,7 @@ export function PushCard() {
           Notificaciones
         </CardTitle>
         <CardDescription>
-          Avisos en el móvil sin abrir la app. Puedes elegir qué recibir.
+          Avisos en tus dispositivos sin abrir la app. Puedes elegir qué recibir.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
