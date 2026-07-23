@@ -1,5 +1,6 @@
 import "server-only";
 
+import { cache } from "react";
 import { auth } from "@clerk/nextjs/server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -35,35 +36,41 @@ type MembershipRow = {
 /**
  * Hogar del usuario actual (en el MVP, uno por usuario). null si no pertenece
  * a ninguno todavía → la app lo lleva a /onboarding.
+ *
+ * Envuelto en `cache()` (React): se llama en el layout (app) y otra vez dentro
+ * de varias queries del mismo request; el cache lo deduplica a una sola consulta
+ * por request (no persiste entre requests).
  */
-export async function getCurrentHousehold(): Promise<CurrentHousehold | null> {
-  const { userId } = await auth();
-  if (!userId) return null;
+export const getCurrentHousehold = cache(
+  async (): Promise<CurrentHousehold | null> => {
+    const { userId } = await auth();
+    if (!userId) return null;
 
-  const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("household_members")
-    .select(
-      "role, household:households(id, name, invite_code, created_at, monthly_budget)",
-    )
-    .eq("user_id", userId)
-    .order("joined_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    const supabase = createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from("household_members")
+      .select(
+        "role, household:households(id, name, invite_code, created_at, monthly_budget)",
+      )
+      .eq("user_id", userId)
+      .order("joined_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
-  if (error) throw error;
+    if (error) throw error;
 
-  const row = data as unknown as MembershipRow | null;
-  if (!row?.household) return null;
+    const row = data as unknown as MembershipRow | null;
+    if (!row?.household) return null;
 
-  return {
-    id: row.household.id,
-    name: row.household.name,
-    inviteCode: row.household.invite_code,
-    role: row.role,
-    monthlyBudget: row.household.monthly_budget,
-  };
-}
+    return {
+      id: row.household.id,
+      name: row.household.name,
+      inviteCode: row.household.invite_code,
+      role: row.role,
+      monthlyBudget: row.household.monthly_budget,
+    };
+  },
+);
 
 /** Miembros de un hogar, ordenados por antigüedad. */
 export async function getHouseholdMembers(

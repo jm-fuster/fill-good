@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { UnitType } from "@/lib/supabase/types";
 import { computeInferredChains } from "./infer-chain";
@@ -86,9 +88,9 @@ export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
  * compra más reciente) con su unidad. Base del coste por receta (M7). Coincide
  * con el `lastUnitPrice` que muestra el overview de precios.
  */
-export async function getLatestUnitPrices(): Promise<
+export const getLatestUnitPrices = cache(async (): Promise<
   Map<string, { price: number; unit: UnitType }>
-> {
+> => {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("receipt_items")
@@ -107,34 +109,43 @@ export async function getLatestUnitPrices(): Promise<
     map.set(r.product_id, { price: Number(r.total_price) / qty, unit: r.unit });
   }
   return map;
-}
+});
 
 /**
  * Cadena inferida por producto (L15, fase 2) a partir del histórico de tickets:
  * mapa productId → cadena habitual, solo para productos con señal clara (ver
  * infer-chain.ts). Es la tienda "de facto"; la preferencia manual la sobrescribe
  * en quien consume este mapa. Sin embed de products → sin ambigüedad de FK.
+ *
+ * Sigue existiendo para /precios y el modo compra; las pestañas (inventario /
+ * lista) leen la columna materializada. Envuelto en cache() para deduplicar
+ * recomputaciones dentro de un mismo render.
  */
-export async function getInferredChains(): Promise<Map<string, string>> {
-  const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("receipt_items")
-    .select("product_id, store_chain")
-    .not("product_id", "is", null)
-    .not("store_chain", "is", null);
-  if (error) throw error;
-  return computeInferredChains(data ?? []);
-}
+export const getInferredChains = cache(
+  async (): Promise<Map<string, string>> => {
+    const supabase = createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from("receipt_items")
+      .select("product_id, store_chain")
+      .not("product_id", "is", null)
+      .not("store_chain", "is", null);
+    if (error) throw error;
+    return computeInferredChains(data ?? []);
+  },
+);
 
 /**
  * Aviso de ahorro por producto (L15, fase 3): mapa productId → tip cuando la
  * cadena donde compras el producto (efectiva = manual ?? inferida) NO es la más
  * barata de tu histórico y el ahorro es sustancial. Cruza la comparativa de
  * precios (M9) con la preferencia; sin embed de products → sin PGRST201.
+ *
+ * Sigue existiendo para /precios; las pestañas leen la columna materializada.
+ * Envuelto en cache() para deduplicar recomputaciones dentro de un mismo render.
  */
-export async function getChainSavingsTips(): Promise<
+export const getChainSavingsTips = cache(async (): Promise<
   Map<string, ChainSavingsTip>
-> {
+> => {
   const supabase = createServerSupabaseClient();
   const [{ data: rows, error }, { data: products, error: prodErr }] =
     await Promise.all([
@@ -178,7 +189,7 @@ export async function getChainSavingsTips(): Promise<
     if (tip) tips.set(productId, tip);
   }
   return tips;
-}
+});
 
 export async function getProductPriceHistory(
   productId: string,
