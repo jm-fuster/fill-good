@@ -3,7 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Minus, Plus, ShoppingCart, Store, Trash2 } from "lucide-react";
+import {
+  Layers,
+  List,
+  Minus,
+  Plus,
+  ShoppingCart,
+  Store,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/layout/empty-state";
 import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/units";
+import { usePersistedFlag } from "@/hooks/use-persisted-flag";
 import type { UnitType } from "@/lib/supabase/types";
 import { useRealtimeList } from "../use-realtime-list";
 import type {
@@ -51,6 +60,39 @@ export type AddInput =
 /** Alta optimista pendiente de confirmar contra el servidor. */
 type PendingAdd = { tempId: string; realId: string | null; item: ListItem };
 
+/** Orden de la categoría "Otros" / ítems sin categoría (va al final). */
+const NO_CATEGORY_SORT = 9_000;
+
+/**
+ * Agrupa ítems por categoría para la vista agrupada (L10): orden por
+ * `sort_order` (los sin categoría al final en "Otros"); dentro del grupo se
+ * respeta el orden ya recibido (position). Los altas optimistas sin categoría
+ * caen en "Otros" hasta que reconcilian.
+ */
+function groupByCategory(items: ListItem[]) {
+  const byCat = new Map<
+    string,
+    { name: string; icon: string | null; sort: number; items: ListItem[] }
+  >();
+  for (const it of items) {
+    const name = it.categoryName ?? "Otros";
+    let g = byCat.get(name);
+    if (!g) {
+      g = {
+        name,
+        icon: it.categoryIcon ?? null,
+        sort: it.categorySort ?? NO_CATEGORY_SORT,
+        items: [],
+      };
+      byCat.set(name, g);
+    }
+    g.items.push(it);
+  }
+  return [...byCat.values()].sort(
+    (a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "es"),
+  );
+}
+
 export function ShoppingListView({
   listId,
   initialItems,
@@ -71,6 +113,8 @@ export function ShoppingListView({
   const [pendingAdds, setPendingAdds] = useState<PendingAdd[]>([]);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [editItem, setEditItem] = useState<ListItem | null>(null);
+  // L10 — Agrupar por categoría (persistido en localStorage, por dispositivo).
+  const [grouped, setGrouped] = usePersistedFlag("lista:grouped");
   // Temporizadores de borrado diferido (id → timeout) para la ventana de undo.
   const removeTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
@@ -279,9 +323,20 @@ export function ShoppingListView({
         />
       ) : (
         <>
-          <p className="text-xs font-medium text-muted-foreground">
-            {allItems.length} producto{allItems.length === 1 ? "" : "s"}
-          </p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground">
+              {allItems.length} producto{allItems.length === 1 ? "" : "s"}
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setGrouped(!grouped)}
+              aria-pressed={grouped}
+            >
+              {grouped ? <List aria-hidden /> : <Layers aria-hidden />}
+              {grouped ? "Sin agrupar" : "Agrupar"}
+            </Button>
+          </div>
 
           {pending.length > 0 ? (
             <Button asChild variant="outline" size="lg" className="print:hidden">
@@ -293,15 +348,35 @@ export function ShoppingListView({
           ) : null}
 
           <div className="flex flex-col gap-1">
-            {pending.map((item) => (
-              <ListRow
-                key={item.id}
-                item={item}
-                onToggle={toggle}
-                onEdit={setEditItem}
-                onRemove={scheduleRemove}
-              />
-            ))}
+            {grouped ? (
+              groupByCategory(pending).map((g) => (
+                <section key={g.name} aria-label={g.name}>
+                  <h2 className="mt-2 mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                    {g.icon ? <span aria-hidden>{g.icon}</span> : null}
+                    {g.name}
+                  </h2>
+                  {g.items.map((item) => (
+                    <ListRow
+                      key={item.id}
+                      item={item}
+                      onToggle={toggle}
+                      onEdit={setEditItem}
+                      onRemove={scheduleRemove}
+                    />
+                  ))}
+                </section>
+              ))
+            ) : (
+              pending.map((item) => (
+                <ListRow
+                  key={item.id}
+                  item={item}
+                  onToggle={toggle}
+                  onEdit={setEditItem}
+                  onRemove={scheduleRemove}
+                />
+              ))
+            )}
 
             {done.length > 0 ? (
               <p className="mt-4 mb-1 text-xs font-medium text-muted-foreground">

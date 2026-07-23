@@ -18,6 +18,10 @@ export type ListItem = {
   isChecked: boolean;
   productId: string | null;
   addedByMe: boolean;
+  /** Categoría del producto para agrupar en `/lista` (L10); ausente en altas optimistas. */
+  categoryName?: string;
+  categoryIcon?: string | null;
+  categorySort?: number;
 };
 
 export type SuggestionReason = "low_stock" | "restock";
@@ -185,19 +189,35 @@ export async function getShoppingModeItems(
   });
 }
 
+type ListItemRow = {
+  id: string;
+  name: string;
+  quantity: number | null;
+  unit: UnitType | null;
+  is_checked: boolean;
+  product_id: string | null;
+  added_by: string | null;
+  product: {
+    category: { name: string; icon: string | null; sort_order: number } | null;
+  } | null;
+};
+
 export async function getListItems(listId: string): Promise<ListItem[]> {
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("shopping_list_items")
-    .select("id, name, quantity, unit, is_checked, product_id, added_by")
+    .select(
+      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(category:categories(name, icon, sort_order))",
+    )
     .eq("list_id", listId)
     .order("is_checked", { ascending: true })
     .order("position", { ascending: true })
     .order("created_at", { ascending: true });
   if (error) throw error;
 
-  return (data ?? []).map((i) => ({
+  const rows = (data ?? []) as unknown as ListItemRow[];
+  return rows.map((i) => ({
     id: i.id,
     name: i.name,
     quantity: i.quantity === null ? null : Number(i.quantity),
@@ -205,6 +225,9 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
     isChecked: i.is_checked,
     productId: i.product_id,
     addedByMe: i.added_by === userId,
+    categoryName: i.product?.category?.name ?? "Otros",
+    categoryIcon: i.product?.category?.icon ?? null,
+    categorySort: i.product?.category?.sort_order ?? NO_CATEGORY_SORT,
   }));
 }
 
