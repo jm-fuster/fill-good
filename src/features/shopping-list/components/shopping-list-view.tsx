@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, ShoppingCart, Store, Trash2 } from "lucide-react";
@@ -68,7 +68,10 @@ export function ShoppingListView({
   const [items, setItems] = useState(initialItems);
   const [sig, setSig] = useState(signatureOf(initialItems));
   const [pendingAdds, setPendingAdds] = useState<PendingAdd[]>([]);
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [editItem, setEditItem] = useState<ListItem | null>(null);
+  // Temporizadores de borrado diferido (id → timeout) para la ventana de undo.
+  const removeTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh) y
   // descarta los ítems optimistas que ya han aterrizado en el servidor.
@@ -80,6 +83,67 @@ export function ShoppingListView({
     setPendingAdds((prev) =>
       prev.filter((p) => !(p.realId && serverIds.has(p.realId))),
     );
+    // Suelta los ids ya borrados en el servidor (confirmados).
+    setRemovedIds((prev) => {
+      const next = new Set([...prev].filter((id) => serverIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }
+
+  // Al desmontar, confirma los borrados aún en ventana de undo (no perderlos).
+  useEffect(() => {
+    const timers = removeTimers.current;
+    return () => {
+      for (const [id, timer] of timers) {
+        clearTimeout(timer);
+        void deleteListItemAction(id);
+      }
+      timers.clear();
+    };
+  }, []);
+
+  // L6 — Borrado diferido con "Deshacer": oculta el ítem al instante y solo
+  // llama al servidor al expirar el toast (5 s). Si se deshace antes, no se
+  // borra nada (conserva posición y added_by).
+  function scheduleRemove(item: ListItem) {
+    if (removeTimers.current.has(item.id)) return;
+    setRemovedIds((prev) => new Set(prev).add(item.id));
+
+    const timer = setTimeout(() => {
+      removeTimers.current.delete(item.id);
+      deleteListItemAction(item.id).then((r) => {
+        if (r?.error) {
+          toast.error(r.error);
+          setRemovedIds((prev) => {
+            const next = new Set(prev);
+            next.delete(item.id);
+            return next;
+          });
+        } else {
+          router.refresh();
+        }
+      });
+    }, 5000);
+    removeTimers.current.set(item.id, timer);
+
+    toast(`${item.name} quitado`, {
+      duration: 5000,
+      action: {
+        label: "Deshacer",
+        onClick: () => undoRemove(item.id),
+      },
+    });
+  }
+
+  function undoRemove(id: string) {
+    const timer = removeTimers.current.get(id);
+    if (timer) clearTimeout(timer);
+    removeTimers.current.delete(id);
+    setRemovedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }
 
   function toggle(id: string, checked: boolean) {
@@ -152,7 +216,10 @@ export function ShoppingListView({
   const optimisticItems = pendingAdds
     .filter((p) => !(p.realId && items.some((i) => i.id === p.realId)))
     .map((p) => p.item);
-  const allItems = [...items, ...optimisticItems];
+  // Oculta los ítems en ventana de undo (borrado diferido, L6).
+  const allItems = [...items, ...optimisticItems].filter(
+    (i) => !removedIds.has(i.id),
+  );
 
   const pending = allItems.filter((i) => !i.isChecked);
   const done = allItems.filter((i) => i.isChecked);
@@ -231,6 +298,7 @@ export function ShoppingListView({
                 item={item}
                 onToggle={toggle}
                 onEdit={setEditItem}
+                onRemove={scheduleRemove}
               />
             ))}
 
@@ -245,6 +313,7 @@ export function ShoppingListView({
                 item={item}
                 onToggle={toggle}
                 onEdit={setEditItem}
+                onRemove={scheduleRemove}
               />
             ))}
           </div>
@@ -268,73 +337,151 @@ export function ShoppingListView({
           onOpenChange={(open) => {
             if (!open) setEditItem(null);
           }}
+          onRemove={scheduleRemove}
         />
       ) : null}
     </div>
   );
 }
 
+/** Umbral (px) de deslizamiento para confirmar "Quitar". */
+const SWIPE_THRESHOLD = 72;
+
 function ListRow({
   item,
   onToggle,
   onEdit,
+  onRemove,
 }: {
   item: ListItem;
   onToggle: (id: string, checked: boolean) => void;
   onEdit: (item: ListItem) => void;
+  onRemove: (item: ListItem) => void;
 }) {
-  const router = useRouter();
-  const [deleting, startDelete] = useTransition();
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const gesture = useRef({
+    x: 0,
+    y: 0,
+    active: false,
+    axis: "none" as "none" | "h" | "v",
+    dx: 0,
+  });
+  // Suprime el "click" que sigue a un deslizamiento (no abrir el editor).
+  const swiped = useRef(false);
 
-  function remove() {
-    startDelete(async () => {
-      const r = await deleteListItemAction(item.id);
-      if (r?.error) toast.error(r.error);
-      else router.refresh();
-    });
+  function onPointerDown(e: React.PointerEvent) {
+    // Solo gesto táctil/lápiz; en escritorio se usa el botón papelera.
+    if (e.pointerType === "mouse") return;
+    gesture.current = { x: e.clientX, y: e.clientY, active: true, axis: "none", dx: 0 };
+    swiped.current = false;
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    const g = gesture.current;
+    if (!g.active) return;
+    const deltaX = e.clientX - g.x;
+    const deltaY = e.clientY - g.y;
+    if (g.axis === "none") {
+      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
+      g.axis = Math.abs(deltaX) > Math.abs(deltaY) ? "h" : "v";
+      if (g.axis === "h") {
+        (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+      }
+    }
+    if (g.axis === "h") {
+      const clamped = Math.min(0, deltaX);
+      g.dx = clamped;
+      setDx(clamped);
+      setDragging(true);
+      if (clamped <= -8) swiped.current = true;
+    }
+  }
+
+  function endGesture() {
+    const g = gesture.current;
+    g.active = false;
+    setDragging(false);
+    if (g.axis === "h" && g.dx <= -SWIPE_THRESHOLD) {
+      setDx(0);
+      onRemove(item);
+    } else {
+      setDx(0);
+    }
+    g.axis = "none";
+    g.dx = 0;
   }
 
   return (
-    <div className="flex items-center gap-1 rounded-lg">
-      {/* Zona 1: checkbox con área táctil generosa (marca/desmarca). */}
-      <label className="flex min-h-12 shrink-0 cursor-pointer items-center py-1 pr-3 pl-1">
-        <Checkbox
-          checked={item.isChecked}
-          onCheckedChange={(v) => onToggle(item.id, v === true)}
-          aria-label={`Marcar ${item.name}`}
-          className="size-5"
-        />
-      </label>
-      {/* Zona 2: el texto abre el editor directamente (L5, sin modo edición). */}
-      <button
-        type="button"
-        onClick={() => onEdit(item)}
-        aria-label={`Editar ${item.name}`}
-        className="flex min-h-12 flex-1 items-center text-left text-sm"
+    <div className="group relative overflow-hidden rounded-lg">
+      {/* Fondo revelado al deslizar hacia la izquierda. */}
+      <div
+        aria-hidden
+        className="absolute inset-y-0 right-0 flex items-center gap-1.5 bg-destructive px-4 text-sm font-medium text-destructive-foreground"
       >
-        <span
-          className={cn(
-            "flex-1 underline decoration-dotted decoration-muted-foreground/30 underline-offset-4",
-            item.isChecked && "text-muted-foreground line-through",
-          )}
+        <Trash2 className="size-4" />
+        Quitar
+      </div>
+      <div
+        className="relative flex items-center gap-1 rounded-lg bg-background"
+        style={{
+          touchAction: "pan-y",
+          transform: `translateX(${dx}px)`,
+          transition: dragging ? "none" : "transform 0.2s ease-out",
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endGesture}
+        onPointerCancel={endGesture}
+        onClickCapture={(e) => {
+          if (swiped.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            swiped.current = false;
+          }
+        }}
+      >
+        {/* Zona 1: checkbox con área táctil generosa (marca/desmarca). */}
+        <label className="flex min-h-12 shrink-0 cursor-pointer items-center py-1 pr-3 pl-1">
+          <Checkbox
+            checked={item.isChecked}
+            onCheckedChange={(v) => onToggle(item.id, v === true)}
+            aria-label={`Marcar ${item.name}`}
+            className="size-5"
+          />
+        </label>
+        {/* Zona 2: el texto abre el editor directamente (L5, sin modo edición). */}
+        <button
+          type="button"
+          onClick={() => onEdit(item)}
+          aria-label={`Editar ${item.name}`}
+          className="flex min-h-12 flex-1 items-center text-left text-sm"
         >
-          {item.name}
-          {item.quantity ? (
-            <span className="ml-1.5 text-muted-foreground">
-              · {formatQuantity(item.quantity, item.unit ?? "ud")}
-            </span>
-          ) : null}
-        </span>
-      </button>
-      <Button
-        variant="ghost"
-        size="icon"
-        aria-label={`Quitar ${item.name}`}
-        onClick={remove}
-        disabled={deleting}
-      >
-        <Trash2 aria-hidden className="text-muted-foreground" />
-      </Button>
+          <span
+            className={cn(
+              "flex-1 underline decoration-dotted decoration-muted-foreground/30 underline-offset-4",
+              item.isChecked && "text-muted-foreground line-through",
+            )}
+          >
+            {item.name}
+            {item.quantity ? (
+              <span className="ml-1.5 text-muted-foreground">
+                · {formatQuantity(item.quantity, item.unit ?? "ud")}
+              </span>
+            ) : null}
+          </span>
+        </button>
+        {/* Papelera: oculta por defecto, visible en hover/foco (escritorio). */}
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Quitar ${item.name}`}
+          onClick={() => onRemove(item)}
+          className="pointer-events-none opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+        >
+          <Trash2 aria-hidden className="text-muted-foreground" />
+        </Button>
+      </div>
     </div>
   );
 }

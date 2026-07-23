@@ -26,21 +26,23 @@ import {
 import { UNIT_OPTIONS } from "@/lib/units";
 import type { UnitType } from "@/lib/supabase/types";
 import type { ListItem } from "../queries";
-import { deleteListItemAction, updateListItemAction } from "../actions";
+import { updateListItemAction } from "../actions";
 
 export function EditListItemDrawer({
   item,
   open,
   onOpenChange,
+  onRemove,
 }: {
   item: ListItem;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Quitar de la lista con ventana de "Deshacer" (L6). */
+  onRemove: (item: ListItem) => void;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   // Unidad controlada, resincronizada cuando cambia el item mostrado.
   const [unit, setUnit] = useState<UnitType>(item.unit ?? "ud");
@@ -66,17 +68,10 @@ export function EditListItemDrawer({
     router.refresh();
   }
 
-  async function handleDelete() {
-    setDeleting(true);
-    const result = await deleteListItemAction(item.id);
-    setDeleting(false);
-    if (result?.error) {
-      toast.error(result.error);
-      return;
-    }
-    toast.success("Quitado de la lista");
+  function handleDelete() {
+    // Cierra el drawer y delega en el borrado diferido con "Deshacer" (L6).
     onOpenChange(false);
-    router.refresh();
+    onRemove(item);
   }
 
   return (
@@ -147,12 +142,7 @@ export function EditListItemDrawer({
             <Button type="submit" size="lg" disabled={pending}>
               {pending ? "Guardando…" : "Guardar cambios"}
             </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={handleDelete}
-              disabled={deleting}
-            >
+            <Button type="button" variant="destructive" onClick={handleDelete}>
               <Trash2 aria-hidden />
               Quitar de la lista
             </Button>
