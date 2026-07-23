@@ -288,6 +288,23 @@ export async function updateListItemAction(
   return { ok: true };
 }
 
+/**
+ * L9 — Ajuste ligero de solo la cantidad (stepper ±1). Optimista en cliente:
+ * sin `revalidatePath`, Realtime reconcilia en el resto de dispositivos.
+ */
+export async function setListItemQuantityAction(
+  itemId: string,
+  quantity: number | null,
+): Promise<ActionState> {
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase
+    .from("shopping_list_items")
+    .update({ quantity })
+    .eq("id", itemId);
+  if (error) return { error: "No se pudo actualizar." };
+  return { ok: true };
+}
+
 export async function toggleItemAction(
   itemId: string,
   isChecked: boolean,

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, ShoppingCart, Store, Trash2 } from "lucide-react";
+import { Minus, Plus, ShoppingCart, Store, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import {
   addListItemAction,
   addProductToListAction,
   deleteListItemAction,
+  setListItemQuantityAction,
   toggleItemAction,
 } from "../actions";
 import { AddItemForm } from "./add-item-form";
@@ -370,6 +371,9 @@ function ListRow({
   // Suprime el "click" que sigue a un deslizamiento (no abrir el editor).
   const swiped = useRef(false);
 
+  // Contable = se cuenta de una en una: unidad "ud" o sin unidad (L9).
+  const countable = item.unit == null || item.unit === "ud";
+
   function onPointerDown(e: React.PointerEvent) {
     // Solo gesto táctil/lápiz; en escritorio se usa el botón papelera.
     if (e.pointerType === "mouse") return;
@@ -464,13 +468,16 @@ function ListRow({
             )}
           >
             {item.name}
-            {item.quantity ? (
+            {/* Unidades no contables (g/kg/ml/l): la cantidad se edita en el drawer. */}
+            {!countable && item.quantity ? (
               <span className="ml-1.5 text-muted-foreground">
                 · {formatQuantity(item.quantity, item.unit ?? "ud")}
               </span>
             ) : null}
           </span>
         </button>
+        {/* Stepper ±1 inline para unidades contables (ud o sin unidad) (L9). */}
+        {countable ? <QuantityStepper item={item} /> : null}
         {/* Papelera: oculta por defecto, visible en hover/foco (escritorio). */}
         <Button
           variant="ghost"
@@ -482,6 +489,79 @@ function ListRow({
           <Trash2 aria-hidden className="text-muted-foreground" />
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Stepper ±1 inline para ítems contables (L9). Optimista con persistencia
+ * "debounced": una sola escritura al servidor tras dejar de pulsar. "−" sobre
+ * 1 deja el ítem sin cantidad (null); "+" sobre sin-cantidad empieza en 1.
+ */
+function QuantityStepper({ item }: { item: ListItem }) {
+  const [qty, setQty] = useState<number | null>(item.quantity);
+  const [serverQty, setServerQty] = useState<number | null>(item.quantity);
+  // Reconciliar con el servidor (Realtime/refresh) sin pisar el optimismo local.
+  if (serverQty !== item.quantity) {
+    setServerQty(item.quantity);
+    setQty(item.quantity);
+  }
+
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latest = useRef<number | null>(item.quantity);
+
+  function persist(next: number | null) {
+    latest.current = next;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      setListItemQuantityAction(item.id, latest.current).then((r) => {
+        if (r?.error) toast.error(r.error);
+      });
+    }, 600);
+  }
+
+  function change(next: number | null) {
+    setQty(next);
+    persist(next);
+  }
+
+  const dec = () => change(qty != null && qty > 1 ? qty - 1 : null);
+  const inc = () => change((qty ?? 0) + 1);
+
+  return (
+    <div className="flex shrink-0 items-center">
+      {qty != null ? (
+        <>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Restar uno a ${item.name}`}
+            onClick={dec}
+          >
+            <Minus aria-hidden className="text-muted-foreground" />
+          </Button>
+          <span className="min-w-6 text-center text-sm tabular-nums" aria-live="polite">
+            {qty}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={`Sumar uno a ${item.name}`}
+            onClick={inc}
+          >
+            <Plus aria-hidden className="text-muted-foreground" />
+          </Button>
+        </>
+      ) : (
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Añadir cantidad a ${item.name}`}
+          onClick={inc}
+        >
+          <Plus aria-hidden className="text-muted-foreground" />
+        </Button>
+      )}
     </div>
   );
 }
