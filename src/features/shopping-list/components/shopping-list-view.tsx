@@ -20,7 +20,6 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/units";
 import { usePersistedFlag } from "@/hooks/use-persisted-flag";
-import type { UnitType } from "@/lib/supabase/types";
 import { useRealtimeList } from "../use-realtime-list";
 import type {
   CatalogProduct,
@@ -29,13 +28,12 @@ import type {
   Suggestion,
 } from "../queries";
 import {
-  addListItemAction,
-  addProductToListAction,
   deleteListItemAction,
   setListItemQuantityAction,
   toggleItemAction,
 } from "../actions";
 import { AddItemForm } from "./add-item-form";
+import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import type { AutocompleteOption } from "./product-autocomplete";
 import { useCheckout } from "./use-checkout";
 import { EditListItemDrawer } from "./edit-list-item-drawer";
@@ -45,17 +43,6 @@ function signatureOf(items: ListItem[]) {
     .map((i) => `${i.id}:${i.isChecked}:${i.quantity}:${i.unit}:${i.name}`)
     .join("|");
 }
-
-/** Alta que el usuario dispara desde el input o un chip. */
-export type AddInput =
-  | { kind: "free"; name: string; quantity: number | null; unit: UnitType | null }
-  | {
-      kind: "product";
-      productId: string;
-      name: string;
-      quantity: number | null;
-      unit: UnitType | null;
-    };
 
 /** Alta optimista pendiente de confirmar contra el servidor. */
 type PendingAdd = { tempId: string; realId: string | null; item: ListItem };
@@ -220,33 +207,14 @@ export function ShoppingListView({
     };
     setPendingAdds((prev) => [...prev, { tempId, realId: null, item: optimistic }]);
 
-    let result;
-    if (input.kind === "free") {
-      const fd = new FormData();
-      fd.set("name", input.name);
-      if (input.quantity != null) fd.set("quantity", String(input.quantity));
-      if (input.unit) fd.set("unit", input.unit);
-      result = await addListItemAction({}, fd);
-    } else {
-      result = await addProductToListAction(
-        input.productId,
-        input.quantity,
-        input.unit,
-      );
-    }
+    const result = await runAddAction(input);
 
     if (result.error) {
       setPendingAdds((prev) => prev.filter((p) => p.tempId !== tempId));
       toast.error(result.error);
       return false;
     }
-    if (result.warning) toast.warning(result.warning);
-    if (result.merged) {
-      const m = result.merged;
-      const qtyText =
-        m.quantity != null ? ` → ${formatQuantity(m.quantity, m.unit ?? "ud")}` : "";
-      toast.info(`${m.name} ya estaba en la lista${qtyText}`);
-    }
+    showAddResultToast(result);
     if (result.itemId) {
       const realId = result.itemId;
       setPendingAdds((prev) =>

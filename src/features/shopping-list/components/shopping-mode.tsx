@@ -3,16 +3,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ShoppingCart, X } from "lucide-react";
+import { Plus, ShoppingCart, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  ResponsiveModal,
+  ResponsiveModalContent,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/units";
 import { useRealtimeList } from "../use-realtime-list";
 import { toggleItemAction } from "../actions";
-import type { ShoppingModeItem } from "../queries";
+import type { CatalogProduct, ShoppingModeItem } from "../queries";
+import { AddItemForm } from "./add-item-form";
+import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import { useCheckout } from "./use-checkout";
 
 function euro(n: number) {
@@ -31,14 +39,17 @@ type WakeLockLike = { release: () => Promise<void> };
 export function ShoppingMode({
   listId,
   initialItems,
+  catalog,
 }: {
   listId: string;
   initialItems: ShoppingModeItem[];
+  catalog: CatalogProduct[];
 }) {
   useRealtimeList(listId);
   const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [sig, setSig] = useState(signatureOf(initialItems));
+  const [adding, setAdding] = useState(false);
 
   // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh).
   const currentSig = signatureOf(initialItems);
@@ -125,6 +136,19 @@ export function ShoppingMode({
   // el cleanup del efecto). Sin ids que revisar → vuelve a `/lista`.
   const { checkout, pending: checkingOut } = useCheckout("/lista");
 
+  // L12 — Añadir desde el modo compra: el ítem aparece en su grupo vía el
+  // refresh de Realtime (sin optimismo local aquí, aceptable en v1).
+  async function addItem(input: AddInput): Promise<boolean> {
+    const result = await runAddAction(input);
+    if (result.error) {
+      toast.error(result.error);
+      return false;
+    }
+    showAddResultToast(result);
+    router.refresh();
+    return true;
+  }
+
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-background">
       {/* Bandas a todo el ancho (borde/fondo), con el contenido acotado a una
@@ -141,11 +165,21 @@ export function ShoppingMode({
                 : "Todo en el carro"}
             </p>
           </div>
-          <Button asChild variant="ghost" size="icon" aria-label="Salir del modo compra">
-            <Link href="/lista">
-              <X className="size-5" aria-hidden />
-            </Link>
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Añadir a la lista"
+              onClick={() => setAdding(true)}
+            >
+              <Plus className="size-5" aria-hidden />
+            </Button>
+            <Button asChild variant="ghost" size="icon" aria-label="Salir del modo compra">
+              <Link href="/lista">
+                <X className="size-5" aria-hidden />
+              </Link>
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -244,6 +278,18 @@ export function ShoppingMode({
           </div>
         </footer>
       ) : null}
+
+      {/* L12 — Alta desde el modo compra en un bottom sheet. */}
+      <ResponsiveModal open={adding} onOpenChange={setAdding}>
+        <ResponsiveModalContent>
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle>Añadir a la lista</ResponsiveModalTitle>
+          </ResponsiveModalHeader>
+          <div className="px-4 pb-2">
+            <AddItemForm catalog={catalog} onAdd={addItem} />
+          </div>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
     </div>
   );
 }

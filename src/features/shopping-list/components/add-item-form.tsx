@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { formatQuantity } from "@/lib/units";
 import { parseQuantityFromText } from "@/lib/parse-quantity";
 import type { CatalogProduct } from "../queries";
-import type { AddInput } from "./shopping-list-view";
+import type { AddInput } from "./add-item";
 import {
   ProductAutocomplete,
   type AutocompleteOption,
