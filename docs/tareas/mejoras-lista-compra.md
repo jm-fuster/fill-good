@@ -416,7 +416,13 @@ compra. Para muchos hogares esto sustituye a la reordenación manual.
 
 ---
 
-## L11 — Reordenación manual (drag & drop)
+## L11 — Reordenación manual (drag & drop) — DESCARTADA
+
+> **Decisión (2026-07-23):** descartada tras implementar L10. El agrupado por
+> categoría cubre la necesidad de orden para el hogar; el drag & drop añadía
+> esfuerzo medio-alto (dependencia o pointer-code, accesibilidad de teclado,
+> reescritura de `position`) sin beneficio claro por encima de L10. Reabrir
+> solo si el uso real lo pide.
 
 **Objetivo.** Arrastrar para reordenar los pendientes. Valorar **después** de
 L10: si el agrupado por categoría cubre la necesidad real, esta tarea puede
