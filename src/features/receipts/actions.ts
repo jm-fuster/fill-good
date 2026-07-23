@@ -655,7 +655,12 @@ export async function confirmReceiptAction(
     await supabase.rpc("bump_product_purchases", { pids: bumpIds });
   }
 
-  // 2.7 Cierre del ticket.
+  // 2.7 Cierre del ticket. Al confirmar, `raw_extraction` (el JSON completo de la
+  //     IA, ~5–15 KB/fila) ya no se lee nunca más: los descuentos quedan
+  //     materializados en `discount_total` justo arriba. Se vacía para no acumular
+  //     el dato más pesado de la BD. El cierre es el último paso, así que si la
+  //     confirmación falla a mitad el ticket sigue `needs_review` con su JSON
+  //     intacto y el reintento idempotente funciona igual.
   await supabase
     .from("receipts")
     .update({
@@ -665,6 +670,7 @@ export async function confirmReceiptAction(
       discount_total: discountTotal,
       status: "confirmed",
       confirmed_at: new Date().toISOString(),
+      raw_extraction: null,
     })
     .eq("id", payload.receiptId);
 
