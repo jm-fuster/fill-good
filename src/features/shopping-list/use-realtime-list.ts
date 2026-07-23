@@ -11,7 +11,7 @@ import { useSupabaseBrowser } from "@/lib/supabase/client";
  * del hogar modifica algo. Los tokens de Clerk caducan ~60s, así que se
  * refresca el auth de Realtime periódicamente mientras la suscripción vive.
  */
-export function useRealtimeList(listId: string) {
+export function useRealtimeList(listId: string, channelKey = "view") {
   const supabase = useSupabaseBrowser();
   const { session } = useSession();
   const router = useRouter();
@@ -20,7 +20,10 @@ export function useRealtimeList(listId: string) {
     if (!listId || !session) return;
     let cancelled = false;
 
-    const channel = supabase.channel(`shopping-list-${listId}`);
+    // `channelKey` distingue suscripciones que conviven a la vez para la misma
+    // lista (p. ej. el badge de la navbar y la propia vista de /lista) para que
+    // Supabase no las trate como el mismo canal.
+    const channel = supabase.channel(`shopping-list-${channelKey}-${listId}`);
 
     const start = async () => {
       const token = await session.getToken();
@@ -53,5 +56,5 @@ export function useRealtimeList(listId: string) {
       clearInterval(interval);
       supabase.removeChannel(channel);
     };
-  }, [listId, session, supabase, router]);
+  }, [listId, channelKey, session, supabase, router]);
 }

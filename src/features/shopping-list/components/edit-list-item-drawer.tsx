@@ -99,7 +99,8 @@ export function EditListItemDrawer({
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-2">
               <Label htmlFor="edit-list-quantity">
-                Cantidad <span className="text-muted-foreground">(opcional)</span>
+                Cantidad{" "}
+                <span className="text-muted-foreground">(opcional)</span>
               </Label>
               <Input
                 id="edit-list-quantity"

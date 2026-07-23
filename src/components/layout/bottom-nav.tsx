@@ -5,9 +5,12 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import { isNavItemActive, NAV_ITEMS } from "@/components/layout/nav-items";
+import { NavCountBadge } from "@/components/layout/nav-count-badge";
+import { useNavListCount } from "@/components/layout/nav-list-count";
 
 export function BottomNav() {
   const pathname = usePathname();
+  const listCount = useNavListCount();
 
   return (
     <nav
@@ -40,6 +43,8 @@ export function BottomNav() {
             );
           }
 
+          const badge = tab.href === "/lista" ? listCount : 0;
+
           return (
             <li key={tab.href}>
               <Link
@@ -52,7 +57,10 @@ export function BottomNav() {
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                <Icon className="size-5" aria-hidden />
+                <span className="relative">
+                  <Icon className="size-5" aria-hidden />
+                  <NavCountBadge count={badge} variant="floating" />
+                </span>
                 {tab.label}
               </Link>
             </li>

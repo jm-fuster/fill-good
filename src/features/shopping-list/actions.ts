@@ -168,7 +168,11 @@ export async function addListItemAction(
       ok: true,
       warning,
       itemId: merged.itemId,
-      merged: { name: merged.name, quantity: merged.quantity, unit: merged.unit },
+      merged: {
+        name: merged.name,
+        quantity: merged.quantity,
+        unit: merged.unit,
+      },
     };
   }
 
@@ -232,7 +236,11 @@ export async function addProductToListAction(
     return {
       ok: true,
       itemId: merged.itemId,
-      merged: { name: merged.name, quantity: merged.quantity, unit: merged.unit },
+      merged: {
+        name: merged.name,
+        quantity: merged.quantity,
+        unit: merged.unit,
+      },
     };
   }
 
@@ -302,6 +310,36 @@ export async function setListItemQuantityAction(
     .update({ quantity })
     .eq("id", itemId);
   if (error) return { error: "No se pudo actualizar." };
+  return { ok: true };
+}
+
+/**
+ * L14 — Reordenar la lista a mano: fija `position` = índice (0..n-1) según el
+ * orden recibido de artículos pendientes. `getListItems` ordena por is_checked
+ * y luego por position, así que basta con posicionar los pendientes. Optimista
+ * en cliente (sin revalidatePath): Realtime reconcilia el resto de dispositivos.
+ */
+export async function reorderListItemsAction(
+  orderedIds: string[],
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    return { error: "Datos no válidos." };
+  }
+  const supabase = createServerSupabaseClient();
+  const results = await Promise.all(
+    orderedIds.map((id, index) =>
+      supabase
+        .from("shopping_list_items")
+        .update({ position: index })
+        .eq("id", id)
+        .eq("household_id", household.id),
+    ),
+  );
+  if (results.some((r) => r.error)) {
+    return { error: "No se pudo guardar el orden." };
+  }
   return { ok: true };
 }
 

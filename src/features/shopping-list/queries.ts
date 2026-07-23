@@ -83,6 +83,34 @@ export async function getActiveList(): Promise<ActiveList | null> {
 }
 
 /**
+ * Metadatos ligeros de la lista activa para el badge de la navbar: id (para la
+ * suscripción Realtime) y nº de artículos pendientes (sin marcar). Es de solo
+ * lectura —a diferencia de `getActiveList` NO crea una lista activa— porque se
+ * llama en el layout de toda la app y no debe tener efectos secundarios.
+ */
+export async function getActiveListBadge(): Promise<{
+  listId: string | null;
+  pendingCount: number;
+}> {
+  const supabase = createServerSupabaseClient();
+  const { data: list } = await supabase
+    .from("shopping_lists")
+    .select("id")
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!list) return { listId: null, pendingCount: 0 };
+
+  const { count } = await supabase
+    .from("shopping_list_items")
+    .select("id", { count: "exact", head: true })
+    .eq("list_id", list.id)
+    .eq("is_checked", false);
+  return { listId: list.id, pendingCount: count ?? 0 };
+}
+
+/**
  * Ids de producto del catálogo presentes en la lista activa. Se usa para mostrar
  * el estado "En la lista" en el inventario sin duplicar ítems. Solo lee (no crea
  * lista activa como `getActiveList`): si no hay lista, no hay nada que marcar.
@@ -178,7 +206,8 @@ export async function getShoppingModeItems(
       unitFamily(price.unit) === unitFamily(r.unit)
     ) {
       lineCost =
-        (price.price / baseUnitFactor(price.unit)) * (qty * baseUnitFactor(r.unit));
+        (price.price / baseUnitFactor(price.unit)) *
+        (qty * baseUnitFactor(r.unit));
     }
     return {
       id: r.id,
@@ -293,24 +322,30 @@ function suggestedQuantityFor(
  */
 export async function getSuggestions(listId: string): Promise<Suggestion[]> {
   const supabase = createServerSupabaseClient();
-  const [{ data: products }, { data: inventory }, { data: items }, { data: history }] =
-    await Promise.all([
-      supabase
-        .from("products")
-        .select("id, name, min_quantity, default_unit, purchase_count, pack_size"),
-      supabase.from("inventory_items").select("product_id, quantity"),
-      supabase
-        .from("shopping_list_items")
-        .select("product_id")
-        .eq("list_id", listId)
-        .not("product_id", "is", null),
-      supabase
-        .from("receipt_items")
-        .select("product_id, purchased_at")
-        .not("product_id", "is", null)
-        .not("purchased_at", "is", null)
-        .order("purchased_at", { ascending: true }),
-    ]);
+  const [
+    { data: products },
+    { data: inventory },
+    { data: items },
+    { data: history },
+  ] = await Promise.all([
+    supabase
+      .from("products")
+      .select(
+        "id, name, min_quantity, default_unit, purchase_count, pack_size",
+      ),
+    supabase.from("inventory_items").select("product_id, quantity"),
+    supabase
+      .from("shopping_list_items")
+      .select("product_id")
+      .eq("list_id", listId)
+      .not("product_id", "is", null),
+    supabase
+      .from("receipt_items")
+      .select("product_id, purchased_at")
+      .not("product_id", "is", null)
+      .not("purchased_at", "is", null)
+      .order("purchased_at", { ascending: true }),
+  ]);
 
   const stockByProduct = new Map<string, number>();
   for (const row of inventory ?? []) {
@@ -346,7 +381,12 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
         name: p.name,
         unit: p.default_unit,
         reason: "low_stock",
-        suggestedQuantity: suggestedQuantityFor(p.default_unit, stock, min, packSize),
+        suggestedQuantity: suggestedQuantityFor(
+          p.default_unit,
+          stock,
+          min,
+          packSize,
+        ),
       });
       continue;
     }
@@ -373,7 +413,12 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
         unit: p.default_unit,
         reason: "restock",
         intervalDays: Math.round(median),
-        suggestedQuantity: suggestedQuantityFor(p.default_unit, stock, min, packSize),
+        suggestedQuantity: suggestedQuantityFor(
+          p.default_unit,
+          stock,
+          min,
+          packSize,
+        ),
       });
     }
   }

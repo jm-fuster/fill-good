@@ -3,7 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, Plus, ShoppingCart, Sparkles, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Plus,
+  ShoppingCart,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -38,7 +45,10 @@ type WakeLockLike = { release: () => Promise<void> };
 
 /** Vibración corta al marcar (L13): feature-detect + respeta reduced motion. */
 function vibrateTick() {
-  if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") {
+  if (
+    typeof navigator === "undefined" ||
+    typeof navigator.vibrate !== "function"
+  ) {
     return;
   }
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
@@ -92,7 +102,8 @@ export function ShoppingMode({
     };
     async function request() {
       try {
-        if (nav.wakeLock) wakeRef.current = await nav.wakeLock.request("screen");
+        if (nav.wakeLock)
+          wakeRef.current = await nav.wakeLock.request("screen");
       } catch {
         // Denegado o no disponible: seguimos sin bloqueo.
       }
@@ -125,7 +136,12 @@ export function ShoppingMode({
   const groups = useMemo(() => {
     const byCat = new Map<
       string,
-      { name: string; icon: string | null; sort: number; items: ShoppingModeItem[] }
+      {
+        name: string;
+        icon: string | null;
+        sort: number;
+        items: ShoppingModeItem[];
+      }
     >();
     for (const it of items) {
       let g = byCat.get(it.categoryName);
@@ -176,7 +192,9 @@ export function ShoppingMode({
 
   // Recomendaciones aún no añadidas (el servidor ya excluye las que están en la
   // lista; `dismissed` cubre las recién añadidas hasta que llega el refresh).
-  const visibleSuggestions = suggestions.filter((s) => !dismissed.has(s.productId));
+  const visibleSuggestions = suggestions.filter(
+    (s) => !dismissed.has(s.productId),
+  );
 
   // Añadir una recomendación con su cantidad sugerida, de un toque.
   async function addSuggestion(s: Suggestion) {
@@ -229,7 +247,12 @@ export function ShoppingMode({
             >
               <Plus className="size-5" aria-hidden />
             </Button>
-            <Button asChild variant="ghost" size="icon" aria-label="Salir del modo compra">
+            <Button
+              asChild
+              variant="ghost"
+              size="icon"
+              aria-label="Salir del modo compra"
+            >
               <Link href="/lista">
                 <X className="size-5" aria-hidden />
               </Link>
@@ -257,7 +280,9 @@ export function ShoppingMode({
         <div className="border-b bg-muted/40 px-4 py-3">
           <div className="mx-auto flex w-full max-w-2xl items-end justify-between gap-3">
             <div>
-              <p className="text-2xl font-semibold tabular-nums">{euro(total)}</p>
+              <p className="text-2xl font-semibold tabular-nums">
+                {euro(total)}
+              </p>
               <p className="text-xs text-muted-foreground">
                 estimado sobre {priced.length} de {items.length} ítems
               </p>
@@ -283,62 +308,62 @@ export function ShoppingMode({
             </p>
           ) : (
             <div className="flex flex-col gap-4">
-            {groups.map((g) => {
-              const uncheckedItems = g.items.filter((i) => !i.isChecked);
-              const checkedItems = g.items.filter((i) => i.isChecked);
-              const isExpanded = expanded.has(g.name);
-              return (
-                <section key={g.name} aria-label={g.name}>
-                  <h2 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-                    {g.icon ? <span aria-hidden>{g.icon}</span> : null}
-                    {g.name}
-                  </h2>
-                  <ul className="flex flex-col gap-1">
-                    {uncheckedItems.map((item) => (
-                      <ShoppingModeRowItem
-                        key={item.id}
-                        item={item}
-                        onToggle={toggle}
-                      />
-                    ))}
-                  </ul>
-
-                  {/* L13 — Cogidos de la sección, contraídos a una línea. */}
-                  {checkedItems.length > 0 ? (
-                    <div className="mt-1">
-                      <button
-                        type="button"
-                        onClick={() => toggleExpanded(g.name)}
-                        aria-expanded={isExpanded}
-                        className="flex min-h-11 w-full items-center gap-1.5 rounded-lg px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
-                      >
-                        <Check className="size-4 text-success" aria-hidden />
-                        {checkedItems.length} cogido
-                        {checkedItems.length === 1 ? "" : "s"}
-                        <ChevronDown
-                          aria-hidden
-                          className={cn(
-                            "ml-auto size-4 transition-transform",
-                            isExpanded && "rotate-180",
-                          )}
+              {groups.map((g) => {
+                const uncheckedItems = g.items.filter((i) => !i.isChecked);
+                const checkedItems = g.items.filter((i) => i.isChecked);
+                const isExpanded = expanded.has(g.name);
+                return (
+                  <section key={g.name} aria-label={g.name}>
+                    <h2 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+                      {g.icon ? <span aria-hidden>{g.icon}</span> : null}
+                      {g.name}
+                    </h2>
+                    <ul className="flex flex-col gap-1">
+                      {uncheckedItems.map((item) => (
+                        <ShoppingModeRowItem
+                          key={item.id}
+                          item={item}
+                          onToggle={toggle}
                         />
-                      </button>
-                      {isExpanded ? (
-                        <ul className="flex flex-col gap-1">
-                          {checkedItems.map((item) => (
-                            <ShoppingModeRowItem
-                              key={item.id}
-                              item={item}
-                              onToggle={toggle}
-                            />
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </section>
-              );
-            })}
+                      ))}
+                    </ul>
+
+                    {/* L13 — Cogidos de la sección, contraídos a una línea. */}
+                    {checkedItems.length > 0 ? (
+                      <div className="mt-1">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(g.name)}
+                          aria-expanded={isExpanded}
+                          className="flex min-h-11 w-full items-center gap-1.5 rounded-lg px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+                        >
+                          <Check className="size-4 text-success" aria-hidden />
+                          {checkedItems.length} cogido
+                          {checkedItems.length === 1 ? "" : "s"}
+                          <ChevronDown
+                            aria-hidden
+                            className={cn(
+                              "ml-auto size-4 transition-transform",
+                              isExpanded && "rotate-180",
+                            )}
+                          />
+                        </button>
+                        {isExpanded ? (
+                          <ul className="flex flex-col gap-1">
+                            {checkedItems.map((item) => (
+                              <ShoppingModeRowItem
+                                key={item.id}
+                                item={item}
+                                onToggle={toggle}
+                              />
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
             </div>
           )}
 
@@ -441,7 +466,10 @@ function RecommendedSection({
   onAdd: (s: Suggestion) => void;
 }) {
   return (
-    <section className="rounded-xl border border-dashed p-3" aria-label="Recomendados">
+    <section
+      className="rounded-xl border border-dashed p-3"
+      aria-label="Recomendados"
+    >
       <h2 className="mb-2 flex items-center gap-1.5 text-sm font-medium">
         <Sparkles className="size-4 text-chart-3" aria-hidden />
         Recomendados
@@ -465,7 +493,9 @@ function RecommendedSection({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-base">{s.name}</span>
-                  <span className="block text-xs text-muted-foreground">{reason}</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {reason}
+                  </span>
                 </span>
                 <span className="shrink-0 text-sm font-medium tabular-nums text-muted-foreground">
                   {formatQuantity(s.suggestedQuantity, s.unit)}

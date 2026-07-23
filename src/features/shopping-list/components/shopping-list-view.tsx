@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  ArrowUpDown,
+  Check,
   Layers,
   List,
   Minus,
@@ -29,11 +31,14 @@ import type {
 } from "../queries";
 import {
   deleteListItemAction,
+  reorderListItemsAction,
   setListItemQuantityAction,
   toggleItemAction,
 } from "../actions";
+import { groupByCategory } from "../grouping";
 import { AddItemForm } from "./add-item-form";
 import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
+import { ItemReorderList } from "./item-reorder-list";
 import type { AutocompleteOption } from "./product-autocomplete";
 import { useCheckout } from "./use-checkout";
 import { EditListItemDrawer } from "./edit-list-item-drawer";
@@ -46,39 +51,6 @@ function signatureOf(items: ListItem[]) {
 
 /** Alta optimista pendiente de confirmar contra el servidor. */
 type PendingAdd = { tempId: string; realId: string | null; item: ListItem };
-
-/** Orden de la categoría "Otros" / ítems sin categoría (va al final). */
-const NO_CATEGORY_SORT = 9_000;
-
-/**
- * Agrupa ítems por categoría para la vista agrupada (L10): orden por
- * `sort_order` (los sin categoría al final en "Otros"); dentro del grupo se
- * respeta el orden ya recibido (position). Los altas optimistas sin categoría
- * caen en "Otros" hasta que reconcilian.
- */
-function groupByCategory(items: ListItem[]) {
-  const byCat = new Map<
-    string,
-    { name: string; icon: string | null; sort: number; items: ListItem[] }
-  >();
-  for (const it of items) {
-    const name = it.categoryName ?? "Otros";
-    let g = byCat.get(name);
-    if (!g) {
-      g = {
-        name,
-        icon: it.categoryIcon ?? null,
-        sort: it.categorySort ?? NO_CATEGORY_SORT,
-        items: [],
-      };
-      byCat.set(name, g);
-    }
-    g.items.push(it);
-  }
-  return [...byCat.values()].sort(
-    (a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "es"),
-  );
-}
 
 export function ShoppingListView({
   listId,
@@ -102,6 +74,8 @@ export function ShoppingListView({
   const [editItem, setEditItem] = useState<ListItem | null>(null);
   // L10 — Agrupar por categoría (persistido en localStorage, por dispositivo).
   const [grouped, setGrouped] = usePersistedFlag("lista:grouped");
+  // L14 — Modo reordenar (arrastrar artículos). Efímero, no se persiste.
+  const [reordering, setReordering] = useState(false);
   // Temporizadores de borrado diferido (id → timeout) para la ventana de undo.
   const removeTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
@@ -190,6 +164,27 @@ export function ShoppingListView({
     });
   }
 
+  // L14 — Aplica un nuevo orden de pendientes: reordena el estado local al
+  // instante (para que no "salte" antes del refresh) y persiste las posiciones.
+  function applyReorder(globalIds: string[]) {
+    const inSet = new Set(globalIds);
+    setItems((prev) => {
+      const map = new Map(prev.map((i) => [i.id, i]));
+      const reordered = globalIds
+        .map((id) => map.get(id))
+        .filter((i): i is ListItem => Boolean(i));
+      // Conserva cualquier pendiente no incluido y los marcados al final.
+      const rest = prev.filter((i) => i.isChecked || !inSet.has(i.id));
+      return [...reordered, ...rest];
+    });
+    reorderListItemsAction(globalIds).then((r) => {
+      if (r?.error) {
+        toast.error(r.error);
+        router.refresh();
+      }
+    });
+  }
+
   // Alta optimista: el ítem aparece al instante y se reconcilia con el refresh.
   async function addItem(input: AddInput): Promise<boolean> {
     const tempId =
@@ -205,7 +200,10 @@ export function ShoppingListView({
       productId: input.kind === "product" ? input.productId : null,
       addedByMe: true,
     };
-    setPendingAdds((prev) => [...prev, { tempId, realId: null, item: optimistic }]);
+    setPendingAdds((prev) => [
+      ...prev,
+      { tempId, realId: null, item: optimistic },
+    ]);
 
     const result = await runAddAction(input);
 
@@ -274,6 +272,33 @@ export function ShoppingListView({
     focusOptions.push({ product, reason: "Habitual" });
   }
 
+  // L14 — Modo reordenar: vista enfocada solo con los pendientes arrastrables.
+  if (reordering && pending.length > 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Reordenar la lista</p>
+            <p className="text-xs text-muted-foreground">
+              {grouped
+                ? "Arrastra el asa dentro de cada pasillo."
+                : "Arrastra el asa para cambiar el orden."}
+            </p>
+          </div>
+          <Button size="sm" onClick={() => setReordering(false)}>
+            <Check aria-hidden />
+            Listo
+          </Button>
+        </div>
+        <ItemReorderList
+          items={pending}
+          grouped={grouped}
+          onReorder={applyReorder}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <AddItemForm
@@ -291,23 +316,40 @@ export function ShoppingListView({
         />
       ) : (
         <>
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-1">
             <p className="text-xs font-medium text-muted-foreground">
               {allItems.length} producto{allItems.length === 1 ? "" : "s"}
             </p>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setGrouped(!grouped)}
-              aria-pressed={grouped}
-            >
-              {grouped ? <List aria-hidden /> : <Layers aria-hidden />}
-              {grouped ? "Sin agrupar" : "Agrupar"}
-            </Button>
+            <div className="flex items-center gap-1">
+              {pending.length >= 2 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setReordering(true)}
+                >
+                  <ArrowUpDown aria-hidden />
+                  Reordenar
+                </Button>
+              ) : null}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setGrouped(!grouped)}
+                aria-pressed={grouped}
+              >
+                {grouped ? <List aria-hidden /> : <Layers aria-hidden />}
+                {grouped ? "Sin agrupar" : "Agrupar"}
+              </Button>
+            </div>
           </div>
 
           {pending.length > 0 ? (
-            <Button asChild variant="outline" size="lg" className="print:hidden">
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="print:hidden"
+            >
               <Link href="/lista/compra">
                 <Store aria-hidden />
                 Modo compra
@@ -316,35 +358,34 @@ export function ShoppingListView({
           ) : null}
 
           <div className="flex flex-col gap-1">
-            {grouped ? (
-              groupByCategory(pending).map((g) => (
-                <section key={g.name} aria-label={g.name}>
-                  <h2 className="mt-2 mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                    {g.icon ? <span aria-hidden>{g.icon}</span> : null}
-                    {g.name}
-                  </h2>
-                  {g.items.map((item) => (
-                    <ListRow
-                      key={item.id}
-                      item={item}
-                      onToggle={toggle}
-                      onEdit={setEditItem}
-                      onRemove={scheduleRemove}
-                    />
-                  ))}
-                </section>
-              ))
-            ) : (
-              pending.map((item) => (
-                <ListRow
-                  key={item.id}
-                  item={item}
-                  onToggle={toggle}
-                  onEdit={setEditItem}
-                  onRemove={scheduleRemove}
-                />
-              ))
-            )}
+            {grouped
+              ? groupByCategory(pending).map((g) => (
+                  <section key={g.name} aria-label={g.name}>
+                    <h2 className="mt-2 mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                      {g.icon ? <span aria-hidden>{g.icon}</span> : null}
+                      {g.name}
+                    </h2>
+                    {g.items.map((item) => (
+                      <ListRow
+                        key={item.id}
+                        item={item}
+                        onToggle={toggle}
+                        onEdit={setEditItem}
+                        onRemove={scheduleRemove}
+                      />
+                    ))}
+                  </section>
+                ))
+              : pending.map((item) => (
+                  <ListRow
+                    key={item.id}
+                    item={item}
+                    onToggle={toggle}
+                    onEdit={setEditItem}
+                    onRemove={scheduleRemove}
+                    showIcon
+                  />
+                ))}
 
             {done.length > 0 ? (
               <p className="mt-4 mb-1 text-xs font-medium text-muted-foreground">
@@ -358,6 +399,7 @@ export function ShoppingListView({
                 onToggle={toggle}
                 onEdit={setEditItem}
                 onRemove={scheduleRemove}
+                showIcon
               />
             ))}
           </div>
@@ -396,11 +438,14 @@ function ListRow({
   onToggle,
   onEdit,
   onRemove,
+  showIcon = false,
 }: {
   item: ListItem;
   onToggle: (id: string, checked: boolean) => void;
   onEdit: (item: ListItem) => void;
   onRemove: (item: ListItem) => void;
+  /** Muestra el icono de categoría delante del nombre (vista sin agrupar). */
+  showIcon?: boolean;
 }) {
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -420,7 +465,13 @@ function ListRow({
   function onPointerDown(e: React.PointerEvent) {
     // Solo gesto táctil/lápiz; en escritorio se usa el botón papelera.
     if (e.pointerType === "mouse") return;
-    gesture.current = { x: e.clientX, y: e.clientY, active: true, axis: "none", dx: 0 };
+    gesture.current = {
+      x: e.clientX,
+      y: e.clientY,
+      active: true,
+      axis: "none",
+      dx: 0,
+    };
     swiped.current = false;
   }
 
@@ -497,6 +548,19 @@ function ListRow({
             className="size-5"
           />
         </label>
+        {/* Icono de categoría (solo en la vista sin agrupar; en agrupada ya lo
+            muestra la cabecera). Decorativo: la categoría no es esencial para
+            usar la fila. */}
+        {showIcon ? (
+          <span
+            aria-hidden
+            className="flex w-5 shrink-0 justify-center text-base leading-none"
+          >
+            {item.categoryIcon ?? (
+              <span className="text-muted-foreground/40">·</span>
+            )}
+          </span>
+        ) : null}
         {/* Zona 2: el texto abre el editor directamente (L5, sin modo edición). */}
         <button
           type="button"
@@ -583,7 +647,10 @@ function QuantityStepper({ item }: { item: ListItem }) {
           >
             <Minus aria-hidden className="text-muted-foreground" />
           </Button>
-          <span className="min-w-6 text-center text-sm tabular-nums" aria-live="polite">
+          <span
+            className="min-w-6 text-center text-sm tabular-nums"
+            aria-live="polite"
+          >
             {qty}
           </span>
           <Button
@@ -703,9 +770,7 @@ function CheckoutBar({ count }: { count: number }) {
         onClick={checkout}
       >
         <ShoppingCart aria-hidden />
-        {pending
-          ? "Guardando…"
-          : `Finalizar compra (${count}) → inventario`}
+        {pending ? "Guardando…" : `Finalizar compra (${count}) → inventario`}
       </Button>
     </div>
   );

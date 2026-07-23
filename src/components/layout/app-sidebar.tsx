@@ -10,10 +10,12 @@ import {
   SidebarGroupContent,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { isNavItemActive, NAV_ITEMS } from "@/components/layout/nav-items";
+import { useNavListCount } from "@/components/layout/nav-list-count";
 
 /**
  * Navegación lateral de escritorio (≥ md). Reutiliza las mismas entradas que la
@@ -24,6 +26,7 @@ import { isNavItemActive, NAV_ITEMS } from "@/components/layout/nav-items";
  */
 export function AppSidebar() {
   const pathname = usePathname();
+  const listCount = useNavListCount();
 
   return (
     <Sidebar collapsible="icon">
@@ -75,6 +78,13 @@ export function AppSidebar() {
                           <span>{item.label}</span>
                         </Link>
                       </SidebarMenuButton>
+                      {/* Contador de pendientes; el sidebar lo oculta en modo
+                          icono con su propia clase group-data. */}
+                      {item.href === "/lista" && listCount > 0 ? (
+                        <SidebarMenuBadge>
+                          {listCount > 99 ? "99+" : listCount}
+                        </SidebarMenuBadge>
+                      ) : null}
                     </SidebarMenuItem>
                   );
                 })}

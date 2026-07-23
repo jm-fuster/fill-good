@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
-import { ChevronRight, Palette } from "lucide-react";
+import { ChevronRight, ListOrdered, Palette } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
@@ -77,6 +77,20 @@ export default async function AjustesPage() {
             <ThemeToggle />
           </CardContent>
         </Card>
+
+        <Link
+          href="/ajustes/orden-tienda"
+          className="flex min-h-11 items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition-colors hover:bg-muted"
+        >
+          <ListOrdered className="size-4 text-muted-foreground" aria-hidden />
+          <span className="flex-1">
+            Orden de la tienda
+            <span className="block text-xs font-normal text-muted-foreground">
+              Ordena los pasillos según tu supermercado
+            </span>
+          </span>
+          <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+        </Link>
 
         <Link
           href="/styleguide"

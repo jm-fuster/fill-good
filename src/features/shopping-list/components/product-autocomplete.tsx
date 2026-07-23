@@ -62,9 +62,11 @@ export function ProductAutocomplete({
   const [active, setActive] = useState(-1);
   const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(
-    null,
-  );
+  const [rect, setRect] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
 
   const options = useMemo<AutocompleteOption[]>(() => {
     const q = normalizeName(filterValue ?? value);
@@ -196,7 +198,9 @@ export function ProductAutocomplete({
                     {onListProductIds?.has(product.id) ? (
                       <Badge variant="secondary">En la lista</Badge>
                     ) : reason ? (
-                      <span className="text-xs text-muted-foreground">{reason}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {reason}
+                      </span>
                     ) : (
                       <>
                         <Badge variant="secondary">

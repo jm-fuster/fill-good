@@ -92,8 +92,12 @@ export function AddItemForm({
         </Button>
       </form>
       {showPreview ? (
-        <p className="mt-1.5 px-1 text-xs text-muted-foreground" aria-live="polite">
-          Añadir: <span className="font-medium text-foreground">{parsed.name}</span>
+        <p
+          className="mt-1.5 px-1 text-xs text-muted-foreground"
+          aria-live="polite"
+        >
+          Añadir:{" "}
+          <span className="font-medium text-foreground">{parsed.name}</span>
           {parsed.quantity != null ? (
             <> · {formatQuantity(parsed.quantity, parsed.unit ?? "ud")}</>
           ) : null}

@@ -12,7 +12,12 @@ import {
 
 /** Alta que el usuario dispara desde el input o un chip. */
 export type AddInput =
-  | { kind: "free"; name: string; quantity: number | null; unit: UnitType | null }
+  | {
+      kind: "free";
+      name: string;
+      quantity: number | null;
+      unit: UnitType | null;
+    }
   | {
       kind: "product";
       productId: string;
@@ -39,7 +44,9 @@ export function showAddResultToast(result: ActionState) {
   if (result.merged) {
     const m = result.merged;
     const qtyText =
-      m.quantity != null ? ` → ${formatQuantity(m.quantity, m.unit ?? "ud")}` : "";
+      m.quantity != null
+        ? ` → ${formatQuantity(m.quantity, m.unit ?? "ud")}`
+        : "";
     toast.info(`${m.name} ya estaba en la lista${qtyText}`);
   }
 }
