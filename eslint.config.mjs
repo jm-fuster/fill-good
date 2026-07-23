@@ -1,10 +1,20 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  // Capa 1 de vigilancia de accesibilidad: eslint-config-next solo activa un
+  // subconjunto de jsx-a11y. Aquí subimos al preset `strict` (31 reglas en
+  // `error`) para que las regresiones WCAG rompan el lint en cada cambio.
+  // Solo aplicamos las reglas: el plugin `jsx-a11y` ya lo registra nextVitals,
+  // así que redeclararlo daría un error de "plugin ya definido".
+  {
+    name: "fillgood/a11y-strict",
+    rules: jsxA11y.flatConfigs.strict.rules,
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:

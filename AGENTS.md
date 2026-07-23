@@ -33,3 +33,8 @@ Referencia viva en `/styleguide` (`src/app/styleguide/page.tsx`). Tokens en `src
 - Features en `src/features/<nombre>/{components,actions.ts,queries.ts,schemas.ts}`; UI compartida en `src/components/`.
 - Migraciones SQL en `supabase/migrations/` vía Supabase CLI; regenerar tipos tras cada migración.
 - El usuario no quiere gasto en IA por ahora: mantener Gemini free tier salvo que pida lo contrario.
+
+## Vigilancia de calidad (rendimiento + accesibilidad)
+
+- **Accesibilidad (estática):** `npm run lint` corre ESLint con el preset **`jsx-a11y/strict`** (31 reglas en `error`) y `--max-warnings 0`. Una regresión WCAG rompe el lint. Las supresiones puntuales (patrones WAI-ARIA combobox/radiogroup, reenvío de foco solo-puntero) van con `eslint-disable-next-line` + comentario que justifica el porqué; no añadas supresiones sin justificar. Recuerda: jsx-a11y solo cubre ~30-40% de WCAG — el resto (foco, contraste real en ambos temas) se valida a mano.
+- **Bundle base (rendimiento):** `npm run check:bundle` mide el First-Load JS compartido (todo lo que carga cada ruta) contra un presupuesto en `scripts/check-bundle-budget.mjs` (`BUDGET_KB`). Requiere un `next build` previo; `npm run build:check` hace ambos. Sube `BUDGET_KB` solo a conciencia, con una dependencia que lo justifique. Nota: el build de Turbopack **no** expone mapa de chunks por ruta (no hay `app-build-manifest.json`), por eso presupuestamos el baseline compartido, no cada ruta.

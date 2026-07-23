@@ -49,6 +49,10 @@ function InputGroupAddon({
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
   return (
+    // Reenvío de foco solo con puntero: al pulsar el hueco del addon se enfoca
+    // el input. El teclado tabula directo al input, así que no necesita
+    // equivalente de teclado. jsx-a11y falso positivo para esta conveniencia.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
     <div
       role="group"
       data-slot="input-group-addon"

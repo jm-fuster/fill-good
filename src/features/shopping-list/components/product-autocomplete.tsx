@@ -172,17 +172,24 @@ export function ProductAutocomplete({
       />
       {showList && rect
         ? createPortal(
+            // Patrón WAI-ARIA combobox: el foco vive en el <input role="combobox">
+            // y las opciones se anuncian con aria-activedescendant; ul/li con
+            // role listbox/option es la asociación canónica. El teclado se
+            // gestiona en el input, no por opción. jsx-a11y da falso positivo.
             <ul
               id={listboxId}
+              // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
               role="listbox"
               aria-label="Sugerencias de productos"
               className="fixed z-[80] overflow-hidden rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-md"
               style={{ top: rect.top + 4, left: rect.left, width: rect.width }}
             >
               {options.map(({ product, reason }, index) => (
+                // eslint-disable-next-line jsx-a11y/click-events-have-key-events
                 <li
                   key={product.id}
                   id={`${listboxId}-opt-${index}`}
+                  // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
                   role="option"
                   aria-selected={index === active}
                   onMouseDown={(e) => e.preventDefault()}

@@ -7,7 +7,10 @@
     "dev": "next dev",
     "build": "next build && serwist build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint --max-warnings 0",
+    "check:bundle": "node scripts/check-bundle-budget.mjs",
+    "build:check": "next build && node scripts/check-bundle-budget.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.18",
@@ -48,6 +51,7 @@
     "esbuild": "^0.28.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
     "supabase": "^2.109.1",
     "tailwindcss": "^4",
     "typescript": "^5"
