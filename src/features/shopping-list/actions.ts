@@ -14,6 +14,21 @@ import { addListItemSchema, updateListItemSchema } from "./schemas";
 
 export type ActionState = { error?: string; ok?: boolean; warning?: string };
 
+/** Siguiente `position` al final de la lista (max + 1); 1 si está vacía. */
+async function nextListPosition(
+  supabase: ReturnType<typeof createServerSupabaseClient>,
+  listId: string,
+): Promise<number> {
+  const { data: last } = await supabase
+    .from("shopping_list_items")
+    .select("position")
+    .eq("list_id", listId)
+    .order("position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (last?.position ?? 0) + 1;
+}
+
 export async function addListItemAction(
   _prev: ActionState,
   formData: FormData,
@@ -59,14 +74,7 @@ export async function addListItemAction(
     }
   }
 
-  const { data: last } = await supabase
-    .from("shopping_list_items")
-    .select("position")
-    .eq("list_id", list.id)
-    .order("position", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const position = (last?.position ?? 0) + 1;
+  const position = await nextListPosition(supabase, list.id);
 
   const { error } = await supabase.from("shopping_list_items").insert({
     list_id: list.id,
@@ -109,6 +117,8 @@ export async function addProductToListAction(
       ? quantity
       : null;
 
+  const position = await nextListPosition(supabase, list.id);
+
   const { error } = await supabase.from("shopping_list_items").insert({
     list_id: list.id,
     household_id: household.id,
@@ -117,6 +127,7 @@ export async function addProductToListAction(
     quantity: qty,
     unit: unit ?? product.default_unit,
     added_by: userId,
+    position,
   });
   if (error) return { error: "No se pudo añadir a la lista." };
 
