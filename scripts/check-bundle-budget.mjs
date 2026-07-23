@@ -16,7 +16,7 @@
 //
 // Requiere un build de producción previo (`next build`), que genera .next/.
 
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { join } from "node:path";
 
