@@ -41,12 +41,20 @@ export async function notifyPriceRises(
         ? `${alerts[0].productName} ha subido un ${alerts[0].pct}% desde tu última compra`
         : `${alerts.length} productos de este ticket han subido de precio`;
 
-    await sendPush(targets, {
+    const { gone } = await sendPush(targets, {
       title: "Aviso de precio",
       body,
       url: "/precios",
       tag: "price-alert",
     });
+
+    // Higiene: los endpoints 404/410 están muertos (el navegador revocó la
+    // suscripción). Se borran para no reintentar contra ellos en cada envío. El
+    // DELETE lo autoriza la política `push_delete_household` (miembros del hogar),
+    // porque quien confirma el ticket rara vez es el dueño del endpoint muerto.
+    if (gone.length) {
+      await supabase.from("push_subscriptions").delete().in("endpoint", gone);
+    }
   } catch (err) {
     console.error("notifyPriceRises falló (ignorado):", err);
   }
