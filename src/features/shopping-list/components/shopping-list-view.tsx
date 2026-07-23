@@ -596,13 +596,14 @@ function ListRow({
         </button>
         {/* Stepper ±1 inline para unidades contables (ud o sin unidad) (L9). */}
         {countable ? <QuantityStepper item={item} /> : null}
-        {/* Papelera: oculta por defecto, visible en hover/foco (escritorio). */}
+        {/* Papelera: siempre visible en táctil (móvil, donde no hay hover ni se
+            descubre el swipe); en escritorio se oculta y se revela al hover/foco. */}
         <Button
           variant="ghost"
           size="icon"
           aria-label={`Quitar ${item.name}`}
           onClick={() => onRemove(item)}
-          className="pointer-events-none opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
+          className="opacity-100 transition-opacity md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100 md:focus-visible:pointer-events-auto md:focus-visible:opacity-100"
         >
           <Trash2 aria-hidden className="text-muted-foreground" />
         </Button>
