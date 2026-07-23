@@ -100,21 +100,23 @@ export async function getActiveListBadge(): Promise<{
   pendingCount: number;
 }> {
   const supabase = createServerSupabaseClient();
+  // Una sola query (antes 2 secuenciales: lista → count): el count de artículos
+  // pendientes va embebido y filtrado en el propio embed. supabase-js devuelve
+  // el count embebido como `[{ count: number }]`.
   const { data: list } = await supabase
     .from("shopping_lists")
-    .select("id")
+    .select("id, shopping_list_items(count)")
     .eq("status", "active")
+    .eq("shopping_list_items.is_checked", false)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   if (!list) return { listId: null, pendingCount: 0 };
 
-  const { count } = await supabase
-    .from("shopping_list_items")
-    .select("id", { count: "exact", head: true })
-    .eq("list_id", list.id)
-    .eq("is_checked", false);
-  return { listId: list.id, pendingCount: count ?? 0 };
+  const counts = list.shopping_list_items as unknown as
+    | { count: number }[]
+    | null;
+  return { listId: list.id, pendingCount: counts?.[0]?.count ?? 0 };
 }
 
 /**

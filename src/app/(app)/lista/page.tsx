@@ -14,7 +14,12 @@ import {
 export const metadata: Metadata = { title: "Lista de la compra" };
 
 export default async function ListaPage() {
-  const list = await getActiveList();
+  // getProductCatalog no depende de list.id → va en la primera tanda junto a
+  // getActiveList (antes esperaba a tener la lista: waterfall innecesario).
+  const [list, catalog] = await Promise.all([
+    getActiveList(),
+    getProductCatalog(),
+  ]);
 
   if (!list) {
     return (
@@ -27,11 +32,11 @@ export default async function ListaPage() {
     );
   }
 
-  const [items, suggestions, habituales, catalog] = await Promise.all([
+  // Estas sí dependen de list.id.
+  const [items, suggestions, habituales] = await Promise.all([
     getListItems(list.id),
     getSuggestions(list.id),
     getHabitualProducts(list.id),
-    getProductCatalog(),
   ]);
 
   return (

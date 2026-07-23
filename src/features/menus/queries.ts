@@ -40,6 +40,23 @@ type EntryRow = {
   recipe: { name: string; is_saved: boolean; source: string } | null;
 };
 
+function mapEntryRow(r: EntryRow): MenuEntry {
+  return {
+    id: r.id,
+    date: r.date,
+    slot: r.meal_slot,
+    position: r.position,
+    recipeId: r.recipe_id,
+    recipeName: r.recipe?.name ?? null,
+    recipeIsSaved: r.recipe?.is_saved ?? null,
+    recipeSource: r.recipe?.source ?? null,
+    freeText: r.free_text,
+    cookedAt: r.cooked_at,
+    source: r.source,
+    pinned: r.pinned,
+  };
+}
+
 export async function getWeekMenu(weekStart: string): Promise<WeekMenu | null> {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
@@ -65,20 +82,63 @@ export async function getMenuEntries(menuId: string): Promise<MenuEntry[]> {
   if (error) throw error;
 
   const rows = (data ?? []) as unknown as EntryRow[];
-  return rows.map((r) => ({
-    id: r.id,
-    date: r.date,
-    slot: r.meal_slot,
-    position: r.position,
-    recipeId: r.recipe_id,
-    recipeName: r.recipe?.name ?? null,
-    recipeIsSaved: r.recipe?.is_saved ?? null,
-    recipeSource: r.recipe?.source ?? null,
-    freeText: r.free_text,
-    cookedAt: r.cooked_at,
-    source: r.source,
-    pinned: r.pinned,
-  }));
+  return rows.map(mapEntryRow);
+}
+
+export type WeekMenuWithEntries = {
+  menu: WeekMenu | null;
+  entries: MenuEntry[];
+};
+
+/**
+ * Menús y entradas de VARIAS semanas de una vez (aplana el waterfall de /menus:
+ * antes eran hasta 5 tandas secuenciales). Dos queries: los menús de todas las
+ * semanas pedidas y, en un solo `.in`, todas sus entradas. Devuelve un mapa
+ * week_start → { menu, entries } con una entrada por cada semana pedida (menu
+ * null y entries vacío si esa semana no tiene menú).
+ */
+export async function getWeekMenusWithEntries(
+  weeks: string[],
+): Promise<Map<string, WeekMenuWithEntries>> {
+  const result = new Map<string, WeekMenuWithEntries>();
+  for (const w of weeks) result.set(w, { menu: null, entries: [] });
+  if (weeks.length === 0) return result;
+
+  const supabase = createServerSupabaseClient();
+  const { data: menus, error: menusErr } = await supabase
+    .from("weekly_menus")
+    .select("id, generated_by, week_start")
+    .in("week_start", weeks);
+  if (menusErr) throw menusErr;
+  if (!menus || menus.length === 0) return result;
+
+  const weekByMenuId = new Map<string, string>();
+  for (const m of menus) {
+    weekByMenuId.set(m.id, m.week_start);
+    result.set(m.week_start, {
+      menu: { id: m.id, generatedBy: m.generated_by },
+      entries: [],
+    });
+  }
+
+  const { data, error } = await supabase
+    .from("menu_entries")
+    .select(
+      "menu_id, id, date, meal_slot, position, recipe_id, free_text, cooked_at, source, pinned, recipe:recipes(name, is_saved, source)",
+    )
+    .in("menu_id", [...weekByMenuId.keys()])
+    .order("date", { ascending: true })
+    .order("meal_slot", { ascending: true })
+    .order("position", { ascending: true });
+  if (error) throw error;
+
+  const rows = (data ?? []) as unknown as (EntryRow & { menu_id: string })[];
+  for (const r of rows) {
+    const week = weekByMenuId.get(r.menu_id);
+    if (!week) continue;
+    result.get(week)!.entries.push(mapEntryRow(r));
+  }
+  return result;
 }
 
 /** Regla del menú tal como la consume la UI (con el nombre de la receta). */

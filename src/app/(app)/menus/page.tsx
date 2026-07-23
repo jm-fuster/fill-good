@@ -10,10 +10,9 @@ import {
   MenuPrefsOnboarding,
 } from "@/features/menus/components/menu-prefs";
 import {
-  getMenuEntries,
   getMenuPrefs,
   getMenuRules,
-  getWeekMenu,
+  getWeekMenusWithEntries,
 } from "@/features/menus/queries";
 import { activeSlots } from "@/features/menus/slots";
 import { getRecipeCostsForIds, getSavedRecipes } from "@/features/recipes/queries";
@@ -32,25 +31,25 @@ export default async function MenusPage({
       ? getWeekStart(new Date(`${sp.week}T00:00:00`))
       : getWeekStart();
 
-  const menu = await getWeekMenu(weekStart);
-  const [entries, rules, recipes, prefs] = await Promise.all([
-    menu ? getMenuEntries(menu.id) : Promise.resolve([]),
+  // Ambas semanas (visible y anterior) en una sola tanda; getMenuRules/recipes/
+  // prefs van en paralelo. Antes: getWeekMenu → entradas → (si vacío) menú
+  // anterior → sus entradas, hasta 5 tandas secuenciales.
+  const prevWeekStart = shiftWeek(weekStart, -1);
+  const [menusByWeek, rules, recipes, prefs] = await Promise.all([
+    getWeekMenusWithEntries([weekStart, prevWeekStart]),
     getMenuRules(),
     getSavedRecipes(),
     getMenuPrefs(),
   ]);
+  const menu = menusByWeek.get(weekStart)?.menu ?? null;
+  const entries = menusByWeek.get(weekStart)?.entries ?? [];
   const slots = activeSlots(prefs.planBreakfast);
 
   // "Copiar la semana anterior" (N5): solo si la visible está vacía y la
-  // anterior tiene platos.
-  let canCopyPrevious = false;
-  if (entries.length === 0) {
-    const prevMenu = await getWeekMenu(shiftWeek(weekStart, -1));
-    if (prevMenu) {
-      const prevEntries = await getMenuEntries(prevMenu.id);
-      canCopyPrevious = prevEntries.length > 0;
-    }
-  }
+  // anterior tiene platos. Se decide en memoria con lo ya cargado.
+  const canCopyPrevious =
+    entries.length === 0 &&
+    (menusByWeek.get(prevWeekStart)?.entries.length ?? 0) > 0;
 
   // Coste estimado de la semana (M7): suma de los platos con receta. Es parcial
   // si algún plato no tiene precio de todos sus ingredientes o no tiene receta.
