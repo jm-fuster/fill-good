@@ -11,7 +11,6 @@ import {
   getCurrentHousehold,
   getHouseholdMembers,
 } from "@/features/household/queries";
-import { getChainSavingsTips, getInferredChains } from "@/features/prices/queries";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 
 export type Category = {
@@ -325,6 +324,8 @@ type InventoryRow = {
     min_quantity: number | null;
     pack_size: number | null;
     preferred_chain: string | null;
+    inferred_chain: string | null;
+    savings_tip: ChainSavingsTip | null;
     icon: string | null;
     category: { id: string; name: string; icon: string | null } | null;
   } | null;
@@ -332,16 +333,16 @@ type InventoryRow = {
 
 export async function getInventory(): Promise<InventoryEntry[]> {
   const supabase = createServerSupabaseClient();
-  const [{ data, error }, inferredChains, savingsTips] = await Promise.all([
-    supabase
-      .from("inventory_items")
-      .select(
-        "id, product_id, location, quantity, unit, expiry_date, use_soon, product:products(name, min_quantity, pack_size, preferred_chain, icon, category:categories(id, name, icon))",
-      )
-      .order("updated_at", { ascending: false }),
-    getInferredChains(),
-    getChainSavingsTips(),
-  ]);
+  // Cadena inferida y aviso de ahorro se leen MATERIALIZADOS del embed de
+  // products (se recalculan al confirmar ticket / fusionar / cambiar preferencia,
+  // ver features/prices/materialize.ts) en vez de escanear todo el histórico de
+  // receipt_items en cada render.
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .select(
+      "id, product_id, location, quantity, unit, expiry_date, use_soon, product:products(name, min_quantity, pack_size, preferred_chain, inferred_chain, savings_tip, icon, category:categories(id, name, icon))",
+    )
+    .order("updated_at", { ascending: false });
   if (error) throw error;
 
   const rows = (data ?? []) as unknown as InventoryRow[];
@@ -365,8 +366,8 @@ export async function getInventory(): Promise<InventoryEntry[]> {
       packSize:
         r.product!.pack_size === null ? null : Number(r.product!.pack_size),
       preferredChain: r.product!.preferred_chain,
-      inferredChain: inferredChains.get(r.product_id) ?? null,
-      savings: savingsTips.get(r.product_id) ?? null,
+      inferredChain: r.product!.inferred_chain,
+      savings: (r.product!.savings_tip as ChainSavingsTip | null) ?? null,
     }));
 }
 

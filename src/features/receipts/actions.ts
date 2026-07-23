@@ -15,6 +15,7 @@ import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import { getCurrentHousehold } from "@/features/household/queries";
+import { refreshPriceInsights } from "@/features/prices/materialize";
 import { notifyPriceRises } from "@/features/push/notify";
 
 export type ScanState = {
@@ -671,12 +672,18 @@ export async function confirmReceiptAction(
   revalidatePath("/precios");
   revalidatePath("/escanear");
 
-  // Aviso push de subidas de precio (M10c) FUERA del camino crítico: el cliente
-  // recibe la respuesta al cerrar el ticket; los push salen después vía after().
-  // Inerte sin claves VAPID; jamás rompe la confirmación (try/catch dentro).
+  // Trabajo posterior FUERA del camino crítico: el cliente recibe la respuesta al
+  // cerrar el ticket; esto sale después vía after().
+  //  1. Rematerializar las señales de precio (cadena inferida + aviso de ahorro)
+  //     de los productos afectados: solo cambian cuando cambia el histórico.
+  //  2. Aviso push de subidas de precio (M10c). Inerte sin claves VAPID; jamás
+  //     rompe la confirmación (try/catch dentro).
   const notifyIds = [...affectedProductIds];
   const notifyUserId = userId ?? null;
-  after(() => notifyPriceRises(household.id, notifyIds, notifyUserId));
+  after(async () => {
+    await refreshPriceInsights(supabase, household.id, notifyIds);
+    await notifyPriceRises(household.id, notifyIds, notifyUserId);
+  });
 
   return { ok: true, added, inventoryItemIds, warnings };
 }

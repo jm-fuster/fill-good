@@ -7,6 +7,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import { isKnownIcon } from "@/lib/product-icons/catalog";
 import { getCurrentHousehold } from "@/features/household/queries";
+import { refreshPriceInsights } from "@/features/prices/materialize";
 import { getProductCatalog } from "@/features/shopping-list/queries";
 import type {
   InventoryEventKind,
@@ -303,6 +304,11 @@ export async function updateInventoryAction(
     .eq("id", d.productId);
   if (prodErr) return { error: "No se pudo guardar el nombre." };
 
+  // La tienda preferida entra en la cadena efectiva del aviso de ahorro; al poder
+  // cambiar aquí, rematerializamos las señales de precio de este producto
+  // (best-effort; el aviso reaparece igualmente al confirmar el próximo ticket).
+  await refreshPriceInsights(supabase, household.id, [d.productId]);
+
   // Ubicación de destino: si ya existe una fila del mismo producto en esa
   // ubicación (unique household_id, product_id, location), fusionamos sumando
   // cantidades y borramos la fila movida; si no, movemos la fila.
@@ -440,6 +446,14 @@ export async function mergeProductsAction(
     const key = Object.keys(messages).find((k) => error.message.includes(k));
     return { error: key ? messages[key] : "No se pudieron fusionar los productos." };
   }
+
+  // El destino absorbe el histórico del origen → sus señales de precio cambian.
+  // Rematerializamos solo el destino (best-effort).
+  const household = await getCurrentHousehold();
+  if (household) {
+    await refreshPriceInsights(supabase, household.id, [targetProductId]);
+  }
+
   revalidatePath("/inventario");
   revalidatePath("/precios");
   return { ok: true };

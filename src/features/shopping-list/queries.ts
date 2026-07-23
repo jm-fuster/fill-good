@@ -4,11 +4,7 @@ import { auth } from "@clerk/nextjs/server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentHousehold } from "@/features/household/queries";
-import {
-  getChainSavingsTips,
-  getInferredChains,
-  getLatestUnitPrices,
-} from "@/features/prices/queries";
+import { getLatestUnitPrices } from "@/features/prices/queries";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import { baseUnitFactor, unitFamily } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
@@ -177,6 +173,7 @@ type ShoppingModeRow = {
   product_id: string | null;
   product: {
     preferred_chain: string | null;
+    inferred_chain: string | null;
     icon: string | null;
     category: {
       name: string;
@@ -198,17 +195,18 @@ export async function getShoppingModeItems(
   listId: string,
 ): Promise<ShoppingModeItem[]> {
   const supabase = createServerSupabaseClient();
-  const [{ data, error }, prices, inferredChains] = await Promise.all([
+  // La cadena inferida se lee MATERIALIZADA del embed (products.inferred_chain);
+  // getLatestUnitPrices se queda (solo corre aquí, en /lista/compra).
+  const [{ data, error }, prices] = await Promise.all([
     supabase
       .from("shopping_list_items")
       .select(
-        "id, name, quantity, unit, is_checked, product_id, product:products(preferred_chain, icon, category:categories(name, icon, sort_order))",
+        "id, name, quantity, unit, is_checked, product_id, product:products(preferred_chain, inferred_chain, icon, category:categories(name, icon, sort_order))",
       )
       .eq("list_id", listId)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
     getLatestUnitPrices(),
-    getInferredChains(),
   ]);
   if (error) throw error;
 
@@ -238,10 +236,9 @@ export async function getShoppingModeItems(
       productIcon: r.product?.icon ?? null,
       categorySort: r.product?.category?.sort_order ?? NO_CATEGORY_SORT,
       lineCost,
-      // Efectiva: la manual gana; si no hay, la inferida del histórico (fase 2).
+      // Efectiva: la manual gana; si no hay, la inferida materializada (fase 2).
       preferredChain:
-        r.product?.preferred_chain ??
-        (r.product_id ? (inferredChains.get(r.product_id) ?? null) : null),
+        r.product?.preferred_chain ?? r.product?.inferred_chain ?? null,
     };
   });
 }
@@ -256,6 +253,8 @@ type ListItemRow = {
   added_by: string | null;
   product: {
     preferred_chain: string | null;
+    inferred_chain: string | null;
+    savings_tip: ChainSavingsTip | null;
     icon: string | null;
     category: { name: string; icon: string | null; sort_order: number } | null;
   } | null;
@@ -264,19 +263,17 @@ type ListItemRow = {
 export async function getListItems(listId: string): Promise<ListItem[]> {
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
-  const [{ data, error }, inferredChains, savingsTips] = await Promise.all([
-    supabase
-      .from("shopping_list_items")
-      .select(
-        "id, name, quantity, unit, is_checked, product_id, added_by, product:products(preferred_chain, icon, category:categories(name, icon, sort_order))",
-      )
-      .eq("list_id", listId)
-      .order("is_checked", { ascending: true })
-      .order("position", { ascending: true })
-      .order("created_at", { ascending: true }),
-    getInferredChains(),
-    getChainSavingsTips(),
-  ]);
+  // Cadena inferida y aviso de ahorro se leen MATERIALIZADOS del embed de
+  // products, no escaneando todo el histórico de receipt_items en cada render.
+  const { data, error } = await supabase
+    .from("shopping_list_items")
+    .select(
+      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(preferred_chain, inferred_chain, savings_tip, icon, category:categories(name, icon, sort_order))",
+    )
+    .eq("list_id", listId)
+    .order("is_checked", { ascending: true })
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: true });
   if (error) throw error;
 
   const rows = (data ?? []) as unknown as ListItemRow[];
@@ -292,11 +289,9 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
     categoryIcon: i.product?.category?.icon ?? null,
     productIcon: i.product?.icon ?? null,
     categorySort: i.product?.category?.sort_order ?? NO_CATEGORY_SORT,
-    // Efectiva: la manual gana; si no hay, la inferida del histórico (fase 2).
-    preferredChain:
-      i.product?.preferred_chain ??
-      (i.product_id ? (inferredChains.get(i.product_id) ?? null) : null),
-    savings: i.product_id ? (savingsTips.get(i.product_id) ?? null) : null,
+    // Efectiva: la manual gana; si no hay, la inferida materializada (fase 2).
+    preferredChain: i.product?.preferred_chain ?? i.product?.inferred_chain ?? null,
+    savings: (i.product?.savings_tip as ChainSavingsTip | null) ?? null,
   }));
 }
 
