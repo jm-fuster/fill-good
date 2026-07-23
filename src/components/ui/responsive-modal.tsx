@@ -88,10 +88,17 @@ function ResponsiveModalClose(props: React.ComponentProps<typeof DrawerClose>) {
 
 function ResponsiveModalContent({
   className,
+  overlayClassName,
   children,
   onOpenAutoFocus,
 }: {
   className?: string;
+  /**
+   * Ajusta el overlay del modal. Necesario cuando el modal se abre sobre un
+   * contenedor a pantalla completa con z-index propio (p. ej. el modo compra),
+   * para elevar overlay y contenido por encima de él.
+   */
+  overlayClassName?: string;
   children?: React.ReactNode;
   /** Útil en confirmaciones destructivas para enfocar la acción segura. */
   onOpenAutoFocus?: (event: Event) => void;
@@ -107,6 +114,7 @@ function ResponsiveModalContent({
           "flex max-h-[85vh] flex-col gap-0 overflow-y-auto p-0 sm:max-w-lg",
           className,
         )}
+        overlayClassName={overlayClassName}
         onOpenAutoFocus={onOpenAutoFocus}
       >
         {children}
@@ -115,7 +123,11 @@ function ResponsiveModalContent({
   }
 
   return (
-    <DrawerContent className={className} onOpenAutoFocus={onOpenAutoFocus}>
+    <DrawerContent
+      className={className}
+      overlayClassName={overlayClassName}
+      onOpenAutoFocus={onOpenAutoFocus}
+    >
       <div className="mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto">
         {children}
       </div>

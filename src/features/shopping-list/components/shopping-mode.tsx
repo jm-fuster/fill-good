@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, Plus, ShoppingCart, X } from "lucide-react";
+import { Check, ChevronDown, Plus, ShoppingCart, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/units";
 import { useRealtimeList } from "../use-realtime-list";
 import { toggleItemAction } from "../actions";
-import type { CatalogProduct, ShoppingModeItem } from "../queries";
+import type { CatalogProduct, ShoppingModeItem, Suggestion } from "../queries";
 import { AddItemForm } from "./add-item-form";
 import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import { useCheckout } from "./use-checkout";
@@ -49,16 +49,21 @@ export function ShoppingMode({
   listId,
   initialItems,
   catalog,
+  suggestions,
 }: {
   listId: string;
   initialItems: ShoppingModeItem[];
   catalog: CatalogProduct[];
+  suggestions: Suggestion[];
 }) {
   useRealtimeList(listId);
   const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [sig, setSig] = useState(signatureOf(initialItems));
   const [adding, setAdding] = useState(false);
+  // Recomendaciones ya añadidas en esta sesión: se ocultan al instante (el
+  // refresh del servidor las excluirá después al recalcular las sugerencias).
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   // L13 — Secciones con los cogidos expandidos (por defecto contraídos).
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   function toggleExpanded(name: string) {
@@ -169,6 +174,30 @@ export function ShoppingMode({
     return true;
   }
 
+  // Recomendaciones aún no añadidas (el servidor ya excluye las que están en la
+  // lista; `dismissed` cubre las recién añadidas hasta que llega el refresh).
+  const visibleSuggestions = suggestions.filter((s) => !dismissed.has(s.productId));
+
+  // Añadir una recomendación con su cantidad sugerida, de un toque.
+  async function addSuggestion(s: Suggestion) {
+    setDismissed((prev) => new Set(prev).add(s.productId));
+    const ok = await addItem({
+      kind: "product",
+      productId: s.productId,
+      name: s.name,
+      quantity: s.suggestedQuantity,
+      unit: s.unit,
+    });
+    if (!ok) {
+      // Al fallar, vuelve a mostrarse para poder reintentar.
+      setDismissed((prev) => {
+        const next = new Set(prev);
+        next.delete(s.productId);
+        return next;
+      });
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-background">
       {/* Bandas a todo el ancho (borde/fondo), con el contenido acotado a una
@@ -247,12 +276,13 @@ export function ShoppingMode({
       ) : null}
 
       <div className="flex-1 overflow-y-auto px-4 py-3 pb-safe">
-        {items.length === 0 ? (
-          <p className="mx-auto w-full max-w-2xl rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-            La lista está vacía.
-          </p>
-        ) : (
-          <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+          {items.length === 0 ? (
+            <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+              La lista está vacía.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-4">
             {groups.map((g) => {
               const uncheckedItems = g.items.filter((i) => !i.isChecked);
               const checkedItems = g.items.filter((i) => i.isChecked);
@@ -309,8 +339,16 @@ export function ShoppingMode({
                 </section>
               );
             })}
-          </div>
-        )}
+            </div>
+          )}
+
+          {visibleSuggestions.length > 0 ? (
+            <RecommendedSection
+              suggestions={visibleSuggestions}
+              onAdd={addSuggestion}
+            />
+          ) : null}
+        </div>
       </div>
 
       {checkedCount > 0 ? (
@@ -331,9 +369,11 @@ export function ShoppingMode({
         </footer>
       ) : null}
 
-      {/* L12 — Alta desde el modo compra en un bottom sheet. */}
+      {/* L12 — Alta desde el modo compra en un bottom sheet. El modo compra es un
+          overlay a pantalla completa (z-[60]); el modal debe elevarse por encima
+          (overlay y contenido) para no quedar oculto detrás. */}
       <ResponsiveModal open={adding} onOpenChange={setAdding}>
-        <ResponsiveModalContent>
+        <ResponsiveModalContent className="z-[70]" overlayClassName="z-[70]">
           <ResponsiveModalHeader>
             <ResponsiveModalTitle>Añadir a la lista</ResponsiveModalTitle>
           </ResponsiveModalHeader>
@@ -385,5 +425,56 @@ function ShoppingModeRowItem({
         </span>
       </label>
     </li>
+  );
+}
+
+/**
+ * Recomendaciones durante la compra (M5): productos que sueles reponer o que
+ * están por debajo del mínimo, con una cantidad sugerida. Un toque los añade a
+ * la lista con esa cantidad.
+ */
+function RecommendedSection({
+  suggestions,
+  onAdd,
+}: {
+  suggestions: Suggestion[];
+  onAdd: (s: Suggestion) => void;
+}) {
+  return (
+    <section className="rounded-xl border border-dashed p-3" aria-label="Recomendados">
+      <h2 className="mb-2 flex items-center gap-1.5 text-sm font-medium">
+        <Sparkles className="size-4 text-chart-3" aria-hidden />
+        Recomendados
+      </h2>
+      <ul className="flex flex-col gap-1">
+        {suggestions.map((s) => {
+          const reason =
+            s.reason === "restock" && s.intervalDays
+              ? `Sueles comprarlo cada ~${s.intervalDays} días`
+              : "Quedan pocas";
+          return (
+            <li key={s.productId}>
+              <button
+                type="button"
+                onClick={() => onAdd(s)}
+                className="flex min-h-12 w-full items-center gap-3 rounded-lg px-2 text-left transition-colors hover:bg-muted"
+                aria-label={`Añadir ${formatQuantity(s.suggestedQuantity, s.unit)} de ${s.name}`}
+              >
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Plus className="size-4" aria-hidden />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-base">{s.name}</span>
+                  <span className="block text-xs text-muted-foreground">{reason}</span>
+                </span>
+                <span className="shrink-0 text-sm font-medium tabular-nums text-muted-foreground">
+                  {formatQuantity(s.suggestedQuantity, s.unit)}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

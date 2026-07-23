@@ -33,6 +33,11 @@ export type Suggestion = {
   reason: SuggestionReason;
   /** Cadencia habitual en días (solo en reason "restock"). */
   intervalDays?: number;
+  /**
+   * Cantidad sugerida a añadir a la lista (en unidades de lista). Para "low_stock"
+   * cubre el déficit hasta el mínimo; para "restock" es una compra estándar.
+   */
+  suggestedQuantity: number;
 };
 
 /** Catálogo ligero para el autocompletado (filtrado en cliente). */
@@ -254,6 +259,29 @@ function daysBetween(fromISO: string, toISO: string): number {
 }
 
 /**
+ * Cantidad sugerida a añadir a la lista (M5). Para contables ("ud") devuelve
+ * unidades de lista enteras: si hay pack, cuántos packs cubren el déficit hasta
+ * el mínimo (en checkout cada pack aporta `pack_size` unidades); si no, el
+ * déficit redondeado hacia arriba. Sin déficit conocido, una compra estándar (1).
+ * Para no contables (kg/g/l/ml) devuelve el déficit (1 decimal) o 1 por defecto.
+ */
+function suggestedQuantityFor(
+  unit: UnitType,
+  stock: number,
+  min: number | null,
+  packSize: number | null,
+): number {
+  const deficit = min !== null ? Math.max(0, min - stock) : 0;
+  if (unit === "ud") {
+    if (packSize && packSize > 1) {
+      return deficit > 0 ? Math.max(1, Math.ceil(deficit / packSize)) : 1;
+    }
+    return deficit > 0 ? Math.max(1, Math.ceil(deficit)) : 1;
+  }
+  return deficit > 0 ? Math.round(deficit * 10) / 10 : 1;
+}
+
+/**
  * Sugerencias de compra con dos fuentes (M5), en una sola consulta agregada
  * (sin N+1):
  *  · "low_stock" — productos con mínimo definido cuyo stock total está por
@@ -269,7 +297,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
     await Promise.all([
       supabase
         .from("products")
-        .select("id, name, min_quantity, default_unit, purchase_count"),
+        .select("id, name, min_quantity, default_unit, purchase_count, pack_size"),
       supabase.from("inventory_items").select("product_id, quantity"),
       supabase
         .from("shopping_list_items")
@@ -309,6 +337,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
     if (onList.has(p.id)) continue;
     const stock = stockByProduct.get(p.id) ?? 0;
     const min = p.min_quantity === null ? null : Number(p.min_quantity);
+    const packSize = p.pack_size === null ? null : Number(p.pack_size);
 
     // Fuente 1: por debajo del mínimo (precedencia).
     if (min !== null && stock < min) {
@@ -317,6 +346,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
         name: p.name,
         unit: p.default_unit,
         reason: "low_stock",
+        suggestedQuantity: suggestedQuantityFor(p.default_unit, stock, min, packSize),
       });
       continue;
     }
@@ -343,6 +373,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
         unit: p.default_unit,
         reason: "restock",
         intervalDays: Math.round(median),
+        suggestedQuantity: suggestedQuantityFor(p.default_unit, stock, min, packSize),
       });
     }
   }

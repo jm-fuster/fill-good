@@ -47,12 +47,16 @@ function DrawerOverlay({
 
 function DrawerContent({
   className,
+  overlayClassName,
   children,
   ...props
-}: React.ComponentProps<typeof DrawerPrimitive.Content>) {
+}: React.ComponentProps<typeof DrawerPrimitive.Content> & {
+  /** Ajusta el overlay (p. ej. z-index sobre un contenedor a pantalla completa). */
+  overlayClassName?: string
+}) {
   return (
     <DrawerPortal data-slot="drawer-portal">
-      <DrawerOverlay />
+      <DrawerOverlay className={overlayClassName} />
       <DrawerPrimitive.Content
         data-slot="drawer-content"
         className={cn(

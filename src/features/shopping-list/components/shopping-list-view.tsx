@@ -635,7 +635,7 @@ function Suggestions({
                   kind: "product",
                   productId: s.productId,
                   name: s.name,
-                  quantity: null,
+                  quantity: s.suggestedQuantity,
                   unit: s.unit,
                 })
               }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +61,10 @@ export function ProductAutocomplete({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(
+    null,
+  );
 
   const options = useMemo<AutocompleteOption[]>(() => {
     const q = normalizeName(filterValue ?? value);
@@ -76,6 +81,27 @@ export function ProductAutocomplete({
   }, [products, value, filterValue, defaultOptions]);
 
   const showList = open && options.length > 0;
+
+  // Posición del desplegable en un portal a `document.body`, para que no lo
+  // recorte el `overflow-y-auto` de un modal contenedor (Dialog/Drawer, L12):
+  // dentro de un modal, "absolute" respecto al input queda clipado por ese
+  // ancestro con overflow en vez de flotar libremente por encima.
+  useEffect(() => {
+    if (!showList) return;
+    function updateRect() {
+      const el = wrapperRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setRect({ top: r.bottom, left: r.left, width: r.width });
+    }
+    updateRect();
+    window.addEventListener("resize", updateRect);
+    window.addEventListener("scroll", updateRect, true);
+    return () => {
+      window.removeEventListener("resize", updateRect);
+      window.removeEventListener("scroll", updateRect, true);
+    };
+  }, [showList]);
 
   function change(v: string) {
     onValueChange(v);
@@ -119,7 +145,7 @@ export function ProductAutocomplete({
   const activeId = active >= 0 ? `${listboxId}-opt-${active}` : undefined;
 
   return (
-    <div className="relative flex-1">
+    <div ref={wrapperRef} className="relative flex-1">
       <Input
         ref={ref}
         name={inputName}
@@ -142,49 +168,53 @@ export function ProductAutocomplete({
         aria-autocomplete="list"
         aria-activedescendant={activeId}
       />
-      {showList ? (
-        <ul
-          id={listboxId}
-          role="listbox"
-          aria-label="Sugerencias de productos"
-          className="absolute top-full z-50 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-md"
-        >
-          {options.map(({ product, reason }, index) => (
-            <li
-              key={product.id}
-              id={`${listboxId}-opt-${index}`}
-              role="option"
-              aria-selected={index === active}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => choose(product)}
-              onMouseEnter={() => setActive(index)}
-              className={cn(
-                "flex min-h-11 cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-sm",
-                index === active && "bg-muted",
-              )}
+      {showList && rect
+        ? createPortal(
+            <ul
+              id={listboxId}
+              role="listbox"
+              aria-label="Sugerencias de productos"
+              className="fixed z-[80] overflow-hidden rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-md"
+              style={{ top: rect.top + 4, left: rect.left, width: rect.width }}
             >
-              <span className="truncate font-medium">{product.name}</span>
-              <span className="flex shrink-0 items-center gap-1.5">
-                {onListProductIds?.has(product.id) ? (
-                  <Badge variant="secondary">En la lista</Badge>
-                ) : reason ? (
-                  <span className="text-xs text-muted-foreground">{reason}</span>
-                ) : (
-                  <>
-                    <Badge variant="secondary">
-                      {LOCATION_ICONS[product.defaultLocation]}{" "}
-                      {LOCATION_LABELS[product.defaultLocation]}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {UNIT_LABELS[product.defaultUnit]}
-                    </span>
-                  </>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+              {options.map(({ product, reason }, index) => (
+                <li
+                  key={product.id}
+                  id={`${listboxId}-opt-${index}`}
+                  role="option"
+                  aria-selected={index === active}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => choose(product)}
+                  onMouseEnter={() => setActive(index)}
+                  className={cn(
+                    "flex min-h-11 cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-sm",
+                    index === active && "bg-muted",
+                  )}
+                >
+                  <span className="truncate font-medium">{product.name}</span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {onListProductIds?.has(product.id) ? (
+                      <Badge variant="secondary">En la lista</Badge>
+                    ) : reason ? (
+                      <span className="text-xs text-muted-foreground">{reason}</span>
+                    ) : (
+                      <>
+                        <Badge variant="secondary">
+                          {LOCATION_ICONS[product.defaultLocation]}{" "}
+                          {LOCATION_LABELS[product.defaultLocation]}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {UNIT_LABELS[product.defaultUnit]}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
