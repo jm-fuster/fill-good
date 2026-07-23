@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Pencil, Plus, ShoppingCart, Store, Trash2 } from "lucide-react";
+import { Plus, ShoppingCart, Store, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,6 @@ export function ShoppingListView({
   const [items, setItems] = useState(initialItems);
   const [sig, setSig] = useState(signatureOf(initialItems));
   const [pendingAdds, setPendingAdds] = useState<PendingAdd[]>([]);
-  const [editMode, setEditMode] = useState(false);
   const [editItem, setEditItem] = useState<ListItem | null>(null);
 
   // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh) y
@@ -212,22 +211,11 @@ export function ShoppingListView({
         />
       ) : (
         <>
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground">
-              {editMode ? "Elige un producto para editarlo" : `${allItems.length} producto${allItems.length === 1 ? "" : "s"}`}
-            </p>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setEditMode((v) => !v)}
-              aria-pressed={editMode}
-            >
-              {editMode ? <Check aria-hidden /> : <Pencil aria-hidden />}
-              {editMode ? "Hecho" : "Editar"}
-            </Button>
-          </div>
+          <p className="text-xs font-medium text-muted-foreground">
+            {allItems.length} producto{allItems.length === 1 ? "" : "s"}
+          </p>
 
-          {!editMode && pending.length > 0 ? (
+          {pending.length > 0 ? (
             <Button asChild variant="outline" size="lg" className="print:hidden">
               <Link href="/lista/compra">
                 <Store aria-hidden />
@@ -241,7 +229,6 @@ export function ShoppingListView({
               <ListRow
                 key={item.id}
                 item={item}
-                editMode={editMode}
                 onToggle={toggle}
                 onEdit={setEditItem}
               />
@@ -256,7 +243,6 @@ export function ShoppingListView({
               <ListRow
                 key={item.id}
                 item={item}
-                editMode={editMode}
                 onToggle={toggle}
                 onEdit={setEditItem}
               />
@@ -265,15 +251,15 @@ export function ShoppingListView({
         </>
       )}
 
-      {!editMode && visibleSuggestions.length > 0 ? (
+      {visibleSuggestions.length > 0 ? (
         <Suggestions suggestions={visibleSuggestions} onAdd={addItem} />
       ) : null}
 
-      {!editMode && habitualChips.length > 0 ? (
+      {habitualChips.length > 0 ? (
         <Habituales products={habitualChips} onAdd={addItem} />
       ) : null}
 
-      {!editMode && done.length > 0 ? <CheckoutBar count={done.length} /> : null}
+      {done.length > 0 ? <CheckoutBar count={done.length} /> : null}
 
       {editItem ? (
         <EditListItemDrawer
@@ -290,12 +276,10 @@ export function ShoppingListView({
 
 function ListRow({
   item,
-  editMode,
   onToggle,
   onEdit,
 }: {
   item: ListItem;
-  editMode: boolean;
   onToggle: (id: string, checked: boolean) => void;
   onEdit: (item: ListItem) => void;
 }) {
@@ -310,49 +294,38 @@ function ListRow({
     });
   }
 
-  const label = (
-    <>
-      {item.name}
-      {item.quantity ? (
-        <span className="ml-1.5 text-muted-foreground">
-          · {formatQuantity(item.quantity, item.unit ?? "ud")}
-        </span>
-      ) : null}
-    </>
-  );
-
   return (
     <div className="flex items-center gap-1 rounded-lg">
-      {editMode ? (
-        // En modo edición no se puede marcar como comprado: la fila abre el
-        // editor de producto (nombre / cantidad / unidad).
-        <button
-          type="button"
-          onClick={() => onEdit(item)}
-          className="flex min-h-12 flex-1 items-center gap-3 px-1 text-left text-sm"
-          aria-label={`Editar ${item.name}`}
+      {/* Zona 1: checkbox con área táctil generosa (marca/desmarca). */}
+      <label className="flex min-h-12 shrink-0 cursor-pointer items-center py-1 pr-3 pl-1">
+        <Checkbox
+          checked={item.isChecked}
+          onCheckedChange={(v) => onToggle(item.id, v === true)}
+          aria-label={`Marcar ${item.name}`}
+          className="size-5"
+        />
+      </label>
+      {/* Zona 2: el texto abre el editor directamente (L5, sin modo edición). */}
+      <button
+        type="button"
+        onClick={() => onEdit(item)}
+        aria-label={`Editar ${item.name}`}
+        className="flex min-h-12 flex-1 items-center text-left text-sm"
+      >
+        <span
+          className={cn(
+            "flex-1 underline decoration-dotted decoration-muted-foreground/30 underline-offset-4",
+            item.isChecked && "text-muted-foreground line-through",
+          )}
         >
-          <Pencil aria-hidden className="size-4 shrink-0 text-muted-foreground" />
-          <span className="flex-1">{label}</span>
-        </button>
-      ) : (
-        <label className="flex min-h-12 flex-1 cursor-pointer items-center gap-3 px-1">
-          <Checkbox
-            checked={item.isChecked}
-            onCheckedChange={(v) => onToggle(item.id, v === true)}
-            aria-label={`Marcar ${item.name}`}
-            className="size-5"
-          />
-          <span
-            className={cn(
-              "flex-1 text-sm",
-              item.isChecked && "text-muted-foreground line-through",
-            )}
-          >
-            {label}
-          </span>
-        </label>
-      )}
+          {item.name}
+          {item.quantity ? (
+            <span className="ml-1.5 text-muted-foreground">
+              · {formatQuantity(item.quantity, item.unit ?? "ud")}
+            </span>
+          ) : null}
+        </span>
+      </button>
       <Button
         variant="ghost"
         size="icon"
