@@ -362,15 +362,83 @@ export async function toggleItemAction(
   return { ok: true };
 }
 
+/** Instantánea de una fila borrada, suficiente para restaurarla tal cual. */
+export type DeletedListItem = {
+  id: string;
+  list_id: string;
+  household_id: string;
+  product_id: string | null;
+  name: string;
+  quantity: number | null;
+  unit: UnitType | null;
+  is_checked: boolean;
+  checked_by: string | null;
+  checked_at: string | null;
+  added_by: string | null;
+  position: number;
+  created_at: string;
+};
+
+/**
+ * Borra un ítem de la lista. El borrado se confirma en el servidor de inmediato
+ * (así sobrevive a una recarga de la página; no depende de un temporizador en el
+ * cliente). Devuelve una instantánea de la fila para poder deshacerlo con
+ * `restoreListItemAction`, conservando id, posición y `added_by`.
+ */
 export async function deleteListItemAction(
   itemId: string,
-): Promise<ActionState> {
+): Promise<ActionState & { deleted?: DeletedListItem }> {
   const supabase = createServerSupabaseClient();
+  const { data: row } = await supabase
+    .from("shopping_list_items")
+    .select(
+      "id, list_id, household_id, product_id, name, quantity, unit, is_checked, checked_by, checked_at, added_by, position, created_at",
+    )
+    .eq("id", itemId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("shopping_list_items")
     .delete()
     .eq("id", itemId);
   if (error) return { error: "No se pudo eliminar." };
+
+  revalidatePath("/lista");
+  return {
+    ok: true,
+    deleted: row
+      ? { ...row, quantity: row.quantity === null ? null : Number(row.quantity) }
+      : undefined,
+  };
+}
+
+/**
+ * Deshace un borrado re-insertando la fila exactamente como estaba (mismo id,
+ * posición y `added_by`). RLS exige pertenecer al hogar de `household_id`, así
+ * que no se puede restaurar en un hogar ajeno.
+ */
+export async function restoreListItemAction(
+  item: DeletedListItem,
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.from("shopping_list_items").insert({
+    id: item.id,
+    list_id: item.list_id,
+    household_id: item.household_id,
+    product_id: item.product_id,
+    name: item.name,
+    quantity: item.quantity,
+    unit: item.unit,
+    is_checked: item.is_checked,
+    checked_by: item.checked_by,
+    checked_at: item.checked_at,
+    added_by: item.added_by,
+    position: item.position,
+    created_at: item.created_at,
+  });
+  if (error) return { error: "No se pudo restaurar." };
   revalidatePath("/lista");
   return { ok: true };
 }

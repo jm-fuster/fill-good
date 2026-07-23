@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -35,6 +35,7 @@ import type {
 import {
   deleteListItemAction,
   reorderListItemsAction,
+  restoreListItemAction,
   setListItemQuantityAction,
   toggleItemAction,
 } from "../actions";
@@ -79,8 +80,6 @@ export function ShoppingListView({
   const [grouped, setGrouped] = usePersistedFlag("lista:grouped");
   // L14 — Modo reordenar (arrastrar artículos). Efímero, no se persiste.
   const [reordering, setReordering] = useState(false);
-  // Temporizadores de borrado diferido (id → timeout) para la ventana de undo.
-  const removeTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
 
   // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh) y
   // descarta los ítems optimistas que ya han aterrizado en el servidor.
@@ -99,59 +98,47 @@ export function ShoppingListView({
     });
   }
 
-  // Al desmontar, confirma los borrados aún en ventana de undo (no perderlos).
-  useEffect(() => {
-    const timers = removeTimers.current;
-    return () => {
-      for (const [id, timer] of timers) {
-        clearTimeout(timer);
-        void deleteListItemAction(id);
-      }
-      timers.clear();
-    };
-  }, []);
-
-  // L6 — Borrado diferido con "Deshacer": oculta el ítem al instante y solo
-  // llama al servidor al expirar el toast (5 s). Si se deshace antes, no se
-  // borra nada (conserva posición y added_by).
-  function scheduleRemove(item: ListItem) {
-    if (removeTimers.current.has(item.id)) return;
-    setRemovedIds((prev) => new Set(prev).add(item.id));
-
-    const timer = setTimeout(() => {
-      removeTimers.current.delete(item.id);
-      deleteListItemAction(item.id).then((r) => {
-        if (r?.error) {
-          toast.error(r.error);
-          setRemovedIds((prev) => {
-            const next = new Set(prev);
-            next.delete(item.id);
-            return next;
-          });
-        } else {
-          router.refresh();
-        }
-      });
-    }, 5000);
-    removeTimers.current.set(item.id, timer);
-
-    toast(`${item.name} quitado`, {
-      duration: 5000,
-      action: {
-        label: "Deshacer",
-        onClick: () => undoRemove(item.id),
-      },
-    });
-  }
-
-  function undoRemove(id: string) {
-    const timer = removeTimers.current.get(id);
-    if (timer) clearTimeout(timer);
-    removeTimers.current.delete(id);
+  // L6 — Quitar con "Deshacer". El borrado se confirma en el servidor de
+  // inmediato (así sobrevive a una recarga); el ítem se oculta al instante para
+  // dar respuesta inmediata. "Deshacer" restaura la fila tal cual (mismo id,
+  // posición y added_by) desde la instantánea que devuelve el borrado.
+  function unhide(id: string) {
     setRemovedIds((prev) => {
+      if (!prev.has(id)) return prev;
       const next = new Set(prev);
       next.delete(id);
       return next;
+    });
+  }
+
+  function removeItem(item: ListItem) {
+    if (removedIds.has(item.id)) return;
+    setRemovedIds((prev) => new Set(prev).add(item.id));
+
+    deleteListItemAction(item.id).then((r) => {
+      if (r?.error) {
+        // El servidor rechazó el borrado: vuelve a mostrar el ítem.
+        unhide(item.id);
+        toast.error(r.error);
+        return;
+      }
+      const snapshot = r?.deleted;
+      toast(`${item.name} quitado`, {
+        duration: 5000,
+        action: snapshot
+          ? {
+              label: "Deshacer",
+              onClick: () => {
+                unhide(item.id);
+                restoreListItemAction(snapshot).then((res) => {
+                  if (res?.error) toast.error(res.error);
+                  else router.refresh();
+                });
+              },
+            }
+          : undefined,
+      });
+      router.refresh();
     });
   }
 
@@ -374,7 +361,7 @@ export function ShoppingListView({
                         item={item}
                         onToggle={toggle}
                         onEdit={setEditItem}
-                        onRemove={scheduleRemove}
+                        onRemove={removeItem}
                       />
                     ))}
                   </section>
@@ -385,7 +372,7 @@ export function ShoppingListView({
                     item={item}
                     onToggle={toggle}
                     onEdit={setEditItem}
-                    onRemove={scheduleRemove}
+                    onRemove={removeItem}
                     showIcon
                   />
                 ))}
@@ -401,7 +388,7 @@ export function ShoppingListView({
                 item={item}
                 onToggle={toggle}
                 onEdit={setEditItem}
-                onRemove={scheduleRemove}
+                onRemove={removeItem}
                 showIcon
               />
             ))}
@@ -426,7 +413,7 @@ export function ShoppingListView({
           onOpenChange={(open) => {
             if (!open) setEditItem(null);
           }}
-          onRemove={scheduleRemove}
+          onRemove={removeItem}
         />
       ) : null}
     </div>
