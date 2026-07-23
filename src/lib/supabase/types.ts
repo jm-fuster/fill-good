@@ -150,6 +150,14 @@ export type Database = {
           min_quantity: number | null;
           pack_size: number | null;
           preferred_chain: string | null;
+          // Señales de precio materializadas (L15 f2/f3). Estructura de savings_tip
+          // = ChainSavingsTip (src/features/prices/chain-savings.ts).
+          inferred_chain: string | null;
+          savings_tip: {
+            currentChain: string;
+            cheaperChain: string;
+            savingsPct: number;
+          } | null;
           icon: string | null;
           purchase_count: number;
           last_purchased_at: string | null;
@@ -167,6 +175,12 @@ export type Database = {
           min_quantity?: number | null;
           pack_size?: number | null;
           preferred_chain?: string | null;
+          inferred_chain?: string | null;
+          savings_tip?: {
+            currentChain: string;
+            cheaperChain: string;
+            savingsPct: number;
+          } | null;
           icon?: string | null;
           purchase_count?: number;
           last_purchased_at?: string | null;
@@ -184,6 +198,12 @@ export type Database = {
           min_quantity?: number | null;
           pack_size?: number | null;
           preferred_chain?: string | null;
+          inferred_chain?: string | null;
+          savings_tip?: {
+            currentChain: string;
+            cheaperChain: string;
+            savingsPct: number;
+          } | null;
           icon?: string | null;
           purchase_count?: number;
           last_purchased_at?: string | null;
@@ -885,6 +905,10 @@ export type Database = {
       };
       bump_product_purchase: {
         Args: { pid: string };
+        Returns: undefined;
+      };
+      bump_product_purchases: {
+        Args: { pids: string[] };
         Returns: undefined;
       };
       merge_products: {

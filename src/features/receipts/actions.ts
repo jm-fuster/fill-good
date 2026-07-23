@@ -2,6 +2,7 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { generateObject } from "ai";
 
 import { getModel } from "@/lib/ai/models";
@@ -14,7 +15,7 @@ import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import { getCurrentHousehold } from "@/features/household/queries";
-import { recordStockEvent } from "@/features/inventory/events";
+import { refreshPriceInsights } from "@/features/prices/materialize";
 import { notifyPriceRises } from "@/features/push/notify";
 
 export type ScanState = {
@@ -28,6 +29,21 @@ const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 /** Tope del catálogo embebido en el prompt (los más habituales); el resto lo
  *  cubre el fuzzy de la revisión (E6). Evita prompts enormes si el catálogo crece. */
 const MAX_CATALOG_FOR_PROMPT = 300;
+
+/** Tamaño de tanda para los updates que no tienen equivalente masivo en PostgREST
+ *  (valores distintos por fila). Pasan de N secuenciales a ~N/10 tandas paralelas. */
+const WRITE_CHUNK = 10;
+
+/** Ejecuta `fn` sobre `items` en tandas paralelas de {@link WRITE_CHUNK}. El
+ *  callback puede devolver un builder de PostgREST (thenable), no solo Promise. */
+async function inChunks<T>(
+  items: T[],
+  fn: (item: T) => PromiseLike<unknown>,
+): Promise<void> {
+  for (let i = 0; i < items.length; i += WRITE_CHUNK) {
+    await Promise.all(items.slice(i, i + WRITE_CHUNK).map((item) => fn(item)));
+  }
+}
 
 export async function scanReceiptAction(
   _prev: ScanState,
@@ -112,8 +128,10 @@ export async function scanReceiptAction(
   // línea). El fuzzy no se aplica aquí: solo sugiere en la revisión (E6).
   const products = extraction.items.filter((it) => !it.is_discount);
   const matchData = await loadHouseholdMatchData(supabase, household.id);
-  let position = 0;
-  for (const item of products) {
+  // El matching exacto es síncrono en memoria: se construye el array completo y
+  // se inserta en UNA sola llamada (antes: un insert por línea). `position` es el
+  // índice del array.
+  const lineRows = products.map((item, position) => {
     const match = matchLineExact(matchData, item.raw_text, item.description);
     // Sugerencia de la IA (E7), SIEMPRE validada server-side (la IA alucina ids):
     // solo se guarda si el id existe en el catálogo mostrado y la línea NO tiene
@@ -124,7 +142,7 @@ export async function scanReceiptAction(
       catalogIds.has(item.suggested_product_id)
         ? item.suggested_product_id
         : null;
-    await supabase.from("receipt_items").insert({
+    return {
       receipt_id: receipt.id,
       household_id: household.id,
       raw_text: item.raw_text,
@@ -138,8 +156,11 @@ export async function scanReceiptAction(
       product_id: match.productId,
       suggested_product_id: suggestedProductId,
       match_status: match.matchStatus,
-      position: position++,
-    });
+      position,
+    };
+  });
+  if (lineRows.length) {
+    await supabase.from("receipt_items").insert(lineRows);
   }
 
   return { receiptId: receipt.id, warnings: extraction.warnings ?? [] };
@@ -283,170 +304,358 @@ export async function confirmReceiptAction(
     (invRows ?? []).map((r) => [invKey(r.product_id, r.location), r]),
   );
 
+  // ── PASADA 1 — resolución en memoria (sin ningún await) ──────────────────
+  // Recorre las decisiones reutilizando los mapas ya cargados y clasifica cada
+  // línea: saltada / ya procesada (idempotencia) / producto enlazado / existente
+  // por nombre / producto NUEVO (acumulado y deduplicado por normalized_name
+  // dentro del propio ticket). No se toca la BD todavía: las escrituras van en
+  // la pasada 2, por lotes. La semántica (unidades E3, pack F4, dedup, contadores)
+  // es idéntica al bucle por-línea anterior; solo se sacan los await de dentro.
+  type Resolved = {
+    itemId: string;
+    rawText: string | null;
+    description: string;
+    quantity: number;
+    unit: UnitType;
+    /** Resuelto ya (enlazado/existente) o null hasta insertar el producto nuevo. */
+    productId: string | null;
+    /** normalized_name para re-resolver tras insertar los productos nuevos. */
+    normKey: string | null;
+    location: LocationType;
+    matchStatus: string;
+    isNew: boolean;
+  };
+
+  const skippedIds: string[] = [];
+  const resolved: Resolved[] = [];
+  // Productos nuevos deduplicados por normalized_name dentro del ticket: la
+  // primera aparición fija nombre y unidad por defecto.
+  const newProductsByNorm = new Map<
+    string,
+    { name: string; normalized_name: string; default_unit: UnitType }
+  >();
+
   for (const dec of payload.items) {
     if (dec.skip) {
-      await supabase
-        .from("receipt_items")
-        .update({ match_status: "skipped" })
-        .eq("id", dec.itemId);
+      skippedIds.push(dec.itemId);
       continue;
     }
 
     // Reintento idempotente: si esta línea ya se procesó en un intento previo
-    // (el ticket quedó a medias), no volver a añadirla al stock.
+    // (el ticket quedó a medias), no volver a añadirla al stock; cuenta igual.
     const itemRow = itemById.get(dec.itemId);
     if (itemRow?.added_to_inventory) {
       added += 1;
       continue;
     }
 
-    // Resolver producto (enlazado, existente por nombre o nuevo) desde los mapas.
-    let productId = dec.productId;
-    let location: LocationType = "pantry";
-    let matchStatus = "manual";
-
-    if (productId) {
-      location = productById.get(productId)?.default_location ?? "pantry";
-    } else {
-      const normalized = normalizeName(dec.description);
-      const existing = productByNorm.get(normalized);
-      if (existing) {
-        productId = existing.id;
-        location = existing.default_location;
-      } else {
-        const { data: created } = await supabase
-          .from("products")
-          .insert({
-            household_id: household.id,
-            name: dec.description,
-            normalized_name: normalized,
-            default_unit: dec.unit,
-            default_location: "pantry",
-          })
-          .select("id, normalized_name, default_location, pack_size")
-          .single();
-        if (!created) continue;
-        productId = created.id;
-        matchStatus = "new_product";
-        // Mantener los mapas al día: otra línea del mismo ticket con el mismo
-        // nombre reutiliza el producto recién creado (dedup dentro del ticket).
-        productById.set(created.id, created);
-        productByNorm.set(created.normalized_name, created);
-        packByProduct.set(created.id, created.pack_size);
-      }
-    }
-
-    // Aprender el alias (texto crudo del ticket → producto), con el raw_text ya
-    // cargado por lote.
     const rawText = itemRow?.raw_text ?? null;
-    const aliasKey = normalizeName(rawText || dec.description);
-    if (aliasKey && productId) {
-      await supabase.from("product_aliases").upsert(
-        {
-          household_id: household.id,
-          product_id: productId,
-          alias: rawText || dec.description,
-          alias_normalized: aliasKey,
-        },
-        { onConflict: "household_id,alias_normalized", ignoreDuplicates: true },
-      );
-    }
 
-    // Fijar la línea del ticket (historial de precios) y marcarla procesada.
-    await supabase
-      .from("receipt_items")
-      .update({
-        product_id: productId,
+    if (dec.productId) {
+      resolved.push({
+        itemId: dec.itemId,
+        rawText,
         description: dec.description,
         quantity: dec.quantity,
         unit: dec.unit,
-        match_status: matchStatus,
+        productId: dec.productId,
+        normKey: null,
+        location: productById.get(dec.productId)?.default_location ?? "pantry",
+        matchStatus: "manual",
+        isNew: false,
+      });
+      continue;
+    }
+
+    const normalized = normalizeName(dec.description);
+    const existing = productByNorm.get(normalized);
+    if (existing) {
+      resolved.push({
+        itemId: dec.itemId,
+        rawText,
+        description: dec.description,
+        quantity: dec.quantity,
+        unit: dec.unit,
+        productId: existing.id,
+        normKey: null,
+        location: existing.default_location,
+        matchStatus: "manual",
+        isNew: false,
+      });
+    } else {
+      if (!newProductsByNorm.has(normalized)) {
+        newProductsByNorm.set(normalized, {
+          name: dec.description,
+          normalized_name: normalized,
+          default_unit: dec.unit,
+        });
+      }
+      resolved.push({
+        itemId: dec.itemId,
+        rawText,
+        description: dec.description,
+        quantity: dec.quantity,
+        unit: dec.unit,
+        productId: null,
+        normKey: normalized,
+        location: "pantry",
+        matchStatus: "new_product",
+        isNew: true,
+      });
+    }
+  }
+
+  // ── PASADA 2 — escrituras por lotes ──────────────────────────────────────
+
+  // 2.1 Productos nuevos: un único insert; vuelca ids a los mapas y re-resuelve
+  //     las líneas que dependían de ellos (por normalized_name).
+  const newProducts = [...newProductsByNorm.values()];
+  if (newProducts.length) {
+    const { data: created } = await supabase
+      .from("products")
+      .insert(
+        newProducts.map((np) => ({
+          household_id: household.id,
+          name: np.name,
+          normalized_name: np.normalized_name,
+          default_unit: np.default_unit,
+          default_location: "pantry" as LocationType,
+        })),
+      )
+      .select("id, normalized_name, default_location, pack_size");
+    const createdByNorm = new Map(
+      (created ?? []).map((c) => [c.normalized_name, c]),
+    );
+    for (const c of created ?? []) {
+      productById.set(c.id, c);
+      productByNorm.set(c.normalized_name, c);
+      packByProduct.set(c.id, c.pack_size);
+    }
+    for (const r of resolved) {
+      if (r.isNew && r.productId === null && r.normKey) {
+        const c = createdByNorm.get(r.normKey);
+        if (c) {
+          r.productId = c.id;
+          r.location = c.default_location;
+        }
+      }
+    }
+  }
+
+  // Líneas cuyo producto nuevo no llegó a crearse quedan fuera (equivale al
+  // `continue` del código anterior cuando el insert de producto fallaba).
+  const processable = resolved.filter(
+    (r): r is Resolved & { productId: string } => r.productId !== null,
+  );
+
+  // 2.2 Aliases: un único upsert, deduplicado por alias_normalized (que es la
+  //     clave del onConflict) antes de enviar.
+  const aliasByNorm = new Map<
+    string,
+    { household_id: string; product_id: string; alias: string; alias_normalized: string }
+  >();
+  for (const r of processable) {
+    const alias = r.rawText || r.description;
+    const aliasKey = normalizeName(alias);
+    if (aliasKey && !aliasByNorm.has(aliasKey)) {
+      aliasByNorm.set(aliasKey, {
+        household_id: household.id,
+        product_id: r.productId,
+        alias,
+        alias_normalized: aliasKey,
+      });
+    }
+  }
+  if (aliasByNorm.size) {
+    await supabase
+      .from("product_aliases")
+      .upsert([...aliasByNorm.values()], {
+        onConflict: "household_id,alias_normalized",
+        ignoreDuplicates: true,
+      });
+  }
+
+  // 2.3 Líneas de ticket (historial de precios): valores distintos por fila y
+  //     PostgREST no tiene update masivo → tandas paralelas de ~10.
+  await inChunks(processable, (r) =>
+    supabase
+      .from("receipt_items")
+      .update({
+        product_id: r.productId,
+        description: r.description,
+        quantity: r.quantity,
+        unit: r.unit,
+        match_status: r.matchStatus,
         added_to_inventory: true,
         purchased_at: purchasedAt,
         store_chain: storeChain,
       })
-      .eq("id", dec.itemId);
+      .eq("id", r.itemId),
+  );
+  // Líneas saltadas: un solo update (mismo valor para todas).
+  if (skippedIds.length) {
+    await supabase
+      .from("receipt_items")
+      .update({ match_status: "skipped" })
+      .in("id", skippedIds);
+  }
 
+  // 2.4 Inventario: simular en memoria (misma política E3/pack F4 que antes) y
+  //     separar en updates de filas existentes e insert único de filas nuevas.
+  type InvSim = {
+    id: string | null;
+    product_id: string;
+    location: LocationType;
+    quantity: number;
+    unit: UnitType;
+    existing: boolean;
+    dirty: boolean;
+  };
+  const invSim = new Map<string, InvSim>();
+  for (const [k, r] of invByKey) {
+    invSim.set(k, {
+      id: r.id,
+      product_id: r.product_id,
+      location: r.location,
+      quantity: Number(r.quantity),
+      unit: r.unit,
+      existing: true,
+      dirty: false,
+    });
+  }
+
+  // Clave de inventario tocada por cada línea (null si no se sumó por conflicto
+  // de unidad), en orden de payload → reconstruye inventoryItemIds al final.
+  const lineKeys: (string | null)[] = [];
+  const events: {
+    household_id: string;
+    product_id: string;
+    quantity: number;
+    unit: UnitType;
+    kind: "restocked";
+    created_by: string | null;
+  }[] = [];
+  const bumpIds: string[] = [];
+
+  for (const r of processable) {
     // Pack (F4): si el producto tiene pack y la compra es en ud, entran
-    // `cantidad × pack` unidades al inventario. El precio y la línea del ticket
-    // NO se tocan (siguen registrando la cantidad de compra por caja, arriba).
+    // `cantidad × pack` unidades al inventario (la línea del ticket conserva la
+    // cantidad de compra).
     const packSize =
-      dec.unit === "ud" ? (packByProduct.get(productId) ?? null) : null;
-    const invQty = packSize ? dec.quantity * packSize : dec.quantity;
+      r.unit === "ud" ? (packByProduct.get(r.productId) ?? null) : null;
+    const invQty = packSize ? r.quantity * packSize : r.quantity;
 
-    // Inventario con la política de unidades de E3 (única, en TS).
-    const key = invKey(productId, location);
-    const inv = invByKey.get(key);
+    const key = invKey(r.productId, r.location);
+    const inv = invSim.get(key);
     let addedToInventory = false;
     if (inv) {
-      // NO sumar magnitudes de unidades distintas (ud + l = disparate). Si
-      // difieren, se conserva la unidad y cantidad del inventario y se avisa.
-      if (inv.unit === dec.unit) {
-        const newQty = Number(inv.quantity) + invQty;
-        await supabase
-          .from("inventory_items")
-          .update({ quantity: newQty, updated_by: userId })
-          .eq("id", inv.id);
-        invByKey.set(key, { ...inv, quantity: newQty });
-        inventoryItemIds.push(inv.id);
+      // NO sumar magnitudes de unidades distintas (ud + l = disparate).
+      if (inv.unit === r.unit) {
+        inv.quantity += invQty;
+        inv.dirty = true;
         addedToInventory = true;
       } else {
         warnings.push(
-          `«${dec.description}»: compraste ${formatQuantity(
-            dec.quantity,
-            dec.unit,
+          `«${r.description}»: compraste ${formatQuantity(
+            r.quantity,
+            r.unit,
           )} pero en tu inventario está en ${UNIT_LABELS[inv.unit]}. No se sumó automáticamente; ajústalo a mano.`,
         );
       }
     } else {
-      const { data: created } = await supabase
-        .from("inventory_items")
-        .insert({
-          household_id: household.id,
-          product_id: productId,
-          location,
-          quantity: invQty,
-          unit: dec.unit,
-          updated_by: userId,
-        })
-        .select("id")
-        .single();
-      if (created) {
-        invByKey.set(key, {
-          id: created.id,
-          product_id: productId,
-          location,
-          quantity: invQty,
-          unit: dec.unit,
-        });
-        inventoryItemIds.push(created.id);
-        addedToInventory = true;
-      }
+      invSim.set(key, {
+        id: null,
+        product_id: r.productId,
+        location: r.location,
+        quantity: invQty,
+        unit: r.unit,
+        existing: false,
+        dirty: true,
+      });
+      addedToInventory = true;
     }
 
-    // Historial (F5): "repuesto" por línea realmente añadida al inventario, con
-    // la cantidad ya convertida por pack. Las líneas no sumadas por conflicto de
-    // unidad (E3) no generan evento.
-    if (addedToInventory && productId) {
-      await recordStockEvent(supabase, {
-        householdId: household.id,
-        productId,
+    lineKeys.push(addedToInventory ? key : null);
+    // Historial (F5): evento "repuesto" solo por línea realmente sumada, con la
+    // cantidad ya convertida por pack (mismo criterio que recordStockEvent).
+    if (addedToInventory && invQty > 0) {
+      events.push({
+        household_id: household.id,
+        product_id: r.productId,
         quantity: invQty,
-        unit: dec.unit,
+        unit: r.unit,
         kind: "restocked",
-        userId,
+        created_by: userId ?? null,
       });
     }
-
-    // Memoria de habitualidad: este producto se ha comprado (aunque el stock no
-    // se sumara por conflicto de unidades, la compra sí ocurrió).
-    if (productId) {
-      await supabase.rpc("bump_product_purchase", { pid: productId });
-      affectedProductIds.add(productId);
-    }
+    // Habitualidad: la compra ocurrió aunque el stock no se sumara por conflicto.
+    bumpIds.push(r.productId);
+    affectedProductIds.add(r.productId);
     if (addedToInventory) added += 1;
   }
 
+  // (a) filas existentes con cantidad final distinta → updates chunked.
+  const invUpdates = [...invSim.values()].filter((s) => s.existing && s.dirty);
+  await inChunks(invUpdates, (s) =>
+    supabase
+      .from("inventory_items")
+      .update({ quantity: s.quantity, updated_by: userId })
+      .eq("id", s.id as string),
+  );
+  // (b) filas nuevas → un único insert.
+  const invInserts = [...invSim.values()].filter((s) => !s.existing);
+  let insertedInv: { id: string; product_id: string; location: LocationType }[] =
+    [];
+  if (invInserts.length) {
+    const { data } = await supabase
+      .from("inventory_items")
+      .insert(
+        invInserts.map((s) => ({
+          household_id: household.id,
+          product_id: s.product_id,
+          location: s.location,
+          quantity: s.quantity,
+          unit: s.unit,
+          updated_by: userId,
+        })),
+      )
+      .select("id, product_id, location");
+    insertedInv = data ?? [];
+  }
+
+  // Reconstruir inventoryItemIds en el orden de las líneas del payload (lo que
+  // espera /inventario/revision), mapeando por product_id + location. Duplicar
+  // ids repetidos es aceptable.
+  const idByKey = new Map<string, string>();
+  for (const s of invSim.values()) {
+    if (s.existing && s.id) idByKey.set(invKey(s.product_id, s.location), s.id);
+  }
+  for (const row of insertedInv) {
+    idByKey.set(invKey(row.product_id, row.location), row.id);
+  }
+  for (const key of lineKeys) {
+    if (!key) continue;
+    const id = idByKey.get(key);
+    if (id) inventoryItemIds.push(id);
+  }
+
+  // 2.5 Historial: un único insert de todos los eventos restocked. Best-effort
+  //     (igual que recordStockEvent): un fallo aquí no tumba la confirmación.
+  if (events.length) {
+    try {
+      await supabase.from("inventory_events").insert(events);
+    } catch {
+      // El historial no debe romper la operación principal.
+    }
+  }
+
+  // 2.6 Habitualidad: una sola RPC por lote con el array de productIds (una
+  //     entrada por línea, con duplicados → suma correcta).
+  if (bumpIds.length) {
+    await supabase.rpc("bump_product_purchases", { pids: bumpIds });
+  }
+
+  // 2.7 Cierre del ticket.
   await supabase
     .from("receipts")
     .update({
@@ -463,9 +672,18 @@ export async function confirmReceiptAction(
   revalidatePath("/precios");
   revalidatePath("/escanear");
 
-  // Aviso push de subidas de precio (M10c). Inerte sin claves VAPID; jamás
-  // rompe la confirmación (try/catch dentro).
-  await notifyPriceRises(household.id, [...affectedProductIds], userId ?? null);
+  // Trabajo posterior FUERA del camino crítico: el cliente recibe la respuesta al
+  // cerrar el ticket; esto sale después vía after().
+  //  1. Rematerializar las señales de precio (cadena inferida + aviso de ahorro)
+  //     de los productos afectados: solo cambian cuando cambia el histórico.
+  //  2. Aviso push de subidas de precio (M10c). Inerte sin claves VAPID; jamás
+  //     rompe la confirmación (try/catch dentro).
+  const notifyIds = [...affectedProductIds];
+  const notifyUserId = userId ?? null;
+  after(async () => {
+    await refreshPriceInsights(supabase, household.id, notifyIds);
+    await notifyPriceRises(household.id, notifyIds, notifyUserId);
+  });
 
   return { ok: true, added, inventoryItemIds, warnings };
 }
