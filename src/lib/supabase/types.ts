@@ -887,6 +887,10 @@ export type Database = {
         Args: { pid: string };
         Returns: undefined;
       };
+      bump_product_purchases: {
+        Args: { pids: string[] };
+        Returns: undefined;
+      };
       merge_products: {
         Args: { p_source: string; p_target: string };
         Returns: undefined;
