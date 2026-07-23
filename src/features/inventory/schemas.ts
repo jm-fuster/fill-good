@@ -86,6 +86,13 @@ export const editInventorySchema = z.object({
   packSize: positiveOptionalNumber,
   // Unidad de la fila editada; solo sirve para saber si el pack aplica (ud).
   unit: unit.optional(),
+  // Tienda preferida (L15): clave de cadena o vacío → null (sin preferencia).
+  preferredChain: z
+    .string()
+    .trim()
+    .max(40, "Nombre de tienda demasiado largo.")
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : null)),
 });
 
 /** Selector inicial "¿Qué tienes ya en casa?": ids de producto a añadir en lote. */

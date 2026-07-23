@@ -149,6 +149,7 @@ export type Database = {
           default_location: LocationType;
           min_quantity: number | null;
           pack_size: number | null;
+          preferred_chain: string | null;
           purchase_count: number;
           last_purchased_at: string | null;
           created_at: string;
@@ -164,6 +165,7 @@ export type Database = {
           default_location?: LocationType;
           min_quantity?: number | null;
           pack_size?: number | null;
+          preferred_chain?: string | null;
           purchase_count?: number;
           last_purchased_at?: string | null;
           created_at?: string;
@@ -179,6 +181,7 @@ export type Database = {
           default_location?: LocationType;
           min_quantity?: number | null;
           pack_size?: number | null;
+          preferred_chain?: string | null;
           purchase_count?: number;
           last_purchased_at?: string | null;
           created_at?: string;

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Star, Trash2, X } from "lucide-react";
+import { Star, Store, TrendingDown, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import {
   type ComboboxProduct,
 } from "@/components/product-combobox";
 import { cn } from "@/lib/utils";
+import { CHAIN_OPTIONS, chainLabel } from "@/features/prices/chains";
 import { formatQuantity, LOCATION_OPTIONS, UNIT_LABELS } from "@/lib/units";
 import type { InventoryEventKind, LocationType } from "@/lib/supabase/types";
 import type { Category, InventoryEntry } from "../queries";
@@ -49,6 +50,7 @@ import {
 import { ExpiryQuickPicker } from "./expiry-quick-picker";
 
 const NO_CATEGORY = "__none__";
+const NO_CHAIN = "__none__";
 
 export function EditItemDrawer({
   entry,
@@ -179,6 +181,16 @@ export function EditItemDrawer({
     setCategoryId(entry.categoryId ?? "");
   }
 
+  // Tienda preferida (L15): controlada y resincronizada con el servidor.
+  const [preferredChain, setPreferredChain] = useState(
+    entry.preferredChain ?? "",
+  );
+  const [serverChain, setServerChain] = useState(entry.preferredChain);
+  if (serverChain !== entry.preferredChain) {
+    setServerChain(entry.preferredChain);
+    setPreferredChain(entry.preferredChain ?? "");
+  }
+
   const [expiryDate, setExpiryDate] = useState<string | null>(
     entry.expiryDate,
   );
@@ -245,6 +257,7 @@ export function EditItemDrawer({
           <input type="hidden" name="useSoon" value={String(useSoon)} />
 
           <input type="hidden" name="categoryId" value={categoryId} />
+          <input type="hidden" name="preferredChain" value={preferredChain} />
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit-name">Producto</Label>
@@ -279,6 +292,69 @@ export function EditItemDrawer({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="edit-chain" className="flex items-center gap-1.5">
+              <Store className="size-4 text-muted-foreground" aria-hidden />
+              Tienda preferida{" "}
+              <span className="text-muted-foreground">(opcional)</span>
+            </Label>
+            <Select
+              value={preferredChain === "" ? NO_CHAIN : preferredChain}
+              onValueChange={(v) =>
+                setPreferredChain(v === NO_CHAIN ? "" : v)
+              }
+            >
+              <SelectTrigger id="edit-chain" className="w-full">
+                <SelectValue placeholder="Cualquier tienda" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_CHAIN}>Cualquier tienda</SelectItem>
+                {CHAIN_OPTIONS.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {entry.savings ? (
+              // Fase 3: otra cadena sale más barata según tus tickets. Informativo
+              // (acento cálido de precios); el aviso también aparece en la lista.
+              <div className="flex items-start gap-1.5 rounded-lg bg-chart-3/10 p-2 text-sm text-chart-3">
+                <TrendingDown className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span>
+                  En{" "}
+                  <span className="font-medium">
+                    {chainLabel(entry.savings.cheaperChain)}
+                  </span>{" "}
+                  ahorras ~{entry.savings.savingsPct}% frente a{" "}
+                  {chainLabel(entry.savings.currentChain)}, según tus tickets.
+                </span>
+              </div>
+            ) : preferredChain === "" && entry.inferredChain ? (
+              // Fase 2: pista inferida del histórico de tickets. Un toque la fija
+              // como preferencia manual (pasa a mandar sobre la inferencia).
+              <button
+                type="button"
+                onClick={() => setPreferredChain(entry.inferredChain as string)}
+                className="flex items-start gap-1.5 rounded-lg bg-muted/60 p-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+              >
+                <Store className="mt-0.5 size-4 shrink-0" aria-hidden />
+                <span>
+                  Según tus tickets, sueles comprarlo en{" "}
+                  <span className="font-medium text-foreground">
+                    {chainLabel(entry.inferredChain)}
+                  </span>
+                  . Tócalo para fijarlo.
+                </span>
+              </button>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Dónde sueles comprarlo. Sirve para filtrar por tienda en el modo
+                compra.
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">

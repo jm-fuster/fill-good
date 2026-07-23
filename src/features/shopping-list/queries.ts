@@ -4,7 +4,12 @@ import { auth } from "@clerk/nextjs/server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentHousehold } from "@/features/household/queries";
-import { getLatestUnitPrices } from "@/features/prices/queries";
+import {
+  getChainSavingsTips,
+  getInferredChains,
+  getLatestUnitPrices,
+} from "@/features/prices/queries";
+import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import { baseUnitFactor, unitFamily } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 
@@ -22,6 +27,10 @@ export type ListItem = {
   categoryName?: string;
   categoryIcon?: string | null;
   categorySort?: number;
+  /** Tienda preferida del producto (L15); null/ausente = sin preferencia. */
+  preferredChain?: string | null;
+  /** Aviso de ahorro si otra cadena sale más barata (L15, fase 3). */
+  savings?: ChainSavingsTip | null;
 };
 
 export type SuggestionReason = "low_stock" | "restock";
@@ -151,6 +160,8 @@ export type ShoppingModeItem = {
   categorySort: number;
   /** Coste estimado de la línea (precio × cantidad) o null si no se conoce. */
   lineCost: number | null;
+  /** Tienda preferida del producto (L15); null = sin preferencia. */
+  preferredChain: string | null;
 };
 
 type ShoppingModeRow = {
@@ -161,6 +172,7 @@ type ShoppingModeRow = {
   is_checked: boolean;
   product_id: string | null;
   product: {
+    preferred_chain: string | null;
     category: {
       name: string;
       icon: string | null;
@@ -181,16 +193,17 @@ export async function getShoppingModeItems(
   listId: string,
 ): Promise<ShoppingModeItem[]> {
   const supabase = createServerSupabaseClient();
-  const [{ data, error }, prices] = await Promise.all([
+  const [{ data, error }, prices, inferredChains] = await Promise.all([
     supabase
       .from("shopping_list_items")
       .select(
-        "id, name, quantity, unit, is_checked, product_id, product:products(category:categories(name, icon, sort_order))",
+        "id, name, quantity, unit, is_checked, product_id, product:products(preferred_chain, category:categories(name, icon, sort_order))",
       )
       .eq("list_id", listId)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
     getLatestUnitPrices(),
+    getInferredChains(),
   ]);
   if (error) throw error;
 
@@ -219,6 +232,10 @@ export async function getShoppingModeItems(
       categoryIcon: r.product?.category?.icon ?? null,
       categorySort: r.product?.category?.sort_order ?? NO_CATEGORY_SORT,
       lineCost,
+      // Efectiva: la manual gana; si no hay, la inferida del histórico (fase 2).
+      preferredChain:
+        r.product?.preferred_chain ??
+        (r.product_id ? (inferredChains.get(r.product_id) ?? null) : null),
     };
   });
 }
@@ -232,6 +249,7 @@ type ListItemRow = {
   product_id: string | null;
   added_by: string | null;
   product: {
+    preferred_chain: string | null;
     category: { name: string; icon: string | null; sort_order: number } | null;
   } | null;
 };
@@ -239,15 +257,19 @@ type ListItemRow = {
 export async function getListItems(listId: string): Promise<ListItem[]> {
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("shopping_list_items")
-    .select(
-      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(category:categories(name, icon, sort_order))",
-    )
-    .eq("list_id", listId)
-    .order("is_checked", { ascending: true })
-    .order("position", { ascending: true })
-    .order("created_at", { ascending: true });
+  const [{ data, error }, inferredChains, savingsTips] = await Promise.all([
+    supabase
+      .from("shopping_list_items")
+      .select(
+        "id, name, quantity, unit, is_checked, product_id, added_by, product:products(preferred_chain, category:categories(name, icon, sort_order))",
+      )
+      .eq("list_id", listId)
+      .order("is_checked", { ascending: true })
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: true }),
+    getInferredChains(),
+    getChainSavingsTips(),
+  ]);
   if (error) throw error;
 
   const rows = (data ?? []) as unknown as ListItemRow[];
@@ -262,6 +284,11 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
     categoryName: i.product?.category?.name ?? "Otros",
     categoryIcon: i.product?.category?.icon ?? null,
     categorySort: i.product?.category?.sort_order ?? NO_CATEGORY_SORT,
+    // Efectiva: la manual gana; si no hay, la inferida del histórico (fase 2).
+    preferredChain:
+      i.product?.preferred_chain ??
+      (i.product_id ? (inferredChains.get(i.product_id) ?? null) : null),
+    savings: i.product_id ? (savingsTips.get(i.product_id) ?? null) : null,
   }));
 }
 

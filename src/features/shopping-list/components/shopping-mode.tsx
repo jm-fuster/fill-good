@@ -9,6 +9,7 @@ import {
   Plus,
   ShoppingCart,
   Sparkles,
+  Store,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -22,6 +23,7 @@ import {
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
 import { cn } from "@/lib/utils";
+import { CHAIN_OPTIONS, chainLabel } from "@/features/prices/chains";
 import { formatQuantity } from "@/lib/units";
 import { useRealtimeList } from "../use-realtime-list";
 import { toggleItemAction } from "../actions";
@@ -32,6 +34,18 @@ import { useCheckout } from "./use-checkout";
 
 function euro(n: number) {
   return `${n.toFixed(2).replace(".", ",")} €`;
+}
+
+/** Ranking de cadenas conocidas para ordenar los chips (desconocidas al final). */
+const CHAIN_RANK = new Map(CHAIN_OPTIONS.map((c, i) => [c.value, i]));
+
+/** Ordena cadenas por el orden canónico de chains.ts; desconocidas alfabéticas. */
+function orderChains(chains: string[]): string[] {
+  return [...chains].sort(
+    (a, b) =>
+      (CHAIN_RANK.get(a) ?? Infinity) - (CHAIN_RANK.get(b) ?? Infinity) ||
+      chainLabel(a).localeCompare(chainLabel(b), "es"),
+  );
 }
 
 function signatureOf(items: ShoppingModeItem[]) {
@@ -84,6 +98,10 @@ export function ShoppingMode({
       return next;
     });
   }
+  // L15 — Filtro por tienda: cadena activa (null = "Todas") y sección "otras
+  // tiendas" contraída por defecto.
+  const [activeChain, setActiveChain] = useState<string | null>(null);
+  const [showOther, setShowOther] = useState(false);
 
   // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh).
   const currentSig = signatureOf(initialItems);
@@ -133,7 +151,33 @@ export function ShoppingMode({
     });
   }
 
-  const groups = useMemo(() => {
+  // Cadenas presentes en la lista (para los chips del filtro), en orden canónico.
+  const chainsPresent = useMemo(() => {
+    const set = new Set<string>();
+    for (const it of items) if (it.preferredChain) set.add(it.preferredChain);
+    return orderChains([...set]);
+  }, [items]);
+
+  // El filtro solo aparece si aporta algo: ≥2 cadenas, o 1 cadena y algún ítem
+  // sin asignar (que se mostraría junto a ella).
+  const hasUnassigned = items.some((i) => !i.preferredChain);
+  const showChainFilter =
+    chainsPresent.length >= 2 ||
+    (chainsPresent.length === 1 && hasUnassigned);
+
+  // Cadena efectiva: si la activa dejó de existir (cambió la lista), volvemos a
+  // "Todas" sin tocar estado en render.
+  const effectiveChain =
+    activeChain && chainsPresent.includes(activeChain) ? activeChain : null;
+
+  // Vista principal (cadena activa + sin asignar) agrupada por pasillo, y los
+  // ítems de otras tiendas agrupados por cadena para la sección secundaria.
+  const { groups, otherGroups, otherPending } = useMemo(() => {
+    const isMain = (it: ShoppingModeItem) =>
+      effectiveChain === null ||
+      it.preferredChain === effectiveChain ||
+      !it.preferredChain;
+
     const byCat = new Map<
       string,
       {
@@ -143,27 +187,51 @@ export function ShoppingMode({
         items: ShoppingModeItem[];
       }
     >();
+    const byChain = new Map<string, ShoppingModeItem[]>();
+    let otherPendingCount = 0;
+
     for (const it of items) {
-      let g = byCat.get(it.categoryName);
-      if (!g) {
-        g = {
-          name: it.categoryName,
-          icon: it.categoryIcon,
-          sort: it.categorySort,
-          items: [],
-        };
-        byCat.set(it.categoryName, g);
+      if (isMain(it)) {
+        let g = byCat.get(it.categoryName);
+        if (!g) {
+          g = {
+            name: it.categoryName,
+            icon: it.categoryIcon,
+            sort: it.categorySort,
+            items: [],
+          };
+          byCat.set(it.categoryName, g);
+        }
+        g.items.push(it);
+      } else {
+        const chain = it.preferredChain as string;
+        const arr = byChain.get(chain);
+        if (arr) arr.push(it);
+        else byChain.set(chain, [it]);
+        if (!it.isChecked) otherPendingCount += 1;
       }
-      g.items.push(it);
     }
-    const arr = [...byCat.values()].sort(
+
+    const groupsArr = [...byCat.values()].sort(
       (a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "es"),
     );
-    for (const g of arr) {
+    for (const g of groupsArr) {
       g.items.sort((a, b) => Number(a.isChecked) - Number(b.isChecked));
     }
-    return arr;
-  }, [items]);
+
+    const otherGroupsArr = orderChains([...byChain.keys()]).map((chain) => ({
+      chain,
+      items: byChain
+        .get(chain)!
+        .sort((a, b) => Number(a.isChecked) - Number(b.isChecked)),
+    }));
+
+    return {
+      groups: groupsArr,
+      otherGroups: otherGroupsArr,
+      otherPending: otherPendingCount,
+    };
+  }, [items, effectiveChain]);
 
   const priced = items.filter((i) => i.lineCost != null);
   const total = priced.reduce((s, i) => s + (i.lineCost ?? 0), 0);
@@ -300,6 +368,30 @@ export function ShoppingMode({
         </div>
       ) : null}
 
+      {showChainFilter ? (
+        <div className="border-b px-4 py-2">
+          <div
+            className="mx-auto flex w-full max-w-2xl gap-2 overflow-x-auto"
+            role="group"
+            aria-label="Filtrar por tienda"
+          >
+            <ChainChip
+              label="Todas"
+              active={effectiveChain === null}
+              onClick={() => setActiveChain(null)}
+            />
+            {chainsPresent.map((chain) => (
+              <ChainChip
+                key={chain}
+                label={chainLabel(chain)}
+                active={effectiveChain === chain}
+                onClick={() => setActiveChain(chain)}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex-1 overflow-y-auto px-4 py-3 pb-safe">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
           {items.length === 0 ? (
@@ -324,6 +416,7 @@ export function ShoppingMode({
                           key={item.id}
                           item={item}
                           onToggle={toggle}
+                          activeChain={effectiveChain}
                         />
                       ))}
                     </ul>
@@ -366,6 +459,54 @@ export function ShoppingMode({
               })}
             </div>
           )}
+
+          {/* L15 — Ítems de otras tiendas cuando hay una cadena filtrada:
+              contraídos por defecto (la preferencia es orientativa, no oculta). */}
+          {effectiveChain && otherGroups.length > 0 ? (
+            <section aria-label="Para otras tiendas">
+              <button
+                type="button"
+                onClick={() => setShowOther((v) => !v)}
+                aria-expanded={showOther}
+                className="flex min-h-11 w-full items-center gap-1.5 rounded-lg px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+              >
+                <Store className="size-4" aria-hidden />
+                Para otras tiendas
+                {otherPending > 0 ? (
+                  <span className="tabular-nums">({otherPending})</span>
+                ) : null}
+                <ChevronDown
+                  aria-hidden
+                  className={cn(
+                    "ml-auto size-4 transition-transform",
+                    showOther && "rotate-180",
+                  )}
+                />
+              </button>
+              {showOther ? (
+                <div className="mt-1 flex flex-col gap-4">
+                  {otherGroups.map((cg) => (
+                    <div key={cg.chain}>
+                      <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+                        <Store className="size-4" aria-hidden />
+                        {chainLabel(cg.chain)}
+                      </h3>
+                      <ul className="flex flex-col gap-1">
+                        {cg.items.map((item) => (
+                          <ShoppingModeRowItem
+                            key={item.id}
+                            item={item}
+                            onToggle={toggle}
+                            activeChain={effectiveChain}
+                          />
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
 
           {visibleSuggestions.length > 0 ? (
             <RecommendedSection
@@ -415,11 +556,15 @@ export function ShoppingMode({
 function ShoppingModeRowItem({
   item,
   onToggle,
+  activeChain = null,
 }: {
   item: ShoppingModeItem;
   onToggle: (id: string, checked: boolean) => void;
+  /** Cadena filtrada; el badge de tienda se oculta si coincide (redundante). */
+  activeChain?: string | null;
 }) {
   const cbId = `shop-${item.id}`;
+  const showChain = item.preferredChain && item.preferredChain !== activeChain;
   return (
     <li>
       <label
@@ -444,12 +589,45 @@ function ShoppingModeRowItem({
               {formatQuantity(item.quantity, item.unit)}
             </span>
           ) : null}
+          {showChain ? (
+            <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5 align-middle text-[11px] font-medium text-muted-foreground">
+              <Store className="size-3" aria-hidden />
+              {chainLabel(item.preferredChain as string)}
+            </span>
+          ) : null}
         </span>
         <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
           {item.lineCost != null ? euro(item.lineCost) : "—"}
         </span>
       </label>
     </li>
+  );
+}
+
+/** Chip del filtro de tienda (L15). */
+function ChainChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex min-h-11 shrink-0 items-center rounded-full border px-3.5 text-sm font-medium transition-colors",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "bg-background text-muted-foreground hover:bg-muted",
+      )}
+    >
+      {label}
+    </button>
   );
 }
 

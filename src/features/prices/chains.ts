@@ -15,3 +15,23 @@ export const CHAIN_LABELS: Record<string, string> = {
   aldi: "Aldi",
   otro: "Otros",
 };
+
+/**
+ * Cadenas ofrecibles como preferencia de compra por producto (L15), en orden.
+ * Excluye "otro": como preferencia ("cómpralo siempre en…") no tiene sentido.
+ */
+export const CHAIN_OPTIONS: { value: string; label: string }[] = [
+  "mercadona",
+  "carrefour",
+  "lidl",
+  "dia",
+  "alcampo",
+  "eroski",
+  "consum",
+  "aldi",
+].map((value) => ({ value, label: CHAIN_LABELS[value] }));
+
+/** Etiqueta legible de una cadena; cae en la propia clave si no es conocida. */
+export function chainLabel(chain: string): string {
+  return CHAIN_LABELS[chain] ?? chain;
+}

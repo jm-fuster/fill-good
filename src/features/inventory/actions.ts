@@ -250,6 +250,7 @@ export async function updateInventoryAction(
     minQuantity: formData.get("minQuantity") || undefined,
     packSize: formData.get("packSize") || undefined,
     unit: formData.get("unit") || undefined,
+    preferredChain: formData.get("preferredChain") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
@@ -276,12 +277,15 @@ export async function updateInventoryAction(
     normalized_name: string;
     category_id: string | null;
     min_quantity: number | null;
+    preferred_chain: string | null;
     pack_size?: number | null;
   } = {
     name: d.name,
     normalized_name: normalized,
     category_id: d.categoryId,
     min_quantity: d.minQuantity,
+    // Tienda preferida (L15); null lo limpia (sin preferencia).
+    preferred_chain: d.preferredChain,
   };
   // Pack (F4): solo se toca para filas contables (ud); null lo limpia.
   if (d.unit === "ud") productUpdate.pack_size = d.packSize;

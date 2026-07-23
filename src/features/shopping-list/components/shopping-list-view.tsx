@@ -13,6 +13,7 @@ import {
   ShoppingCart,
   Store,
   Trash2,
+  TrendingDown,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -20,6 +21,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/layout/empty-state";
 import { cn } from "@/lib/utils";
+import { chainLabel } from "@/features/prices/chains";
+import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import { formatQuantity } from "@/lib/units";
 import { usePersistedFlag } from "@/hooks/use-persisted-flag";
 import { useRealtimeList } from "../use-realtime-list";
@@ -581,6 +584,14 @@ function ListRow({
                 · {formatQuantity(item.quantity, item.unit ?? "ud")}
               </span>
             ) : null}
+            {/* L15: si otra tienda sale más barata (fase 3), el aviso de ahorro
+                sustituye al badge neutro (es estrictamente más útil); si no, la
+                pista discreta de dónde comprarlo (fase 1/2). */}
+            {item.savings ? (
+              <SavingsBadge tip={item.savings} />
+            ) : item.preferredChain ? (
+              <ChainBadge chain={item.preferredChain} />
+            ) : null}
           </span>
         </button>
         {/* Stepper ±1 inline para unidades contables (ud o sin unidad) (L9). */}
@@ -673,6 +684,29 @@ function QuantityStepper({ item }: { item: ListItem }) {
         </Button>
       )}
     </div>
+  );
+}
+
+/** Pista discreta de la tienda preferida de un producto (L15). */
+function ChainBadge({ chain }: { chain: string }) {
+  return (
+    <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5 align-middle text-[11px] font-medium text-muted-foreground no-underline">
+      <Store className="size-3" aria-hidden />
+      {chainLabel(chain)}
+    </span>
+  );
+}
+
+/** Aviso de ahorro: otra cadena sale más barata (L15, fase 3; acento de precios). */
+function SavingsBadge({ tip }: { tip: ChainSavingsTip }) {
+  return (
+    <span
+      className="ml-1.5 inline-flex items-center gap-0.5 rounded-md bg-chart-3/10 px-1.5 py-0.5 align-middle text-[11px] font-medium text-chart-3 no-underline"
+      title={`Más barato en ${chainLabel(tip.cheaperChain)} que en ${chainLabel(tip.currentChain)}`}
+    >
+      <TrendingDown className="size-3" aria-hidden />
+      {chainLabel(tip.cheaperChain)} −{tip.savingsPct}%
+    </span>
   );
 }
 
