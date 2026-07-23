@@ -12,9 +12,12 @@ import { ProductAutocomplete } from "./product-autocomplete";
 export function AddItemForm({
   catalog,
   onAdd,
+  onListProductIds,
 }: {
   catalog: CatalogProduct[];
   onAdd: (input: AddInput) => Promise<boolean>;
+  /** Ids de producto ya en la lista, para el badge "En la lista" (L3). */
+  onListProductIds?: Set<string>;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
@@ -82,6 +85,7 @@ export function AddItemForm({
           value={name}
           onValueChange={setName}
           onSelect={handleSelect}
+          onListProductIds={onListProductIds}
         />
         <Input
           name="quantity"

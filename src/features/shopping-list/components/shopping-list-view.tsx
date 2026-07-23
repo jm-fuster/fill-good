@@ -132,6 +132,12 @@ export function ShoppingListView({
       return false;
     }
     if (result.warning) toast.warning(result.warning);
+    if (result.merged) {
+      const m = result.merged;
+      const qtyText =
+        m.quantity != null ? ` → ${formatQuantity(m.quantity, m.unit ?? "ud")}` : "";
+      toast.info(`${m.name} ya estaba en la lista${qtyText}`);
+    }
     if (result.itemId) {
       const realId = result.itemId;
       setPendingAdds((prev) =>
@@ -166,7 +172,11 @@ export function ShoppingListView({
 
   return (
     <div className="flex flex-col gap-4">
-      <AddItemForm catalog={catalog} onAdd={addItem} />
+      <AddItemForm
+        catalog={catalog}
+        onAdd={addItem}
+        onListProductIds={onListProductIds}
+      />
 
       {allItems.length === 0 ? (
         <EmptyState

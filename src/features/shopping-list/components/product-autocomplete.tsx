@@ -24,6 +24,7 @@ export function ProductAutocomplete({
   onValueChange,
   onSelect,
   disabled,
+  onListProductIds,
   inputName = "name",
   required = true,
   placeholder = "Añadir a la lista…",
@@ -35,6 +36,8 @@ export function ProductAutocomplete({
   onValueChange: (v: string) => void;
   onSelect: (product: CatalogProduct) => void;
   disabled?: boolean;
+  /** Ids de producto ya en la lista, para el badge "En la lista" (L3). */
+  onListProductIds?: Set<string>;
   inputName?: string;
   required?: boolean;
   placeholder?: string;
@@ -148,13 +151,19 @@ export function ProductAutocomplete({
             >
               <span className="truncate font-medium">{product.name}</span>
               <span className="flex shrink-0 items-center gap-1.5">
-                <Badge variant="secondary">
-                  {LOCATION_ICONS[product.defaultLocation]}{" "}
-                  {LOCATION_LABELS[product.defaultLocation]}
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {UNIT_LABELS[product.defaultUnit]}
-                </span>
+                {onListProductIds?.has(product.id) ? (
+                  <Badge variant="secondary">En la lista</Badge>
+                ) : (
+                  <>
+                    <Badge variant="secondary">
+                      {LOCATION_ICONS[product.defaultLocation]}{" "}
+                      {LOCATION_LABELS[product.defaultLocation]}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {UNIT_LABELS[product.defaultUnit]}
+                    </span>
+                  </>
+                )}
               </span>
             </li>
           ))}
