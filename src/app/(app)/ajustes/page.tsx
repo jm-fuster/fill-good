@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
-import { ChevronRight, ListOrdered, Palette } from "lucide-react";
+import { ChevronRight, Info, ListOrdered, Palette } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
@@ -99,6 +99,51 @@ export default async function AjustesPage() {
           Guía de estilo (desarrollo)
           <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
         </Link>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Info className="size-4" aria-hidden />
+              Créditos
+            </CardTitle>
+            <CardDescription>Iconos de producto de estos proyectos.</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            <ul className="flex flex-col gap-1">
+              <li>
+                <a
+                  href="https://github.com/microsoft/fluentui-emoji"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-4 hover:text-foreground"
+                >
+                  Fluent Emoji
+                </a>{" "}
+                de Microsoft (licencia MIT).
+              </li>
+              <li>
+                <a
+                  href="https://game-icons.net"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-4 hover:text-foreground"
+                >
+                  Game-icons.net
+                </a>{" "}
+                y sus autores (licencia{" "}
+                <a
+                  href="https://creativecommons.org/licenses/by/3.0/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline underline-offset-4 hover:text-foreground"
+                >
+                  CC BY 3.0
+                </a>
+                ).
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
       </div>
     </PageContainer>
   );

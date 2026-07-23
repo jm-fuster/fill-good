@@ -27,6 +27,8 @@ export type ListItem = {
   categoryName?: string;
   categoryIcon?: string | null;
   categorySort?: number;
+  /** Icono manual del producto (L16); null/ausente = automático (se adivina del nombre). */
+  productIcon?: string | null;
   /** Tienda preferida del producto (L15); null/ausente = sin preferencia. */
   preferredChain?: string | null;
   /** Aviso de ahorro si otra cadena sale más barata (L15, fase 3). */
@@ -156,6 +158,8 @@ export type ShoppingModeItem = {
   isChecked: boolean;
   categoryName: string;
   categoryIcon: string | null;
+  /** Icono manual del producto (L16); null = automático. */
+  productIcon: string | null;
   /** Orden de pasillo (sort_order de la categoría; sin categoría al final). */
   categorySort: number;
   /** Coste estimado de la línea (precio × cantidad) o null si no se conoce. */
@@ -173,6 +177,7 @@ type ShoppingModeRow = {
   product_id: string | null;
   product: {
     preferred_chain: string | null;
+    icon: string | null;
     category: {
       name: string;
       icon: string | null;
@@ -197,7 +202,7 @@ export async function getShoppingModeItems(
     supabase
       .from("shopping_list_items")
       .select(
-        "id, name, quantity, unit, is_checked, product_id, product:products(preferred_chain, category:categories(name, icon, sort_order))",
+        "id, name, quantity, unit, is_checked, product_id, product:products(preferred_chain, icon, category:categories(name, icon, sort_order))",
       )
       .eq("list_id", listId)
       .order("position", { ascending: true })
@@ -230,6 +235,7 @@ export async function getShoppingModeItems(
       isChecked: r.is_checked,
       categoryName: r.product?.category?.name ?? "Otros",
       categoryIcon: r.product?.category?.icon ?? null,
+      productIcon: r.product?.icon ?? null,
       categorySort: r.product?.category?.sort_order ?? NO_CATEGORY_SORT,
       lineCost,
       // Efectiva: la manual gana; si no hay, la inferida del histórico (fase 2).
@@ -250,6 +256,7 @@ type ListItemRow = {
   added_by: string | null;
   product: {
     preferred_chain: string | null;
+    icon: string | null;
     category: { name: string; icon: string | null; sort_order: number } | null;
   } | null;
 };
@@ -261,7 +268,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
     supabase
       .from("shopping_list_items")
       .select(
-        "id, name, quantity, unit, is_checked, product_id, added_by, product:products(preferred_chain, category:categories(name, icon, sort_order))",
+        "id, name, quantity, unit, is_checked, product_id, added_by, product:products(preferred_chain, icon, category:categories(name, icon, sort_order))",
       )
       .eq("list_id", listId)
       .order("is_checked", { ascending: true })
@@ -283,6 +290,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
     addedByMe: i.added_by === userId,
     categoryName: i.product?.category?.name ?? "Otros",
     categoryIcon: i.product?.category?.icon ?? null,
+    productIcon: i.product?.icon ?? null,
     categorySort: i.product?.category?.sort_order ?? NO_CATEGORY_SORT,
     // Efectiva: la manual gana; si no hay, la inferida del histórico (fase 2).
     preferredChain:

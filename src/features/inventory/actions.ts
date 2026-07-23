@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
+import { isKnownIcon } from "@/lib/product-icons/catalog";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { getProductCatalog } from "@/features/shopping-list/queries";
 import type {
@@ -251,11 +252,15 @@ export async function updateInventoryAction(
     packSize: formData.get("packSize") || undefined,
     unit: formData.get("unit") || undefined,
     preferredChain: formData.get("preferredChain") || undefined,
+    icon: formData.get("icon") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
   }
   const d = parsed.data;
+  // Icono manual (L16): solo se acepta un slug conocido del registro; cualquier
+  // otra cosa se ignora (null = automático), nunca bloquea el guardado.
+  const icon = isKnownIcon(d.icon) ? d.icon : null;
   const supabase = createServerSupabaseClient();
 
   // Renombrar el producto si cambió el nombre. La unicidad es por
@@ -278,6 +283,7 @@ export async function updateInventoryAction(
     category_id: string | null;
     min_quantity: number | null;
     preferred_chain: string | null;
+    icon: string | null;
     pack_size?: number | null;
   } = {
     name: d.name,
@@ -286,6 +292,8 @@ export async function updateInventoryAction(
     min_quantity: d.minQuantity,
     // Tienda preferida (L15); null lo limpia (sin preferencia).
     preferred_chain: d.preferredChain,
+    // Icono manual (L16); null lo limpia (vuelve al automático).
+    icon,
   };
   // Pack (F4): solo se toca para filas contables (ud); null lo limpia.
   if (d.unit === "ud") productUpdate.pack_size = d.packSize;

@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/units";
 import { useDragReorder } from "@/hooks/use-drag-reorder";
@@ -37,7 +38,7 @@ export function ItemReorderList({
       {groups.map((g) => (
         <section key={g.name} aria-label={g.name}>
           <h2 className="mt-1 mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-            {g.icon ? <span aria-hidden>{g.icon}</span> : null}
+            <ProductIcon categoryIcon={g.icon} size={16} />
             {g.name}
           </h2>
           <SortableRows
@@ -101,8 +102,16 @@ function SortableRows({
             >
               <GripVertical className="size-5" />
             </span>
-            <span aria-hidden className="w-6 shrink-0 text-center text-base">
-              {item.categoryIcon ?? "·"}
+            <span
+              aria-hidden
+              className="flex w-6 shrink-0 justify-center text-muted-foreground"
+            >
+              <ProductIcon
+                slug={item.productIcon}
+                name={item.name}
+                categoryIcon={item.categoryIcon}
+                size={18}
+              />
             </span>
             <span className="min-w-0 flex-1 truncate text-sm">
               {item.name}

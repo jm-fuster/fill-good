@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ProductIcon } from "@/components/product-icon";
 import { LOCATION_OPTIONS, UNIT_OPTIONS } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import type { Category } from "../queries";
@@ -162,9 +163,11 @@ function AddProductFields({
           </SelectTrigger>
           <SelectContent>
             {categories.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                {c.icon ? `${c.icon} ` : ""}
-                {c.name}
+              <SelectItem key={c.id} value={c.id} textValue={c.name}>
+                <span className="flex items-center gap-2">
+                  <ProductIcon categoryIcon={c.icon} size={18} />
+                  {c.name}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>

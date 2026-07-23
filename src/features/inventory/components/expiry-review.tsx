@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { ProductIcon } from "@/components/product-icon";
 import { formatQuantity, LOCATION_ICONS, LOCATION_LABELS } from "@/lib/units";
 import type { ReviewEntry } from "../queries";
 import { saveExpiryReviewAction } from "../actions";
@@ -68,9 +69,14 @@ export function ExpiryReview({ entries }: { entries: ReviewEntry[] }) {
               <div className="flex items-center gap-3">
                 <span
                   aria-hidden
-                  className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-lg"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground"
                 >
-                  {entry.categoryIcon ?? "📦"}
+                  <ProductIcon
+                    slug={entry.productIcon}
+                    name={entry.productName}
+                    categoryIcon={entry.categoryIcon}
+                    size={24}
+                  />
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="font-medium break-words line-clamp-2">

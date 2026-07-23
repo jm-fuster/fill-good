@@ -150,6 +150,7 @@ export type Database = {
           min_quantity: number | null;
           pack_size: number | null;
           preferred_chain: string | null;
+          icon: string | null;
           purchase_count: number;
           last_purchased_at: string | null;
           created_at: string;
@@ -166,6 +167,7 @@ export type Database = {
           min_quantity?: number | null;
           pack_size?: number | null;
           preferred_chain?: string | null;
+          icon?: string | null;
           purchase_count?: number;
           last_purchased_at?: string | null;
           created_at?: string;
@@ -182,6 +184,7 @@ export type Database = {
           min_quantity?: number | null;
           pack_size?: number | null;
           preferred_chain?: string | null;
+          icon?: string | null;
           purchase_count?: number;
           last_purchased_at?: string | null;
           created_at?: string;

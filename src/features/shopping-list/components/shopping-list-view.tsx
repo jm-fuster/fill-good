@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/layout/empty-state";
+import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
 import { chainLabel } from "@/features/prices/chains";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
@@ -352,7 +353,7 @@ export function ShoppingListView({
               ? groupByCategory(pending).map((g) => (
                   <section key={g.name} aria-label={g.name}>
                     <h2 className="mt-2 mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                      {g.icon ? <span aria-hidden>{g.icon}</span> : null}
+                      <ProductIcon categoryIcon={g.icon} size={16} />
                       {g.name}
                     </h2>
                     {g.items.map((item) => (
@@ -362,6 +363,7 @@ export function ShoppingListView({
                         onToggle={toggle}
                         onEdit={setEditItem}
                         onRemove={removeItem}
+                        showIcon
                       />
                     ))}
                   </section>
@@ -544,11 +546,14 @@ function ListRow({
         {showIcon ? (
           <span
             aria-hidden
-            className="flex w-5 shrink-0 justify-center text-base leading-none"
+            className="flex w-5 shrink-0 justify-center text-muted-foreground"
           >
-            {item.categoryIcon ?? (
-              <span className="text-muted-foreground/40">·</span>
-            )}
+            <ProductIcon
+              slug={item.productIcon}
+              name={item.name}
+              categoryIcon={item.categoryIcon}
+              size={18}
+            />
           </span>
         ) : null}
         {/* Zona 2: el texto abre el editor directamente (L5, sin modo edición). */}

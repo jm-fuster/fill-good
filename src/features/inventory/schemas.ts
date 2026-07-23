@@ -93,6 +93,14 @@ export const editInventorySchema = z.object({
     .max(40, "Nombre de tienda demasiado largo.")
     .optional()
     .transform((v) => (v && v.length > 0 ? v : null)),
+  // Icono manual (L16): slug del registro o vacío → null (automático). La
+  // validación del slug contra el registro se hace en la acción.
+  icon: z
+    .string()
+    .trim()
+    .max(40, "Icono no válido.")
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : null)),
 });
 
 /** Selector inicial "¿Qué tienes ya en casa?": ids de producto a añadir en lote. */

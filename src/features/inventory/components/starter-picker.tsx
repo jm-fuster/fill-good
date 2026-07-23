@@ -6,6 +6,7 @@ import { Check } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
 import type { StarterGroup } from "../queries";
 import { addStarterItemsAction } from "../actions";
@@ -65,8 +66,8 @@ export function StarterPicker({ groups }: { groups: StarterGroup[] }) {
           key={group.categoryId ?? "sin-categoria"}
           className="flex flex-col gap-2"
         >
-          <h3 className="text-sm font-medium text-muted-foreground">
-            {group.categoryIcon ? `${group.categoryIcon} ` : ""}
+          <h3 className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+            <ProductIcon categoryIcon={group.categoryIcon} size={16} />
             {group.categoryName}
           </h3>
           <div className="flex flex-wrap gap-2">

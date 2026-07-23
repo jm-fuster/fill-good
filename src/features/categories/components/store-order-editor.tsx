@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
 import { useDragReorder } from "@/hooks/use-drag-reorder";
 import type { StoreCategory } from "../queries";
@@ -78,8 +79,11 @@ export function StoreOrderEditor({
               <GripVertical className="size-5" />
             </span>
 
-            <span aria-hidden className="w-6 shrink-0 text-center text-lg">
-              {cat.icon ?? "·"}
+            <span
+              aria-hidden
+              className="flex w-6 shrink-0 justify-center text-foreground"
+            >
+              <ProductIcon categoryIcon={cat.icon} size={20} />
             </span>
             <span className="min-w-0 flex-1 truncate text-sm font-medium">
               {cat.name}

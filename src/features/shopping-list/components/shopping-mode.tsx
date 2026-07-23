@@ -22,6 +22,7 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
+import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
 import { CHAIN_OPTIONS, chainLabel } from "@/features/prices/chains";
 import { formatQuantity } from "@/lib/units";
@@ -407,7 +408,7 @@ export function ShoppingMode({
                 return (
                   <section key={g.name} aria-label={g.name}>
                     <h2 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-                      {g.icon ? <span aria-hidden>{g.icon}</span> : null}
+                      <ProductIcon categoryIcon={g.icon} size={18} />
                       {g.name}
                     </h2>
                     <ul className="flex flex-col gap-1">
@@ -576,6 +577,13 @@ function ShoppingModeRowItem({
           checked={item.isChecked}
           onCheckedChange={(v) => onToggle(item.id, v === true)}
           className="size-6"
+        />
+        <ProductIcon
+          slug={item.productIcon}
+          name={item.name}
+          categoryIcon={item.categoryIcon}
+          size={22}
+          className={cn("text-muted-foreground", item.isChecked && "opacity-50")}
         />
         <span
           className={cn(

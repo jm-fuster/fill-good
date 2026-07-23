@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
 import { expiryLabel, getExpiryStatus } from "@/lib/dates";
 import { formatQuantity, isCountable } from "@/lib/units";
@@ -96,18 +97,18 @@ export function InventoryItemCard({
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="flex min-w-0 flex-1 items-center gap-3 text-left"
+            className="flex min-w-0 flex-1 items-start gap-3 text-left"
             aria-label={`Editar ${entry.productName}`}
           >
-            <span
-              aria-hidden
-              className={cn(
-                "flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-lg",
-                emptied && "opacity-50",
-              )}
-            >
-              {entry.categoryIcon ?? "📦"}
-            </span>
+            {/* Icono del producto: grande, dentro de la tarjeta, arriba a la
+                izquierda (sin caja). Decorativo. */}
+            <ProductIcon
+              slug={entry.productIcon}
+              name={entry.productName}
+              categoryIcon={entry.categoryIcon}
+              size={32}
+              className={cn("shrink-0 text-foreground", emptied && "opacity-50")}
+            />
             <span className="min-w-0 flex-1">
               <span
                 className={cn(

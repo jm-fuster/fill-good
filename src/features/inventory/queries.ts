@@ -28,6 +28,8 @@ export type InventoryEntry = {
   categoryId: string | null;
   categoryName: string | null;
   categoryIcon: string | null;
+  /** Icono manual del producto (L16); null = automático (se adivina). */
+  productIcon: string | null;
   location: LocationType;
   quantity: number;
   unit: UnitType;
@@ -52,6 +54,8 @@ export type ReviewEntry = {
   id: string;
   productName: string;
   categoryIcon: string | null;
+  /** Icono manual del producto (L16); null = automático. */
+  productIcon: string | null;
   location: LocationType;
   quantity: number;
   unit: UnitType;
@@ -321,6 +325,7 @@ type InventoryRow = {
     min_quantity: number | null;
     pack_size: number | null;
     preferred_chain: string | null;
+    icon: string | null;
     category: { id: string; name: string; icon: string | null } | null;
   } | null;
 };
@@ -331,7 +336,7 @@ export async function getInventory(): Promise<InventoryEntry[]> {
     supabase
       .from("inventory_items")
       .select(
-        "id, product_id, location, quantity, unit, expiry_date, use_soon, product:products(name, min_quantity, pack_size, preferred_chain, category:categories(id, name, icon))",
+        "id, product_id, location, quantity, unit, expiry_date, use_soon, product:products(name, min_quantity, pack_size, preferred_chain, icon, category:categories(id, name, icon))",
       )
       .order("updated_at", { ascending: false }),
     getInferredChains(),
@@ -349,6 +354,7 @@ export async function getInventory(): Promise<InventoryEntry[]> {
       categoryId: r.product!.category?.id ?? null,
       categoryName: r.product!.category?.name ?? null,
       categoryIcon: r.product!.category?.icon ?? null,
+      productIcon: r.product!.icon ?? null,
       location: r.location,
       quantity: Number(r.quantity),
       unit: r.unit,
@@ -373,6 +379,7 @@ type ReviewRow = {
   use_soon: boolean;
   product: {
     name: string;
+    icon: string | null;
     category: { icon: string | null } | null;
   } | null;
 };
@@ -390,7 +397,7 @@ export async function getInventoryItemsByIds(
   const { data, error } = await supabase
     .from("inventory_items")
     .select(
-      "id, location, quantity, unit, expiry_date, use_soon, product:products(name, category:categories(icon))",
+      "id, location, quantity, unit, expiry_date, use_soon, product:products(name, icon, category:categories(icon))",
     )
     .in("id", ids);
   if (error) throw error;
@@ -405,6 +412,7 @@ export async function getInventoryItemsByIds(
           id: r.id,
           productName: r.product!.name,
           categoryIcon: r.product!.category?.icon ?? null,
+          productIcon: r.product!.icon ?? null,
           location: r.location,
           quantity: Number(r.quantity),
           unit: r.unit,

@@ -2,10 +2,12 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Star, Store, TrendingDown, Trash2, X } from "lucide-react";
+import { Pencil, Star, Store, TrendingDown, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ProductIcon } from "@/components/product-icon";
+import { ProductIconPicker } from "@/components/product-icon-picker";
 import {
   ResponsiveModal,
   ResponsiveModalClose,
@@ -181,6 +183,18 @@ export function EditItemDrawer({
     setCategoryId(entry.categoryId ?? "");
   }
 
+  // Icono manual (L16): null = automático (se adivina del nombre/categoría).
+  const [icon, setIcon] = useState<string | null>(entry.productIcon);
+  const [serverIcon, setServerIcon] = useState(entry.productIcon);
+  if (serverIcon !== entry.productIcon) {
+    setServerIcon(entry.productIcon);
+    setIcon(entry.productIcon);
+  }
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // Icono de la categoría seleccionada (para la vista previa del automático).
+  const selectedCategoryIcon =
+    categories.find((c) => c.id === categoryId)?.icon ?? entry.categoryIcon;
+
   // Tienda preferida (L15): controlada y resincronizada con el servidor.
   const [preferredChain, setPreferredChain] = useState(
     entry.preferredChain ?? "",
@@ -242,6 +256,7 @@ export function EditItemDrawer({
   }
 
   return (
+    <>
     <ResponsiveModal open={open} onOpenChange={onOpenChange}>
       <ResponsiveModalContent>
         <ResponsiveModalHeader>
@@ -258,17 +273,37 @@ export function EditItemDrawer({
 
           <input type="hidden" name="categoryId" value={categoryId} />
           <input type="hidden" name="preferredChain" value={preferredChain} />
+          <input type="hidden" name="icon" value={icon ?? ""} />
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="edit-name">Producto</Label>
-            <Input
-              id="edit-name"
-              name="name"
-              required
-              maxLength={120}
-              autoComplete="off"
-              defaultValue={entry.productName}
-            />
+            <div className="flex items-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                aria-label="Cambiar icono del producto"
+                className="relative flex size-11 shrink-0 items-center justify-center rounded-lg border bg-muted text-foreground transition-colors hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+              >
+                <ProductIcon
+                  slug={icon}
+                  name={entry.productName}
+                  categoryIcon={selectedCategoryIcon}
+                  size={26}
+                />
+                <span className="absolute -right-1 -bottom-1 flex size-4 items-center justify-center rounded-full border bg-background text-muted-foreground">
+                  <Pencil className="size-2.5" aria-hidden />
+                </span>
+              </button>
+              <Input
+                id="edit-name"
+                name="name"
+                required
+                maxLength={120}
+                autoComplete="off"
+                defaultValue={entry.productName}
+                className="flex-1"
+              />
+            </div>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -285,9 +320,11 @@ export function EditItemDrawer({
               <SelectContent>
                 <SelectItem value={NO_CATEGORY}>Sin categoría</SelectItem>
                 {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.icon ? `${c.icon} ` : ""}
-                    {c.name}
+                  <SelectItem key={c.id} value={c.id} textValue={c.name}>
+                    <span className="flex items-center gap-2">
+                      <ProductIcon categoryIcon={c.icon} size={18} />
+                      {c.name}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -601,5 +638,15 @@ export function EditItemDrawer({
         </form>
       </ResponsiveModalContent>
     </ResponsiveModal>
+
+    <ProductIconPicker
+      open={pickerOpen}
+      onOpenChange={setPickerOpen}
+      value={icon}
+      name={entry.productName}
+      categoryIcon={selectedCategoryIcon}
+      onSelect={setIcon}
+    />
+    </>
   );
 }

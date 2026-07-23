@@ -24,8 +24,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ProductIcon } from "@/components/product-icon";
 
 export const metadata: Metadata = { title: "Guía de estilo" };
+
+/** Muestra representativa de iconos de producto (L16) con su tratamiento. */
+const productIconSamples = [
+  { slug: "manzana", tint: "bg-success/15 text-success" },
+  { slug: "pescado", tint: "bg-chart-2/15 text-chart-2" },
+  { slug: "leche", tint: "bg-chart-1/15 text-chart-1" },
+  { slug: "pan", tint: "bg-warning/15 text-warning" },
+  { slug: "conserva", tint: "bg-chart-4/15 text-chart-4" },
+  { slug: "bote-spray", tint: "bg-chart-3/15 text-chart-3" },
+  { slug: "cafe", tint: "bg-muted text-muted-foreground" },
+  { slug: "helado", tint: "bg-chart-5/15 text-chart-5" },
+];
 
 const colorTokens = [
   { name: "primary", className: "bg-primary text-primary-foreground" },
@@ -242,6 +255,29 @@ export default function StyleguidePage() {
             </div>
           </CardContent>
         </Card>
+      </Section>
+
+      <Section
+        title="Iconos de producto (L16)"
+        description="Iconos monocromos (Fluent Emoji High Contrast, MIT) teñidos con currentColor — estilo propio, no emojis del sistema. Se resuelven por capas: icono manual → adivinado del nombre → icono de categoría → genérico. Componente ProductIcon; se eligen a mano con ProductIconPicker."
+      >
+        <div className="flex flex-wrap gap-3">
+          {productIconSamples.map((s) => (
+            <div
+              key={s.slug}
+              className={`flex size-12 items-center justify-center rounded-xl ${s.tint}`}
+            >
+              <ProductIcon slug={s.slug} size={26} />
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-sm text-muted-foreground">
+          El &ldquo;estilo propio&rdquo; lo da el tratamiento (ficha{" "}
+          <code>rounded-xl</code> con tinte por categoría), no el set: al ser
+          monocromos, heredan cualquier token de color y funcionan en claro y
+          oscuro. Guardamos un slug, no un componente: cambiar de set el día de
+          mañana es sustituir SVGs.
+        </p>
       </Section>
 
       <Section title="Estados de carga" description="Skeletons, nunca spinners a pantalla completa.">
