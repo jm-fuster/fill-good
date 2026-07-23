@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, ShoppingCart, X } from "lucide-react";
+import { Check, ChevronDown, Plus, ShoppingCart, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,15 @@ function signatureOf(items: ShoppingModeItem[]) {
 /** Sentinel mínimo del Screen Wake Lock API (evita depender del lib DOM). */
 type WakeLockLike = { release: () => Promise<void> };
 
+/** Vibración corta al marcar (L13): feature-detect + respeta reduced motion. */
+function vibrateTick() {
+  if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") {
+    return;
+  }
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  navigator.vibrate(10);
+}
+
 export function ShoppingMode({
   listId,
   initialItems,
@@ -50,6 +59,16 @@ export function ShoppingMode({
   const [items, setItems] = useState(initialItems);
   const [sig, setSig] = useState(signatureOf(initialItems));
   const [adding, setAdding] = useState(false);
+  // L13 — Secciones con los cogidos expandidos (por defecto contraídos).
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  function toggleExpanded(name: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
 
   // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh).
   const currentSig = signatureOf(initialItems);
@@ -86,6 +105,7 @@ export function ShoppingMode({
   }, []);
 
   function toggle(id: string, checked: boolean) {
+    if (checked) vibrateTick();
     setItems((prev) =>
       prev.map((it) => (it.id === id ? { ...it, isChecked: checked } : it)),
     );
@@ -163,6 +183,12 @@ export function ShoppingMode({
               {totalPending > 0
                 ? `Quedan ${totalPending} por coger`
                 : "Todo en el carro"}
+              {items.length > 0 ? (
+                <span className="tabular-nums">
+                  {" · "}
+                  {checkedCount} de {items.length}
+                </span>
+              ) : null}
             </p>
           </div>
           <div className="flex items-center gap-1">
@@ -181,6 +207,21 @@ export function ShoppingMode({
             </Button>
           </div>
         </div>
+        {items.length > 0 ? (
+          <div
+            className="mx-auto mt-2 h-1 w-full max-w-2xl overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={items.length}
+            aria-valuenow={checkedCount}
+            aria-label="Progreso de la compra"
+          >
+            <div
+              className="h-full rounded-full bg-success transition-[width] duration-300"
+              style={{ width: `${(checkedCount / items.length) * 100}%` }}
+            />
+          </div>
+        ) : null}
       </header>
 
       {priced.length > 0 ? (
@@ -212,51 +253,62 @@ export function ShoppingMode({
           </p>
         ) : (
           <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-            {groups.map((g) => (
-              <section key={g.name} aria-label={g.name}>
-                <h2 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-                  {g.icon ? <span aria-hidden>{g.icon}</span> : null}
-                  {g.name}
-                </h2>
-                <ul className="flex flex-col gap-1">
-                  {g.items.map((item) => {
-                    const cbId = `shop-${item.id}`;
-                    return (
-                      <li key={item.id}>
-                        <label
-                          htmlFor={cbId}
-                          className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2 transition-colors hover:bg-muted"
-                        >
-                          <Checkbox
-                            id={cbId}
-                            checked={item.isChecked}
-                            onCheckedChange={(v) => toggle(item.id, v === true)}
-                            className="size-6"
-                          />
-                          <span
-                            className={cn(
-                              "flex-1 text-base",
-                              item.isChecked &&
-                                "text-muted-foreground line-through",
-                            )}
-                          >
-                            {item.name}
-                            {item.quantity != null && item.unit ? (
-                              <span className="ml-2 text-sm text-muted-foreground">
-                                {formatQuantity(item.quantity, item.unit)}
-                              </span>
-                            ) : null}
-                          </span>
-                          <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-                            {item.lineCost != null ? euro(item.lineCost) : "—"}
-                          </span>
-                        </label>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            ))}
+            {groups.map((g) => {
+              const uncheckedItems = g.items.filter((i) => !i.isChecked);
+              const checkedItems = g.items.filter((i) => i.isChecked);
+              const isExpanded = expanded.has(g.name);
+              return (
+                <section key={g.name} aria-label={g.name}>
+                  <h2 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+                    {g.icon ? <span aria-hidden>{g.icon}</span> : null}
+                    {g.name}
+                  </h2>
+                  <ul className="flex flex-col gap-1">
+                    {uncheckedItems.map((item) => (
+                      <ShoppingModeRowItem
+                        key={item.id}
+                        item={item}
+                        onToggle={toggle}
+                      />
+                    ))}
+                  </ul>
+
+                  {/* L13 — Cogidos de la sección, contraídos a una línea. */}
+                  {checkedItems.length > 0 ? (
+                    <div className="mt-1">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpanded(g.name)}
+                        aria-expanded={isExpanded}
+                        className="flex min-h-11 w-full items-center gap-1.5 rounded-lg px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+                      >
+                        <Check className="size-4 text-success" aria-hidden />
+                        {checkedItems.length} cogido
+                        {checkedItems.length === 1 ? "" : "s"}
+                        <ChevronDown
+                          aria-hidden
+                          className={cn(
+                            "ml-auto size-4 transition-transform",
+                            isExpanded && "rotate-180",
+                          )}
+                        />
+                      </button>
+                      {isExpanded ? (
+                        <ul className="flex flex-col gap-1">
+                          {checkedItems.map((item) => (
+                            <ShoppingModeRowItem
+                              key={item.id}
+                              item={item}
+                              onToggle={toggle}
+                            />
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
+              );
+            })}
           </div>
         )}
       </div>
@@ -291,5 +343,47 @@ export function ShoppingMode({
         </ResponsiveModalContent>
       </ResponsiveModal>
     </div>
+  );
+}
+
+/** Fila de un ítem en el modo compra (checkbox + nombre + coste estimado). */
+function ShoppingModeRowItem({
+  item,
+  onToggle,
+}: {
+  item: ShoppingModeItem;
+  onToggle: (id: string, checked: boolean) => void;
+}) {
+  const cbId = `shop-${item.id}`;
+  return (
+    <li>
+      <label
+        htmlFor={cbId}
+        className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2 transition-colors hover:bg-muted"
+      >
+        <Checkbox
+          id={cbId}
+          checked={item.isChecked}
+          onCheckedChange={(v) => onToggle(item.id, v === true)}
+          className="size-6"
+        />
+        <span
+          className={cn(
+            "flex-1 text-base",
+            item.isChecked && "text-muted-foreground line-through",
+          )}
+        >
+          {item.name}
+          {item.quantity != null && item.unit ? (
+            <span className="ml-2 text-sm text-muted-foreground">
+              {formatQuantity(item.quantity, item.unit)}
+            </span>
+          ) : null}
+        </span>
+        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+          {item.lineCost != null ? euro(item.lineCost) : "—"}
+        </span>
+      </label>
+    </li>
   );
 }
