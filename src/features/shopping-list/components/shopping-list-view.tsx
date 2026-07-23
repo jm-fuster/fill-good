@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/layout/empty-state";
 import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/units";
+import type { UnitType } from "@/lib/supabase/types";
 import { useRealtimeList } from "../use-realtime-list";
 import type {
   CatalogProduct,
@@ -19,6 +20,7 @@ import type {
   Suggestion,
 } from "../queries";
 import {
+  addListItemAction,
   addProductToListAction,
   checkoutAction,
   deleteListItemAction,
@@ -32,6 +34,20 @@ function signatureOf(items: ListItem[]) {
     .map((i) => `${i.id}:${i.isChecked}:${i.quantity}:${i.unit}:${i.name}`)
     .join("|");
 }
+
+/** Alta que el usuario dispara desde el input o un chip. */
+export type AddInput =
+  | { kind: "free"; name: string; quantity: number | null; unit: UnitType | null }
+  | {
+      kind: "product";
+      productId: string;
+      name: string;
+      quantity: number | null;
+      unit: UnitType | null;
+    };
+
+/** Alta optimista pendiente de confirmar contra el servidor. */
+type PendingAdd = { tempId: string; realId: string | null; item: ListItem };
 
 export function ShoppingListView({
   listId,
@@ -50,14 +66,20 @@ export function ShoppingListView({
   const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [sig, setSig] = useState(signatureOf(initialItems));
+  const [pendingAdds, setPendingAdds] = useState<PendingAdd[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [editItem, setEditItem] = useState<ListItem | null>(null);
 
-  // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh).
+  // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh) y
+  // descarta los ítems optimistas que ya han aterrizado en el servidor.
   const currentSig = signatureOf(initialItems);
   if (currentSig !== sig) {
     setSig(currentSig);
     setItems(initialItems);
+    const serverIds = new Set(initialItems.map((i) => i.id));
+    setPendingAdds((prev) =>
+      prev.filter((p) => !(p.realId && serverIds.has(p.realId))),
+    );
   }
 
   function toggle(id: string, checked: boolean) {
@@ -72,18 +94,81 @@ export function ShoppingListView({
     });
   }
 
-  const pending = items.filter((i) => !i.isChecked);
-  const done = items.filter((i) => i.isChecked);
+  // Alta optimista: el ítem aparece al instante y se reconcilia con el refresh.
+  async function addItem(input: AddInput): Promise<boolean> {
+    const tempId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `temp-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+    const optimistic: ListItem = {
+      id: tempId,
+      name: input.name,
+      quantity: input.quantity,
+      unit: input.unit,
+      isChecked: false,
+      productId: input.kind === "product" ? input.productId : null,
+      addedByMe: true,
+    };
+    setPendingAdds((prev) => [...prev, { tempId, realId: null, item: optimistic }]);
+
+    let result;
+    if (input.kind === "free") {
+      const fd = new FormData();
+      fd.set("name", input.name);
+      if (input.quantity != null) fd.set("quantity", String(input.quantity));
+      if (input.unit) fd.set("unit", input.unit);
+      result = await addListItemAction({}, fd);
+    } else {
+      result = await addProductToListAction(
+        input.productId,
+        input.quantity,
+        input.unit,
+      );
+    }
+
+    if (result.error) {
+      setPendingAdds((prev) => prev.filter((p) => p.tempId !== tempId));
+      toast.error(result.error);
+      return false;
+    }
+    if (result.warning) toast.warning(result.warning);
+    if (result.itemId) {
+      const realId = result.itemId;
+      setPendingAdds((prev) =>
+        prev.map((p) => (p.tempId === tempId ? { ...p, realId } : p)),
+      );
+    }
+    router.refresh();
+    return true;
+  }
+
+  // Ítems optimistas aún no presentes en los datos del servidor.
+  const optimisticItems = pendingAdds
+    .filter((p) => !(p.realId && items.some((i) => i.id === p.realId)))
+    .map((p) => p.item);
+  const allItems = [...items, ...optimisticItems];
+
+  const pending = allItems.filter((i) => !i.isChecked);
+  const done = allItems.filter((i) => i.isChecked);
+
+  // Productos ya en la lista (servidor + optimistas) para ocultar sus chips.
+  const onListProductIds = new Set<string>();
+  for (const i of allItems) if (i.productId) onListProductIds.add(i.productId);
 
   // Evita repetir en "Habituales" lo que ya sale en "Se está acabando".
   const suggestedIds = new Set(suggestions.map((s) => s.productId));
-  const habitualChips = habituales.filter((h) => !suggestedIds.has(h.id));
+  const visibleSuggestions = suggestions.filter(
+    (s) => !onListProductIds.has(s.productId),
+  );
+  const habitualChips = habituales.filter(
+    (h) => !suggestedIds.has(h.id) && !onListProductIds.has(h.id),
+  );
 
   return (
     <div className="flex flex-col gap-4">
-      <AddItemForm catalog={catalog} />
+      <AddItemForm catalog={catalog} onAdd={addItem} />
 
-      {items.length === 0 ? (
+      {allItems.length === 0 ? (
         <EmptyState
           icon={ShoppingCart}
           title="La lista está vacía"
@@ -93,7 +178,7 @@ export function ShoppingListView({
         <>
           <div className="flex items-center justify-between">
             <p className="text-xs font-medium text-muted-foreground">
-              {editMode ? "Elige un producto para editarlo" : `${items.length} producto${items.length === 1 ? "" : "s"}`}
+              {editMode ? "Elige un producto para editarlo" : `${allItems.length} producto${allItems.length === 1 ? "" : "s"}`}
             </p>
             <Button
               variant="ghost"
@@ -144,12 +229,12 @@ export function ShoppingListView({
         </>
       )}
 
-      {!editMode && suggestions.length > 0 ? (
-        <Suggestions suggestions={suggestions} />
+      {!editMode && visibleSuggestions.length > 0 ? (
+        <Suggestions suggestions={visibleSuggestions} onAdd={addItem} />
       ) : null}
 
       {!editMode && habitualChips.length > 0 ? (
-        <Habituales products={habitualChips} />
+        <Habituales products={habitualChips} onAdd={addItem} />
       ) : null}
 
       {!editMode && done.length > 0 ? <CheckoutBar count={done.length} /> : null}
@@ -245,18 +330,13 @@ function ListRow({
   );
 }
 
-function Suggestions({ suggestions }: { suggestions: Suggestion[] }) {
-  const router = useRouter();
-  const [adding, startAdd] = useTransition();
-
-  function add(productId: string) {
-    startAdd(async () => {
-      const r = await addProductToListAction(productId);
-      if (r?.error) toast.error(r.error);
-      else router.refresh();
-    });
-  }
-
+function Suggestions({
+  suggestions,
+  onAdd,
+}: {
+  suggestions: Suggestion[];
+  onAdd: (input: AddInput) => Promise<boolean>;
+}) {
   return (
     <section className="rounded-xl border border-dashed p-3">
       <h2 className="mb-2 text-sm font-medium">Sugerencias</h2>
@@ -271,8 +351,15 @@ function Suggestions({ suggestions }: { suggestions: Suggestion[] }) {
               key={s.productId}
               variant="outline"
               size="sm"
-              disabled={adding}
-              onClick={() => add(s.productId)}
+              onClick={() =>
+                onAdd({
+                  kind: "product",
+                  productId: s.productId,
+                  name: s.name,
+                  quantity: null,
+                  unit: s.unit,
+                })
+              }
               className="h-auto flex-col items-start gap-0.5 py-1.5"
             >
               <span className="flex items-center gap-1">
@@ -290,18 +377,13 @@ function Suggestions({ suggestions }: { suggestions: Suggestion[] }) {
   );
 }
 
-function Habituales({ products }: { products: HabitualProduct[] }) {
-  const router = useRouter();
-  const [adding, startAdd] = useTransition();
-
-  function add(productId: string) {
-    startAdd(async () => {
-      const r = await addProductToListAction(productId);
-      if (r?.error) toast.error(r.error);
-      else router.refresh();
-    });
-  }
-
+function Habituales({
+  products,
+  onAdd,
+}: {
+  products: HabitualProduct[];
+  onAdd: (input: AddInput) => Promise<boolean>;
+}) {
   return (
     <section className="rounded-xl border border-dashed p-3">
       <h2 className="mb-2 text-sm font-medium">Habituales</h2>
@@ -311,8 +393,15 @@ function Habituales({ products }: { products: HabitualProduct[] }) {
             key={p.id}
             variant="outline"
             size="sm"
-            disabled={adding}
-            onClick={() => add(p.id)}
+            onClick={() =>
+              onAdd({
+                kind: "product",
+                productId: p.id,
+                name: p.name,
+                quantity: null,
+                unit: p.defaultUnit,
+              })
+            }
           >
             <Plus aria-hidden />
             {p.name}

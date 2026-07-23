@@ -1,74 +1,87 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 import { Plus } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { addListItemAction, addProductToListAction } from "../actions";
 import type { CatalogProduct } from "../queries";
+import type { AddInput } from "./shopping-list-view";
 import { ProductAutocomplete } from "./product-autocomplete";
 
-export function AddItemForm({ catalog }: { catalog: CatalogProduct[] }) {
-  const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
+export function AddItemForm({
+  catalog,
+  onAdd,
+}: {
+  catalog: CatalogProduct[];
+  onAdd: (input: AddInput) => Promise<boolean>;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
 
-  // Alta de texto libre (Enter o botón +): comportamiento clásico.
+  function parseQuantity(): number | null {
+    const raw = quantity.trim();
+    if (raw.length === 0) return null;
+    const n = Number(raw.replace(",", "."));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  // Devuelve el foco al input para poder encadenar altas sin cerrar el teclado.
+  function refocus() {
+    inputRef.current?.focus();
+  }
+
+  // Alta de texto libre (Enter o botón +): optimista, no espera al servidor.
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+    const trimmed = name.trim();
+    if (trimmed.length === 0) return;
     setError(null);
-    startTransition(async () => {
-      const result = await addListItemAction({}, formData);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      if (result.warning) toast.warning(result.warning);
-      setName("");
-      setQuantity("");
-      formRef.current?.reset();
-      router.refresh();
-    });
+    const qty = parseQuantity();
+    // Limpiar de inmediato y mantener el foco: el ítem ya se ve en la lista.
+    setName("");
+    setQuantity("");
+    refocus();
+    void onAdd({ kind: "free", name: trimmed, quantity: qty, unit: null }).then(
+      (ok) => {
+        if (!ok) {
+          // Restaurar el texto para reintentar (el ítem optimista ya se quitó).
+          setName(trimmed);
+          setQuantity(qty != null ? String(qty) : "");
+          setError("No se pudo añadir. Inténtalo de nuevo.");
+        }
+      },
+    );
   }
 
   // Elegir una sugerencia del catálogo: alta ya vinculada al producto, pero
   // respetando la cantidad escrita (si la hay) y la unidad por defecto.
   function handleSelect(product: CatalogProduct) {
     setError(null);
-    const qty = quantity.trim().length > 0 ? Number(quantity.replace(",", ".")) : null;
-    startTransition(async () => {
-      const result = await addProductToListAction(
-        product.id,
-        qty,
-        product.defaultUnit,
-      );
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setName("");
-      setQuantity("");
-      formRef.current?.reset();
-      router.refresh();
+    const qty = parseQuantity();
+    setName("");
+    setQuantity("");
+    refocus();
+    void onAdd({
+      kind: "product",
+      productId: product.id,
+      name: product.name,
+      quantity: qty,
+      unit: product.defaultUnit,
     });
   }
 
   return (
     <div>
-      <form ref={formRef} onSubmit={handleSubmit} className="flex gap-2">
+      <form onSubmit={handleSubmit} className="flex gap-2">
         <ProductAutocomplete
+          ref={inputRef}
           products={catalog}
           value={name}
           onValueChange={setName}
           onSelect={handleSelect}
-          disabled={pending}
         />
         <Input
           name="quantity"
@@ -82,12 +95,7 @@ export function AddItemForm({ catalog }: { catalog: CatalogProduct[] }) {
           value={quantity}
           onChange={(e) => setQuantity(e.target.value)}
         />
-        <Button
-          type="submit"
-          size="icon"
-          disabled={pending}
-          aria-label="Añadir a la lista"
-        >
+        <Button type="submit" size="icon" aria-label="Añadir a la lista">
           <Plus aria-hidden />
         </Button>
       </form>

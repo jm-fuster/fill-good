@@ -18,6 +18,7 @@ const MAX_SUGGESTIONS = 6;
  * unidad) o seguir con texto libre (Enter → deja que el formulario se envíe).
  */
 export function ProductAutocomplete({
+  ref,
   products,
   value,
   onValueChange,
@@ -28,6 +29,7 @@ export function ProductAutocomplete({
   placeholder = "Añadir a la lista…",
   ariaLabel = "Producto a añadir",
 }: {
+  ref?: React.Ref<HTMLInputElement>;
   products: CatalogProduct[];
   value: string;
   onValueChange: (v: string) => void;
@@ -102,6 +104,7 @@ export function ProductAutocomplete({
   return (
     <div className="relative flex-1">
       <Input
+        ref={ref}
         name={inputName}
         value={value}
         onChange={(e) => change(e.target.value)}

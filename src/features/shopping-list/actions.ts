@@ -12,7 +12,13 @@ import type { UnitType } from "@/lib/supabase/types";
 import { getActiveList } from "./queries";
 import { addListItemSchema, updateListItemSchema } from "./schemas";
 
-export type ActionState = { error?: string; ok?: boolean; warning?: string };
+export type ActionState = {
+  error?: string;
+  ok?: boolean;
+  warning?: string;
+  /** Id de la fila recién insertada (para reconciliar el alta optimista). */
+  itemId?: string;
+};
 
 /** Siguiente `position` al final de la lista (max + 1); 1 si está vacía. */
 async function nextListPosition(
@@ -76,20 +82,24 @@ export async function addListItemAction(
 
   const position = await nextListPosition(supabase, list.id);
 
-  const { error } = await supabase.from("shopping_list_items").insert({
-    list_id: list.id,
-    household_id: household.id,
-    product_id: product?.id ?? null,
-    name: d.name,
-    quantity: d.quantity,
-    unit: d.unit ?? product?.default_unit ?? null,
-    added_by: userId,
-    position,
-  });
+  const { data: inserted, error } = await supabase
+    .from("shopping_list_items")
+    .insert({
+      list_id: list.id,
+      household_id: household.id,
+      product_id: product?.id ?? null,
+      name: d.name,
+      quantity: d.quantity,
+      unit: d.unit ?? product?.default_unit ?? null,
+      added_by: userId,
+      position,
+    })
+    .select("id")
+    .single();
   if (error) return { error: "No se pudo añadir a la lista." };
 
   revalidatePath("/lista");
-  return { ok: true, warning };
+  return { ok: true, warning, itemId: inserted.id };
 }
 
 export async function addProductToListAction(
@@ -119,20 +129,24 @@ export async function addProductToListAction(
 
   const position = await nextListPosition(supabase, list.id);
 
-  const { error } = await supabase.from("shopping_list_items").insert({
-    list_id: list.id,
-    household_id: household.id,
-    product_id: product.id,
-    name: product.name,
-    quantity: qty,
-    unit: unit ?? product.default_unit,
-    added_by: userId,
-    position,
-  });
+  const { data: inserted, error } = await supabase
+    .from("shopping_list_items")
+    .insert({
+      list_id: list.id,
+      household_id: household.id,
+      product_id: product.id,
+      name: product.name,
+      quantity: qty,
+      unit: unit ?? product.default_unit,
+      added_by: userId,
+      position,
+    })
+    .select("id")
+    .single();
   if (error) return { error: "No se pudo añadir a la lista." };
 
   revalidatePath("/lista");
-  return { ok: true };
+  return { ok: true, itemId: inserted.id };
 }
 
 export async function updateListItemAction(
