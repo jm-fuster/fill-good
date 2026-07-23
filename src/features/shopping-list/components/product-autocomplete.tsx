@@ -11,11 +11,18 @@ import type { CatalogProduct } from "../queries";
 
 const MAX_SUGGESTIONS = 6;
 
+/** Opción del combobox: un producto del catálogo, con un motivo opcional. */
+export type AutocompleteOption = { product: CatalogProduct; reason?: string };
+
 /**
  * Combobox accesible para el nombre del producto. Sustituye al <datalist>
  * nativo: filtra el catálogo del hogar ignorando acentos/mayúsculas, ordena por
  * habitualidad y permite elegir un producto ya conocido (con su ubicación y
  * unidad) o seguir con texto libre (Enter → deja que el formulario se envíe).
+ *
+ * L4: al enfocar el input vacío muestra `defaultOptions` (sugerencias +
+ * habituales al alcance del pulgar) con su motivo abreviado; al escribir vuelve
+ * a filtrar el catálogo completo.
  */
 export function ProductAutocomplete({
   ref,
@@ -25,6 +32,7 @@ export function ProductAutocomplete({
   onSelect,
   disabled,
   onListProductIds,
+  defaultOptions,
   inputName = "name",
   required = true,
   placeholder = "Añadir a la lista…",
@@ -38,6 +46,8 @@ export function ProductAutocomplete({
   disabled?: boolean;
   /** Ids de producto ya en la lista, para el badge "En la lista" (L3). */
   onListProductIds?: Set<string>;
+  /** Opciones al enfocar el input vacío (sugerencias/habituales) (L4). */
+  defaultOptions?: AutocompleteOption[];
   inputName?: string;
   required?: boolean;
   placeholder?: string;
@@ -48,9 +58,9 @@ export function ProductAutocomplete({
   const [active, setActive] = useState(-1);
   const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const matches = useMemo(() => {
+  const options = useMemo<AutocompleteOption[]>(() => {
     const q = normalizeName(value);
-    if (q.length < 1) return [];
+    if (q.length < 1) return (defaultOptions ?? []).slice(0, MAX_SUGGESTIONS);
     return products
       .filter((p) => p.normalizedName.includes(q))
       .sort(
@@ -58,10 +68,11 @@ export function ProductAutocomplete({
           b.purchaseCount - a.purchaseCount ||
           a.name.localeCompare(b.name, "es"),
       )
-      .slice(0, MAX_SUGGESTIONS);
-  }, [products, value]);
+      .slice(0, MAX_SUGGESTIONS)
+      .map((product) => ({ product }));
+  }, [products, value, defaultOptions]);
 
-  const showList = open && matches.length > 0;
+  const showList = open && options.length > 0;
 
   function change(v: string) {
     onValueChange(v);
@@ -78,20 +89,20 @@ export function ProductAutocomplete({
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
-      if (matches.length === 0) return;
+      if (options.length === 0) return;
       event.preventDefault();
       setOpen(true);
-      setActive((i) => Math.min(i + 1, matches.length - 1));
+      setActive((i) => Math.min(i + 1, options.length - 1));
     } else if (event.key === "ArrowUp") {
-      if (matches.length === 0) return;
+      if (options.length === 0) return;
       event.preventDefault();
       setActive((i) => Math.max(i - 1, 0));
     } else if (event.key === "Enter") {
-      // Solo interceptamos si hay una sugerencia resaltada; si no, dejamos que
-      // el formulario haga el alta de texto libre (comportamiento actual).
-      if (showList && active >= 0 && matches[active]) {
+      // Solo interceptamos si hay una opción resaltada; si no, dejamos que el
+      // formulario haga el alta de texto libre (comportamiento actual).
+      if (showList && active >= 0 && options[active]) {
         event.preventDefault();
-        choose(matches[active]);
+        choose(options[active].product);
       }
     } else if (event.key === "Escape") {
       if (open) {
@@ -135,7 +146,7 @@ export function ProductAutocomplete({
           aria-label="Sugerencias de productos"
           className="absolute top-full z-50 mt-1 w-full overflow-hidden rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-md"
         >
-          {matches.map((product, index) => (
+          {options.map(({ product, reason }, index) => (
             <li
               key={product.id}
               id={`${listboxId}-opt-${index}`}
@@ -153,6 +164,8 @@ export function ProductAutocomplete({
               <span className="flex shrink-0 items-center gap-1.5">
                 {onListProductIds?.has(product.id) ? (
                   <Badge variant="secondary">En la lista</Badge>
+                ) : reason ? (
+                  <span className="text-xs text-muted-foreground">{reason}</span>
                 ) : (
                   <>
                     <Badge variant="secondary">

@@ -27,6 +27,7 @@ import {
   toggleItemAction,
 } from "../actions";
 import { AddItemForm } from "./add-item-form";
+import type { AutocompleteOption } from "./product-autocomplete";
 import { EditListItemDrawer } from "./edit-list-item-drawer";
 
 function signatureOf(items: ListItem[]) {
@@ -170,12 +171,37 @@ export function ShoppingListView({
     (h) => !suggestedIds.has(h.id) && !onListProductIds.has(h.id),
   );
 
+  // L4: opciones al enfocar el input vacío (sugerencias primero, luego
+  // habituales), resueltas contra el catálogo para reutilizar el mismo alta.
+  const catalogById = new Map(catalog.map((p) => [p.id, p]));
+  const focusOptions: AutocompleteOption[] = [];
+  const seenFocus = new Set<string>();
+  for (const s of visibleSuggestions) {
+    const product = catalogById.get(s.productId);
+    if (!product || seenFocus.has(product.id)) continue;
+    seenFocus.add(product.id);
+    focusOptions.push({
+      product,
+      reason:
+        s.reason === "restock" && s.intervalDays
+          ? `cada ~${s.intervalDays} días`
+          : "Quedan pocas",
+    });
+  }
+  for (const h of habitualChips) {
+    const product = catalogById.get(h.id);
+    if (!product || seenFocus.has(product.id)) continue;
+    seenFocus.add(product.id);
+    focusOptions.push({ product, reason: "Habitual" });
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <AddItemForm
         catalog={catalog}
         onAdd={addItem}
         onListProductIds={onListProductIds}
+        defaultOptions={focusOptions}
       />
 
       {allItems.length === 0 ? (

@@ -7,17 +7,23 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CatalogProduct } from "../queries";
 import type { AddInput } from "./shopping-list-view";
-import { ProductAutocomplete } from "./product-autocomplete";
+import {
+  ProductAutocomplete,
+  type AutocompleteOption,
+} from "./product-autocomplete";
 
 export function AddItemForm({
   catalog,
   onAdd,
   onListProductIds,
+  defaultOptions,
 }: {
   catalog: CatalogProduct[];
   onAdd: (input: AddInput) => Promise<boolean>;
   /** Ids de producto ya en la lista, para el badge "En la lista" (L3). */
   onListProductIds?: Set<string>;
+  /** Opciones al enfocar el input vacío (L4). */
+  defaultOptions?: AutocompleteOption[];
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
@@ -86,6 +92,7 @@ export function AddItemForm({
           onValueChange={setName}
           onSelect={handleSelect}
           onListProductIds={onListProductIds}
+          defaultOptions={defaultOptions}
         />
         <Input
           name="quantity"
