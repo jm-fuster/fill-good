@@ -94,6 +94,10 @@ export function RecipeRating({
   return (
     <div className="flex flex-col gap-2 rounded-xl border bg-card p-4">
       <p className="text-sm font-medium">Tu valoración</p>
+      {/* Composite widget: el foco vive en las estrellas (role="radio") con
+          roving tabindex; el contenedor NO debe ser tabbable. onKeyDown recibe
+          por burbujeo desde la estrella enfocada. jsx-a11y falso positivo. */}
+      {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus */}
       <div
         role="radiogroup"
         aria-label="Tu valoración de la receta"

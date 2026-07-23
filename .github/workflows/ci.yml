@@ -1,0 +1,55 @@
+name: CI
+
+# Vigilancia de calidad en cada push a main y en cada PR.
+# Tres gates, ninguno necesita secretos reales:
+#   1. Lint (ESLint + jsx-a11y strict, --max-warnings 0)
+#   2. Typecheck (tsc --noEmit)
+#   3. Build de producción + presupuesto de bundle base
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancela ejecuciones anteriores de la misma rama/PR al hacer push nuevo.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint + typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+
+  bundle:
+    name: Build + presupuesto de bundle
+    runs-on: ubuntu-latest
+    # Env SOLO para que el build prerenderice las rutas estáticas. NO son
+    # secretos: la publishable key de Clerk es pública por diseño (viaja en el
+    # bundle del cliente) y aquí va una FALSA con formato válido; el resto son
+    # placeholders porque el build no llama a Supabase (el cliente se crea, y
+    # falla, en tiempo de request, no de build). Verificado: el build pasa así.
+    env:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ZmFrZS1kdW1teS1jaS5jbGVyay5hY2NvdW50cy5kZXYk
+      CLERK_SECRET_KEY: sk_test_dummyci000000000000000000000000
+      NEXT_PUBLIC_SUPABASE_URL: https://dummy.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_dummy_ci
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      # Solo `next build` (no el paso serwist): genera el manifest que lee el
+      # presupuesto y valida compilación, tipos y prerender de las rutas.
+      - run: npx next build
+      - run: npm run check:bundle

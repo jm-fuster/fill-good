@@ -531,9 +531,15 @@ function ListRow({
           }
         }}
       >
-        {/* Zona 1: checkbox con área táctil generosa (marca/desmarca). */}
-        <label className="flex min-h-12 shrink-0 cursor-pointer items-center py-1 pr-3 pl-1">
+        {/* Zona 1: checkbox con área táctil generosa (marca/desmarca).
+            htmlFor/id asocian explícitamente el label con el Checkbox de Radix
+            (que renderiza un <button>, no un <input> nativo). */}
+        <label
+          htmlFor={`chk-${item.id}`}
+          className="flex min-h-12 shrink-0 cursor-pointer items-center py-1 pr-3 pl-1"
+        >
           <Checkbox
+            id={`chk-${item.id}`}
             checked={item.isChecked}
             onCheckedChange={(v) => onToggle(item.id, v === true)}
             aria-label={`Marcar ${item.name}`}
