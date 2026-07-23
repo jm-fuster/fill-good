@@ -50,6 +50,10 @@ function ensureConfigured(): boolean {
  * Envía una notificación a varios destinos. Devuelve cuántas salieron y los
  * endpoints "muertos" (404/410) para que el llamante los borre. Nunca lanza:
  * el push es una capa encima, jamás debe romper el flujo que lo dispara.
+ *
+ * IMPORTANTE: todo llamador debe borrar los `gone` de `push_subscriptions` tras
+ * el envío (patrón en `src/features/push/notify.ts`); si no, se reintenta contra
+ * suscripciones revocadas en cada envío. Hoy solo hay un llamador.
  */
 export async function sendPush(
   targets: PushTarget[],
