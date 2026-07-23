@@ -28,6 +28,7 @@ export function ProductAutocomplete({
   ref,
   products,
   value,
+  filterValue,
   onValueChange,
   onSelect,
   disabled,
@@ -41,6 +42,8 @@ export function ProductAutocomplete({
   ref?: React.Ref<HTMLInputElement>;
   products: CatalogProduct[];
   value: string;
+  /** Texto por el que filtrar el catálogo si difiere de `value` (L8). */
+  filterValue?: string;
   onValueChange: (v: string) => void;
   onSelect: (product: CatalogProduct) => void;
   disabled?: boolean;
@@ -59,7 +62,7 @@ export function ProductAutocomplete({
   const blurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const options = useMemo<AutocompleteOption[]>(() => {
-    const q = normalizeName(value);
+    const q = normalizeName(filterValue ?? value);
     if (q.length < 1) return (defaultOptions ?? []).slice(0, MAX_SUGGESTIONS);
     return products
       .filter((p) => p.normalizedName.includes(q))
@@ -70,7 +73,7 @@ export function ProductAutocomplete({
       )
       .slice(0, MAX_SUGGESTIONS)
       .map((product) => ({ product }));
-  }, [products, value, defaultOptions]);
+  }, [products, value, filterValue, defaultOptions]);
 
   const showList = open && options.length > 0;
 

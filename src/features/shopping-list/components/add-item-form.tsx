@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { formatQuantity } from "@/lib/units";
+import { parseQuantityFromText } from "@/lib/parse-quantity";
 import type { CatalogProduct } from "../queries";
 import type { AddInput } from "./shopping-list-view";
 import {
@@ -26,16 +27,11 @@ export function AddItemForm({
   defaultOptions?: AutocompleteOption[];
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [name, setName] = useState("");
-  const [quantity, setQuantity] = useState("");
+  const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  function parseQuantity(): number | null {
-    const raw = quantity.trim();
-    if (raw.length === 0) return null;
-    const n = Number(raw.replace(",", "."));
-    return Number.isFinite(n) && n > 0 ? n : null;
-  }
+  // L8: parseo determinista de cantidad/unidad desde el texto libre.
+  const parsed = useMemo(() => parseQuantityFromText(text), [text]);
 
   // Devuelve el foco al input para poder encadenar altas sin cerrar el teclado.
   function refocus() {
@@ -45,42 +41,38 @@ export function AddItemForm({
   // Alta de texto libre (Enter o botón +): optimista, no espera al servidor.
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const trimmed = name.trim();
-    if (trimmed.length === 0) return;
+    if (parsed.name.length === 0) return;
     setError(null);
-    const qty = parseQuantity();
+    const { name, quantity, unit } = parsed;
     // Limpiar de inmediato y mantener el foco: el ítem ya se ve en la lista.
-    setName("");
-    setQuantity("");
+    setText("");
     refocus();
-    void onAdd({ kind: "free", name: trimmed, quantity: qty, unit: null }).then(
-      (ok) => {
-        if (!ok) {
-          // Restaurar el texto para reintentar (el ítem optimista ya se quitó).
-          setName(trimmed);
-          setQuantity(qty != null ? String(qty) : "");
-          setError("No se pudo añadir. Inténtalo de nuevo.");
-        }
-      },
-    );
+    void onAdd({ kind: "free", name, quantity, unit }).then((ok) => {
+      if (!ok) {
+        // Restaurar el texto para reintentar (el ítem optimista ya se quitó).
+        setText(text);
+        setError("No se pudo añadir. Inténtalo de nuevo.");
+      }
+    });
   }
 
-  // Elegir una sugerencia del catálogo: alta ya vinculada al producto, pero
-  // respetando la cantidad escrita (si la hay) y la unidad por defecto.
+  // Elegir una sugerencia del catálogo: alta ya vinculada al producto,
+  // respetando la cantidad parseada del texto (si la hay).
   function handleSelect(product: CatalogProduct) {
     setError(null);
-    const qty = parseQuantity();
-    setName("");
-    setQuantity("");
+    const quantity = parsed.quantity;
+    setText("");
     refocus();
     void onAdd({
       kind: "product",
       productId: product.id,
       name: product.name,
-      quantity: qty,
+      quantity,
       unit: product.defaultUnit,
     });
   }
+
+  const showPreview = parsed.name.length > 0 && text.trim().length > 0;
 
   return (
     <div>
@@ -88,28 +80,25 @@ export function AddItemForm({
         <ProductAutocomplete
           ref={inputRef}
           products={catalog}
-          value={name}
-          onValueChange={setName}
+          value={text}
+          filterValue={parsed.name}
+          onValueChange={setText}
           onSelect={handleSelect}
           onListProductIds={onListProductIds}
           defaultOptions={defaultOptions}
-        />
-        <Input
-          name="quantity"
-          type="number"
-          inputMode="decimal"
-          min={0}
-          step="any"
-          placeholder="Cant."
-          className="w-20"
-          aria-label="Cantidad"
-          value={quantity}
-          onChange={(e) => setQuantity(e.target.value)}
         />
         <Button type="submit" size="icon" aria-label="Añadir a la lista">
           <Plus aria-hidden />
         </Button>
       </form>
+      {showPreview ? (
+        <p className="mt-1.5 px-1 text-xs text-muted-foreground" aria-live="polite">
+          Añadir: <span className="font-medium text-foreground">{parsed.name}</span>
+          {parsed.quantity != null ? (
+            <> · {formatQuantity(parsed.quantity, parsed.unit ?? "ud")}</>
+          ) : null}
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="mt-2 text-sm text-destructive">
           {error}
