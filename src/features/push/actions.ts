@@ -16,6 +16,29 @@ export type SavePushInput = {
 
 type Result = { ok?: boolean; error?: string };
 
+// Hosts de los servicios push legítimos (Chrome/FCM, Firefox, Edge/WNS, Safari).
+// El endpoint lo elige el navegador, pero llega como dato de cliente: validarlo
+// evita que se almacene una URL arbitraria a la que el servidor haría POST luego
+// (web-push desde el cron / notify.ts) — una primitiva SSRF de bajo impacto.
+const PUSH_HOSTS = [
+  "fcm.googleapis.com",
+  "push.services.mozilla.com",
+  "notify.windows.com",
+  "push.apple.com",
+];
+
+function isAllowedPushEndpoint(endpoint: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== "https:") return false;
+  const host = url.hostname.toLowerCase();
+  return PUSH_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+}
+
 /**
  * Guarda (o actualiza) la suscripción push de este dispositivo con sus
  * preferencias por tipo. Upsert por endpoint: re-suscribirse no duplica.
@@ -29,6 +52,9 @@ export async function savePushSubscriptionAction(
   if (!userId) return { error: "No autenticado." };
   if (!input.endpoint || !input.p256dh || !input.auth) {
     return { error: "Suscripción no válida." };
+  }
+  if (!isAllowedPushEndpoint(input.endpoint)) {
+    return { error: "Endpoint de notificaciones no válido." };
   }
 
   const supabase = createServerSupabaseClient();

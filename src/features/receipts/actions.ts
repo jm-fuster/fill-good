@@ -18,6 +18,8 @@ import type { LocationType, UnitType } from "@/lib/supabase/types";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { refreshPriceInsights } from "@/features/prices/materialize";
 import { notifyPriceRises } from "@/features/push/notify";
+import { confirmPayloadSchema } from "./schemas";
+import type { ConfirmPayload } from "./schemas";
 
 export type ScanState = {
   error?: string;
@@ -26,6 +28,10 @@ export type ScanState = {
 };
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+
+/** Tope de tamaño del fichero de ticket. Por debajo del bodySizeLimit (10 MB) de
+ *  los Server Actions; acota memoria y coste de IA por petición. */
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 /** Tope del catálogo embebido en el prompt (los más habituales); el resto lo
  *  cubre el fuzzy de la revisión (E6). Evita prompts enormes si el catálogo crece. */
@@ -66,6 +72,9 @@ export async function scanReceiptAction(
   }
   if (!ACCEPTED.includes(file.type)) {
     return { error: "Formato no admitido. Usa una imagen o un PDF." };
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return { error: "El archivo es demasiado grande (máx. 8 MB)." };
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -262,22 +271,10 @@ export async function deleteAliasAction(
   return { ok: true };
 }
 
-export type ConfirmItemDecision = {
-  itemId: string;
-  description: string;
-  quantity: number;
-  unit: UnitType;
-  productId: string | null; // uuid = enlazar; null = crear nuevo
-  skip: boolean;
-};
-
-export type ConfirmPayload = {
-  receiptId: string;
-  storeName: string | null;
-  purchaseDate: string | null;
-  total: number | null;
-  items: ConfirmItemDecision[];
-};
+// Tipos de la confirmación: definidos y validados con zod en ./schemas. Se
+// re-exportan aquí para que el cliente (receipt-review.tsx) los siga importando
+// desde "../actions" sin cambios.
+export type { ConfirmItemDecision, ConfirmPayload } from "./schemas";
 
 export async function confirmReceiptAction(
   payload: ConfirmPayload,
@@ -288,6 +285,14 @@ export async function confirmReceiptAction(
   inventoryItemIds?: string[];
   warnings?: string[];
 }> {
+  // Validación de entrada (zod): acota cantidad, descripción y longitudes antes
+  // de tocar inventario e historial de precios. Ver ./schemas.
+  const parsed = confirmPayloadSchema.safeParse(payload);
+  if (!parsed.success) {
+    return { error: "Los datos de la revisión no son válidos." };
+  }
+  payload = parsed.data;
+
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
   const { userId } = await auth();
@@ -412,7 +417,9 @@ export async function confirmReceiptAction(
 
     const rawText = itemRow?.raw_text ?? null;
 
-    if (dec.productId) {
+    // Solo se acepta el enlace si el producto pertenece al catálogo del hogar;
+    // un id ajeno u obsoleto (merge/borrado) cae al camino por nombre.
+    if (dec.productId && productById.has(dec.productId)) {
       resolved.push({
         itemId: dec.itemId,
         rawText,

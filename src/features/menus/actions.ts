@@ -55,8 +55,10 @@ import {
   type ValidatableRule,
 } from "./rules";
 import {
+  addMenuEntrySchema,
   menuPrefsInputSchema,
   menuRuleInputSchema,
+  updateMenuEntrySchema,
   type MenuPrefsInput,
   type MenuRuleInput,
 } from "./schemas";
@@ -500,6 +502,12 @@ export async function addMenuEntryAction(
 ): Promise<MenuState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const parsed = addMenuEntrySchema.safeParse({ weekStart, date, slot, freeText });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  ({ weekStart, date, slot, freeText } = parsed.data);
   const supabase = createServerSupabaseClient();
 
   const text = freeText.trim();
@@ -535,6 +543,12 @@ export async function updateMenuEntryAction(
 ): Promise<MenuState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const parsed = updateMenuEntrySchema.safeParse({ entryId, freeText });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  ({ entryId, freeText } = parsed.data);
   const supabase = createServerSupabaseClient();
 
   const text = freeText.trim();

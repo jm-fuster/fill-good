@@ -1,3 +1,5 @@
+import { createHash, timingSafeEqual } from "node:crypto";
+
 import { createClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/types";
@@ -28,6 +30,14 @@ export const dynamic = "force-dynamic";
 
 const WARN_DAYS = 3;
 
+/** Comparación en tiempo constante (hash a 32 bytes → sin fuga de longitud ni
+ *  early-exit por carácter). Evita el timing attack de comparar con `!==`. */
+function safeEqual(a: string, b: string): boolean {
+  const ha = createHash("sha256").update(a).digest();
+  const hb = createHash("sha256").update(b).digest();
+  return timingSafeEqual(ha, hb);
+}
+
 /** Texto de una única línea próxima a caducar, en minúscula para el body. */
 function dueLabel(expiry: string): string {
   const status = getExpiryStatus(expiry, WARN_DAYS);
@@ -43,7 +53,7 @@ export async function GET(request: Request) {
   //    ninguna petición coincide (el endpoint queda cerrado por defecto).
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
-  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || !authHeader || !safeEqual(authHeader, `Bearer ${cronSecret}`)) {
     return Response.json({ error: "No autorizado" }, { status: 401 });
   }
 

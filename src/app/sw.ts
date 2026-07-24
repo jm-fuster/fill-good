@@ -58,10 +58,23 @@ self.addEventListener("push", (event) => {
   );
 });
 
+// Solo navegamos a rutas del propio origen: aunque el payload lo firma el
+// servidor (VAPID), restringir a same-origin evita abrir URLs externas si el
+// dato llegara manipulado (defensa en profundidad).
+function safeInAppUrl(raw: unknown): string {
+  if (typeof raw !== "string" || raw.length === 0) return "/";
+  try {
+    const u = new URL(raw, self.location.origin);
+    return u.origin === self.location.origin ? u.pathname + u.search + u.hash : "/";
+  } catch {
+    return "/";
+  }
+}
+
 // Al tocar la notificación: enfoca una pestaña abierta de la app o abre una.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data as { url?: string } | null)?.url ?? "/";
+  const url = safeInAppUrl((event.notification.data as { url?: unknown } | null)?.url);
   event.waitUntil(
     (async () => {
       const clientsArr = await self.clients.matchAll({

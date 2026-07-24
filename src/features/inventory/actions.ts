@@ -471,6 +471,10 @@ export async function deleteInventoryAction(
 ): Promise<ActionState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
+  // `kind` llega del cliente: validarlo en runtime (no basta el tipo TS).
+  if (kind !== "consumed" && kind !== "discarded" && kind !== "restocked") {
+    return { error: "Tipo de baja no válido." };
+  }
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
 

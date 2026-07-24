@@ -58,3 +58,26 @@ export const menuPrefsInputSchema = z.object({
 });
 
 export type MenuPrefsInput = z.input<typeof menuPrefsInputSchema>;
+
+/** Fecha ISO corta (YYYY-MM-DD) de week_start y de la fecha de una entrada. */
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha no válida.");
+/** Hueco de comida válido (coincide con MealSlotKey y el meal_slot de la BD). */
+const mealSlot = z.enum(["breakfast", "lunch", "dinner"]);
+
+/** Alta de un plato (texto libre) en un hueco del menú. */
+export const addMenuEntrySchema = z.object({
+  weekStart: isoDate,
+  date: isoDate,
+  slot: mealSlot,
+  freeText: z
+    .string()
+    .trim()
+    .min(1, "Escribe el nombre del plato.")
+    .max(200, "Nombre demasiado largo."),
+});
+
+/** Edición de un plato. freeText vacío = quitar la entrada (misma semántica). */
+export const updateMenuEntrySchema = z.object({
+  entryId: z.string().uuid(),
+  freeText: z.string().trim().max(200, "Nombre demasiado largo."),
+});
