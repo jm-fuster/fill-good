@@ -7,13 +7,27 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/offline",
+  // El cron de caducidades lo llama Vercel Cron con `Authorization: Bearer
+  // CRON_SECRET`, no con sesión de Clerk: sin esto, auth.protect() lo bloquearía
+  // antes de su propia comprobación. La ruta valida el secreto por su cuenta.
+  "/api/push/caducidades",
 ]);
 
-export default clerkMiddleware(async (auth, request) => {
-  if (!isPublicRoute(request)) {
-    await auth.protect();
-  }
-});
+// authorizedParties refuerza la validación del token de Clerk frente a reuso
+// desde otros orígenes. Opt-in por env (orígenes separados por comas) para no
+// romper nada si no está configurado; define tu dominio de producción.
+const authorizedParties = process.env.CLERK_AUTHORIZED_PARTIES?.split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+export default clerkMiddleware(
+  async (auth, request) => {
+    if (!isPublicRoute(request)) {
+      await auth.protect();
+    }
+  },
+  authorizedParties?.length ? { authorizedParties } : undefined,
+);
 
 export const config = {
   matcher: [

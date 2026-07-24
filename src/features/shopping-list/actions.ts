@@ -304,6 +304,10 @@ export async function setListItemQuantityAction(
   itemId: string,
   quantity: number | null,
 ): Promise<ActionState> {
+  // `quantity` llega del cliente: null (sin cantidad) o un número finito >= 0.
+  if (quantity !== null && (!Number.isFinite(quantity) || quantity < 0)) {
+    return { error: "Cantidad no válida." };
+  }
   const supabase = createServerSupabaseClient();
   const { error } = await supabase
     .from("shopping_list_items")
