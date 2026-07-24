@@ -1,0 +1,3 @@
+{
+  "crons": [{ "path": "/api/push/caducidades", "schedule": "30 7 * * *" }]
+}

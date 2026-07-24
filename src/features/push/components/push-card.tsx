@@ -24,10 +24,12 @@ import {
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
 const DEFAULT_PREFS: PushPrefs = { expiry: true, price: true, restock: true };
 
+// "Reposición" (pref_restock) se oculta de la UI hasta que exista un emisor: la
+// preferencia se conserva en BD y en DEFAULT_PREFS para no tocar el contrato de
+// las actions, pero prometer un toggle sin aviso detrás sería deshonesto.
 const PREF_LABELS: { key: keyof PushPrefs; label: string; hint: string }[] = [
   { key: "expiry", label: "Caducidades", hint: "Resumen diario de lo que caduca" },
   { key: "price", label: "Avisos de precio", hint: "Cuando sube algo habitual" },
-  { key: "restock", label: "Reposición", hint: "Cuando toca reponer algo" },
 ];
 
 /** base64url (clave VAPID) → Uint8Array que espera pushManager.subscribe. */
