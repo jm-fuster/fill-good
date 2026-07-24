@@ -92,13 +92,15 @@ export default async function AjustesPage() {
           <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
         </Link>
 
-        <Link
-          href="/styleguide"
-          className="flex min-h-11 items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition-colors hover:bg-muted"
-        >
-          Guía de estilo (desarrollo)
-          <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
-        </Link>
+        {process.env.NODE_ENV !== "production" ? (
+          <Link
+            href="/styleguide"
+            className="flex min-h-11 items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            Guía de estilo (desarrollo)
+            <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+          </Link>
+        ) : null}
 
         <Card>
           <CardHeader>

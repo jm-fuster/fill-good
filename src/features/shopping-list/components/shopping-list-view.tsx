@@ -780,7 +780,6 @@ function Habituales({
           <Button
             key={p.id}
             variant="outline"
-            size="sm"
             onClick={() =>
               onAdd({
                 kind: "product",

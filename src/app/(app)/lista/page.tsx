@@ -1,5 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ShoppingCart } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/layout/empty-state";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ShoppingListView } from "@/features/shopping-list/components/shopping-list-view";
@@ -25,9 +29,16 @@ export default async function ListaPage() {
     return (
       <PageContainer variant="default">
         <PageHeader title="Lista de la compra" />
-        <p className="text-sm text-muted-foreground">
-          No se pudo cargar la lista. Recarga la página.
-        </p>
+        <EmptyState
+          icon={ShoppingCart}
+          title="No se pudo cargar la lista"
+          description="Ha habido un problema al cargar tu lista de la compra. Vuelve a intentarlo."
+          action={
+            <Button asChild>
+              <Link href="/lista">Reintentar</Link>
+            </Button>
+          }
+        />
       </PageContainer>
     );
   }
