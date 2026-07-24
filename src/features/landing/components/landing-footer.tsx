@@ -29,8 +29,20 @@ export function LandingFooter() {
 
           <nav
             aria-label="Enlaces del pie"
-            className="flex items-center gap-5 text-sm"
+            className="flex flex-wrap items-center gap-5 text-sm"
           >
+            <Link
+              href="/privacidad"
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Privacidad
+            </Link>
+            <Link
+              href="/terminos"
+              className="text-muted-foreground transition-colors hover:text-foreground"
+            >
+              Términos
+            </Link>
             <Link
               href="/sign-in"
               className="text-muted-foreground transition-colors hover:text-foreground"

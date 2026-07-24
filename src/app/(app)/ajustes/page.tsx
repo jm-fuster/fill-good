@@ -160,6 +160,24 @@ export default async function AjustesPage() {
         </Card>
 
         <DeleteAccountCard />
+
+        <nav
+          aria-label="Textos legales"
+          className="flex items-center justify-center gap-6 text-xs text-muted-foreground"
+        >
+          <Link
+            href="/privacidad"
+            className="inline-flex min-h-11 items-center underline underline-offset-4 hover:text-foreground"
+          >
+            Política de privacidad
+          </Link>
+          <Link
+            href="/terminos"
+            className="inline-flex min-h-11 items-center underline underline-offset-4 hover:text-foreground"
+          >
+            Términos de uso
+          </Link>
+        </nav>
       </div>
     </PageContainer>
   );

@@ -9,6 +9,9 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/offline",
+  // Textos legales: públicos por definición (enlazados desde la landing).
+  "/privacidad",
+  "/terminos",
   // El cron de caducidades lo llama Vercel Cron con `Authorization: Bearer
   // CRON_SECRET`, no con sesión de Clerk: sin esto, auth.protect() lo bloquearía
   // antes de su propia comprobación. La ruta valida el secreto por su cuenta.
