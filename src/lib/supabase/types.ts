@@ -869,7 +869,9 @@ export type Database = {
       };
       join_household_by_code: {
         Args: { p_code: string; p_display_name?: string | null };
-        Returns: string;
+        // null = el código no corresponde a ningún hogar (ver migración de
+        // rate-limit: el código inválido devuelve null en vez de lanzar error).
+        Returns: string | null;
       };
       regenerate_invite_code: {
         Args: { p_household_id: string };

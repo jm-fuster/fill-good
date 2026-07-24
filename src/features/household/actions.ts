@@ -54,15 +54,20 @@ export async function joinHouseholdAction(
   }
 
   const supabase = createServerSupabaseClient();
-  const { error } = await supabase.rpc("join_household_by_code", {
+  const { data, error } = await supabase.rpc("join_household_by_code", {
     p_code: parsed.data.code,
     p_display_name: parsed.data.displayName ?? null,
   });
   if (error) {
-    const message = error.message?.includes("invalid_code")
-      ? "Ese código no corresponde a ningún hogar."
+    // rate_limited: demasiados intentos fallidos (anti fuerza-bruta de códigos).
+    const message = error.message?.includes("rate_limited")
+      ? "Demasiados intentos. Espera unos minutos e inténtalo de nuevo."
       : "No se pudo unir al hogar. Inténtalo de nuevo.";
     return { error: message };
+  }
+  if (!data) {
+    // El RPC devuelve null cuando el código no corresponde a ningún hogar.
+    return { error: "Ese código no corresponde a ningún hogar." };
   }
 
   revalidatePath("/", "layout");
