@@ -219,15 +219,20 @@ export function EditItemDrawer({
     const formData = new FormData(event.currentTarget);
     setError(null);
     setPending(true);
-    const result = await updateInventoryAction({}, formData);
-    setPending(false);
-    if (result.error) {
-      setError(result.error);
-      return;
+    try {
+      const result = await updateInventoryAction({}, formData);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      toast.success("Cambios guardados");
+      onOpenChange(false);
+      router.refresh();
+    } catch {
+      setError("No se pudieron guardar los cambios. Comprueba tu conexión.");
+    } finally {
+      setPending(false);
     }
-    toast.success("Cambios guardados");
-    onOpenChange(false);
-    router.refresh();
   }
 
   // ¿El lote está caducado o caduca pronto? Solo entonces preguntamos si se

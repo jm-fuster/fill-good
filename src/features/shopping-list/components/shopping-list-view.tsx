@@ -196,7 +196,16 @@ export function ShoppingListView({
       { tempId, realId: null, item: optimistic },
     ]);
 
-    const result = await runAddAction(input);
+    let result: Awaited<ReturnType<typeof runAddAction>>;
+    try {
+      result = await runAddAction(input);
+    } catch {
+      // Si la acción lanza (red caída), el ítem optimista quedaría huérfano en la
+      // lista: se revierte y se avisa para que el usuario reintente.
+      setPendingAdds((prev) => prev.filter((p) => p.tempId !== tempId));
+      toast.error("No se pudo añadir. Comprueba tu conexión e inténtalo de nuevo.");
+      return false;
+    }
 
     if (result.error) {
       setPendingAdds((prev) => prev.filter((p) => p.tempId !== tempId));
