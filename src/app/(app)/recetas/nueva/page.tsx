@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader } from "@/components/layout/page-header";
 import { RecipeForm } from "@/features/recipes/components/recipe-form";
 import { getStockByProduct } from "@/features/inventory/queries";
 import { getProductCatalog } from "@/features/shopping-list/queries";
@@ -16,18 +15,12 @@ export default async function NuevaRecetaPage() {
   ]);
   return (
     <PageContainer variant="default">
-      <Link
-        href="/recetas"
-        className="mb-2 inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" aria-hidden /> Mis recetas
-      </Link>
-      <h1 className="mb-1 font-heading text-2xl font-semibold tracking-tight text-balance">
-        Nueva receta
-      </h1>
-      <p className="mb-6 text-sm text-muted-foreground">
-        Añade los datos del plato y sus ingredientes.
-      </p>
+      <PageHeader
+        title="Nueva receta"
+        description="Añade los datos del plato y sus ingredientes."
+        backHref="/recetas"
+        backLabel="Mis recetas"
+      />
       <RecipeForm catalog={catalog} stock={stock} />
     </PageContainer>
   );

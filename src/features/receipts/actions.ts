@@ -184,6 +184,31 @@ export async function scanReceiptAction(
   return { receiptId: receipt.id, warnings: extraction.warnings ?? [] };
 }
 
+/**
+ * Descarta un ticket pendiente. Borra solo si NO está confirmado (`.neq` además
+ * del `.eq` de id + hogar), para que nunca se pierda un ticket ya integrado en el
+ * inventario. El FK de `receipt_items` es `on delete cascade`.
+ */
+export async function deleteReceiptAction(
+  receiptId: string,
+): Promise<{ ok?: boolean; error?: string }> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase
+    .from("receipts")
+    .delete()
+    .eq("id", receiptId)
+    .eq("household_id", household.id)
+    .neq("status", "confirmed");
+  if (error) {
+    console.error("Error al descartar el ticket:", error);
+    return { error: "No se pudo descartar el ticket. Inténtalo de nuevo." };
+  }
+  revalidatePath("/escanear");
+  return { ok: true };
+}
+
 export type ProductAlias = { id: string; alias: string };
 
 /**

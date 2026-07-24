@@ -15,6 +15,8 @@ export default async function OrdenTiendaPage() {
       <PageHeader
         title="Orden de la tienda"
         description="Ordena los pasillos como en tu supermercado. La lista agrupada y el modo compra te mostrarán los productos en este orden."
+        backHref="/ajustes"
+        backLabel="Ajustes"
       />
       <StoreOrderEditor categories={categories} />
     </PageContainer>

@@ -44,6 +44,47 @@ type ItemRow = {
   product: { name: string } | null;
 };
 
+export type PendingReceipt = {
+  id: string;
+  storeName: string | null;
+  purchasedAt: string | null;
+  createdAt: string;
+  total: number | null;
+  itemCount: number;
+};
+
+/**
+ * Tickets del hogar aún sin confirmar (`needs_review`), más recientes primero.
+ * Alimenta la sección «Pendientes de revisar» de /escanear para que un ticket
+ * escaneado y abandonado no quede inaccesible. El count de líneas va embebido
+ * (supabase-js lo devuelve como `[{ count: number }]`).
+ */
+export async function getPendingReceipts(): Promise<PendingReceipt[]> {
+  const household = await getCurrentHousehold();
+  if (!household) return [];
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("receipts")
+    .select(
+      "id, store_name, purchased_at, created_at, total_amount, receipt_items(count)",
+    )
+    .eq("household_id", household.id)
+    .eq("status", "needs_review")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((r) => {
+    const counts = r.receipt_items as unknown as { count: number }[] | null;
+    return {
+      id: r.id,
+      storeName: r.store_name,
+      purchasedAt: r.purchased_at,
+      createdAt: r.created_at,
+      total: r.total_amount === null ? null : Number(r.total_amount),
+      itemCount: counts?.[0]?.count ?? 0,
+    };
+  });
+}
+
 export async function getReceipt(
   receiptId: string,
 ): Promise<ReceiptHeader | null> {

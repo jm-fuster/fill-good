@@ -5,11 +5,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function RevisarLoading() {
   return (
-    <PageContainer variant="default">
+    <PageContainer variant="wide">
       <LoadingStatus />
       <PageHeader
         title="Revisar ticket"
         description="Ajusta lo que haga falta y confirma. Lo marcado pasará al inventario."
+        backHref="/escanear"
+        backLabel="Añadir ticket"
       />
       <div className="flex flex-col gap-4 pb-4" aria-hidden>
         <Skeleton className="h-40 w-full rounded-xl" />
