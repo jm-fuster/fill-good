@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { History, LineChart, Package } from "lucide-react";
+import { History, LineChart, Package, ScanLine } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -79,15 +79,30 @@ export default async function InventarioPage({
       />
 
       {entries.length === 0 ? (
-        starterGroups.length > 0 ? (
-          <StarterPicker groups={starterGroups} />
-        ) : (
-          <EmptyState
-            icon={Package}
-            title="Aún no hay productos"
-            description="Añade tu primer producto, o escanea un ticket para llenar el inventario de golpe."
-          />
-        )
+        <div className="flex flex-col gap-6">
+          {starterGroups.length > 0 ? (
+            <StarterPicker groups={starterGroups} />
+          ) : (
+            <EmptyState
+              icon={Package}
+              title="Aún no hay productos"
+              description="Añade tu primer producto, o escanea un ticket para llenar el inventario de golpe."
+            />
+          )}
+          {/* Empujón a la feature diferencial (escaneo con IA), que si no queda
+              oculta tras la bottom nav durante el arranque. */}
+          <div className="flex flex-col items-center gap-1.5 rounded-xl border border-dashed p-4 text-center">
+            <p className="text-sm text-muted-foreground text-pretty">
+              ¿Vienes de la compra? La IA añade los productos y sus precios por ti.
+            </p>
+            <Button asChild variant="outline">
+              <Link href="/escanear">
+                <ScanLine aria-hidden />
+                O escanea tu primer ticket
+              </Link>
+            </Button>
+          </div>
+        </div>
       ) : (
         <InventoryList
           entries={entries}
