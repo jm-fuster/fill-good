@@ -34,6 +34,8 @@ export default async function RevisarPage({
       <PageHeader
         title="Revisar ticket"
         description="Ajusta lo que haga falta y confirma. Lo marcado pasará al inventario."
+        backHref="/escanear"
+        backLabel="Añadir ticket"
       />
       <ReceiptReview
         receipt={receipt}

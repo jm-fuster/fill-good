@@ -9,6 +9,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 import { getModel } from "@/lib/ai/models";
+import { classifyAiError } from "@/lib/ai/errors";
 import { menuSchema, singleDishSchema } from "@/lib/ai/menu-schema";
 import {
   buildMenuPrompt,
@@ -272,6 +273,7 @@ export async function generateMenuAction(
     const { object } = await generateObject({
       model: getModel("menus"),
       schema: menuSchema,
+      abortSignal: AbortSignal.timeout(60_000),
       prompt: buildMenuPrompt({
         today: todayLocalISO(),
         season,
@@ -291,7 +293,15 @@ export async function generateMenuAction(
     generated = object;
   } catch (err) {
     console.error("Error al generar el menú:", err);
-    return { error: "No se pudo generar el menú. Inténtalo de nuevo." };
+    const kind = classifyAiError(err);
+    return {
+      error:
+        kind === "rate_limit"
+          ? "El servicio de IA está saturado ahora mismo. Espera un minuto y vuelve a intentarlo."
+          : kind === "timeout"
+            ? "La generación del menú tardó demasiado. Vuelve a intentarlo."
+            : "No se pudo generar el menú. Inténtalo de nuevo.",
+    };
   }
 
   // --- Construir la estructura para validar reglas ---
@@ -846,6 +856,7 @@ export async function rerollMenuEntryAction(
     const { object } = await generateObject({
       model: getModel("menus"),
       schema: singleDishSchema,
+      abortSignal: AbortSignal.timeout(60_000),
       prompt: buildRerollPrompt({
         today: todayLocalISO(),
         season,
@@ -867,7 +878,15 @@ export async function rerollMenuEntryAction(
     dish = object;
   } catch (err) {
     console.error("Error al generar el plato alternativo:", err);
-    return { error: "No se pudo generar otra idea. Inténtalo de nuevo." };
+    const kind = classifyAiError(err);
+    return {
+      error:
+        kind === "rate_limit"
+          ? "El servicio de IA está saturado ahora mismo. Espera un minuto y vuelve a intentarlo."
+          : kind === "timeout"
+            ? "La generación tardó demasiado. Vuelve a intentarlo."
+            : "No se pudo generar otra idea. Inténtalo de nuevo.",
+    };
   }
 
   // Resolución de saved_recipe_id: id explícito o, como fallback, por nombre.

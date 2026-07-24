@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { WifiOff } from "lucide-react";
 
+import { OfflineRetry } from "./offline-retry";
+
 export const metadata: Metadata = { title: "Sin conexión" };
 
 export default function OfflinePage() {
@@ -18,6 +20,7 @@ export default function OfflinePage() {
           Las páginas que ya visitaste siguen disponibles.
         </p>
       </div>
+      <OfflineRetry />
     </main>
   );
 }

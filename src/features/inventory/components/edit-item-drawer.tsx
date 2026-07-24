@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Star, Store, TrendingDown, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -73,6 +73,12 @@ export function EditItemDrawer({
   const [pending, setPending] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Borrado con red de seguridad: confirmación en dos toques en el propio botón
+  // (sin modal sobre modal). El primer toque arma la confirmación 5 s; el segundo
+  // ejecuta. Al cerrar el drawer o pasado el tiempo, vuelve al estado inicial.
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Pin "Mis habituales": optimista, resincronizado con el prop del servidor.
   const [isPinned, setIsPinned] = useState(pinned);
   const [serverPinned, setServerPinned] = useState(pinned);
@@ -115,6 +121,34 @@ export function EditItemDrawer({
       active = false;
     };
   }, [open, entry.productId]);
+
+  // Reinicia la confirmación de borrado al cerrar el drawer (patrón de ajuste de
+  // estado en render, como el pin de arriba). Limpia el temporizador al desmontar.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    // Un temporizador pendiente que se dispare tras cerrar solo vuelve a poner
+    // `false` (inocuo); `requestDelete` limpia el temporizador viejo al re-armar.
+    if (!open) setConfirmDelete(false);
+  }
+  useEffect(
+    () => () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    },
+    [],
+  );
+
+  function requestDelete() {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = setTimeout(() => setConfirmDelete(false), 5000);
+      return;
+    }
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    setConfirmDelete(false);
+    handleDelete("consumed");
+  }
 
   function removeAlias(id: string) {
     const prev = aliases;
@@ -219,15 +253,20 @@ export function EditItemDrawer({
     const formData = new FormData(event.currentTarget);
     setError(null);
     setPending(true);
-    const result = await updateInventoryAction({}, formData);
-    setPending(false);
-    if (result.error) {
-      setError(result.error);
-      return;
+    try {
+      const result = await updateInventoryAction({}, formData);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      toast.success("Cambios guardados");
+      onOpenChange(false);
+      router.refresh();
+    } catch {
+      setError("No se pudieron guardar los cambios. Comprueba tu conexión.");
+    } finally {
+      setPending(false);
     }
-    toast.success("Cambios guardados");
-    onOpenChange(false);
-    router.refresh();
   }
 
   // ¿El lote está caducado o caduca pronto? Solo entonces preguntamos si se
@@ -622,11 +661,12 @@ export function EditItemDrawer({
               <Button
                 type="button"
                 variant="destructive"
-                onClick={() => handleDelete("consumed")}
+                onClick={requestDelete}
                 disabled={deleting}
+                aria-live="polite"
               >
                 <Trash2 aria-hidden />
-                Eliminar del inventario
+                {confirmDelete ? "¿Seguro? Eliminar" : "Eliminar del inventario"}
               </Button>
             )}
             <ResponsiveModalClose asChild>

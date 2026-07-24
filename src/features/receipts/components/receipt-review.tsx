@@ -1,11 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Link2 } from "lucide-react";
+import { Check, Link2, ScanLine } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/layout/empty-state";
+import { DeleteReceiptButton } from "./delete-receipt-button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -160,34 +163,43 @@ export function ReceiptReview({
       productId: r.productId,
       skip: !r.include,
     }));
-    const result = await confirmReceiptAction({
-      receiptId: receipt.id,
-      storeName: storeName.trim() || null,
-      purchaseDate: purchaseDate || null,
-      total: total ? Number(total.replace(",", ".")) : null,
-      items: decisions,
-    });
-    setPending(false);
-    if (result.error) {
-      toast.error(result.error);
-      return;
-    }
-    toast.success(
-      `${result.added} producto${result.added === 1 ? "" : "s"} añadido${
-        result.added === 1 ? "" : "s"
-      } al inventario`,
-    );
-    // Conflictos de unidad (E3): nunca en silencio. El Toaster es global y
-    // sobrevive a la navegación, así que se ven en la página de destino.
-    for (const w of result.warnings ?? []) {
-      toast.warning(w, { duration: 8000 });
-    }
-    // Revisión opcional de caducidades de lo recién añadido.
-    const ids = result.inventoryItemIds ?? [];
-    if (ids.length > 0) {
-      router.push(`/inventario/revision?items=${ids.join(",")}`);
-    } else {
-      router.push("/inventario");
+    try {
+      const result = await confirmReceiptAction({
+        receiptId: receipt.id,
+        storeName: storeName.trim() || null,
+        purchaseDate: purchaseDate || null,
+        total: total ? Number(total.replace(",", ".")) : null,
+        items: decisions,
+      });
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(
+        `${result.added} producto${result.added === 1 ? "" : "s"} añadido${
+          result.added === 1 ? "" : "s"
+        } al inventario`,
+      );
+      // Conflictos de unidad (E3): nunca en silencio. El Toaster es global y
+      // sobrevive a la navegación, así que se ven en la página de destino.
+      for (const w of result.warnings ?? []) {
+        toast.warning(w, { duration: 8000 });
+      }
+      // Revisión opcional de caducidades de lo recién añadido.
+      const ids = result.inventoryItemIds ?? [];
+      if (ids.length > 0) {
+        router.push(`/inventario/revision?items=${ids.join(",")}`);
+      } else {
+        router.push("/inventario");
+      }
+    } catch {
+      // Si la Server Action lanza (red caída), el botón debe recuperarse en vez
+      // de quedarse en «Guardando…» para siempre.
+      toast.error(
+        "No se pudo confirmar el ticket. Comprueba tu conexión e inténtalo de nuevo.",
+      );
+    } finally {
+      setPending(false);
     }
   }
 
@@ -337,6 +349,27 @@ export function ReceiptReview({
     );
   }
 
+  // La IA no detectó ninguna línea de producto: sin filas que revisar, mostramos
+  // un empty state con salida clara en vez de un formulario vacío. El botón de
+  // descartar el ticket llega en la Fase 2; aquí basta con volver a escanear.
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        icon={ScanLine}
+        title="No se detectaron productos en el ticket"
+        description="Prueba con una foto más nítida y mejor iluminada."
+        action={
+          <div className="flex flex-col items-center gap-2">
+            <Button asChild>
+              <Link href="/escanear">Volver a escanear</Link>
+            </Button>
+            <DeleteReceiptButton receiptId={receipt.id} redirectTo="/escanear" />
+          </div>
+        }
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4 pb-4">
       <Card>
@@ -406,6 +439,18 @@ export function ReceiptReview({
             </div>
           </div>
         ) : null}
+      </div>
+
+      {/* Salida clara: descartar el ticket sin confirmarlo (con confirmación en
+          ResponsiveModal). Va en el flujo, no en la barra fija, para no competir
+          con la acción primaria. */}
+      <div className="flex justify-center">
+        <DeleteReceiptButton
+          receiptId={receipt.id}
+          variant="ghost"
+          redirectTo="/escanear"
+          className="text-muted-foreground"
+        />
       </div>
 
       <div className="fixed inset-x-0 bottom-16 z-40 mx-auto max-w-lg px-4 pb-safe md:sticky md:inset-x-auto md:bottom-0 md:mx-0 md:max-w-none md:border-t md:bg-background/95 md:px-0 md:pt-3 md:pb-3 md:backdrop-blur-sm">

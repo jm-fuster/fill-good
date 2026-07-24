@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { BudgetCard } from "@/features/household/components/budget-card";
 import { HouseholdCard } from "@/features/household/components/household-card";
+import { InstallCard } from "@/features/push/components/install-card";
 import { PushCard } from "@/features/push/components/push-card";
 import {
   getCurrentHousehold,
@@ -62,6 +63,10 @@ export default async function AjustesPage() {
 
         {household ? <BudgetCard budget={household.monthlyBudget} /> : null}
 
+        {/* La instalación va encima de las notificaciones: en iOS el push exige
+            la app instalada, así que el orden cuenta la historia correcta. */}
+        <InstallCard />
+
         <PushCard />
 
         <Card>
@@ -92,13 +97,15 @@ export default async function AjustesPage() {
           <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
         </Link>
 
-        <Link
-          href="/styleguide"
-          className="flex min-h-11 items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition-colors hover:bg-muted"
-        >
-          Guía de estilo (desarrollo)
-          <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
-        </Link>
+        {process.env.NODE_ENV !== "production" ? (
+          <Link
+            href="/styleguide"
+            className="flex min-h-11 items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            Guía de estilo (desarrollo)
+            <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
+          </Link>
+        ) : null}
 
         <Card>
           <CardHeader>

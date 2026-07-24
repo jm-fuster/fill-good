@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
@@ -83,6 +84,10 @@ function Section({
 }
 
 export default function StyleguidePage() {
+  // Referencia viva del sistema de diseño: solo en desarrollo. En producción no
+  // debe ser accesible (no forma parte del producto).
+  if (process.env.NODE_ENV === "production") notFound();
+
   return (
     <PageContainer variant="wide" className="px-4 py-6 pb-16">
       <header className="mb-8 flex items-center justify-between gap-4">

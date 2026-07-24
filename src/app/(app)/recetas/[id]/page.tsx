@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader } from "@/components/layout/page-header";
 import { RecipeForm } from "@/features/recipes/components/recipe-form";
 import { RecipeRating } from "@/features/recipes/components/recipe-rating";
 import { CostBadge } from "@/features/recipes/components/cost-badge";
@@ -34,18 +33,12 @@ export default async function EditarRecetaPage({
 
   return (
     <PageContainer variant="default">
-      <Link
-        href="/recetas"
-        className="mb-2 inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" aria-hidden /> Mis recetas
-      </Link>
-      <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight text-balance">
-          {recipe.name}
-        </h1>
-        <CostBadge cost={cost} />
-      </div>
+      <PageHeader
+        title={recipe.name}
+        backHref="/recetas"
+        backLabel="Mis recetas"
+        action={<CostBadge cost={cost} />}
+      />
       <div className="mb-6">
         <RecipeRating
           recipeId={recipe.id}

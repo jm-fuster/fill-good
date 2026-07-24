@@ -1,7 +1,7 @@
 "use client";
 
-import { useSyncExternalStore, useTransition } from "react";
-import { Copy, LogOut, RefreshCw, Share2 } from "lucide-react";
+import { useState, useSyncExternalStore, useTransition } from "react";
+import { Copy, LogOut, RefreshCw, Share2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  ResponsiveModal,
+  ResponsiveModalClose,
+  ResponsiveModalContent,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { Separator } from "@/components/ui/separator";
 import type { CurrentHousehold, HouseholdMember } from "../queries";
 import { leaveHouseholdAction, regenerateInviteCodeAction } from "../actions";
@@ -27,6 +36,7 @@ export function HouseholdCard({
   members: HouseholdMember[];
 }) {
   const [pending, startTransition] = useTransition();
+  const [leaveOpen, setLeaveOpen] = useState(false);
   const isOwner = household.role === "owner";
   const otherMembers = members.filter((m) => !m.isCurrentUser);
   const hasOtherMembers = otherMembers.length > 0;
@@ -70,13 +80,13 @@ export function HouseholdCard({
   }
 
   function leave() {
-    const ok = window.confirm(
-      "¿Seguro que quieres abandonar este hogar? Dejarás de ver su inventario y sus listas.",
-    );
-    if (!ok) return;
     startTransition(async () => {
       const result = await leaveHouseholdAction();
-      if (result?.error) toast.error(result.error);
+      if (result?.error) {
+        toast.error(result.error);
+        return;
+      }
+      setLeaveOpen(false);
     });
   }
 
@@ -173,15 +183,47 @@ export function HouseholdCard({
             <DeleteHouseholdDrawer householdName={household.name} />
           </div>
         ) : (
-          <Button
-            variant="destructive"
-            onClick={leave}
-            disabled={pending}
-            className="self-start"
-          >
-            <LogOut aria-hidden />
-            Abandonar hogar
-          </Button>
+          <ResponsiveModal open={leaveOpen} onOpenChange={setLeaveOpen}>
+            <Button
+              variant="destructive"
+              onClick={() => setLeaveOpen(true)}
+              disabled={pending}
+              className="self-start"
+            >
+              <LogOut aria-hidden />
+              Abandonar hogar
+            </Button>
+            <ResponsiveModalContent>
+              <ResponsiveModalHeader>
+                <ResponsiveModalTitle className="flex items-center gap-2">
+                  <TriangleAlert
+                    className="size-5 text-destructive"
+                    aria-hidden
+                  />
+                  ¿Abandonar este hogar?
+                </ResponsiveModalTitle>
+                <ResponsiveModalDescription>
+                  Dejarás de ver su inventario y sus listas. Podrás volver a
+                  unirte con el código de invitación.
+                </ResponsiveModalDescription>
+              </ResponsiveModalHeader>
+              <ResponsiveModalFooter className="gap-2">
+                <Button
+                  variant="destructive"
+                  onClick={leave}
+                  disabled={pending}
+                >
+                  <LogOut aria-hidden />
+                  {pending ? "Abandonando…" : "Abandonar"}
+                </Button>
+                <ResponsiveModalClose asChild>
+                  <Button type="button" variant="ghost">
+                    Cancelar
+                  </Button>
+                </ResponsiveModalClose>
+              </ResponsiveModalFooter>
+            </ResponsiveModalContent>
+          </ResponsiveModal>
         )}
       </CardContent>
     </Card>

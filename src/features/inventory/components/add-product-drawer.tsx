@@ -50,16 +50,21 @@ export function AddProductDrawer({
     const formData = new FormData(event.currentTarget);
     setError(null);
     setPending(true);
-    const result = await addInventoryAction({}, formData);
-    setPending(false);
-    if (result.error) {
-      setError(result.error);
-      return;
+    try {
+      const result = await addInventoryAction({}, formData);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      toast.success("Producto añadido al inventario");
+      setOpen(false);
+      setFieldsKey((k) => k + 1);
+      router.refresh();
+    } catch {
+      setError("No se pudo añadir el producto. Comprueba tu conexión.");
+    } finally {
+      setPending(false);
     }
-    toast.success("Producto añadido al inventario");
-    setOpen(false);
-    setFieldsKey((k) => k + 1);
-    router.refresh();
   }
 
   return (

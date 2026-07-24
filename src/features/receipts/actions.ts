@@ -6,6 +6,7 @@ import { after } from "next/server";
 import { generateObject } from "ai";
 
 import { getModel } from "@/lib/ai/models";
+import { classifyAiError } from "@/lib/ai/errors";
 import { receiptSchema } from "@/lib/ai/receipt-schema";
 import type { ReceiptItemExtraction } from "@/lib/ai/receipt-schema";
 import { buildReceiptPrompt } from "@/lib/ai/receipt-prompt";
@@ -35,14 +36,20 @@ const MAX_CATALOG_FOR_PROMPT = 300;
 const WRITE_CHUNK = 10;
 
 /** Ejecuta `fn` sobre `items` en tandas paralelas de {@link WRITE_CHUNK}. El
- *  callback puede devolver un builder de PostgREST (thenable), no solo Promise. */
-async function inChunks<T>(
+ *  callback puede devolver un builder de PostgREST (thenable), no solo Promise.
+ *  Devuelve los resultados en orden para poder comprobar `error` por respuesta. */
+async function inChunks<T, R>(
   items: T[],
-  fn: (item: T) => PromiseLike<unknown>,
-): Promise<void> {
+  fn: (item: T) => PromiseLike<R>,
+): Promise<R[]> {
+  const results: R[] = [];
   for (let i = 0; i < items.length; i += WRITE_CHUNK) {
-    await Promise.all(items.slice(i, i + WRITE_CHUNK).map((item) => fn(item)));
+    const chunk = await Promise.all(
+      items.slice(i, i + WRITE_CHUNK).map((item) => fn(item)),
+    );
+    results.push(...chunk);
   }
+  return results;
 }
 
 export async function scanReceiptAction(
@@ -86,6 +93,7 @@ export async function scanReceiptAction(
     const { object } = await generateObject({
       model: getModel("receipts"),
       schema: receiptSchema,
+      abortSignal: AbortSignal.timeout(60_000),
       messages: [
         {
           role: "user",
@@ -99,9 +107,14 @@ export async function scanReceiptAction(
     extraction = object;
   } catch (err) {
     console.error("Error de extracción del ticket:", err);
+    const kind = classifyAiError(err);
     return {
       error:
-        "No se pudo leer el ticket. Prueba con una foto más nítida o vuelve a intentarlo.",
+        kind === "rate_limit"
+          ? "El servicio de IA está saturado ahora mismo. Espera un minuto y vuelve a intentarlo."
+          : kind === "timeout"
+            ? "La lectura del ticket tardó demasiado. Vuelve a intentarlo."
+            : "No se pudo leer el ticket. Prueba con una foto más nítida o vuelve a intentarlo.",
     };
   }
 
@@ -160,26 +173,69 @@ export async function scanReceiptAction(
     };
   });
   if (lineRows.length) {
-    await supabase.from("receipt_items").insert(lineRows);
+    const { error: itemsErr } = await supabase
+      .from("receipt_items")
+      .insert(lineRows);
+    if (itemsErr) {
+      // Sin líneas, el ticket es un cascarón «Productos (0 de 0)» inservible:
+      // se borra el recién creado para no dejar tickets huérfanos imposibles de usar.
+      console.error("Error al guardar las líneas del ticket:", itemsErr);
+      await supabase.from("receipts").delete().eq("id", receipt.id);
+      return {
+        error:
+          "No se pudieron guardar las líneas del ticket. Vuelve a intentarlo.",
+      };
+    }
   }
 
   return { receiptId: receipt.id, warnings: extraction.warnings ?? [] };
+}
+
+/**
+ * Descarta un ticket pendiente. Borra solo si NO está confirmado (`.neq` además
+ * del `.eq` de id + hogar), para que nunca se pierda un ticket ya integrado en el
+ * inventario. El FK de `receipt_items` es `on delete cascade`.
+ */
+export async function deleteReceiptAction(
+  receiptId: string,
+): Promise<{ ok?: boolean; error?: string }> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase
+    .from("receipts")
+    .delete()
+    .eq("id", receiptId)
+    .eq("household_id", household.id)
+    .neq("status", "confirmed");
+  if (error) {
+    console.error("Error al descartar el ticket:", error);
+    return { error: "No se pudo descartar el ticket. Inténtalo de nuevo." };
+  }
+  revalidatePath("/escanear");
+  return { ok: true };
 }
 
 export type ProductAlias = { id: string; alias: string };
 
 /**
  * Aliases aprendidos que apuntan a un producto (E8). Se cargan bajo demanda al
- * abrir el drawer de edición. La RLS de `product_aliases` restringe al hogar.
+ * abrir el drawer de edición. La RLS de `product_aliases` restringe al hogar; el
+ * filtro por household_id de abajo es defensa en profundidad, no sustitución.
  */
 export async function getProductAliasesAction(
   productId: string,
 ): Promise<ProductAlias[]> {
+  // Defensa en profundidad (no sustituye a la RLS de product_aliases): se filtra
+  // también por household_id, alineado con el patrón del resto de acciones.
+  const household = await getCurrentHousehold();
+  if (!household) return [];
   const supabase = createServerSupabaseClient();
   const { data } = await supabase
     .from("product_aliases")
     .select("id, alias")
     .eq("product_id", productId)
+    .eq("household_id", household.id)
     .order("created_at", { ascending: true });
   return (data ?? []).map((a) => ({ id: a.id, alias: a.alias }));
 }
@@ -191,11 +247,16 @@ export async function getProductAliasesAction(
 export async function deleteAliasAction(
   aliasId: string,
 ): Promise<{ ok?: boolean; error?: string }> {
+  // Defensa en profundidad (no sustituye a la RLS de product_aliases): se filtra
+  // también por household_id, alineado con el patrón del resto de acciones.
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
   const { error } = await supabase
     .from("product_aliases")
     .delete()
-    .eq("id", aliasId);
+    .eq("id", aliasId)
+    .eq("household_id", household.id);
   if (error) return { error: "No se pudo borrar el nombre." };
   revalidatePath("/inventario");
   return { ok: true };
@@ -411,7 +472,7 @@ export async function confirmReceiptAction(
   //     las líneas que dependían de ellos (por normalized_name).
   const newProducts = [...newProductsByNorm.values()];
   if (newProducts.length) {
-    const { data: created } = await supabase
+    const { data: created, error: createErr } = await supabase
       .from("products")
       .insert(
         newProducts.map((np) => ({
@@ -423,6 +484,14 @@ export async function confirmReceiptAction(
         })),
       )
       .select("id, normalized_name, default_location, pack_size");
+    // Primera escritura de la pasada 2: abortar aquí es seguro (nada parcial).
+    if (createErr) {
+      console.error("Error al crear los productos nuevos del ticket:", createErr);
+      return {
+        error:
+          "No se pudieron crear los productos nuevos del ticket. Vuelve a intentarlo.",
+      };
+    }
     const createdByNorm = new Map(
       (created ?? []).map((c) => [c.normalized_name, c]),
     );
@@ -467,17 +536,32 @@ export async function confirmReceiptAction(
     }
   }
   if (aliasByNorm.size) {
-    await supabase
+    // Best-effort deliberado: los aliases son capa de aprendizaje (E8), no datos
+    // primarios. Un fallo aquí no debe abortar la confirmación ni comunicarse como
+    // error al usuario; solo se registra para depuración.
+    const { error: aliasErr } = await supabase
       .from("product_aliases")
       .upsert([...aliasByNorm.values()], {
         onConflict: "household_id,alias_normalized",
         ignoreDuplicates: true,
       });
+    if (aliasErr) {
+      console.error("Error (no crítico) al guardar aliases del ticket:", aliasErr);
+    }
   }
 
   // 2.3 Líneas de ticket (historial de precios): valores distintos por fila y
   //     PostgREST no tiene update masivo → tandas paralelas de ~10.
-  await inChunks(processable, (r) =>
+  //
+  // LIMITACIÓN ASUMIDA: estas escrituras NO son transaccionales. Un fallo entre el
+  // marcado de `receipt_items.added_to_inventory` y las escrituras de inventario
+  // (2.4) puede dejar líneas marcadas sin su stock sumado. Ese hueco ya existía en
+  // el código por-línea original. La solución completa sería una RPC transaccional
+  // (valores precomputados en TS), fuera del alcance de esta corrección. Lo que sí
+  // garantizamos aquí es que un fallo se COMUNIQUE en vez de presentarse como éxito.
+  // El orden de escrituras NO se reordena: cualquier alternativa tiene un modo de
+  // fallo parcial simétrico y perdería la idempotencia por `added_to_inventory`.
+  const itemUpdateResults = await inChunks(processable, (r) =>
     supabase
       .from("receipt_items")
       .update({
@@ -492,6 +576,16 @@ export async function confirmReceiptAction(
       })
       .eq("id", r.itemId),
   );
+  if (itemUpdateResults.some((res) => res.error)) {
+    console.error(
+      "Error al actualizar líneas del ticket:",
+      itemUpdateResults.find((res) => res.error)?.error,
+    );
+    return {
+      error:
+        "La confirmación falló a mitad. Vuelve a intentarlo: lo ya añadido no se duplicará.",
+    };
+  }
   // Líneas saltadas: un solo update (mismo valor para todas).
   if (skippedIds.length) {
     await supabase
@@ -596,18 +690,28 @@ export async function confirmReceiptAction(
 
   // (a) filas existentes con cantidad final distinta → updates chunked.
   const invUpdates = [...invSim.values()].filter((s) => s.existing && s.dirty);
-  await inChunks(invUpdates, (s) =>
+  const invUpdateResults = await inChunks(invUpdates, (s) =>
     supabase
       .from("inventory_items")
       .update({ quantity: s.quantity, updated_by: userId })
       .eq("id", s.id as string),
   );
+  if (invUpdateResults.some((res) => res.error)) {
+    console.error(
+      "Error al actualizar el inventario:",
+      invUpdateResults.find((res) => res.error)?.error,
+    );
+    return {
+      error:
+        "La confirmación falló a mitad. Vuelve a intentarlo: lo ya añadido no se duplicará.",
+    };
+  }
   // (b) filas nuevas → un único insert.
   const invInserts = [...invSim.values()].filter((s) => !s.existing);
   let insertedInv: { id: string; product_id: string; location: LocationType }[] =
     [];
   if (invInserts.length) {
-    const { data } = await supabase
+    const { data, error: invInsertErr } = await supabase
       .from("inventory_items")
       .insert(
         invInserts.map((s) => ({
@@ -620,6 +724,13 @@ export async function confirmReceiptAction(
         })),
       )
       .select("id, product_id, location");
+    if (invInsertErr) {
+      console.error("Error al insertar en el inventario:", invInsertErr);
+      return {
+        error:
+          "La confirmación falló a mitad. Vuelve a intentarlo: lo ya añadido no se duplicará.",
+      };
+    }
     insertedInv = data ?? [];
   }
 
@@ -661,7 +772,7 @@ export async function confirmReceiptAction(
   //     el dato más pesado de la BD. El cierre es el último paso, así que si la
   //     confirmación falla a mitad el ticket sigue `needs_review` con su JSON
   //     intacto y el reintento idempotente funciona igual.
-  await supabase
+  const { error: closeErr } = await supabase
     .from("receipts")
     .update({
       store_name: payload.storeName,
@@ -673,6 +784,15 @@ export async function confirmReceiptAction(
       raw_extraction: null,
     })
     .eq("id", payload.receiptId);
+  if (closeErr) {
+    // El inventario ya se actualizó; el reintento es seguro porque las líneas
+    // marcadas `added_to_inventory` se saltan (idempotencia).
+    console.error("Error al cerrar el ticket:", closeErr);
+    return {
+      error:
+        "El inventario se actualizó pero el ticket no quedó cerrado. Vuelve a confirmarlo.",
+    };
+  }
 
   revalidatePath("/inventario");
   revalidatePath("/precios");

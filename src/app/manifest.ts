@@ -2,10 +2,13 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    // id estable: identidad de la PWA entre despliegues (independiente de start_url).
+    id: "/",
     name: "Fill Good — Compra lo justo, ahorra más",
     short_name: "Fill Good",
     description:
       "Controla tu despensa, compra solo lo que falta y ahorra: inventario, lista de la compra, escaneo de tickets, precios y menús semanales.",
+    categories: ["food", "shopping", "lifestyle"],
     lang: "es",
     start_url: "/",
     display: "standalone",
@@ -21,6 +24,12 @@ export default function manifest(): MetadataRoute.Manifest {
         src: "/icons/icon-512.png",
         sizes: "512x512",
         type: "image/png",
+      },
+      {
+        src: "/icons/icon-maskable-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "maskable",
       },
       {
         src: "/icons/icon-maskable-512.png",

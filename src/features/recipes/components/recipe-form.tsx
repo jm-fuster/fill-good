@@ -227,19 +227,23 @@ export function RecipeForm({
 
     setPending(true);
     const input = buildInput();
-    const result =
-      recipe != null
-        ? await updateRecipeAction(recipe.id, input)
-        : await createRecipeAction(input);
-    setPending(false);
-
-    if (result.error) {
-      setError(result.error);
-      return;
+    try {
+      const result =
+        recipe != null
+          ? await updateRecipeAction(recipe.id, input)
+          : await createRecipeAction(input);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      toast.success(isEdit ? "Receta actualizada" : "Receta guardada");
+      router.push("/recetas");
+      router.refresh();
+    } catch {
+      setError("No se pudo guardar la receta. Comprueba tu conexión.");
+    } finally {
+      setPending(false);
     }
-    toast.success(isEdit ? "Receta actualizada" : "Receta guardada");
-    router.push("/recetas");
-    router.refresh();
   }
 
   async function handleDelete() {

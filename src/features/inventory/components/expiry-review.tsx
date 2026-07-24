@@ -41,14 +41,19 @@ export function ExpiryReview({ entries }: { entries: ReviewEntry[] }) {
       expiryDate: rows[e.id]?.expiry ?? null,
       useSoon: rows[e.id]?.useSoon ?? false,
     }));
-    const result = await saveExpiryReviewAction(updates);
-    setPending(false);
-    if (result.error) {
-      toast.error(result.error);
-      return;
+    try {
+      const result = await saveExpiryReviewAction(updates);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Caducidades guardadas");
+      router.push("/inventario");
+    } catch {
+      toast.error("No se pudieron guardar las caducidades. Inténtalo de nuevo.");
+    } finally {
+      setPending(false);
     }
-    toast.success("Caducidades guardadas");
-    router.push("/inventario");
   }
 
   return (

@@ -1228,14 +1228,13 @@ function TonightDrawer({
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1" asChild>
+                  <Button variant="outline" className="flex-1" asChild>
                     <Link href={`/recetas/${c.recipeId}`}>
                       <ChefHat aria-hidden />
                       Ver receta
                     </Link>
                   </Button>
                   <Button
-                    size="sm"
                     className="flex-1"
                     disabled={adding}
                     onClick={() => add(c.recipeId)}

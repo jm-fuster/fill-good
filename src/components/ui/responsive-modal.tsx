@@ -41,11 +41,84 @@ function useIsDesktopModal() {
   return React.useContext(ResponsiveModalContext);
 }
 
+/**
+ * Integra el botón «atrás» del navegador con el bottom sheet en móvil (E11): al
+ * abrir un sheet controlado se empuja una entrada de historial; «atrás» la
+ * consume y cierra el sheet en vez de navegar fuera. Cuando el sheet se cierra
+ * por otra vía (botón, swipe, overlay) y nuestra entrada sigue en el tope, se
+ * consume con `history.back()`.
+ *
+ * Solo actúa en la rama móvil (`enabled`) y solo para modales CONTROLADOS
+ * (`open` definido); los no controlados (trigger declarativo) quedan fuera.
+ *
+ * Robustez frente al router de Next: cada apertura marca su entrada con un id
+ * único en `history.state`. Si el usuario navega con el sheet abierto (Next
+ * empuja su propio estado), al desmontar el tope ya no es nuestro id y NO se
+ * llama a `back()`, así no se deshace la navegación. Limitación asumida: con
+ * varios sheets anidados un único «atrás» puede cerrar más de uno (cada
+ * instancia escucha `popstate`); es un caso raro y el cierre en cascada es
+ * aceptable.
+ */
+function useHistoryDismiss({
+  open,
+  onOpenChange,
+  enabled,
+}: {
+  open: boolean | undefined;
+  onOpenChange: ((open: boolean) => void) | undefined;
+  enabled: boolean;
+}) {
+  const onOpenChangeRef = React.useRef(onOpenChange);
+  // Sincroniza la ref fuera de render (regla react-hooks/refs). Sin array de
+  // deps: corre en cada commit, antes del efecto principal declarado debajo.
+  React.useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  });
+
+  React.useEffect(() => {
+    if (!enabled || open !== true || typeof window === "undefined") return;
+
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `sheet-${performance.now()}`;
+    window.history.pushState({ fgSheetId: id }, "");
+    let poppedByUser = false;
+
+    const onPop = () => {
+      poppedByUser = true;
+      onOpenChangeRef.current?.(false);
+    };
+    window.addEventListener("popstate", onPop);
+
+    return () => {
+      window.removeEventListener("popstate", onPop);
+      // Cerrado por botón/swipe/overlay: si NUESTRA entrada sigue en el tope, la
+      // consumimos. Si el usuario navegó, el tope es otro estado → no tocamos nada.
+      if (
+        !poppedByUser &&
+        (window.history.state as { fgSheetId?: string } | null)?.fgSheetId ===
+          id
+      ) {
+        window.history.back();
+      }
+    };
+  }, [open, enabled]);
+}
+
 function ResponsiveModal({
   children,
   ...props
 }: React.ComponentProps<typeof Drawer>) {
   const isDesktop = useMediaQuery(DESKTOP_MEDIA_QUERY);
+
+  // Atrás cierra el sheet en móvil (rama Drawer). En escritorio no se toca: Radix
+  // Dialog ya cierra con Escape y no debe interferir con el historial.
+  useHistoryDismiss({
+    open: props.open,
+    onOpenChange: props.onOpenChange,
+    enabled: !isDesktop,
+  });
 
   if (isDesktop) {
     // Radix Dialog solo consume estas props; las exclusivas de vaul
