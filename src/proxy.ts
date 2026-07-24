@@ -4,6 +4,8 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 // sin sesión (aunque en el caso real de "sin red" el SW la sirve desde caché
 // sin llegar siquiera al servidor).
 const isPublicRoute = createRouteMatcher([
+  // La raíz es la landing pública (Home bifurca: con sesión redirige a la app).
+  "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/offline",
