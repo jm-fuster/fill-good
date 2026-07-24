@@ -891,6 +891,10 @@ export type Database = {
         Args: { p_household_id: string };
         Returns: undefined;
       };
+      delete_account: {
+        Args: Record<PropertyKey, never>;
+        Returns: undefined;
+      };
       seed_default_categories: {
         Args: { hid: string };
         Returns: undefined;

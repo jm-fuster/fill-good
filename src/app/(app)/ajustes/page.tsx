@@ -7,6 +7,8 @@ import { ChevronRight, Info, ListOrdered, Palette } from "lucide-react";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
+import { LogoutButton } from "@/features/account/components/logout-button";
 import { BudgetCard } from "@/features/household/components/budget-card";
 import { HouseholdCard } from "@/features/household/components/household-card";
 import { InstallCard } from "@/features/push/components/install-card";
@@ -46,14 +48,19 @@ export default async function AjustesPage() {
           <CardHeader>
             <CardTitle>Cuenta</CardTitle>
           </CardHeader>
-          <CardContent className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{displayName}</p>
-              {email ? (
-                <p className="truncate text-sm text-muted-foreground">{email}</p>
-              ) : null}
+          <CardContent className="flex flex-col gap-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{displayName}</p>
+                {email ? (
+                  <p className="truncate text-sm text-muted-foreground">
+                    {email}
+                  </p>
+                ) : null}
+              </div>
+              <UserButton />
             </div>
-            <UserButton />
+            <LogoutButton />
           </CardContent>
         </Card>
 
@@ -151,6 +158,8 @@ export default async function AjustesPage() {
             </ul>
           </CardContent>
         </Card>
+
+        <DeleteAccountCard />
       </div>
     </PageContainer>
   );

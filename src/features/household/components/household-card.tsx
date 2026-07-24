@@ -26,6 +26,7 @@ import { Separator } from "@/components/ui/separator";
 import type { CurrentHousehold, HouseholdMember } from "../queries";
 import { leaveHouseholdAction, regenerateInviteCodeAction } from "../actions";
 import { TransferOwnershipDrawer } from "./transfer-ownership-drawer";
+import { OwnerLeaveDrawer } from "./owner-leave-drawer";
 import { DeleteHouseholdDrawer } from "./delete-household-drawer";
 
 export function HouseholdCard({
@@ -169,9 +170,10 @@ export function HouseholdCard({
             {hasOtherMembers ? (
               <>
                 <TransferOwnershipDrawer candidates={otherMembers} />
+                <OwnerLeaveDrawer candidates={otherMembers} />
                 <p className="text-sm text-muted-foreground">
-                  Como propietario, para abandonar el hogar antes debes
-                  transferir la propiedad a otro miembro.
+                  Puedes ceder la propiedad y seguir en el hogar, o abandonarlo
+                  transfiriéndola en el mismo paso.
                 </p>
               </>
             ) : (
