@@ -6,6 +6,7 @@ import { after } from "next/server";
 import { generateObject } from "ai";
 
 import { getModel } from "@/lib/ai/models";
+import { classifyAiError } from "@/lib/ai/errors";
 import { receiptSchema } from "@/lib/ai/receipt-schema";
 import type { ReceiptItemExtraction } from "@/lib/ai/receipt-schema";
 import { buildReceiptPrompt } from "@/lib/ai/receipt-prompt";
@@ -92,6 +93,7 @@ export async function scanReceiptAction(
     const { object } = await generateObject({
       model: getModel("receipts"),
       schema: receiptSchema,
+      abortSignal: AbortSignal.timeout(60_000),
       messages: [
         {
           role: "user",
@@ -105,9 +107,14 @@ export async function scanReceiptAction(
     extraction = object;
   } catch (err) {
     console.error("Error de extracción del ticket:", err);
+    const kind = classifyAiError(err);
     return {
       error:
-        "No se pudo leer el ticket. Prueba con una foto más nítida o vuelve a intentarlo.",
+        kind === "rate_limit"
+          ? "El servicio de IA está saturado ahora mismo. Espera un minuto y vuelve a intentarlo."
+          : kind === "timeout"
+            ? "La lectura del ticket tardó demasiado. Vuelve a intentarlo."
+            : "No se pudo leer el ticket. Prueba con una foto más nítida o vuelve a intentarlo.",
     };
   }
 
@@ -213,16 +220,22 @@ export type ProductAlias = { id: string; alias: string };
 
 /**
  * Aliases aprendidos que apuntan a un producto (E8). Se cargan bajo demanda al
- * abrir el drawer de edición. La RLS de `product_aliases` restringe al hogar.
+ * abrir el drawer de edición. La RLS de `product_aliases` restringe al hogar; el
+ * filtro por household_id de abajo es defensa en profundidad, no sustitución.
  */
 export async function getProductAliasesAction(
   productId: string,
 ): Promise<ProductAlias[]> {
+  // Defensa en profundidad (no sustituye a la RLS de product_aliases): se filtra
+  // también por household_id, alineado con el patrón del resto de acciones.
+  const household = await getCurrentHousehold();
+  if (!household) return [];
   const supabase = createServerSupabaseClient();
   const { data } = await supabase
     .from("product_aliases")
     .select("id, alias")
     .eq("product_id", productId)
+    .eq("household_id", household.id)
     .order("created_at", { ascending: true });
   return (data ?? []).map((a) => ({ id: a.id, alias: a.alias }));
 }
@@ -234,11 +247,16 @@ export async function getProductAliasesAction(
 export async function deleteAliasAction(
   aliasId: string,
 ): Promise<{ ok?: boolean; error?: string }> {
+  // Defensa en profundidad (no sustituye a la RLS de product_aliases): se filtra
+  // también por household_id, alineado con el patrón del resto de acciones.
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
   const { error } = await supabase
     .from("product_aliases")
     .delete()
-    .eq("id", aliasId);
+    .eq("id", aliasId)
+    .eq("household_id", household.id);
   if (error) return { error: "No se pudo borrar el nombre." };
   revalidatePath("/inventario");
   return { ok: true };
