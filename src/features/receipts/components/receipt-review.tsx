@@ -301,7 +301,7 @@ export function ReceiptReview({
               value={row.productId}
               onChange={(id) => update(row.itemId, { productId: id })}
               allowCreateNew
-              createNewLabel="➕ Crear producto nuevo"
+              createNewLabel="Producto nuevo"
               ariaLabel="Producto asociado"
             />
             {duplicate ? (

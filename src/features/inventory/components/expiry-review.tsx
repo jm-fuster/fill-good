@@ -118,12 +118,12 @@ export function ExpiryReview({ entries }: { entries: ReviewEntry[] }) {
         })}
       </ul>
 
-      <div className="fixed inset-x-0 bottom-16 z-40 mx-auto flex max-w-lg gap-2 px-4 pb-safe md:sticky md:inset-x-auto md:bottom-0 md:mx-0 md:max-w-none md:border-t md:bg-background/95 md:px-0 md:pt-3 md:pb-3 md:backdrop-blur-sm">
+      <div className="fixed inset-x-0 bottom-16 z-40 mx-auto flex max-w-lg gap-2 border-t bg-background/95 px-4 pt-3 pb-safe backdrop-blur-sm md:sticky md:inset-x-auto md:bottom-0 md:mx-0 md:max-w-none md:px-0 md:pt-3 md:pb-3">
         <Button
           type="button"
           variant="outline"
           size="lg"
-          className="flex-1 bg-background shadow-lg"
+          className="flex-1"
           onClick={skip}
           disabled={pending}
         >
@@ -132,7 +132,7 @@ export function ExpiryReview({ entries }: { entries: ReviewEntry[] }) {
         <Button
           type="button"
           size="lg"
-          className="flex-1 shadow-lg sm:flex-[2]"
+          className="flex-1 sm:flex-[2]"
           onClick={save}
           disabled={pending}
         >

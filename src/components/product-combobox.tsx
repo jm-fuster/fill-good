@@ -95,9 +95,10 @@ export function ProductCombobox({
     setQuery("");
   }
 
+  const isCreateNew = !selected && value === null && allowCreateNew;
   const triggerText = selected
     ? selected.name
-    : value === null && allowCreateNew
+    : isCreateNew
       ? createNewLabel
       : (triggerLabel ?? placeholder);
 
@@ -125,7 +126,9 @@ export function ProductCombobox({
           )}
         >
           <span className="flex min-w-0 items-center gap-2">
-            {selected?.defaultLocation ? (
+            {isCreateNew ? (
+              <Plus aria-hidden className="size-4 shrink-0" />
+            ) : selected?.defaultLocation ? (
               <span aria-hidden className="shrink-0">
                 {LOCATION_ICONS[selected.defaultLocation]}
               </span>
