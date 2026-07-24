@@ -244,7 +244,7 @@ export function ReceiptReview({
             aria-label="Incluir este producto"
             className="mt-1 size-5"
           />
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <Input
               value={row.description}
               onChange={(e) =>
