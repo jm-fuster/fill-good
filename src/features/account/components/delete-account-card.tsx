@@ -25,6 +25,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { deleteAccountAction } from "../actions";
+import { signOutToSignIn } from "../sign-out";
 
 const CONFIRM_WORD = "BORRAR";
 
@@ -45,7 +46,7 @@ export function DeleteAccountCard() {
         return;
       }
       // Cuenta y datos borrados: cerramos la sesión local y salimos.
-      await signOut({ redirectUrl: "/sign-in" });
+      await signOutToSignIn(signOut);
     });
   }
 
