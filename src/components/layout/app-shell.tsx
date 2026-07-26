@@ -1,17 +1,16 @@
 import { cookies } from "next/headers";
-import { UserButton } from "@clerk/nextjs";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { NavListCountProvider } from "@/components/layout/nav-list-count";
-import { ThemeToggle } from "@/components/theme-toggle";
-import {
-  SidebarInset,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar";
+import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { HouseholdSwitcherMenu } from "@/features/household/components/household-switcher";
+import {
+  getCurrentHousehold,
+  getUserHouseholds,
+} from "@/features/household/queries";
 import { getActiveListBadge } from "@/features/shopping-list/queries";
 
 /**
@@ -26,9 +25,13 @@ import { getActiveListBadge } from "@/features/shopping-list/queries";
 export async function AppShell({ children }: { children: React.ReactNode }) {
   // Estado inicial del sidebar leído de la cookie que escribe SidebarProvider.
   // Badge de la navbar: nº de pendientes de la lista activa (solo lectura).
-  const [cookieStore, badge] = await Promise.all([
+  // Hogares del usuario para el selector del header (deduplicado por cache()
+  // con la llamada del layout: no añade consultas).
+  const [cookieStore, badge, households, household] = await Promise.all([
     cookies(),
     getActiveListBadge(),
+    getUserHouseholds(),
+    getCurrentHousehold(),
   ]);
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
 
@@ -48,16 +51,24 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
           </a>
           <AppSidebar />
           <SidebarInset className="min-w-0">
-            {/* Header sticky solo en escritorio: toggle del sidebar a la izquierda
-              y acciones de cuenta a la derecha (tema + cuenta), que en móvil
-              viven en Ajustes. */}
+            {/* Header sticky solo en escritorio, deliberadamente ligero:
+              búsqueda a la izquierda y hogar activo (si hay varios) en el
+              extremo derecho. El toggle del sidebar vive en el propio sidebar,
+              y tema y cuenta en Ajustes (como en móvil). */}
             <header className="sticky top-0 z-30 hidden h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur-sm md:flex print:hidden">
-              <SidebarTrigger aria-label="Mostrar u ocultar el menú lateral" />
               <CommandPalette />
-              <div className="ml-auto flex items-center gap-2">
-                <ThemeToggle />
-                <UserButton />
-              </div>
+              {household ? (
+                <div className="ml-auto">
+                  <HouseholdSwitcherMenu
+                    households={households.map((h) => ({
+                      id: h.id,
+                      name: h.name,
+                      role: h.role,
+                    }))}
+                    activeId={household.id}
+                  />
+                </div>
+              ) : null}
             </header>
             {/* `SidebarInset` ya es el <main>; este es el objetivo del skip link. */}
             <div

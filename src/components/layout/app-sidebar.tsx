@@ -13,6 +13,7 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { isNavItemActive, NAV_ITEMS } from "@/components/layout/nav-items";
 import { useNavListCount } from "@/components/layout/nav-list-count";
@@ -31,23 +32,32 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader>
-        <Link
-          href="/inventario"
-          className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-sidebar-accent"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element -- marca estática SVG local */}
-          <img
-            src="/brand/fillgood-logo.svg"
-            alt=""
-            width={28}
-            height={28}
-            className="size-7 shrink-0 rounded-md"
-            aria-hidden
+        {/* El botón de colapsar vive DENTRO del sidebar (a la derecha del logo);
+            en modo icono se apila bajo el logo para caber en el carril. El
+            atajo Ctrl/Cmd+B sigue funcionando en toda la app. */}
+        <div className="flex items-center gap-1 group-data-[collapsible=icon]:flex-col">
+          <Link
+            href="/inventario"
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-sidebar-accent group-data-[collapsible=icon]:px-0"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element -- marca estática SVG local */}
+            <img
+              src="/brand/fillgood-logo.svg"
+              alt=""
+              width={28}
+              height={28}
+              className="size-7 shrink-0 rounded-md"
+              aria-hidden
+            />
+            <span className="font-heading text-lg font-semibold tracking-tight text-sidebar-foreground group-data-[collapsible=icon]:hidden">
+              Fill Good
+            </span>
+          </Link>
+          <SidebarTrigger
+            aria-label="Mostrar u ocultar el menú lateral"
+            className="shrink-0"
           />
-          <span className="font-heading text-lg font-semibold tracking-tight text-sidebar-foreground group-data-[collapsible=icon]:hidden">
-            Fill Good
-          </span>
-        </Link>
+        </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

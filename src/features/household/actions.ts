@@ -2,13 +2,52 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getCurrentHousehold } from "./queries";
+import {
+  ACTIVE_HOUSEHOLD_COOKIE,
+  getCurrentHousehold,
+  getUserHouseholds,
+} from "./queries";
 import { createHouseholdSchema, joinHouseholdSchema } from "./schemas";
 
 export type ActionState = { error?: string };
+
+const ACTIVE_COOKIE_OPTIONS = {
+  httpOnly: true,
+  sameSite: "lax",
+  secure: process.env.NODE_ENV === "production",
+  path: "/",
+  maxAge: 60 * 60 * 24 * 365,
+} as const;
+
+/** Marca un hogar como activo para los próximos requests. */
+async function setActiveHouseholdCookie(householdId: string) {
+  (await cookies()).set(
+    ACTIVE_HOUSEHOLD_COOKIE,
+    householdId,
+    ACTIVE_COOKIE_OPTIONS,
+  );
+}
+
+/**
+ * Cambia el hogar activo (E-multihogar): el usuario puede pertenecer a varios
+ * hogares (segunda residencia, casa de vacaciones…) y alternar entre ellos.
+ * La membresía se valida contra la BD; un id ajeno no cambia nada.
+ */
+export async function switchHouseholdAction(
+  householdId: string,
+): Promise<ActionState> {
+  const households = await getUserHouseholds();
+  const target = households.find((h) => h.id === householdId);
+  if (!target) return { error: "No perteneces a ese hogar." };
+
+  await setActiveHouseholdCookie(target.id);
+  revalidatePath("/", "layout");
+  redirect("/inventario");
+}
 
 export async function createHouseholdAction(
   _prev: ActionState,
@@ -26,13 +65,16 @@ export async function createHouseholdAction(
   }
 
   const supabase = createServerSupabaseClient();
-  const { error } = await supabase.rpc("create_household", {
+  const { data, error } = await supabase.rpc("create_household", {
     p_name: parsed.data.name,
     p_display_name: parsed.data.displayName ?? null,
   });
   if (error) {
     return { error: "No se pudo crear el hogar. Inténtalo de nuevo." };
   }
+
+  // El hogar recién creado pasa a ser el activo (puede ser el segundo o más).
+  if (data) await setActiveHouseholdCookie(data);
 
   revalidatePath("/", "layout");
   redirect("/inventario");
@@ -69,6 +111,9 @@ export async function joinHouseholdAction(
     // El RPC devuelve null cuando el código no corresponde a ningún hogar.
     return { error: "Ese código no corresponde a ningún hogar." };
   }
+
+  // El hogar al que se une (o al que ya pertenecía) pasa a ser el activo.
+  await setActiveHouseholdCookie(data);
 
   revalidatePath("/", "layout");
   redirect("/inventario");
@@ -165,6 +210,10 @@ export async function deleteHouseholdAction(): Promise<ActionState> {
     return { error: "No se pudo eliminar el hogar. Inténtalo de nuevo." };
   }
 
+  // Sin cookie, el hogar activo vuelve al más antiguo que quede; si no queda
+  // ninguno, /onboarding se encarga (y si queda alguno, redirige a la app).
+  (await cookies()).delete(ACTIVE_HOUSEHOLD_COOKIE);
+
   revalidatePath("/", "layout");
   redirect("/onboarding");
 }
@@ -185,6 +234,9 @@ export async function leaveHouseholdAction(): Promise<ActionState> {
       : "No se pudo abandonar el hogar.";
     return { error: message };
   }
+
+  // Igual que al eliminar: el fallback decide el siguiente hogar activo.
+  (await cookies()).delete(ACTIVE_HOUSEHOLD_COOKIE);
 
   revalidatePath("/", "layout");
   redirect("/onboarding");
