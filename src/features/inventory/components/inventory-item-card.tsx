@@ -170,7 +170,14 @@ export function InventoryItemCard({
                 className="w-7 text-center text-sm font-semibold tabular-nums"
                 aria-live="polite"
               >
-                {qty}
+                {/* La key remonta solo el número: pequeño "pop" al cambiar sin
+                    reemplazar la región aria-live. */}
+                <span
+                  key={qty}
+                  className="inline-block animate-in zoom-in-50 duration-150"
+                >
+                  {qty}
+                </span>
               </span>
               <Button
                 variant="outline"
@@ -196,7 +203,7 @@ export function InventoryItemCard({
                 variant="outline"
                 className="w-full"
                 onClick={addToList}
-                disabled={isAdding}
+                loading={isAdding}
               >
                 <ShoppingCart aria-hidden />
                 Añadir a la lista

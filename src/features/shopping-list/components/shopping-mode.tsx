@@ -25,6 +25,7 @@ import {
 import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
 import { CHAIN_OPTIONS, chainLabel } from "@/features/prices/chains";
+import { vibrateTick } from "@/lib/haptics";
 import { formatQuantity } from "@/lib/units";
 import { useRealtimeList } from "../use-realtime-list";
 import { toggleItemAction } from "../actions";
@@ -57,18 +58,6 @@ function signatureOf(items: ShoppingModeItem[]) {
 
 /** Sentinel mínimo del Screen Wake Lock API (evita depender del lib DOM). */
 type WakeLockLike = { release: () => Promise<void> };
-
-/** Vibración corta al marcar (L13): feature-detect + respeta reduced motion. */
-function vibrateTick() {
-  if (
-    typeof navigator === "undefined" ||
-    typeof navigator.vibrate !== "function"
-  ) {
-    return;
-  }
-  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-  navigator.vibrate(10);
-}
 
 export function ShoppingMode({
   listId,
@@ -443,7 +432,7 @@ export function ShoppingMode({
                           />
                         </button>
                         {isExpanded ? (
-                          <ul className="flex flex-col gap-1">
+                          <ul className="flex flex-col gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
                             {checkedItems.map((item) => (
                               <ShoppingModeRowItem
                                 key={item.id}
@@ -485,7 +474,7 @@ export function ShoppingMode({
                 />
               </button>
               {showOther ? (
-                <div className="mt-1 flex flex-col gap-4">
+                <div className="mt-1 flex flex-col gap-4 animate-in fade-in slide-in-from-top-1 duration-200">
                   {otherGroups.map((cg) => (
                     <div key={cg.chain}>
                       <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">

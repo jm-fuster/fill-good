@@ -22,6 +22,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/layout/empty-state";
 import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
+import { vibrateTick } from "@/lib/haptics";
 import { chainLabel } from "@/features/prices/chains";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import { formatQuantity } from "@/lib/units";
@@ -144,6 +145,7 @@ export function ShoppingListView({
   }
 
   function toggle(id: string, checked: boolean) {
+    if (checked) vibrateTick();
     setItems((prev) =>
       prev.map((it) => (it.id === id ? { ...it, isChecked: checked } : it)),
     );
@@ -367,7 +369,7 @@ export function ShoppingListView({
                     </h2>
                     {g.items.map((item) => (
                       <ListRow
-                        key={item.id}
+                        key={`${item.id}:${item.isChecked ? "c" : "p"}`}
                         item={item}
                         onToggle={toggle}
                         onEdit={setEditItem}
@@ -379,7 +381,7 @@ export function ShoppingListView({
                 ))
               : pending.map((item) => (
                   <ListRow
-                    key={item.id}
+                    key={`${item.id}:${item.isChecked ? "c" : "p"}`}
                     item={item}
                     onToggle={toggle}
                     onEdit={setEditItem}
@@ -393,9 +395,12 @@ export function ShoppingListView({
                 En el carro ({done.length})
               </p>
             ) : null}
+            {/* La key incluye el estado marcado: al (des)marcar, la fila se
+                desmonta y entra animada en su nueva sección, en vez de
+                teletransportarse (React reutilizaría el nodo con la key sola). */}
             {done.map((item) => (
               <ListRow
-                key={item.id}
+                key={`${item.id}:${item.isChecked ? "c" : "p"}`}
                 item={item}
                 onToggle={toggle}
                 onEdit={setEditItem}
@@ -512,7 +517,7 @@ function ListRow({
   }
 
   return (
-    <div className="group relative overflow-hidden rounded-lg">
+    <div className="group relative overflow-hidden rounded-lg animate-in fade-in zoom-in-95 duration-200">
       {/* Fondo revelado al deslizar hacia la izquierda. */}
       <div
         aria-hidden
@@ -670,7 +675,14 @@ function QuantityStepper({ item }: { item: ListItem }) {
             className="min-w-6 text-center text-sm tabular-nums"
             aria-live="polite"
           >
-            {qty}
+            {/* La key remonta solo el número: pequeño "pop" al cambiar sin
+                reemplazar la región aria-live. */}
+            <span
+              key={qty}
+              className="inline-block animate-in zoom-in-50 duration-150"
+            >
+              {qty}
+            </span>
           </span>
           <Button
             variant="ghost"
@@ -807,7 +819,7 @@ function CheckoutBar({ count }: { count: number }) {
       <Button
         size="lg"
         className="w-full shadow-lg"
-        disabled={pending}
+        loading={pending}
         onClick={checkout}
       >
         <ShoppingCart aria-hidden />

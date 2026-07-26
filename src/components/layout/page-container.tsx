@@ -31,7 +31,16 @@ export function PageContainer({
   children: React.ReactNode;
 }) {
   return (
-    <div className={cn("mx-auto w-full", VARIANT_CLASSES[variant], className)}>
+    // La entrada animada (fade + 4px de subida) suaviza tanto la aparición del
+    // skeleton como el reemplazo skeleton→contenido en cada navegación. Solo
+    // corre al montar (CSS puro, transform/opacity); reduced-motion la anula.
+    <div
+      className={cn(
+        "mx-auto w-full animate-in fade-in slide-in-from-bottom-1 duration-200",
+        VARIANT_CLASSES[variant],
+        className,
+      )}
+    >
       {children}
     </div>
   );

@@ -21,17 +21,21 @@ export function NavCountBadge({
   const label = count > 99 ? "99+" : String(count);
 
   return (
+    // El badge entra con un "pop" al aparecer (count 0→1); el número interior
+    // se remonta por key y repite el pop en cada cambio de count.
     <span
       aria-label={`${count} pendiente${count === 1 ? "" : "s"}`}
       className={cn(
-        "pointer-events-none inline-flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-none font-semibold text-primary-foreground tabular-nums",
+        "pointer-events-none inline-flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-none font-semibold text-primary-foreground tabular-nums animate-in zoom-in-50 duration-200",
         variant === "floating"
           ? "absolute -top-1 left-1/2 ml-1.5 h-4 shadow-sm"
           : "h-4",
         className,
       )}
     >
-      {label}
+      <span key={label} className="animate-in zoom-in-50 duration-200">
+        {label}
+      </span>
     </span>
   );
 }
