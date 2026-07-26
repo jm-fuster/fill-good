@@ -25,11 +25,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { deleteAccountAction } from "../actions";
+import { signOutToSignIn } from "../sign-out";
 
 const CONFIRM_WORD = "BORRAR";
 
 export function DeleteAccountCard() {
-  const { signOut } = useClerk();
+  const clerk = useClerk();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [pending, startTransition] = useTransition();
@@ -44,8 +45,9 @@ export function DeleteAccountCard() {
         toast.error(result.error);
         return;
       }
-      // Cuenta y datos borrados: cerramos la sesión local y salimos.
-      await signOut({ redirectUrl: "/sign-in" });
+      // Cuenta y datos borrados: cerramos la sesión local y salimos. Mismo
+      // problema de navegación colgada que en LogoutButton, mismo remedio.
+      await signOutToSignIn(clerk);
     });
   }
 

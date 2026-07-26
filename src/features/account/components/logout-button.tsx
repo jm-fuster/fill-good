@@ -1,23 +1,32 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState } from "react";
 import { useClerk } from "@clerk/nextjs";
 import { LogOut } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { signOutToSignIn } from "../sign-out";
 
 /**
  * Cierre de sesión de acceso rápido. El menú de <UserButton /> también lo ofrece,
  * pero este botón directo evita tener que abrir el desplegable.
  */
 export function LogoutButton() {
-  const { signOut } = useClerk();
-  const [pending, startTransition] = useTransition();
+  const clerk = useClerk();
+  // useState y no useTransition: la salida es una navegación dura (ver
+  // signOutToSignIn), así que el pending vive hasta que el navegador descarga la
+  // página, no hasta que termine una transición de React.
+  const [pending, setPending] = useState(false);
 
-  function logout() {
-    startTransition(async () => {
-      await signOut({ redirectUrl: "/sign-in" });
-    });
+  async function logout() {
+    setPending(true);
+    try {
+      await signOutToSignIn(clerk);
+    } catch {
+      setPending(false);
+      toast.error("No se pudo cerrar la sesión. Inténtalo de nuevo.");
+    }
   }
 
   return (
