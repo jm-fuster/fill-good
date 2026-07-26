@@ -7,6 +7,25 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseOrigin = supabaseUrl ? new URL(supabaseUrl).origin : "";
 const supabaseWss = supabaseOrigin.replace(/^https:/, "wss:");
 
+// Origen del Frontend API de Clerk. Va DERIVADO de la publishable key (que lo
+// lleva codificado en base64: `pk_live_<base64("clerk.tudominio.com$")>`) y no
+// hardcodeado. Estaba puesto a mano y apuntaba al dominio de OTRO proyecto
+// (clerk.pickpal.…), de modo que el día que la CSP pasara a enforcing habría
+// bloqueado todas las llamadas a Clerk, incluido el cierre de sesión. Derivarlo
+// hace que test y producción salgan correctos sin tocar nada.
+const clerkFapiOrigin = (() => {
+  const pk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  if (!pk) return "";
+  try {
+    const host = Buffer.from(pk.replace(/^pk_(test|live)_/, ""), "base64")
+      .toString("utf8")
+      .replace(/\$$/, "");
+    return /^[a-z0-9.-]+$/i.test(host) ? `https://${host}` : "";
+  } catch {
+    return "";
+  }
+})();
+
 // CSP en modo Report-Only a propósito: una CSP mal calibrada rompe el login de
 // Clerk o el Realtime de Supabase, y aquí no se puede verificar el flujo de auth.
 // Despliega, revisa la consola del navegador (violaciones report-only) y, cuando
@@ -21,12 +40,12 @@ const csp = [
   `object-src 'none'`,
   `frame-ancestors 'none'`,
   `form-action 'self'`,
-  `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://clerk.pickpal.jorgemolinafuster.com https://*.clerk.accounts.dev https://challenges.cloudflare.com`,
+  `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${clerkFapiOrigin} https://*.clerk.accounts.dev https://challenges.cloudflare.com`.trim(),
   `style-src 'self' 'unsafe-inline'`,
   `img-src 'self' blob: data: https://img.clerk.com`,
   `font-src 'self'`,
   `worker-src 'self' blob:`,
-  `connect-src 'self' https://clerk.pickpal.jorgemolinafuster.com https://*.clerk.accounts.dev https://clerk-telemetry.com ${supabaseOrigin} ${supabaseWss}`.trim(),
+  `connect-src 'self' ${clerkFapiOrigin} https://*.clerk.accounts.dev https://clerk-telemetry.com ${supabaseOrigin} ${supabaseWss}`.trim(),
   `frame-src 'self' https://challenges.cloudflare.com`,
   `upgrade-insecure-requests`,
 ]
