@@ -27,4 +27,4 @@ export function Fab({
 
 /** Estilo del botón dentro de un `Fab` (tamaño táctil grande y sombra). */
 export const fabButtonClass =
-  "pointer-events-auto size-14 rounded-full shadow-lg active:scale-95";
+  "pointer-events-auto size-14 rounded-full shadow-lg transition-transform active:scale-95";

@@ -163,7 +163,7 @@ export function InventoryList({
                 disabled={count === 0 && !active}
                 onClick={() => setFilter(active ? null : key)}
                 className={cn(
-                  "flex h-11 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-colors disabled:opacity-40",
+                  "flex h-11 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-medium transition-[color,background-color,border-color,transform] active:scale-95 disabled:opacity-40",
                   active && isExpired && "border-transparent bg-destructive/15 text-destructive",
                   active && !isExpired && "border-transparent bg-warning/15 text-warning",
                   !active && "border-border text-foreground hover:bg-muted",
@@ -185,11 +185,17 @@ export function InventoryList({
       </div>
 
       {pinnedItems.length === 0 && groups.length === 0 ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">
+        <p className="py-10 text-center text-sm text-muted-foreground animate-in fade-in duration-150">
           Sin resultados{query ? ` para «${query}»` : ""}.
         </p>
       ) : (
-        <div className="flex flex-col gap-6">
+        /* La key remonta el bloque al cambiar el chip de estado: un solo
+           cross-fade para toda la lista (una animación, no una por tarjeta).
+           A propósito NO incluye `query`: remontar en cada tecla sí costaría. */
+        <div
+          key={filter ?? "all"}
+          className="flex flex-col gap-6 animate-in fade-in duration-150"
+        >
           {pinnedItems.length > 0 ? (
             <section>
               <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">

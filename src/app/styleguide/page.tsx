@@ -297,11 +297,80 @@ export default function StyleguidePage() {
         </p>
       </Section>
 
-      <Section title="Estados de carga" description="Skeletons, nunca spinners a pantalla completa.">
+      <Section
+        title="Estados de carga"
+        description="Skeletons para rutas (loading.tsx), nunca spinners a pantalla completa. Para acciones en curso, la prop loading de Button."
+      >
         <div className="flex flex-col gap-2">
           <Skeleton className="h-16 w-full rounded-xl" />
           <Skeleton className="h-16 w-full rounded-xl" />
           <Skeleton className="h-16 w-3/4 rounded-xl" />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <Button loading>Guardando…</Button>
+          <Button variant="outline" loading>
+            Generando menú…
+          </Button>
+          <Button variant="destructive" loading>
+            Eliminando…
+          </Button>
+        </div>
+        <p className="mt-3 text-sm text-muted-foreground">
+          <code>loading</code> deshabilita el botón, marca{" "}
+          <code>aria-busy</code> y el spinner <strong>sustituye</strong> al
+          icono (el label se mantiene para que el ancho no salte). Si dos
+          botones comparten un mismo estado pending, <code>loading</code> solo
+          en el que dispara la acción. No compatible con <code>asChild</code>.
+        </p>
+      </Section>
+
+      <Section
+        title="Movimiento y feedback"
+        description="Micro-animaciones de coste cero: solo transform/opacity (compositor), 100–300 ms, y prefers-reduced-motion las apaga todas vía la regla global."
+      >
+        <div className="flex flex-col gap-4 text-sm">
+          <div className="rounded-xl border p-4">
+            <p className="mb-2 font-medium">Patrones establecidos (reutilizar, no inventar)</p>
+            <ul className="flex list-disc flex-col gap-1.5 pl-5 text-muted-foreground">
+              <li>
+                Navegación optimista: <code>useOptimisticNav</code> resalta la
+                entrada al tocar (sin esperar al servidor);{" "}
+                <code>NavLinkIcon</code> pulsa el icono solo si la ruta tarda
+                (&gt;150 ms de delay, cero parpadeo en navegaciones rápidas).
+              </li>
+              <li>
+                Cambios de estado en listas: key con el estado (
+                <code>{"`${id}:${checked}`"}</code>) fuerza el remount y la
+                fila entra animada (<code>animate-in fade-in zoom-in-95</code>)
+                en su nueva sección.
+              </li>
+              <li>
+                Números que cambian (steppers, badges): span interior con{" "}
+                <code>key</code> por valor + <code>zoom-in-50</code>, dejando
+                estable la región <code>aria-live</code>.
+              </li>
+              <li>
+                Filtros que re-renderizan listas: cross-fade por bloque (una
+                key por filtro activo, UNA animación por cambio). Nunca key por
+                tecleo de búsqueda: remontar por tecla cuesta CPU.
+              </li>
+              <li>
+                Háptica: <code>vibrateTick()</code> de{" "}
+                <code>src/lib/haptics.ts</code> al confirmar acciones táctiles
+                (feature-detect; respeta reduced-motion).
+              </li>
+            </ul>
+          </div>
+          <div className="rounded-xl border p-4">
+            <p className="mb-1 font-medium">Reglas</p>
+            <p className="text-muted-foreground">
+              100–200 ms para interacción (press, pops), 200–300 ms para
+              entradas; ease-out. Nunca animar altura, anchura o posición
+              (layout). Los overlays ya animan de serie (vaul, shadcn, sonner,
+              Recharts): no duplicar. Press feedback táctil:{" "}
+              <code>active:scale-95</code> + <code>transition-transform</code>.
+            </p>
+          </div>
         </div>
       </Section>
 

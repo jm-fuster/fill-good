@@ -21,7 +21,9 @@ function Checkbox({
     >
       <CheckboxPrimitive.Indicator
         data-slot="checkbox-indicator"
-        className="grid place-content-center text-current transition-none [&>svg]:size-3.5"
+        // Radix monta el indicador al marcar: el tick "brota" con un zoom
+        // corto. Desmarcar desmonta sin animación (salida exigiría forceMount).
+        className="grid place-content-center text-current transition-none animate-in zoom-in-50 duration-150 [&>svg]:size-3.5"
       >
         <CheckIcon
         />
