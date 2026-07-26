@@ -1,5 +1,4 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
 
 // /offline es la página de fallback del service worker: debe ser accesible
 // sin sesión (aunque en el caso real de "sin red" el SW la sirve desde caché
@@ -28,24 +27,6 @@ const authorizedParties = process.env.CLERK_AUTHORIZED_PARTIES?.split(",")
 
 export default clerkMiddleware(
   async (auth, request) => {
-    // ⚠️ TEMPORAL — diagnóstico, se elimina en el commit siguiente.
-    // Sirve para saber qué cabeceras ve el MIDDLEWARE (no el route handler) en
-    // producción: la hipótesis a descartar es que no le llegue `RSC`. Solo
-    // refleja las cabeceras de quien llama, y las sensibles se reportan por
-    // longitud, nunca por valor.
-    if (request.nextUrl.pathname === "/__fg-debug") {
-      const headers: Record<string, string> = {};
-      for (const [key, value] of request.headers.entries()) {
-        headers[key] = /cookie|authorization/i.test(key)
-          ? `[${value.length} chars]`
-          : value;
-      }
-      return NextResponse.json({
-        rscVisto: request.headers.get("RSC"),
-        headers,
-      });
-    }
-
     if (isPublicRoute(request)) return;
 
     // `auth.protect()` solo redirige por su cuenta cuando reconoce la petición
@@ -58,12 +39,16 @@ export default clerkMiddleware(
     // commitear, `signOut()` no resuelve nunca: el botón se queda en "Cerrando
     // sesión…" y la sesión no se cierra hasta recargar la página.
     //
-    // `unauthenticatedUrl` se pasa SIEMPRE, sin condicionarlo a la cabecera
-    // `RSC`: en producción la versión condicionada no llegó a dispararse (la
-    // petición seguía devolviendo 404 con el `notFound()` de Clerk), y no está
-    // confirmado que el middleware vea esa cabecera. Sin condición no depende
-    // de ello. Coste: las navegaciones de documento reciben un 307 plano a
-    // /sign-in en vez de pasar por el `redirectToSignIn()` de Clerk.
+    // Se pasa SIN CONDICIÓN, y en concreto NO condicionado a la cabecera `RSC`:
+    // Next se la queda antes de que corra el middleware, así que aquí siempre
+    // vale null (medido en local y en producción: al middleware solo le llegan
+    // accept, host, user-agent y las x-forwarded-*/x-vercel-*). Cualquier rama
+    // que dependiera de ella sería código muerto.
+    //
+    // No hay regresión en las navegaciones de documento: el handshake de Clerk
+    // ocurre antes de este handler y lo corta en seco cuando aplica, así que un
+    // token caducado pero renovable sigue renovándose. `unauthenticatedUrl` solo
+    // entra cuando Clerk ya ha concluido que no hay sesión.
     const signInUrl = new URL("/sign-in", request.url);
     signInUrl.searchParams.set("redirect_url", request.url);
     await auth.protect({ unauthenticatedUrl: signInUrl.toString() });
