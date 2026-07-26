@@ -123,7 +123,7 @@ export async function regenerateInviteCodeAction(): Promise<ActionState> {
     return { error: "No se pudo regenerar el código." };
   }
 
-  revalidatePath("/ajustes");
+  revalidatePath("/ajustes/hogar");
   return {};
 }
 

@@ -22,14 +22,19 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
-import { Separator } from "@/components/ui/separator";
 import type { CurrentHousehold, HouseholdMember } from "../queries";
 import { leaveHouseholdAction, regenerateInviteCodeAction } from "../actions";
 import { TransferOwnershipDrawer } from "./transfer-ownership-drawer";
 import { OwnerLeaveDrawer } from "./owner-leave-drawer";
 import { DeleteHouseholdDrawer } from "./delete-household-drawer";
 
-export function HouseholdCard({
+/**
+ * Contenido de /ajustes/hogar. Antes era una única card dentro del índice de
+ * Ajustes, donde competía con todo lo demás; aquí es la página completa, dividida
+ * en tres secciones (invitar · miembros · gestión) para que lo irreversible viva
+ * al final y no en medio de la pantalla raíz.
+ */
+export function HouseholdSettings({
   household,
   members,
 }: {
@@ -92,16 +97,16 @@ export function HouseholdCard({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{household.name}</CardTitle>
-        <CardDescription>
-          Comparte el enlace para que otros miembros se unan a tu hogar con un
-          solo toque. También puedes dictarles el código.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <div>
+    <div className="flex flex-col gap-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Invitar al hogar</CardTitle>
+          <CardDescription>
+            Comparte el enlace para que otros miembros se unan con un solo toque.
+            También puedes dictarles el código.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
           <p className="mb-1.5 text-sm font-medium">Código de invitación</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 rounded-lg border bg-muted px-3 py-2.5 font-mono text-lg tracking-widest">
@@ -135,14 +140,14 @@ export function HouseholdCard({
               <RefreshCw aria-hidden />
             </Button>
           </div>
-        </div>
+        </CardContent>
+      </Card>
 
-        <Separator />
-
-        <div>
-          <p className="mb-2 text-sm font-medium">
-            Miembros ({members.length})
-          </p>
+      <Card>
+        <CardHeader>
+          <CardTitle>Miembros ({members.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
           <ul className="flex flex-col gap-2">
             {members.map((m) => (
               <li
@@ -161,73 +166,76 @@ export function HouseholdCard({
               </li>
             ))}
           </ul>
-        </div>
+        </CardContent>
+      </Card>
 
-        <Separator />
-
-        {isOwner ? (
-          <div className="flex flex-col gap-2">
-            {hasOtherMembers ? (
-              <>
-                <TransferOwnershipDrawer candidates={otherMembers} />
-                <OwnerLeaveDrawer candidates={otherMembers} />
-                <p className="text-sm text-muted-foreground">
-                  Puedes ceder la propiedad y seguir en el hogar, o abandonarlo
-                  transfiriéndola en el mismo paso.
-                </p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Eres el único miembro. Al eliminar el hogar se borrará todo su
-                contenido.
-              </p>
-            )}
-            <DeleteHouseholdDrawer householdName={household.name} />
-          </div>
-        ) : (
-          <ResponsiveModal open={leaveOpen} onOpenChange={setLeaveOpen}>
-            <Button
-              variant="destructive"
-              onClick={() => setLeaveOpen(true)}
-              disabled={pending}
-              className="self-start"
-            >
-              <LogOut aria-hidden />
-              Abandonar hogar
-            </Button>
-            <ResponsiveModalContent>
-              <ResponsiveModalHeader>
-                <ResponsiveModalTitle className="flex items-center gap-2">
-                  <TriangleAlert
-                    className="size-5 text-destructive"
-                    aria-hidden
-                  />
-                  ¿Abandonar este hogar?
-                </ResponsiveModalTitle>
-                <ResponsiveModalDescription>
-                  Dejarás de ver su inventario y sus listas. Podrás volver a
-                  unirte con el código de invitación.
-                </ResponsiveModalDescription>
-              </ResponsiveModalHeader>
-              <ResponsiveModalFooter className="gap-2">
-                <Button
-                  variant="destructive"
-                  onClick={leave}
-                  disabled={pending}
-                >
-                  <LogOut aria-hidden />
-                  {pending ? "Abandonando…" : "Abandonar"}
-                </Button>
-                <ResponsiveModalClose asChild>
-                  <Button type="button" variant="ghost">
-                    Cancelar
+      <Card>
+        <CardHeader>
+          <CardTitle>Gestión del hogar</CardTitle>
+          <CardDescription>
+            {isOwner
+              ? hasOtherMembers
+                ? "Puedes ceder la propiedad y seguir en el hogar, o abandonarlo transfiriéndola en el mismo paso."
+                : "Eres el único miembro. Al eliminar el hogar se borrará todo su contenido."
+              : "Dejarás de ver el inventario y las listas de este hogar."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isOwner ? (
+            <div className="flex flex-col gap-2">
+              {hasOtherMembers ? (
+                <>
+                  <TransferOwnershipDrawer candidates={otherMembers} />
+                  <OwnerLeaveDrawer candidates={otherMembers} />
+                </>
+              ) : null}
+              <DeleteHouseholdDrawer householdName={household.name} />
+            </div>
+          ) : (
+            <ResponsiveModal open={leaveOpen} onOpenChange={setLeaveOpen}>
+              <Button
+                variant="destructive"
+                onClick={() => setLeaveOpen(true)}
+                disabled={pending}
+                className="self-start"
+              >
+                <LogOut aria-hidden />
+                Abandonar hogar
+              </Button>
+              <ResponsiveModalContent>
+                <ResponsiveModalHeader>
+                  <ResponsiveModalTitle className="flex items-center gap-2">
+                    <TriangleAlert
+                      className="size-5 text-destructive"
+                      aria-hidden
+                    />
+                    ¿Abandonar este hogar?
+                  </ResponsiveModalTitle>
+                  <ResponsiveModalDescription>
+                    Dejarás de ver su inventario y sus listas. Podrás volver a
+                    unirte con el código de invitación.
+                  </ResponsiveModalDescription>
+                </ResponsiveModalHeader>
+                <ResponsiveModalFooter className="gap-2">
+                  <Button
+                    variant="destructive"
+                    onClick={leave}
+                    disabled={pending}
+                  >
+                    <LogOut aria-hidden />
+                    {pending ? "Abandonando…" : "Abandonar"}
                   </Button>
-                </ResponsiveModalClose>
-              </ResponsiveModalFooter>
-            </ResponsiveModalContent>
-          </ResponsiveModal>
-        )}
-      </CardContent>
-    </Card>
+                  <ResponsiveModalClose asChild>
+                    <Button type="button" variant="ghost">
+                      Cancelar
+                    </Button>
+                  </ResponsiveModalClose>
+                </ResponsiveModalFooter>
+              </ResponsiveModalContent>
+            </ResponsiveModal>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

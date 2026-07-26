@@ -5,14 +5,14 @@ import { useClerk } from "@clerk/nextjs";
 import { LogOut } from "lucide-react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { SettingsButtonRow } from "@/features/settings/components/settings-list";
 import { signOutToSignIn } from "../sign-out";
 
 /**
- * Cierre de sesión de acceso rápido. El menú de <UserButton /> también lo ofrece,
- * pero este botón directo evita tener que abrir el desplegable.
+ * Cierre de sesión desde el índice de Ajustes. El menú de <UserButton /> también
+ * lo ofrece, pero esta fila directa evita tener que abrir el desplegable.
  */
-export function LogoutButton() {
+export function LogoutRow() {
   const clerk = useClerk();
   // useState y no useTransition: la salida es una navegación dura (ver
   // signOutToSignIn), así que el pending vive hasta que el navegador descarga la
@@ -30,14 +30,11 @@ export function LogoutButton() {
   }
 
   return (
-    <Button
-      variant="outline"
+    <SettingsButtonRow
+      icon={LogOut}
+      label={pending ? "Cerrando sesión…" : "Cerrar sesión"}
       onClick={logout}
       disabled={pending}
-      className="w-full justify-center"
-    >
-      <LogOut aria-hidden />
-      {pending ? "Cerrando sesión…" : "Cerrar sesión"}
-    </Button>
+    />
   );
 }

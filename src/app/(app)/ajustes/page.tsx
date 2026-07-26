@@ -1,32 +1,33 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
-import { ChevronRight, Info, ListOrdered, Palette } from "lucide-react";
+import { Home, Info, ListOrdered, Palette } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { DeleteAccountCard } from "@/features/account/components/delete-account-card";
-import { LogoutButton } from "@/features/account/components/logout-button";
-import { BudgetCard } from "@/features/household/components/budget-card";
-import { HouseholdCard } from "@/features/household/components/household-card";
+import { DeleteAccountRow } from "@/features/account/components/delete-account-row";
+import { LogoutRow } from "@/features/account/components/logout-row";
+import { BudgetRow } from "@/features/household/components/budget-row";
 import { InstallCard } from "@/features/push/components/install-card";
-import { PushCard } from "@/features/push/components/push-card";
+import { PushStatusRow } from "@/features/push/components/push-status-row";
+import {
+  SettingsControlRow,
+  SettingsGroup,
+  SettingsLinkRow,
+} from "@/features/settings/components/settings-list";
 import {
   getCurrentHousehold,
   getHouseholdMembers,
 } from "@/features/household/queries";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 
 export const metadata: Metadata = { title: "Ajustes" };
 
+/**
+ * Índice de Ajustes: lista escaneable de grupos, con lo denso en subpáginas
+ * (/hogar, /notificaciones, /orden-tienda, /acerca-de). Solo se queda inline lo
+ * que se resuelve de un toque (tema) o en un modal corto (objetivo de gasto).
+ */
 export default async function AjustesPage() {
   const [user, household] = await Promise.all([
     currentUser(),
@@ -43,141 +44,66 @@ export default async function AjustesPage() {
   return (
     <PageContainer variant="default">
       <PageHeader title="Ajustes" description="Tu hogar y tus preferencias." />
-      <div className="flex flex-col gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Cuenta</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{displayName}</p>
-                {email ? (
-                  <p className="truncate text-sm text-muted-foreground">
-                    {email}
-                  </p>
-                ) : null}
-              </div>
-              <UserButton />
-            </div>
-            <LogoutButton />
-          </CardContent>
-        </Card>
+      <div className="flex flex-col gap-6">
+        <div className="flex min-h-14 items-center justify-between gap-3 rounded-xl bg-card px-4 py-3 ring-1 ring-foreground/10">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium">{displayName}</p>
+            {email ? (
+              <p className="truncate text-sm text-muted-foreground">{email}</p>
+            ) : null}
+          </div>
+          <UserButton />
+        </div>
 
-        {household ? (
-          <HouseholdCard household={household} members={members} />
-        ) : null}
-
-        {household ? <BudgetCard budget={household.monthlyBudget} /> : null}
-
-        {/* La instalación va encima de las notificaciones: en iOS el push exige
-            la app instalada, así que el orden cuenta la historia correcta. */}
+        {/* Solo se renderiza si la app se puede instalar aquí. Va en la raíz de
+            Ajustes, no dentro de una subpágina: es la acción de mayor valor para
+            quien todavía usa la web, y en iOS es requisito previo del push. */}
         <InstallCard />
 
-        <PushCard />
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Palette className="size-4" aria-hidden />
-              Apariencia
-            </CardTitle>
-            <CardDescription>Tema claro, oscuro o automático.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between">
-            <span className="text-sm">Tema de la aplicación</span>
-            <ThemeToggle />
-          </CardContent>
-        </Card>
-
-        <Link
-          href="/ajustes/orden-tienda"
-          className="flex min-h-11 items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition-colors hover:bg-muted"
-        >
-          <ListOrdered className="size-4 text-muted-foreground" aria-hidden />
-          <span className="flex-1">
-            Orden de la tienda
-            <span className="block text-xs font-normal text-muted-foreground">
-              Ordena los pasillos según tu supermercado
-            </span>
-          </span>
-          <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
-        </Link>
-
-        {process.env.NODE_ENV !== "production" ? (
-          <Link
-            href="/styleguide"
-            className="flex min-h-11 items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition-colors hover:bg-muted"
-          >
-            Guía de estilo (desarrollo)
-            <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
-          </Link>
+        {household ? (
+          <SettingsGroup title="Hogar">
+            <SettingsLinkRow
+              href="/ajustes/hogar"
+              icon={Home}
+              label={household.name}
+              hint="Invitaciones, miembros y propiedad"
+              value={
+                members.length === 1 ? "1 miembro" : `${members.length} miembros`
+              }
+            />
+            <BudgetRow budget={household.monthlyBudget} />
+            <SettingsLinkRow
+              href="/ajustes/orden-tienda"
+              icon={ListOrdered}
+              label="Orden de la tienda"
+              hint="Ordena los pasillos según tu supermercado"
+            />
+          </SettingsGroup>
         ) : null}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Info className="size-4" aria-hidden />
-              Créditos
-            </CardTitle>
-            <CardDescription>Iconos de producto de estos proyectos.</CardDescription>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">
-            <ul className="flex flex-col gap-1">
-              <li>
-                <a
-                  href="https://github.com/microsoft/fluentui-emoji"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-4 hover:text-foreground"
-                >
-                  Fluent Emoji
-                </a>{" "}
-                de Microsoft (licencia MIT).
-              </li>
-              <li>
-                <a
-                  href="https://game-icons.net"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-4 hover:text-foreground"
-                >
-                  Game-icons.net
-                </a>{" "}
-                y sus autores (licencia{" "}
-                <a
-                  href="https://creativecommons.org/licenses/by/3.0/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-4 hover:text-foreground"
-                >
-                  CC BY 3.0
-                </a>
-                ).
-              </li>
-            </ul>
-          </CardContent>
-        </Card>
+        <SettingsGroup title="Preferencias">
+          <PushStatusRow />
+          <SettingsControlRow
+            icon={Palette}
+            label="Tema"
+            hint="Claro, oscuro o automático"
+            control={<ThemeToggle />}
+          />
+        </SettingsGroup>
 
-        <DeleteAccountCard />
+        <SettingsGroup title="Información">
+          <SettingsLinkRow
+            href="/ajustes/acerca-de"
+            icon={Info}
+            label="Acerca de Fill Good"
+            hint="Créditos y textos legales"
+          />
+        </SettingsGroup>
 
-        <nav
-          aria-label="Textos legales"
-          className="flex items-center justify-center gap-6 text-xs text-muted-foreground"
-        >
-          <Link
-            href="/privacidad"
-            className="inline-flex min-h-11 items-center underline underline-offset-4 hover:text-foreground"
-          >
-            Política de privacidad
-          </Link>
-          <Link
-            href="/terminos"
-            className="inline-flex min-h-11 items-center underline underline-offset-4 hover:text-foreground"
-          >
-            Términos de uso
-          </Link>
-        </nav>
+        <SettingsGroup title="Cuenta">
+          <LogoutRow />
+          <DeleteAccountRow />
+        </SettingsGroup>
       </div>
     </PageContainer>
   );
