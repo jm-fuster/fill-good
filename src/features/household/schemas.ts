@@ -1,13 +1,17 @@
 import { z } from "zod";
 
+const householdName = z
+  .string()
+  .trim()
+  .min(1, "Ponle un nombre a tu hogar.")
+  .max(80, "El nombre es demasiado largo.");
+
 export const createHouseholdSchema = z.object({
-  name: z
-    .string()
-    .trim()
-    .min(1, "Ponle un nombre a tu hogar.")
-    .max(80, "El nombre es demasiado largo."),
+  name: householdName,
   displayName: z.string().trim().max(80).optional(),
 });
+
+export const renameHouseholdSchema = z.object({ name: householdName });
 
 export const joinHouseholdSchema = z.object({
   code: z

@@ -11,7 +11,11 @@ import {
   getCurrentHousehold,
   getUserHouseholds,
 } from "./queries";
-import { createHouseholdSchema, joinHouseholdSchema } from "./schemas";
+import {
+  createHouseholdSchema,
+  joinHouseholdSchema,
+  renameHouseholdSchema,
+} from "./schemas";
 
 export type ActionState = { error?: string };
 
@@ -169,6 +173,38 @@ export async function regenerateInviteCodeAction(): Promise<ActionState> {
   }
 
   revalidatePath("/ajustes/hogar");
+  return {};
+}
+
+export async function renameHouseholdAction(
+  formData: FormData,
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  if (household.role !== "owner") {
+    return { error: "Solo el propietario puede cambiar el nombre del hogar." };
+  }
+
+  const parsed = renameHouseholdSchema.safeParse({
+    name: formData.get("name"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+
+  // RPC en vez de UPDATE directo: el hardening dejó a los miembros solo la
+  // columna monthly_budget; rename_household reimpone "solo owner" en la BD.
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.rpc("rename_household", {
+    p_household_id: household.id,
+    p_name: parsed.data.name,
+  });
+  if (error) {
+    return { error: "No se pudo cambiar el nombre. Inténtalo de nuevo." };
+  }
+
+  // El nombre aparece en el shell (switcher de hogares), no solo en /ajustes.
+  revalidatePath("/", "layout");
   return {};
 }
 

@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/responsive-modal";
 import type { CurrentHousehold, HouseholdMember } from "../queries";
 import { leaveHouseholdAction, regenerateInviteCodeAction } from "../actions";
+import { RenameHouseholdDrawer } from "./rename-household-drawer";
 import { TransferOwnershipDrawer } from "./transfer-ownership-drawer";
 import { OwnerLeaveDrawer } from "./owner-leave-drawer";
 import { DeleteHouseholdDrawer } from "./delete-household-drawer";
@@ -183,6 +184,7 @@ export function HouseholdSettings({
         <CardContent>
           {isOwner ? (
             <div className="flex flex-col gap-2">
+              <RenameHouseholdDrawer currentName={household.name} />
               {hasOtherMembers ? (
                 <>
                   <TransferOwnershipDrawer candidates={otherMembers} />

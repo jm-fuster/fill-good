@@ -885,6 +885,10 @@ export type Database = {
         Args: { p_household_id: string; p_new_owner_user_id: string };
         Returns: undefined;
       };
+      rename_household: {
+        Args: { p_household_id: string; p_name: string };
+        Returns: undefined;
+      };
       delete_household: {
         Args: { p_household_id: string };
         Returns: undefined;
