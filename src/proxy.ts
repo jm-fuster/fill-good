@@ -27,9 +27,30 @@ const authorizedParties = process.env.CLERK_AUTHORIZED_PARTIES?.split(",")
 
 export default clerkMiddleware(
   async (auth, request) => {
-    if (!isPublicRoute(request)) {
-      await auth.protect();
+    if (isPublicRoute(request)) return;
+
+    // Las peticiones RSC necesitan `unauthenticatedUrl` explícito. `auth.protect()`
+    // solo redirige por su cuenta cuando reconoce la petición como "de página":
+    // `Sec-Fetch-Dest: document`, `Accept: text/html` o cabecera `Next-Url` (ver
+    // `isPageRequest` en @clerk/nextjs/server/protect). Las RSC que NO llevan
+    // `Next-Url` —los prefetch de <Link> y, sobre todo, el `router.refresh()` que
+    // Clerk dispara al cerrar sesión— caen en su rama `notFound()` y reciben 404.
+    // Con un 404 el router de Next no puede completar la transición, y como la
+    // promesa del push de Clerk solo se resuelve al commitear, `signOut()` se
+    // queda colgado para siempre: el botón se queda en "Cerrando sesión…" y la
+    // sesión no se cierra hasta recargar (la cookie sí se borró en el servidor).
+    //
+    // Solo se pasa para RSC: en las navegaciones de documento se deja el
+    // comportamiento propio de Clerk (`redirectToSignIn()`), que ya respeta
+    // NEXT_PUBLIC_CLERK_SIGN_IN_URL y el handshake de las instancias dev.
+    if (request.headers.get("RSC") === "1") {
+      const signInUrl = new URL("/sign-in", request.url);
+      signInUrl.searchParams.set("redirect_url", request.url);
+      await auth.protect({ unauthenticatedUrl: signInUrl.toString() });
+      return;
     }
+
+    await auth.protect();
   },
   authorizedParties?.length ? { authorizedParties } : undefined,
 );
