@@ -1,3 +1,4 @@
 {
+  "regions": ["fra1"],
   "crons": [{ "path": "/api/push/caducidades", "schedule": "30 7 * * *" }]
 }

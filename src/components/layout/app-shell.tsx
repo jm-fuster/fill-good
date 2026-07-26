@@ -24,24 +24,27 @@ import { getActiveListBadge } from "@/features/shopping-list/queries";
  */
 export async function AppShell({ children }: { children: React.ReactNode }) {
   // Estado inicial del sidebar leído de la cookie que escribe SidebarProvider.
-  // Badge de la navbar: nº de pendientes de la lista activa (solo lectura).
   // Hogares del usuario para el selector del header (deduplicado por cache()
   // con la llamada del layout: no añade consultas).
-  const [cookieStore, badge, households, household] = await Promise.all([
+  const [cookieStore, households, household] = await Promise.all([
     cookies(),
-    getActiveListBadge(),
     getUserHouseholds(),
     getCurrentHousehold(),
   ]);
+  // Badge de la navbar SIN await: la promesa cruza al cliente y cada badge la
+  // resuelve con use() dentro de Suspense, así el shell pinta sin esperar esta
+  // query (un salto menos a Supabase en el primer paint). Si falla, se degrada
+  // a "sin badge" en vez de tumbar la página.
+  const badge = getActiveListBadge().catch(() => ({
+    listId: null,
+    pendingCount: 0,
+  }));
   const defaultOpen = cookieStore.get("sidebar_state")?.value !== "false";
 
   return (
     <TooltipProvider>
       <SidebarProvider defaultOpen={defaultOpen}>
-        <NavListCountProvider
-          listId={badge.listId}
-          pendingCount={badge.pendingCount}
-        >
+        <NavListCountProvider badge={badge}>
           {/* Primer elemento focusable: salta la navegación e ir al contenido. */}
           <a
             href="#contenido"

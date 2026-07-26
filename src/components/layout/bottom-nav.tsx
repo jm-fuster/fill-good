@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
@@ -9,9 +10,18 @@ import { NavLinkIcon } from "@/components/layout/nav-link-icon";
 import { useNavListCount } from "@/components/layout/nav-list-count";
 import { useOptimisticNav } from "@/components/layout/use-optimistic-nav";
 
+/**
+ * Hoja que suspende hasta que llega el count del servidor. Aislada en su propio
+ * `<Suspense>` para que la nav pinte al instante y el badge entre después con
+ * su "pop" (NavCountBadge ya anima la aparición).
+ */
+function ListCountBadge() {
+  const count = useNavListCount();
+  return <NavCountBadge count={count} variant="floating" />;
+}
+
 export function BottomNav() {
   const { pathname, navPath, markPressed } = useOptimisticNav();
-  const listCount = useNavListCount();
 
   return (
     <nav
@@ -46,8 +56,6 @@ export function BottomNav() {
             );
           }
 
-          const badge = tab.href === "/lista" ? listCount : 0;
-
           return (
             <li key={tab.href}>
               <Link
@@ -63,7 +71,11 @@ export function BottomNav() {
               >
                 <span className="relative transition-transform duration-100 group-active:scale-90">
                   <NavLinkIcon icon={tab.icon} className="size-5" />
-                  <NavCountBadge count={badge} variant="floating" />
+                  {tab.href === "/lista" ? (
+                    <Suspense>
+                      <ListCountBadge />
+                    </Suspense>
+                  ) : null}
                 </span>
                 {tab.label}
               </Link>

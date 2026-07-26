@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 
 import {
@@ -26,9 +27,27 @@ import { useOptimisticNav } from "@/components/layout/use-optimistic-nav";
  * móvil no está en el árbol de accesibilidad. Colapsable a modo icono
  * (Ctrl/Cmd+B) con el estado persistido en cookie por `SidebarProvider`.
  */
+/**
+ * Hoja que suspende hasta que llega el count del servidor, aislada en su propio
+ * `<Suspense>` para que el sidebar pinte sin esperar al badge.
+ */
+function ListCountBadge() {
+  const listCount = useNavListCount();
+  if (listCount <= 0) return null;
+  return (
+    // La key remonta el badge al cambiar el count: "pop" sutil que avisa del
+    // cambio sin mirar la lista.
+    <SidebarMenuBadge
+      key={listCount}
+      className="animate-in zoom-in-50 duration-200"
+    >
+      {listCount > 99 ? "99+" : listCount}
+    </SidebarMenuBadge>
+  );
+}
+
 export function AppSidebar() {
   const { pathname, navPath, markPressed } = useOptimisticNav();
-  const listCount = useNavListCount();
 
   return (
     <Sidebar collapsible="icon">
@@ -94,15 +113,10 @@ export function AppSidebar() {
                       </SidebarMenuButton>
                       {/* Contador de pendientes; el sidebar lo oculta en modo
                           icono con su propia clase group-data. */}
-                      {item.href === "/lista" && listCount > 0 ? (
-                        // La key remonta el badge al cambiar el count: "pop"
-                        // sutil que avisa del cambio sin mirar la lista.
-                        <SidebarMenuBadge
-                          key={listCount}
-                          className="animate-in zoom-in-50 duration-200"
-                        >
-                          {listCount > 99 ? "99+" : listCount}
-                        </SidebarMenuBadge>
+                      {item.href === "/lista" ? (
+                        <Suspense>
+                          <ListCountBadge />
+                        </Suspense>
                       ) : null}
                     </SidebarMenuItem>
                   );
