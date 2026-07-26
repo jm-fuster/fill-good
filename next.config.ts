@@ -34,6 +34,11 @@ const clerkFapiOrigin = (() => {
 // PROMOCIÓNALA a enforcing cambiando la clave a "Content-Security-Policy".
 // 'unsafe-inline'/'unsafe-eval' son necesarios hoy (next-themes, Clerk, React dev);
 // para endurecer del todo habría que migrar a nonces (proxy.ts + render dinámico).
+// Único interruptor para promocionar la CSP a enforcing: cambia a `true` y pasan
+// a la vez la cabecera (a `Content-Security-Policy`) y las directivas que solo
+// tienen efecto enforcing.
+const cspEnforce = false;
+
 const csp = [
   `default-src 'self'`,
   `base-uri 'self'`,
@@ -45,9 +50,16 @@ const csp = [
   `img-src 'self' blob: data: https://img.clerk.com`,
   `font-src 'self'`,
   `worker-src 'self' blob:`,
-  `connect-src 'self' ${clerkFapiOrigin} https://*.clerk.accounts.dev https://clerk-telemetry.com ${supabaseOrigin} ${supabaseWss}`.trim(),
+  // img.clerk.com va también en connect-src, no solo en img-src: Clerk se trae
+  // los avatares por `fetch`, no con una etiqueta <img>, así que img-src no
+  // cubre esa petición.
+  `connect-src 'self' ${clerkFapiOrigin} https://*.clerk.accounts.dev https://clerk-telemetry.com https://img.clerk.com ${supabaseOrigin} ${supabaseWss}`.trim(),
   `frame-src 'self' https://challenges.cloudflare.com`,
-  `upgrade-insecure-requests`,
+  // upgrade-insecure-requests se IGNORA en una política report-only, y el
+  // navegador lo avisa con un error por cada directiva de la página: seis
+  // entradas rojas en consola por carga, puro ruido que tapa errores reales.
+  // Vuelve solo cuando la política pase a enforcing, que es cuando hace algo.
+  ...(cspEnforce ? [`upgrade-insecure-requests`] : []),
 ]
   .join("; ")
   .replace(/\s{2,}/g, " ");
@@ -70,8 +82,13 @@ const securityHeaders = [
     value: "camera=(), microphone=(), geolocation=(), browsing-topics=()",
   },
   { key: "X-DNS-Prefetch-Control", value: "on" },
-  // Report-Only: NO bloquea; solo reporta. Ver comentario arriba para enforcing.
-  { key: "Content-Security-Policy-Report-Only", value: csp },
+  // Report-Only mientras `cspEnforce` sea false: NO bloquea, solo reporta.
+  {
+    key: cspEnforce
+      ? "Content-Security-Policy"
+      : "Content-Security-Policy-Report-Only",
+    value: csp,
+  },
 ];
 
 // El service worker (Serwist) se construye en un paso aparte compatible con
