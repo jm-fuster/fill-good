@@ -22,7 +22,7 @@ export function PantryRow({
 }) {
   return (
     <div className="flex items-center gap-3 rounded-xl border bg-card p-3">
-      <ProductIcon name={name} size={28} className="shrink-0 text-foreground" />
+      <ProductIcon name={name} size={28} className="shrink-0" />
       <span className="min-w-0 flex-1 truncate text-sm font-medium">{name}</span>
       <Badge
         className={cn(
@@ -38,12 +38,18 @@ export function PantryRow({
   );
 }
 
-// datos de ejemplo (marca): 4 filas que enseñan el semáforo de caducidad.
+// Datos de ejemplo (marca): 4 filas que enseñan el semáforo de caducidad.
+// Los productos se eligen para que sus iconos NO compartan color (blanco, rojo,
+// verde, amarillo): es la primera vez que se ven los iconos y lo que hay que
+// demostrar es que se distinguen de un vistazo. Antes había dos filas de lácteo
+// y las dos resolvían al mismo vaso de leche.
+// Tampoco repetir producto con EXPIRY_ROWS de `landing-bento.tsx`: las dos
+// muestras se ven en la misma página.
 const PANTRY_ROWS: { name: string; label: string; status: PantryStatus }[] = [
   { name: "Leche entera", label: "En stock", status: "ok" },
-  { name: "Yogur natural", label: "Caduca en 2 días", status: "soon" },
+  { name: "Fresas", label: "Caduca en 2 días", status: "soon" },
   { name: "Espinacas frescas", label: "Caducado", status: "expired" },
-  { name: "Huevos", label: "En stock", status: "ok" },
+  { name: "Plátanos", label: "En stock", status: "ok" },
 ];
 
 /**

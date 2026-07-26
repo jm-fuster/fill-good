@@ -14,7 +14,7 @@ import { DEFAULT_ICON_SLUG, isKnownIcon } from "./catalog";
 
 /** Emojis de categoría (semilla y comunes) mapeados a su icono equivalente. */
 const EMOJI_TO_SLUG: Record<string, string> = {
-  "🍎": "manzana", "🍏": "manzana", "🍌": "platano", "🥦": "brocoli",
+  "🍎": "manzana", "🍏": "manzana-verde", "🍌": "platano", "🥦": "brocoli",
   "🥕": "zanahoria", "🍅": "tomate", "🥩": "carne", "🍗": "pollo",
   "🐟": "pescado", "🦐": "gamba", "🥛": "leche", "🧀": "queso", "🥚": "huevo",
   "🍞": "pan", "🥫": "conserva", "🧊": "hielo", "🥤": "refresco",
@@ -31,7 +31,13 @@ const EMOJI_TO_SLUG: Record<string, string> = {
  */
 const KEYWORD_TO_SLUG: Record<string, string> = {
   // Fruta
-  manzana: "manzana", platano: "platano", banana: "platano", naranja: "naranja",
+  manzana: "manzana",
+  // Ojo: gana el keyword MÁS LARGO, así que estas reglas deben superar en
+  // longitud a "manzana" (7) para que la verde no caiga en la roja. Por eso
+  // "granny smith" y no "granny", y el plural va aparte del singular.
+  "manzana verde": "manzana-verde", "manzanas verdes": "manzana-verde",
+  "granny smith": "manzana-verde", "manzana golden": "manzana-verde",
+  platano: "platano", banana: "platano", naranja: "naranja",
   mandarina: "naranja", clementina: "naranja", limon: "limon", lima: "lima",
   fresa: "fresa", freson: "fresa", uva: "uvas", sandia: "sandia", pina: "pina",
   pera: "pera", melocoton: "melocoton", nectarina: "melocoton", cereza: "cerezas",
@@ -43,7 +49,11 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   patata: "patata", "patatas fritas": "patatas-fritas", cebolla: "cebolla",
   ajo: "ajo", puerro: "puerro", pimiento: "pimiento", guindilla: "guindilla",
   chile: "guindilla", brocoli: "brocoli", coliflor: "brocoli", col: "col",
-  repollo: "col", lombarda: "col", alcachofa: "alcachofa", maiz: "maiz",
+  repollo: "col", lombarda: "col", maiz: "maiz",
+  // Sin icono propio: no existe alcachofa a color en ninguna librería abierta y
+  // dibujarla salía peor que no tenerla. Cae en la hoja verde, que es lo más
+  // cercano de verdad. Si algún día aparece una, basta añadirla al registro.
+  alcachofa: "lechuga",
   guisante: "guisantes", "judias verdes": "guisantes", pepino: "pepino",
   calabacin: "calabaza", calabaza: "calabaza", lechuga: "lechuga",
   espinaca: "lechuga", acelga: "lechuga", esparrago: "esparragos",
@@ -128,7 +138,8 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   peluche: "peluche", muneco: "peluche",
   // Otros / hogar
   bombilla: "bombilla", pila: "pila", bateria: "pila", hielo: "hielo",
-  vela: "vela", velas: "vela", llave: "llave", llaves: "llave",
+  vela: "vela", velas: "vela", cerilla: "cerilla", fosforo: "cerilla",
+  mechero: "cerilla", llave: "llave", llaves: "llave",
   martillo: "martillo", herramienta: "martillo", clavo: "martillo",
   tornillo: "martillo", destornillador: "martillo", bricolaje: "martillo",
 };

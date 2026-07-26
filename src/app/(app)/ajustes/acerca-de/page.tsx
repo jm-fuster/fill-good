@@ -43,9 +43,7 @@ export default function AcercaDePage() {
         <Card>
           <CardHeader>
             <CardTitle>Créditos</CardTitle>
-            <CardDescription>
-              Iconos de producto de estos proyectos.
-            </CardDescription>
+            <CardDescription>De dónde salen los iconos de producto.</CardDescription>
           </CardHeader>
           <CardContent className="text-sm text-muted-foreground">
             <ul className="flex flex-col gap-1">
@@ -58,27 +56,12 @@ export default function AcercaDePage() {
                 >
                   Fluent Emoji
                 </a>{" "}
-                de Microsoft (licencia MIT).
+                de Microsoft, variante Flat (licencia MIT).
               </li>
               <li>
-                <a
-                  href="https://game-icons.net"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-4 hover:text-foreground"
-                >
-                  Game-icons.net
-                </a>{" "}
-                y sus autores (licencia{" "}
-                <a
-                  href="https://creativecommons.org/licenses/by/3.0/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-4 hover:text-foreground"
-                >
-                  CC BY 3.0
-                </a>
-                ).
+                Seis iconos (calabaza, col, puerro, espárragos, remolacha y
+                cerillas) están dibujados para Fill Good, porque no existen a
+                color en ninguna librería abierta.
               </li>
             </ul>
           </CardContent>

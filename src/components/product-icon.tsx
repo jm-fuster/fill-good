@@ -7,14 +7,16 @@ import {
 } from "@/lib/product-icons/guess";
 
 /**
- * Icono de producto (L16). Renderiza el SVG monocromo del registro (Fluent Emoji
- * High Contrast, MIT) teñido con `currentColor`, o el emoji de la categoría como
- * reserva si el hogar usa uno personalizado. Sin interactividad ni estado: sirve
- * tanto en Server como en Client Components.
+ * Icono de producto (L16). Renderiza el SVG a color del registro (Fluent Emoji Flat,
+ * MIT), o el emoji de la categoría como reserva si el hogar usa uno personalizado.
+ * Sin interactividad ni estado: sirve tanto en Server como en Client Components.
  *
  * Uso en celdas de producto: `<ProductIcon slug={productIcon} name={productName}
  * categoryIcon={categoryIcon} />`. En cabeceras de categoría basta `categoryIcon`.
- * El color lo hereda del contenedor (`text-*`); el tamaño se controla con `size`.
+ *
+ * El color es INTRÍNSECO: cada SVG trae sus rellenos, así que pasar `text-*` en
+ * `className` no tiñe nada (solo afectaría al emoji de reserva). Para atenuar un
+ * icono usa `opacity-*`, que sí funciona en ambos casos. El tamaño va en `size`.
  */
 export function ProductIcon({
   slug,

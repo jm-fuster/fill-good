@@ -321,7 +321,7 @@ export function EditItemDrawer({
                 type="button"
                 onClick={() => setPickerOpen(true)}
                 aria-label="Cambiar icono del producto"
-                className="relative flex size-11 shrink-0 items-center justify-center rounded-lg border bg-muted text-foreground transition-colors hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                className="relative flex size-11 shrink-0 items-center justify-center rounded-lg border bg-muted transition-colors hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               >
                 <ProductIcon
                   slug={icon}

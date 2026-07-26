@@ -107,7 +107,7 @@ export function InventoryItemCard({
               name={entry.productName}
               categoryIcon={entry.categoryIcon}
               size={32}
-              className={cn("shrink-0 text-foreground", emptied && "opacity-50")}
+              className={cn("shrink-0", emptied && "opacity-50")}
             />
             <span className="min-w-0 flex-1">
               <span

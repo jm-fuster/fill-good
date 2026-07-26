@@ -104,7 +104,7 @@ function SortableRows({
             </span>
             <span
               aria-hidden
-              className="flex w-6 shrink-0 justify-center text-muted-foreground"
+              className="flex w-6 shrink-0 justify-center"
             >
               <ProductIcon
                 slug={item.productIcon}

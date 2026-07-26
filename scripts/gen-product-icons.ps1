@@ -1,24 +1,48 @@
 # Genera el registro de iconos de producto.
 #
-# Fuentes:
-#   - Fluent Emoji High Contrast (MIT) por defecto.
-#   - Game Icons (CC-BY 3.0) para la cola larga de fruta/verdura que no existe en
-#     el vocabulario emoji (marcadas con p='game-icons'). La atribucion CC-BY se
-#     muestra en la app (pagina de Ajustes) — es obligatoria por licencia.
+# Fuentes (TODAS a color plano y con la misma gramatica visual):
+#   - Fluent Emoji Flat (MIT) por defecto, via la API de Iconify.
+#   - Dibujos propios en assets/product-icons/*.svg (p='local') para los 7 conceptos
+#     que no existen a color en NINGUN set abierto: se revisaron las 41 colecciones
+#     de Iconify con palette=true. Son originales de esta app, sin licencia de
+#     terceros que atribuir.
+#   - Donantes recoloreados con el campo 's': una ciruela es el melocoton de Fluent
+#     en morado y una frambuesa es su racimo de arandanos en rojo. Reutilizar el
+#     artwork de Microsoft encaja mejor que redibujarlo, y son frutas que en la vida
+#     real comparten forma con su donante.
 #
-# Cada concepto se descarga, se sanea (quita defs/clipPath no-ops) y se guarda
-# { vb (viewBox), body } bajo una clave estable propia. El viewBox se conserva por
-# icono porque Fluent usa 0 0 32 32 y Game Icons 0 0 512 512. ASCII-only por PS 5.1.
+# Antes esta cola venia de Game Icons (CC-BY 3.0), pero eran siluetas de UN solo
+# color y desentonaban entre ilustraciones de 2-4 colores. Ya no se usa ningun SVG
+# de Game Icons: por eso su atribucion CC-BY salio de Ajustes > Acerca de. Si
+# vuelves a meter uno, la atribucion es OBLIGATORIA y hay que reponerla.
 #
-# NOTA: 'green-apple' se excluye a proposito. En este set solo se diferencia de
-# 'red-apple' por el color (rojo/verde); en monocromo ambas quedan casi
-# indistinguibles a tamano de icono. No lo reintroduzcas sin comprobar que se ve distinto.
+# Cada concepto se sanea y se guarda { vb (viewBox), body } bajo una clave estable
+# propia. Hoy todas las fuentes son de 32x32, pero el viewBox se sigue guardando por
+# icono para que meter un set con otro lienzo no obligue a migrar nada.
+# ASCII-only por PS 5.1.
+#
+# COLOR: todos los SVG traen sus propios rellenos, asi que NO se tinen con
+# currentColor. Un icono que llegue en monocromo se rechaza (sale en MISS): teniria
+# con el color del texto y cantaria al lado del resto.
+#
+# REGLA al elegir un color a mano (en los dibujos propios o en un swap): tiene que
+# verse en los DOS temas, o sea superar 2.2:1 contra el fondo claro (#faf9f5) y
+# contra el oscuro (#161814). Los verdes y amarillos claros de Fluent (#86D72F,
+# #C3EF3C, #00D26A) lucen en oscuro y se pierden en claro (1.3-1.9:1): no valen como
+# color UNICO de una figura, solo acompanados de un tono oscuro que la defina.
+# Ya paso con 'huellas', que venia de Fluent en #321B41 y en oscuro daba 1.17:1
+# (invisible): lleva swap a #8D65C5.
+#
+# NOTA: no hay fallback de busqueda difusa a proposito. Si un nombre desaparece del
+# set, el concepto sale en MISS; antes se sustituia en silencio por el primer
+# resultado de buscar la clave en espanol, que es como colar un icono al azar.
 
 $ErrorActionPreference = "Stop"
-$default = "fluent-emoji-high-contrast"
+$default = "fluent-emoji-flat"
 
 $concepts = @(
-  @{k='manzana'; f='red-apple'}, @{k='platano'; f='banana'},
+  @{k='manzana'; f='red-apple'}, @{k='manzana-verde'; f='green-apple'},
+  @{k='platano'; f='banana'},
   @{k='naranja'; f='tangerine'}, @{k='limon'; f='lemon'}, @{k='fresa'; f='strawberry'},
   @{k='uvas'; f='grapes'}, @{k='sandia'; f='watermelon'}, @{k='pina'; f='pineapple'},
   @{k='pera'; f='pear'}, @{k='melocoton'; f='peach'}, @{k='cerezas'; f='cherries'},
@@ -56,10 +80,11 @@ $concepts = @(
   @{k='wc'; f='toilet'}, @{k='burbujas'; f='bubbles'}, @{k='cesta'; f='basket'},
   @{k='cepillo-dientes'; f='toothbrush'}, @{k='diente'; f='tooth'},
   @{k='biberon'; f='baby-bottle'},
-  @{k='huellas'; f='paw-prints'}, @{k='hueso'; f='bone'}, @{k='perro'; f='dog-face'},
+  @{k='huellas'; f='paw-prints'; s=@{'#321B41'='#8D65C5'}},
+  @{k='hueso'; f='bone'}, @{k='perro'; f='dog-face'},
   @{k='gato'; f='cat-face'},
   @{k='paquete'; f='package'}, @{k='bombilla'; f='light-bulb'}, @{k='pila'; f='battery'},
-  @{k='cerilla'; f='matchstick'}, @{k='aguja'; f='sewing-needle'}, @{k='regalo'; f='wrapped-gift'},
+  @{k='aguja'; f='sewing-needle'}, @{k='regalo'; f='wrapped-gift'},
   @{k='pizza'; f='pizza'}, @{k='hamburguesa'; f='hamburger'}, @{k='patatas-fritas'; f='french-fries'},
   @{k='taco'; f='taco'}, @{k='sushi'; f='sushi'}, @{k='sopa'; f='pot-of-food'},
   @{k='ensalada'; f='green-salad'}, @{k='sandwich'; f='sandwich'}, @{k='burrito'; f='burrito'},
@@ -75,20 +100,53 @@ $concepts = @(
   @{k='llave'; f='key'}, @{k='martillo'; f='hammer'}, @{k='peluche'; f='teddy-bear'},
   # Ampliacion L16c - fruta/verdura: lo ultimo que queda en Fluent
   @{k='lima'; f='lime'}, @{k='guisantes'; f='pea-pod'},
-  # Ampliacion L16c - cola larga de fruta/verdura desde Game Icons (CC-BY 3.0)
-  @{k='ciruela'; f='plum'; p='game-icons'}, @{k='calabaza'; f='pumpkin'; p='game-icons'},
-  @{k='esparragos'; f='asparagus'; p='game-icons'}, @{k='col'; f='cabbage'; p='game-icons'},
-  @{k='remolacha'; f='beet'; p='game-icons'}, @{k='frambuesa'; f='raspberry'; p='game-icons'},
-  @{k='alcachofa'; f='artichoke'; p='game-icons'}, @{k='puerro'; f='leek'; p='game-icons'}
+  # Donantes de Fluent recoloreados: misma forma real, otra paleta.
+  @{k='ciruela'; f='peach'; s=@{'#FF822D'='#8D65C5'; '#FF6723'='#6B438B'}},
+  @{k='frambuesa'; f='blueberries'; s=@{
+    '#6B438B'='#CA0B4A'; '#8D65C5'='#F8312F'; '#AA7DE5'='#FF6DC6';
+    '#BCA4EB'='#FF6DC6'; '#533566'='#990838'}},
+  # Dibujos propios (assets/product-icons/), en la gramatica de Fluent: pocas formas
+  # grandes, rellenos planos, sin trazos ni degradados, y un tono oscuro que defina
+  # la figura sobre fondo claro.
+  @{k='calabaza'; f='calabaza'; p='local'},
+  @{k='esparragos'; f='esparragos'; p='local'},
+  @{k='col'; f='col'; p='local'},
+  @{k='remolacha'; f='remolacha'; p='local'},
+  @{k='puerro'; f='puerro'; p='local'},
+  # 'matchstick' no existe en Fluent Flat (ni en High Contrast). La caja de cerillas
+  # se reconoce mejor como producto de compra que una cerilla suelta.
+  @{k='cerilla'; f='cerilla'; p='local'}
 )
 
-function Sanitize-Svg([string]$svg) {
+# Extrae el interior del <svg> y lo deja en UNA linea. La minificacion no es
+# cosmetica: cada entrada del registro es un string TS entre comillas simples, y esos
+# no admiten saltos de linea. Los SVG dibujados a mano vienen indentados, asi que sin
+# esto el fichero generado no compila.
+function Get-SvgBody([string]$svg) {
   $m = [regex]::Match($svg, '(?s)<svg[^>]*>(.*)</svg>')
   if (-not $m.Success) { return $null }
   $body = $m.Groups[1].Value
-  $body = [regex]::Replace($body, '(?s)<defs>.*?</defs>', '')
-  $body = [regex]::Replace($body, '\s*clip-path="url\(#[^)]*\)"', '')
+  $body = [regex]::Replace($body, '>\s+<', '><')
+  $body = [regex]::Replace($body, '\s+', ' ')
   return $body.Trim()
+}
+
+# Prefija los ids internos con la clave del icono. Los <defs> se CONSERVAN: hay
+# iconos (p.ej. mantequilla) que definen una forma en defs y la reutilizan con
+# <use href="#id">; borrar los defs dejaba la referencia colgando y se perdia parte
+# del dibujo. Al prefijar evitamos que dos iconos distintos choquen de ids cuando
+# varios SVG conviven en la misma pagina.
+function Rename-SvgIds([string]$body, [string]$key) {
+  $prefix = ($key -replace '[^a-z0-9]', '') + '-'
+  $ids = @([regex]::Matches($body, 'id="([^"]+)"') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+  foreach ($id in $ids) {
+    $esc = [regex]::Escape($id)
+    $new = $prefix + $id
+    $body = [regex]::Replace($body, 'id="' + $esc + '"', 'id="' + $new + '"')
+    $body = [regex]::Replace($body, 'href="#' + $esc + '"', 'href="#' + $new + '"')
+    $body = [regex]::Replace($body, 'url\(#' + $esc + '\)', 'url(#' + $new + ')')
+  }
+  return $body
 }
 
 function Get-ViewBox([string]$svg) {
@@ -99,30 +157,48 @@ function Get-ViewBox([string]$svg) {
 $reg = [ordered]@{}
 $ok = @(); $miss = @()
 
+$localDir = Join-Path $PSScriptRoot "..\assets\product-icons"
+
 foreach ($c in $concepts) {
   $p = if ($c.p) { $c.p } else { $default }
-  $name = $c.f
   $svg = $null
-  try { $svg = (New-Object System.Net.WebClient).DownloadString("https://api.iconify.design/$p/$name.svg") } catch { $svg = $null }
-  if (-not $svg -or $svg -notmatch '<svg') {
-    try {
-      $r = Invoke-RestMethod "https://api.iconify.design/search?query=$($c.k)&prefix=$p&limit=1"
-      if ($r.icons.Count -gt 0) {
-        $name = $r.icons[0].Split(':')[1]
-        $svg = (New-Object System.Net.WebClient).DownloadString("https://api.iconify.design/$p/$name.svg")
-      }
-    } catch { $svg = $null }
+  if ($p -eq 'local') {
+    $path = Join-Path $localDir ($c.f + ".svg")
+    if (Test-Path $path) { $svg = [System.IO.File]::ReadAllText($path) }
+  } else {
+    try { $svg = (New-Object System.Net.WebClient).DownloadString("https://api.iconify.design/$p/$($c.f).svg") } catch { $svg = $null }
   }
-  if (-not $svg -or $svg -notmatch '<svg') { $miss += $c.k; continue }
-  $body = Sanitize-Svg $svg
-  if (-not $body) { $miss += $c.k; continue }
+  if (-not $svg -or $svg -notmatch '<svg') { $miss += ("{0} ({1}:{2})" -f $c.k, $p, $c.f); continue }
+
+  $body = Get-SvgBody $svg
+  if (-not $body) { $miss += ("{0} (svg ilegible)" -f $c.k); continue }
+  $body = Rename-SvgIds $body $c.k
+
+  if ($c.s) {
+    # Recoloreado puntual. Si el hex original ya no esta, el set ha cambiado bajo
+    # nuestros pies y el arreglo de contraste ya no se aplica: hay que revisarlo.
+    foreach ($from in $c.s.Keys) {
+      if ($body -notmatch [regex]::Escape($from)) {
+        $miss += ("{0} (swap obsoleto: ya no usa {1})" -f $c.k, $from); $body = $null; break
+      }
+      $body = $body.Replace($from, $c.s[$from])
+    }
+    if (-not $body) { continue }
+  }
+
+  # Todo icono debe traer color propio: si depende del color del texto, se cuela una
+  # silueta monocroma que desentona con el resto. Se rechaza antes de entrar.
+  if ($body -match 'currentColor') {
+    $miss += ("{0} (monocromo: currentColor no vale en un set a color)" -f $c.k); continue
+  }
+
   $reg[$c.k] = @{ vb = (Get-ViewBox $svg); body = $body }
-  $ok += ("{0} -> {1}:{2}" -f $c.k, $p, $name)
+  $ok += ("{0} -> {1}:{2}" -f $c.k, $p, $c.f)
 }
 
 $sb = [System.Text.StringBuilder]::new()
-[void]$sb.AppendLine("// GENERADO - no editar a mano. Iconos monocromos (fill currentColor).")
-[void]$sb.AppendLine("// Fuentes: Fluent Emoji High Contrast (MIT) y Game Icons (CC-BY 3.0, atribucion en Ajustes).")
+[void]$sb.AppendLine("// GENERADO - no editar a mano. Iconos a color (cada SVG trae sus rellenos).")
+[void]$sb.AppendLine("// Fuentes: Fluent Emoji Flat (MIT) y Game Icons (CC-BY 3.0, atribucion en Ajustes).")
 [void]$sb.AppendLine("// Cada entrada guarda su viewBox (vb) porque los sets no comparten lienzo.")
 [void]$sb.AppendLine("// Regenerar con scripts/gen-product-icons.ps1.")
 [void]$sb.AppendLine("")

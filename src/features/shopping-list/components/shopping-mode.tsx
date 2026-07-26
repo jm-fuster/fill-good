@@ -583,7 +583,7 @@ function ShoppingModeRowItem({
           name={item.name}
           categoryIcon={item.categoryIcon}
           size={22}
-          className={cn("text-muted-foreground", item.isChecked && "opacity-50")}
+          className={cn(item.isChecked && "opacity-50")}
         />
         <span
           className={cn(

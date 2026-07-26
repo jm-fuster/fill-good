@@ -29,16 +29,27 @@ import { ProductIcon } from "@/components/product-icon";
 
 export const metadata: Metadata = { title: "Guía de estilo" };
 
-/** Muestra representativa de iconos de producto (L16) con su tratamiento. */
+/**
+ * Muestra representativa de iconos de producto (L16). La ficha va en `bg-muted`
+ * a propósito: el color lo pone el icono, así que un tinte por categoría detrás
+ * competiría con él. `manzana` y `manzana-verde` van juntas porque son el caso que
+ * justifica el set a color: en monocromo eran el mismo dibujo. `ciruela` es un
+ * donante recoloreado (el melocotón de Fluent en morado) y `col` un dibujo propio:
+ * las dos cierran la fila para comprobar que no desentonan con el resto.
+ */
 const productIconSamples = [
-  { slug: "manzana", tint: "bg-success/15 text-success" },
-  { slug: "pescado", tint: "bg-chart-2/15 text-chart-2" },
-  { slug: "leche", tint: "bg-chart-1/15 text-chart-1" },
-  { slug: "pan", tint: "bg-warning/15 text-warning" },
-  { slug: "conserva", tint: "bg-chart-4/15 text-chart-4" },
-  { slug: "bote-spray", tint: "bg-chart-3/15 text-chart-3" },
-  { slug: "cafe", tint: "bg-muted text-muted-foreground" },
-  { slug: "helado", tint: "bg-chart-5/15 text-chart-5" },
+  "manzana",
+  "manzana-verde",
+  "tomate",
+  "pescado",
+  "leche",
+  "pan",
+  "berenjena",
+  "bote-spray",
+  "cafe",
+  "helado",
+  "ciruela",
+  "col",
 ];
 
 const colorTokens = [
@@ -264,24 +275,25 @@ export default function StyleguidePage() {
 
       <Section
         title="Iconos de producto (L16)"
-        description="Iconos monocromos (Fluent Emoji High Contrast, MIT) teñidos con currentColor — estilo propio, no emojis del sistema. Se resuelven por capas: icono manual → adivinado del nombre → icono de categoría → genérico. Componente ProductIcon; se eligen a mano con ProductIconPicker."
+        description="Iconos a color plano (Fluent Emoji Flat, MIT) — estilo propio, no emojis del sistema. Se resuelven por capas: icono manual → adivinado del nombre → icono de categoría → genérico. Componente ProductIcon; se eligen a mano con ProductIconPicker."
       >
         <div className="flex flex-wrap gap-3">
-          {productIconSamples.map((s) => (
+          {productIconSamples.map((slug) => (
             <div
-              key={s.slug}
-              className={`flex size-12 items-center justify-center rounded-xl ${s.tint}`}
+              key={slug}
+              className="flex size-12 items-center justify-center rounded-xl bg-muted"
             >
-              <ProductIcon slug={s.slug} size={26} />
+              <ProductIcon slug={slug} size={26} />
             </div>
           ))}
         </div>
         <p className="mt-3 text-sm text-muted-foreground">
-          El &ldquo;estilo propio&rdquo; lo da el tratamiento (ficha{" "}
-          <code>rounded-xl</code> con tinte por categoría), no el set: al ser
-          monocromos, heredan cualquier token de color y funcionan en claro y
-          oscuro. Guardamos un slug, no un componente: cambiar de set el día de
-          mañana es sustituir SVGs.
+          El color es <strong>intrínseco</strong>: cada SVG trae sus rellenos, así
+          que <code>text-*</code> no tiñe estos iconos — para atenuar uno se usa{" "}
+          <code>opacity-*</code>. La ficha va en <code>bg-muted</code> y no en un
+          tinte por categoría, que competiría con el color del propio icono.
+          Guardamos un slug, no un componente: cambiar de set el día de mañana es
+          sustituir SVGs.
         </p>
       </Section>
 

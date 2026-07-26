@@ -561,7 +561,7 @@ function ListRow({
         {showIcon ? (
           <span
             aria-hidden
-            className="flex w-5 shrink-0 justify-center text-muted-foreground"
+            className="flex w-5 shrink-0 justify-center"
           >
             <ProductIcon
               slug={item.productIcon}

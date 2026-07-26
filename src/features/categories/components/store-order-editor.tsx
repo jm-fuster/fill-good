@@ -81,7 +81,7 @@ export function StoreOrderEditor({
 
             <span
               aria-hidden
-              className="flex w-6 shrink-0 justify-center text-foreground"
+              className="flex w-6 shrink-0 justify-center"
             >
               <ProductIcon categoryIcon={cat.icon} size={20} />
             </span>

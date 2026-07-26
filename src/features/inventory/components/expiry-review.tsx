@@ -74,7 +74,7 @@ export function ExpiryReview({ entries }: { entries: ReviewEntry[] }) {
               <div className="flex items-center gap-3">
                 <span
                   aria-hidden
-                  className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted"
                 >
                   <ProductIcon
                     slug={entry.productIcon}

@@ -6,8 +6,10 @@ import { ICON_BODIES } from "./registry";
  * para el buscador. El registro (`ICON_BODIES`) es la fuente de verdad de qué
  * iconos existen; este archivo solo los ordena y nombra para la UI.
  *
- * Estilo propio: iconos monocromos de Fluent Emoji High Contrast (MIT) teñidos con
- * los tokens del tema, no emojis del sistema.
+ * Estilo propio: iconos a color plano de Fluent Emoji Flat (MIT) más seis dibujados
+ * para la app en la misma gramática visual. Cada SVG trae sus propios rellenos, así
+ * que el color no depende del tema: es lo que permite distinguir de un vistazo un
+ * tomate de una manzana.
  */
 
 /** Icono genérico de reserva cuando no hay slug ni categoría reconocibles. */
@@ -19,7 +21,7 @@ export const ICON_SECTIONS: IconSection[] = [
   {
     title: "Fruta",
     slugs: [
-      "manzana", "platano", "naranja", "limon", "lima", "fresa", "frambuesa",
+      "manzana", "manzana-verde", "platano", "naranja", "limon", "lima", "fresa", "frambuesa",
       "uvas", "sandia", "pina", "pera", "melocoton", "ciruela", "cerezas",
       "melon", "kiwi", "mango", "coco", "arandanos", "aguacate",
     ],
@@ -28,7 +30,7 @@ export const ICON_SECTIONS: IconSection[] = [
     title: "Verdura",
     slugs: [
       "zanahoria", "tomate", "patata", "cebolla", "ajo", "puerro", "pimiento",
-      "guindilla", "brocoli", "col", "alcachofa", "maiz", "guisantes",
+      "guindilla", "brocoli", "col", "maiz", "guisantes",
       "pepino", "calabaza", "lechuga", "esparragos", "berenjena", "remolacha",
       "champinon", "aceituna", "jengibre",
     ],
@@ -96,7 +98,7 @@ export const ICON_SECTIONS: IconSection[] = [
   {
     title: "Otros",
     slugs: [
-      "hielo", "vela", "llave", "martillo", "carrito", "paquete",
+      "hielo", "vela", "cerilla", "llave", "martillo", "carrito", "paquete",
       "bombilla", "pila", "aguja", "regalo",
     ],
   },
@@ -104,7 +106,7 @@ export const ICON_SECTIONS: IconSection[] = [
 
 /** Etiqueta legible de cada slug (para aria-label y tooltip del selector). */
 export const ICON_LABELS: Record<string, string> = {
-  manzana: "Manzana", platano: "Plátano",
+  manzana: "Manzana", "manzana-verde": "Manzana verde", platano: "Plátano",
   naranja: "Naranja", limon: "Limón", fresa: "Fresa", uvas: "Uvas",
   sandia: "Sandía", pina: "Piña", pera: "Pera", melocoton: "Melocotón",
   cerezas: "Cerezas", melon: "Melón", kiwi: "Kiwi", mango: "Mango",
@@ -148,15 +150,16 @@ export const ICON_LABELS: Record<string, string> = {
   maquinilla: "Maquinilla", tijeras: "Tijeras", pintalabios: "Cosmética",
   pastilla: "Medicamento", tirita: "Tirita", jeringa: "Jeringa",
   termometro: "Termómetro", peluche: "Juguete", vela: "Vela", llave: "Llave",
-  martillo: "Herramientas", carrito: "Carrito",
+  martillo: "Herramientas", carrito: "Carrito", cerilla: "Cerillas",
   // Ampliación L16c (fruta/verdura)
   lima: "Lima", frambuesa: "Frambuesa", ciruela: "Ciruela", guisantes: "Guisantes",
-  puerro: "Puerro", col: "Col", alcachofa: "Alcachofa", calabaza: "Calabaza",
+  puerro: "Puerro", col: "Col", calabaza: "Calabaza",
   esparragos: "Espárragos", remolacha: "Remolacha",
 };
 
 /** Sinónimos de búsqueda por slug (además de la etiqueta). Normalizados aparte. */
 export const ICON_KEYWORDS: Record<string, string> = {
+  "manzana-verde": "manzana verde granny smith golden",
   platano: "banana", naranja: "mandarina clementina", uvas: "uva racimo",
   cacahuetes: "cacahuete nueces almendras frutos secos",
   alubias: "judias lentejas garbanzos legumbre",
@@ -204,6 +207,7 @@ export const ICON_KEYWORDS: Record<string, string> = {
   termometro: "fiebre temperatura",
   peluche: "juguete juguetes muneco osito",
   vela: "velas cera",
+  cerilla: "cerillas fosforos mechero encender fuego",
   llave: "llaves candado",
   martillo: "herramienta herramientas clavo tornillo bricolaje destornillador",
   carrito: "carro compra",
@@ -213,7 +217,6 @@ export const ICON_KEYWORDS: Record<string, string> = {
   guisantes: "guisante vaina judias verdes",
   puerro: "puerros",
   col: "repollo lombarda coles bruselas",
-  alcachofa: "alcachofas",
   calabaza: "calabacin",
   esparragos: "esparrago trigueros",
   remolacha: "remolachas",
