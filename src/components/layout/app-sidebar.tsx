@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 
 import {
   Sidebar,
@@ -16,7 +15,9 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { isNavItemActive, NAV_ITEMS } from "@/components/layout/nav-items";
+import { NavLinkIcon } from "@/components/layout/nav-link-icon";
 import { useNavListCount } from "@/components/layout/nav-list-count";
+import { useOptimisticNav } from "@/components/layout/use-optimistic-nav";
 
 /**
  * Navegación lateral de escritorio (≥ md). Reutiliza las mismas entradas que la
@@ -26,7 +27,7 @@ import { useNavListCount } from "@/components/layout/nav-list-count";
  * (Ctrl/Cmd+B) con el estado persistido en cookie por `SidebarProvider`.
  */
 export function AppSidebar() {
-  const pathname = usePathname();
+  const { pathname, navPath, markPressed } = useOptimisticNav();
   const listCount = useNavListCount();
 
   return (
@@ -66,8 +67,10 @@ export function AppSidebar() {
             <nav aria-label="Navegación principal">
               <SidebarMenu>
                 {NAV_ITEMS.map((item) => {
-                  const isActive = isNavItemActive(item, pathname);
-                  const Icon = item.icon;
+                  // `aria-current` sigue a la ruta real; el resaltado, a la
+                  // optimista (activa al instante al hacer clic).
+                  const isCurrent = isNavItemActive(item, pathname);
+                  const isHighlighted = isNavItemActive(item, navPath);
                   return (
                     <SidebarMenuItem key={item.href}>
                       {/*
@@ -77,21 +80,27 @@ export function AppSidebar() {
                       */}
                       <SidebarMenuButton
                         asChild
-                        isActive={isActive}
+                        isActive={isHighlighted}
                         tooltip={item.label}
                       >
                         <Link
                           href={item.href}
-                          aria-current={isActive ? "page" : undefined}
+                          onClick={() => markPressed(item.href)}
+                          aria-current={isCurrent ? "page" : undefined}
                         >
-                          <Icon aria-hidden />
+                          <NavLinkIcon icon={item.icon} />
                           <span>{item.label}</span>
                         </Link>
                       </SidebarMenuButton>
                       {/* Contador de pendientes; el sidebar lo oculta en modo
                           icono con su propia clase group-data. */}
                       {item.href === "/lista" && listCount > 0 ? (
-                        <SidebarMenuBadge>
+                        // La key remonta el badge al cambiar el count: "pop"
+                        // sutil que avisa del cambio sin mirar la lista.
+                        <SidebarMenuBadge
+                          key={listCount}
+                          className="animate-in zoom-in-50 duration-200"
+                        >
                           {listCount > 99 ? "99+" : listCount}
                         </SidebarMenuBadge>
                       ) : null}

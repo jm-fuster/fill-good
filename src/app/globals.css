@@ -61,6 +61,15 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* Pulso de "navegación en curso" (bottom nav / sidebar). El delay de 150ms
+     evita parpadeo: en navegaciones rápidas la animación no llega a verse. */
+  --animate-nav-pending: nav-pending 1s ease-in-out 0.15s infinite;
+
+  @keyframes nav-pending {
+    50% {
+      opacity: 0.35;
+    }
+  }
 }
 
 :root {
