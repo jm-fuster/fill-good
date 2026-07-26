@@ -7,9 +7,13 @@ import { PantryRow, type PantryStatus } from "./hero-preview";
 import { Reveal } from "./reveal";
 
 // datos de ejemplo: caducidades para la celda grande (mismo semáforo que la app).
+// Mismas dos reglas que PANTRY_ROWS en `hero-preview.tsx`: iconos de colores
+// distintos (naranja, rojo, azul) y ninguno pálido, porque la fila va sobre
+// `bg-card` (blanco puro en claro). Estaba "Queso curado", cuyo icono se queda en
+// 1,8:1 y desaparece contra la tarjeta.
 const EXPIRY_ROWS: { name: string; label: string; status: PantryStatus }[] = [
   { name: "Zanahorias", label: "En stock", status: "ok" },
-  { name: "Queso curado", label: "Caduca en 3 días", status: "soon" },
+  { name: "Filetes de ternera", label: "Caduca en 3 días", status: "soon" },
   { name: "Salmón fresco", label: "Caducado", status: "expired" },
 ];
 

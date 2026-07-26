@@ -2,7 +2,7 @@
 #
 # Fuentes (TODAS a color plano y con la misma gramatica visual):
 #   - Fluent Emoji Flat (MIT) por defecto, via la API de Iconify.
-#   - Dibujos propios en assets/product-icons/*.svg (p='local') para los 7 conceptos
+#   - Dibujos propios en assets/product-icons/*.svg (p='local') para los 6 conceptos
 #     que no existen a color en NINGUN set abierto: se revisaron las 41 colecciones
 #     de Iconify con palette=true. Son originales de esta app, sin licencia de
 #     terceros que atribuir.
@@ -26,12 +26,29 @@
 # con el color del texto y cantaria al lado del resto.
 #
 # REGLA al elegir un color a mano (en los dibujos propios o en un swap): tiene que
-# verse en los DOS temas, o sea superar 2.2:1 contra el fondo claro (#faf9f5) y
-# contra el oscuro (#161814). Los verdes y amarillos claros de Fluent (#86D72F,
-# #C3EF3C, #00D26A) lucen en oscuro y se pierden en claro (1.3-1.9:1): no valen como
-# color UNICO de una figura, solo acompanados de un tono oscuro que la defina.
-# Ya paso con 'huellas', que venia de Fluent en #321B41 y en oscuro daba 1.17:1
-# (invisible): lleva swap a #8D65C5.
+# verse en los DOS temas, o sea superar 2.2:1 contra la tarjeta clara y contra la
+# oscura. Los fondos que se miden son los REALES de --card: #FFFFFF en claro (blanco
+# puro, el peor caso; no #faf9f5) y #131A15 en oscuro, convertidos de los oklch de
+# globals.css. Los verdes y amarillos claros de Fluent (#86D72F, #C3EF3C, #00D26A)
+# lucen en oscuro y se pierden en claro (1.3-2.0:1): no valen como color UNICO de una
+# figura, solo acompanados de un tono oscuro que la defina.
+#
+# Y ya no es solo una nota al margen: Test-IconContrast la COMPRUEBA en cada
+# generacion y manda a MISS el dibujo propio o el swap que no la cumpla, asi que un
+# color mal elegido no puede colarse en el registro. Ha pasado dos veces: 'huellas'
+# venia en #321B41 (1.17:1 en oscuro, invisible) y lleva swap a #8D65C5; y
+# 'manzana-verde' venia con cuerpo #86D72F y hoja #00D26A -- los dos en la lista
+# negra de arriba -- asi que en claro daba 1.8:1 justo cuando su unico trabajo es
+# distinguirse de la manzana roja: lleva swap a cuerpo #5AB557 y hoja #008463 (el
+# verde oscuro que ya usan fresa, tomate y lechuga para los rabos).
+#
+# OJO - la comprobacion solo se aplica a los colores que elegimos NOSOTROS. El
+# artwork de Fluent entra tal cual, y hay ~14 iconos suyos palidos que en claro
+# quedan lavados (leche 1.4:1, queso 1.8, platano 1.9, huevo, mantequilla, ajo,
+# baguette, cerveza, copas, biberon, llave, wc, pera, mango). Recolorear emoji ajenos
+# es una decision de producto sin tomar, no un descuido: si algun dia se toma, se
+# resuelve con swaps y se les puede exigir la regla tambien. Mientras tanto, no los
+# pongas en un sitio donde el icono sea la prueba de algo (la landing, p.ej.).
 #
 # NOTA: no hay fallback de busqueda difusa a proposito. Si un nombre desaparece del
 # set, el concepto sale en MISS; antes se sustituia en silencio por el primer
@@ -41,7 +58,11 @@ $ErrorActionPreference = "Stop"
 $default = "fluent-emoji-flat"
 
 $concepts = @(
-  @{k='manzana'; f='red-apple'}, @{k='manzana-verde'; f='green-apple'},
+  @{k='manzana'; f='red-apple'},
+  # El verde claro de Fluent se lava sobre tarjeta blanca (1.8:1) y esta manzana
+  # existe justo para NO confundirse con la roja: cuerpo y hoja bajan a un verde que
+  # se ve en los dos temas. Lo verifica Test-IconContrast.
+  @{k='manzana-verde'; f='green-apple'; s=@{'#86D72F'='#5AB557'; '#00D26A'='#008463'}},
   @{k='platano'; f='banana'},
   @{k='naranja'; f='tangerine'}, @{k='limon'; f='lemon'}, @{k='fresa'; f='strawberry'},
   @{k='uvas'; f='grapes'}, @{k='sandia'; f='watermelon'}, @{k='pina'; f='pineapple'},
@@ -154,6 +175,44 @@ function Get-ViewBox([string]$svg) {
   if ($m.Success) { return $m.Groups[1].Value } else { return "0 0 32 32" }
 }
 
+# --- Contraste (hace cumplir la REGLA de color de la cabecera) -----------------
+# Fondos reales de --card convertidos de los oklch de globals.css. Se mide contra la
+# tarjeta y no contra el fondo de pagina porque es donde peor lo tiene el icono: en
+# claro --card es blanco puro.
+$CARD_LIGHT = '#FFFFFF'
+$CARD_DARK = '#131A15'
+$MIN_CONTRAST = 2.2
+
+function Get-RelLuminance([string]$hex) {
+  $ch = @(1, 3, 5) | ForEach-Object {
+    $v = [Convert]::ToInt32($hex.Substring($_, 2), 16) / 255
+    if ($v -le 0.03928) { $v / 12.92 } else { [Math]::Pow((($v + 0.055) / 1.055), 2.4) }
+  }
+  return 0.2126 * $ch[0] + 0.7152 * $ch[1] + 0.0722 * $ch[2]
+}
+
+function Get-Contrast([string]$a, [string]$b) {
+  $la = Get-RelLuminance $a
+  $lb = Get-RelLuminance $b
+  $hi = [Math]::Max($la, $lb)
+  $lo = [Math]::Min($la, $lb)
+  return ($hi + 0.05) / ($lo + 0.05)
+}
+
+# La figura tiene que verse en los dos temas, pero no hace falta que la salve el mismo
+# color: basta que UNO pase el umbral en claro y UNO en oscuro (normalmente el tono
+# oscuro salva el tema claro y el vivo el oscuro). Devuelve $null si cumple, o el
+# motivo si no.
+function Test-IconContrast([string]$body) {
+  $cols = @([regex]::Matches($body, '#[0-9A-Fa-f]{6}') | ForEach-Object { $_.Value } | Sort-Object -Unique)
+  if ($cols.Count -eq 0) { return "no trae ningun color hex" }
+  $bestLight = ($cols | ForEach-Object { Get-Contrast $_ $CARD_LIGHT } | Measure-Object -Maximum).Maximum
+  $bestDark = ($cols | ForEach-Object { Get-Contrast $_ $CARD_DARK } | Measure-Object -Maximum).Maximum
+  if ($bestLight -lt $MIN_CONTRAST) { return ("se lava en claro, {0:N2}:1 < {1}:1" -f $bestLight, $MIN_CONTRAST) }
+  if ($bestDark -lt $MIN_CONTRAST) { return ("se lava en oscuro, {0:N2}:1 < {1}:1" -f $bestDark, $MIN_CONTRAST) }
+  return $null
+}
+
 $reg = [ordered]@{}
 $ok = @(); $miss = @()
 
@@ -177,8 +236,12 @@ foreach ($c in $concepts) {
   if ($c.s) {
     # Recoloreado puntual. Si el hex original ya no esta, el set ha cambiado bajo
     # nuestros pies y el arreglo de contraste ya no se aplica: hay que revisarlo.
+    # -cnotmatch (no -notmatch) porque .Replace SI distingue mayusculas: con el
+    # comparador por defecto, un dia que Iconify sirviera '#ff822d' en minuscula la
+    # comprobacion pasaria, el reemplazo no haria nada y el icono entraria con el
+    # color viejo sin aparecer en MISS. Justo el fallo silencioso que esto evita.
     foreach ($from in $c.s.Keys) {
-      if ($body -notmatch [regex]::Escape($from)) {
+      if ($body -cnotmatch [regex]::Escape($from)) {
         $miss += ("{0} (swap obsoleto: ya no usa {1})" -f $c.k, $from); $body = $null; break
       }
       $body = $body.Replace($from, $c.s[$from])
@@ -192,13 +255,20 @@ foreach ($c in $concepts) {
     $miss += ("{0} (monocromo: currentColor no vale en un set a color)" -f $c.k); continue
   }
 
+  # La REGLA de color solo se exige donde el color es NUESTRO: dibujos propios y
+  # swaps. El artwork de Fluent entra tal cual (ver el OJO de la cabecera).
+  if ($p -eq 'local' -or $c.s) {
+    $why = Test-IconContrast $body
+    if ($why) { $miss += ("{0} (contraste: {1})" -f $c.k, $why); continue }
+  }
+
   $reg[$c.k] = @{ vb = (Get-ViewBox $svg); body = $body }
   $ok += ("{0} -> {1}:{2}" -f $c.k, $p, $c.f)
 }
 
 $sb = [System.Text.StringBuilder]::new()
 [void]$sb.AppendLine("// GENERADO - no editar a mano. Iconos a color (cada SVG trae sus rellenos).")
-[void]$sb.AppendLine("// Fuentes: Fluent Emoji Flat (MIT) y Game Icons (CC-BY 3.0, atribucion en Ajustes).")
+[void]$sb.AppendLine("// Fuentes: Fluent Emoji Flat (MIT) y 6 dibujos propios (assets/product-icons/).")
 [void]$sb.AppendLine("// Cada entrada guarda su viewBox (vb) porque los sets no comparten lienzo.")
 [void]$sb.AppendLine("// Regenerar con scripts/gen-product-icons.ps1.")
 [void]$sb.AppendLine("")

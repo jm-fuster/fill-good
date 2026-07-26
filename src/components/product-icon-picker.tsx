@@ -89,11 +89,11 @@ export function ProductIconPicker({
         aria-pressed={selected}
         title={label}
         className={cn(
-          "flex size-11 items-center justify-center rounded-lg border text-foreground transition-colors",
+          "flex size-11 items-center justify-center rounded-lg border transition-colors",
           "hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-          selected
-            ? "border-primary bg-primary/10 text-primary"
-            : "border-transparent",
+          // Sin text-*: el icono trae su propio color y no se tiñe. La selección se
+          // marca solo con borde y fondo, que es lo que sí se ve.
+          selected ? "border-primary bg-primary/10" : "border-transparent",
         )}
       >
         <ProductIcon slug={slug} size={26} />
@@ -139,7 +139,7 @@ export function ProductIconPicker({
               value === null ? "border-primary bg-primary/10" : "border-input",
             )}
           >
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
               <ProductIcon resolved={autoResolved} size={24} />
             </span>
             <span className="min-w-0 flex-1">

@@ -37,6 +37,7 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   // "granny smith" y no "granny", y el plural va aparte del singular.
   "manzana verde": "manzana-verde", "manzanas verdes": "manzana-verde",
   "granny smith": "manzana-verde", "manzana golden": "manzana-verde",
+  "manzanas golden": "manzana-verde",
   platano: "platano", banana: "platano", naranja: "naranja",
   mandarina: "naranja", clementina: "naranja", limon: "limon", lima: "lima",
   fresa: "fresa", freson: "fresa", uva: "uvas", sandia: "sandia", pina: "pina",
