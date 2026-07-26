@@ -108,7 +108,7 @@ export function AddProductDrawer({
           ) : null}
 
           <ResponsiveModalFooter className="px-0">
-            <Button type="submit" size="lg" disabled={pending}>
+            <Button type="submit" size="lg" loading={pending}>
               {pending ? "Añadiendo…" : "Añadir al inventario"}
             </Button>
             <ResponsiveModalClose asChild>

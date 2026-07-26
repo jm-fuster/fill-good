@@ -90,7 +90,8 @@ export function DeleteAccountRow() {
           <Button
             variant="destructive"
             onClick={remove}
-            disabled={!matches || pending}
+            disabled={!matches}
+            loading={pending}
           >
             <Trash2 aria-hidden />
             {pending ? "Borrando…" : "Borrar mi cuenta definitivamente"}

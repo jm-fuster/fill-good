@@ -139,7 +139,7 @@ export function ExpiryReview({ entries }: { entries: ReviewEntry[] }) {
           size="lg"
           className="flex-1 sm:flex-[2]"
           onClick={save}
-          disabled={pending}
+          loading={pending}
         >
           <Check aria-hidden />
           {pending ? "Guardando…" : "Guardar"}

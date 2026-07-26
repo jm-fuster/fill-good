@@ -95,7 +95,7 @@ export function DeleteReceiptButton({
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
         <ResponsiveModalFooter className="gap-2">
-          <Button variant="destructive" onClick={confirm} disabled={pending}>
+          <Button variant="destructive" onClick={confirm} loading={pending}>
             <Trash2 aria-hidden />
             {pending ? "Descartando…" : "Descartar"}
           </Button>

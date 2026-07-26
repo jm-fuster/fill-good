@@ -40,8 +40,11 @@ function roleLabel(role: MemberRole) {
 
 function useSwitchHousehold() {
   const [pending, startTransition] = useTransition();
+  // Qué hogar se pulsó: el spinner va solo en esa fila, no en toda la lista.
+  const [targetId, setTargetId] = useState<string | null>(null);
 
   function switchTo(householdId: string) {
+    setTargetId(householdId);
     startTransition(async () => {
       // Éxito: la acción fija la cookie y redirige a /inventario.
       const result = await switchHouseholdAction(householdId);
@@ -49,7 +52,7 @@ function useSwitchHousehold() {
     });
   }
 
-  return { pending, switchTo };
+  return { pending, targetId, switchTo };
 }
 
 /**
@@ -65,7 +68,7 @@ export function HouseholdSwitcherRow({
   activeId: string;
 }) {
   const [open, setOpen] = useState(false);
-  const { pending, switchTo } = useSwitchHousehold();
+  const { pending, targetId, switchTo } = useSwitchHousehold();
 
   if (households.length < 2) return null;
 
@@ -94,6 +97,7 @@ export function HouseholdSwitcherRow({
                 key={h.id}
                 variant={isActive ? "secondary" : "ghost"}
                 disabled={pending}
+                loading={pending && targetId === h.id}
                 onClick={() => {
                   if (isActive) {
                     setOpen(false);

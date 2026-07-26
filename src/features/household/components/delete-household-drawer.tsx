@@ -80,7 +80,8 @@ export function DeleteHouseholdDrawer({
           <Button
             variant="destructive"
             onClick={confirm}
-            disabled={!matches || pending}
+            disabled={!matches}
+            loading={pending}
           >
             <Trash2 aria-hidden />
             {pending ? "Eliminando…" : "Eliminar hogar definitivamente"}

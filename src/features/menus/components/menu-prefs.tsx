@@ -226,7 +226,7 @@ export function MenuPrefsOnboarding() {
             type="button"
             size="lg"
             onClick={() => save(toInput(state), "Preferencias guardadas")}
-            disabled={saving}
+            loading={saving}
           >
             {saving ? "Guardando…" : "Guardar preferencias"}
           </Button>
@@ -292,12 +292,15 @@ export function MenuPrefs({ prefs }: { prefs: MenuPrefs }) {
       </h2>
 
       {open ? (
-        <div id="menu-prefs-body" className="flex flex-col gap-4 px-3 pb-3">
+        <div
+          id="menu-prefs-body"
+          className="flex flex-col gap-4 px-3 pb-3 animate-in fade-in slide-in-from-top-1 duration-200"
+        >
           <PrefsFields state={state} onChange={setState} />
           <Button
             type="button"
             onClick={save}
-            disabled={saving}
+            loading={saving}
             className="self-start"
           >
             {saving ? "Guardando…" : "Guardar preferencias"}

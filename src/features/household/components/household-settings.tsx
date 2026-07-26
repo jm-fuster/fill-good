@@ -135,7 +135,7 @@ export function HouseholdSettings({
               size="icon"
               aria-label="Regenerar código"
               onClick={regenerate}
-              disabled={pending}
+              loading={pending}
             >
               <RefreshCw aria-hidden />
             </Button>
@@ -220,7 +220,7 @@ export function HouseholdSettings({
                   <Button
                     variant="destructive"
                     onClick={leave}
-                    disabled={pending}
+                    loading={pending}
                   >
                     <LogOut aria-hidden />
                     {pending ? "Abandonando…" : "Abandonar"}

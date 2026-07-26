@@ -226,7 +226,7 @@ function ExploreCard({ card }: { card: SeedRecipeCard }) {
           type="button"
           variant="outline"
           onClick={importRecipe}
-          disabled={pending}
+          loading={pending}
           className="mt-auto"
         >
           <Plus aria-hidden />

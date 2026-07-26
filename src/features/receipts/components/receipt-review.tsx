@@ -457,7 +457,8 @@ export function ReceiptReview({
         <Button
           size="lg"
           className="w-full shadow-lg"
-          disabled={pending || includedCount === 0}
+          disabled={includedCount === 0}
+          loading={pending}
           onClick={confirm}
         >
           <Check aria-hidden />

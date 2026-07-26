@@ -98,7 +98,7 @@ export function OwnerLeaveDrawer({
         </div>
 
         <ResponsiveModalFooter className="gap-2">
-          <Button variant="destructive" onClick={confirm} disabled={pending}>
+          <Button variant="destructive" onClick={confirm} loading={pending}>
             <LogOut aria-hidden />
             {pending ? "Abandonando…" : "Transferir y abandonar"}
           </Button>

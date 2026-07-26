@@ -145,7 +145,7 @@ export function EditListItemDrawer({
           ) : null}
 
           <ResponsiveModalFooter className="gap-2 px-0">
-            <Button type="submit" size="lg" disabled={pending}>
+            <Button type="submit" size="lg" loading={pending}>
               {pending ? "Guardando…" : "Guardar cambios"}
             </Button>
             <Button type="button" variant="destructive" onClick={handleDelete}>

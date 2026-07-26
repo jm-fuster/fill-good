@@ -91,7 +91,7 @@ export function TransferOwnershipDrawer({
         </div>
 
         <ResponsiveModalFooter className="gap-2">
-          <Button onClick={confirm} disabled={pending}>
+          <Button onClick={confirm} loading={pending}>
             {pending ? "Transfiriendo…" : "Transferir propiedad"}
           </Button>
           <ResponsiveModalClose asChild>

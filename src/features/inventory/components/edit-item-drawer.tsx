@@ -627,7 +627,7 @@ export function EditItemDrawer({
           ) : null}
 
           <ResponsiveModalFooter className="gap-2 px-0">
-            <Button type="submit" size="lg" disabled={pending}>
+            <Button type="submit" size="lg" loading={pending}>
               {pending ? "Guardando…" : "Guardar cambios"}
             </Button>
             {askWaste ? (
@@ -662,7 +662,7 @@ export function EditItemDrawer({
                 type="button"
                 variant="destructive"
                 onClick={requestDelete}
-                disabled={deleting}
+                loading={deleting}
                 aria-live="polite"
               >
                 <Trash2 aria-hidden />

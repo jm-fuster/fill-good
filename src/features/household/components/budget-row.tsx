@@ -103,7 +103,7 @@ export function BudgetRow({ budget }: { budget: number | null }) {
             ) : null}
           </div>
           <ResponsiveModalFooter className="gap-2">
-            <Button type="submit" disabled={pending}>
+            <Button type="submit" loading={pending}>
               {pending ? "Guardando…" : "Guardar objetivo"}
             </Button>
             <ResponsiveModalClose asChild>

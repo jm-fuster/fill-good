@@ -504,7 +504,7 @@ export function RecipeForm({
       ) : null}
 
       <div className="flex flex-col gap-2">
-        <Button type="submit" size="lg" disabled={pending}>
+        <Button type="submit" size="lg" loading={pending}>
           {pending
             ? "Guardando…"
             : isEdit
@@ -554,7 +554,7 @@ export function RecipeForm({
                 variant="destructive"
                 size="lg"
                 onClick={handleDelete}
-                disabled={deleting}
+                loading={deleting}
               >
                 {deleting ? "Eliminando…" : "Sí, eliminar"}
               </Button>

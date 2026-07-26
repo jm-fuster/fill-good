@@ -109,7 +109,8 @@ export function StarterPicker({ groups }: { groups: StarterGroup[] }) {
         <Button
           size="lg"
           className="h-14 flex-1 shadow-lg md:h-12"
-          disabled={count === 0 || pending}
+          disabled={count === 0}
+          loading={pending}
           onClick={confirm}
         >
           {pending

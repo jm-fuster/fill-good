@@ -175,7 +175,7 @@ function RuleRow({ rule }: { rule: MenuRule }) {
         variant="ghost"
         size="icon"
         onClick={remove}
-        disabled={deleting}
+        loading={deleting}
         aria-label={`Borrar regla: ${label}`}
       >
         <Trash2 aria-hidden />
@@ -383,7 +383,8 @@ function AddRuleDrawer({
             type="button"
             size="lg"
             onClick={submit}
-            disabled={pending || (mode === "recipe" && noRecipes)}
+            disabled={mode === "recipe" && noRecipes}
+            loading={pending}
           >
             {pending ? "Guardando…" : "Añadir regla"}
           </Button>

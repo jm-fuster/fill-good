@@ -279,7 +279,7 @@ export function MenuView({
       <div className="flex flex-col gap-2 print:hidden sm:flex-row">
         <Button
           onClick={() => generate("fill")}
-          disabled={generating}
+          loading={generating}
           size="lg"
           className="sm:flex-1"
         >
@@ -292,7 +292,7 @@ export function MenuView({
         </Button>
         <Button
           onClick={askTonight}
-          disabled={askingTonight}
+          loading={askingTonight}
           variant="outline"
           size="lg"
           className="sm:flex-1"
@@ -305,7 +305,7 @@ export function MenuView({
       {canCopyPrevious ? (
         <Button
           onClick={copyPrevious}
-          disabled={copying}
+          loading={copying}
           variant="outline"
           size="lg"
           className="print:hidden"
@@ -348,7 +348,7 @@ export function MenuView({
               variant="destructive"
               size="lg"
               onClick={() => generate("replace")}
-              disabled={generating}
+              loading={generating}
             >
               <Sparkles aria-hidden />
               {generating ? "Rehaciendo…" : "Rehacer todo"}
@@ -435,7 +435,7 @@ export function MenuView({
           variant="outline"
           size="lg"
           onClick={reviewMissing}
-          disabled={addingList}
+          loading={addingList}
           className="print:hidden"
         >
           {addingList ? "Calculando…" : "Añadir a la lista lo que falte"}
@@ -774,7 +774,8 @@ function EditEntryDrawer({
             <Button
               type="submit"
               size="lg"
-              disabled={pending || !value.trim()}
+              disabled={!value.trim()}
+              loading={pending}
             >
               {pending
                 ? "Guardando…"
@@ -788,7 +789,7 @@ function EditEntryDrawer({
                   type="button"
                   variant="outline"
                   onClick={reroll}
-                  disabled={rerolling}
+                  loading={rerolling}
                 >
                   <RefreshCw aria-hidden />
                   {rerolling ? "Pensando otra idea…" : "Otra idea"}
@@ -797,7 +798,7 @@ function EditEntryDrawer({
                   type="button"
                   variant={pinned ? "secondary" : "outline"}
                   onClick={togglePinned}
-                  disabled={pinningPending}
+                  loading={pinningPending}
                   aria-pressed={pinned}
                 >
                   {pinned ? <PinOff aria-hidden /> : <Pin aria-hidden />}
@@ -830,7 +831,7 @@ function EditEntryDrawer({
                 type="button"
                 variant={cooked ? "secondary" : "outline"}
                 onClick={toggleCooked}
-                disabled={cooking}
+                loading={cooking}
                 aria-pressed={cooked}
               >
                 {cooked ? <Check aria-hidden /> : <ChefHat aria-hidden />}
@@ -846,7 +847,7 @@ function EditEntryDrawer({
                 type="button"
                 variant="outline"
                 onClick={saveToRecipes}
-                disabled={savingRecipe}
+                loading={savingRecipe}
               >
                 <BookmarkPlus aria-hidden />
                 {savingRecipe ? "Guardando…" : "Guardar en mi recetario"}
@@ -986,7 +987,8 @@ function MissingReviewDrawer({
             type="button"
             size="lg"
             onClick={confirm}
-            disabled={pending || count === 0}
+            disabled={count === 0}
+            loading={pending}
           >
             <Check aria-hidden />
             {pending
@@ -1148,7 +1150,8 @@ function CookedDeductionsDrawer({
             type="button"
             size="lg"
             onClick={confirm}
-            disabled={pending || count === 0}
+            disabled={count === 0}
+            loading={pending}
           >
             <Check aria-hidden />
             {pending
@@ -1236,7 +1239,8 @@ function TonightDrawer({
                   </Button>
                   <Button
                     className="flex-1"
-                    disabled={adding}
+                    disabled={adding && addingId !== c.recipeId}
+                    loading={adding && addingId === c.recipeId}
                     onClick={() => add(c.recipeId)}
                   >
                     <Plus aria-hidden />
