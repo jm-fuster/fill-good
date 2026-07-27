@@ -133,12 +133,14 @@ export async function getWasteInsight(): Promise<WasteInsight | null> {
     supabase
       .from("inventory_events")
       .select("created_at, product_id, quantity, unit")
+      .eq("household_id", household.id)
       .eq("kind", "discarded")
       .gte("created_at", historyStart)
       .order("created_at", { ascending: true }),
     supabase
       .from("inventory_events")
       .select("created_at")
+      .eq("household_id", household.id)
       .order("created_at", { ascending: true })
       .limit(1),
     getLatestUnitPrices(),
@@ -201,8 +203,9 @@ function cap(s: string): string {
 
 /**
  * Resumen de gasto de un mes (M1). Todo el dato ya existe en receipts /
- * receipt_items; es solo lectura y agregación en memoria. La RLS por hogar
- * filtra las filas, así que no hace falta pasar household_id a las consultas.
+ * receipt_items; es solo lectura y agregación en memoria. Cada consulta se acota
+ * al hogar activo: la RLS solo comprueba membresía, así que sin el filtro un
+ * usuario con dos hogares vería el gasto de ambos sumado.
  */
 export async function getMonthlySpending(
   month?: string,
@@ -233,6 +236,7 @@ export async function getMonthlySpending(
         .select(
           "id, total_amount, discount_total, savings_amount, store_chain, purchased_at",
         )
+        .eq("household_id", household.id)
         .eq("status", "confirmed")
         .gte("purchased_at", prevStartStr)
         .lt("purchased_at", nextStartStr),
@@ -243,12 +247,14 @@ export async function getMonthlySpending(
           // products → categories es no ambiguo (una sola FK).
           "total_price, purchased_at, product:products!receipt_items_product_id_fkey(category:categories(name))",
         )
+        .eq("household_id", household.id)
         .not("total_price", "is", null)
         .gte("purchased_at", monthStartStr)
         .lt("purchased_at", nextStartStr),
       supabase
         .from("inventory_events")
         .select("product_id, quantity, unit, product:products(name)")
+        .eq("household_id", household.id)
         .eq("kind", "discarded")
         .gte("created_at", monthStartStr)
         .lt("created_at", nextStartStr),

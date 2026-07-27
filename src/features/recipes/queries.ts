@@ -5,6 +5,7 @@ import { auth } from "@clerk/nextjs/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import type { UnitType } from "@/lib/supabase/types";
+import { getActiveHouseholdId } from "@/features/household/queries";
 import { getLatestUnitPrices } from "@/features/prices/queries";
 import { computeRecipeCost, type CostIngredient, type RecipeCost } from "./cost";
 import { SEED_RECIPES } from "./seed";
@@ -53,10 +54,13 @@ type SavedRecipeRow = {
 
 /** Recetas guardadas del hogar (las efímeras de la IA quedan fuera). */
 export async function getSavedRecipes(): Promise<SavedRecipe[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("recipes")
     .select("id, name, meal_types, seasons, recipe_ingredients(count)")
+    .eq("household_id", householdId)
     .eq("is_saved", true)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -88,21 +92,24 @@ export type SeedRecipeCard = {
 /**
  * Recetas del pack curado (N4) con el flag de si el hogar ya tiene cada una en
  * su recetario (por nombre normalizado). El JSON solo se lee en servidor: al
- * cliente solo llegan estas tarjetas. RLS limita las filas del hogar.
+ * cliente solo llegan estas tarjetas.
  */
 export async function getSeedRecipeCards(): Promise<SeedRecipeCard[]> {
-  const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("recipes")
-    .select("normalized_name")
-    .eq("is_saved", true);
-  if (error) throw error;
-
-  const savedNorms = new Set(
-    (data ?? [])
-      .map((r) => r.normalized_name)
-      .filter((n): n is string => Boolean(n)),
-  );
+  const householdId = await getActiveHouseholdId();
+  // Sin hogar no hay recetario contra el que comparar: todas salen sin guardar.
+  const savedNorms = new Set<string>();
+  if (householdId) {
+    const supabase = createServerSupabaseClient();
+    const { data, error } = await supabase
+      .from("recipes")
+      .select("normalized_name")
+      .eq("household_id", householdId)
+      .eq("is_saved", true);
+    if (error) throw error;
+    for (const r of data ?? []) {
+      if (r.normalized_name) savedNorms.add(r.normalized_name);
+    }
+  }
 
   return SEED_RECIPES.map((r) => ({
     id: r.id,
@@ -137,13 +144,16 @@ type SavedRecipeForMenuRow = {
 /**
  * Recetas guardadas del hogar con sus ingredientes (nombre + product_id), para
  * el generador de menús 2.0. El `product_id` permite saber qué ingredientes hay
- * en stock. RLS limita las filas al hogar del usuario.
+ * en stock.
  */
 export async function getSavedRecipesForMenu(): Promise<SavedRecipeForMenu[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("recipes")
     .select("id, name, meal_types, seasons, recipe_ingredients(name, product_id)")
+    .eq("household_id", householdId)
     .eq("is_saved", true);
   if (error) throw error;
 
@@ -178,11 +188,14 @@ export async function getRecipeCostsForIds(
   const uniqueIds = [...new Set(ids)];
   if (uniqueIds.length === 0) return new Map();
 
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return new Map();
   const supabase = createServerSupabaseClient();
   const [{ data: ings }, prices] = await Promise.all([
     supabase
       .from("recipe_ingredients")
       .select("recipe_id, product_id, quantity, unit")
+      .eq("household_id", householdId)
       .in("recipe_id", uniqueIds),
     getLatestUnitPrices(),
   ]);
@@ -232,17 +245,21 @@ type RecipeRow = {
 
 /**
  * Receta guardada por id, con sus ingredientes, para editar. Devuelve null si
- * no existe, la RLS la oculta o no pertenece al recetario (is_saved = false).
+ * no existe, no es del hogar activo o no pertenece al recetario
+ * (is_saved = false).
  */
 export async function getRecipeForEdit(
   id: string,
 ): Promise<RecipeForEdit | null> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return null;
   const supabase = createServerSupabaseClient();
   const { data: recipe, error } = await supabase
     .from("recipes")
     .select(
       "id, name, description, servings, prep_minutes, meal_types, seasons, instructions, is_saved",
     )
+    .eq("household_id", householdId)
     .eq("id", id)
     .maybeSingle();
   if (error) throw error;
@@ -253,6 +270,7 @@ export async function getRecipeForEdit(
   const { data: ingredients } = await supabase
     .from("recipe_ingredients")
     .select("name, quantity, unit, optional, product_id")
+    .eq("household_id", householdId)
     .eq("recipe_id", id)
     .order("id", { ascending: true });
 
@@ -286,17 +304,20 @@ export type RecipeRatingSummary = {
 };
 
 /**
- * Valoraciones de una receta: media del hogar, nº de votos y el voto del
- * usuario actual. RLS limita las filas al hogar del usuario.
+ * Valoraciones de una receta: media del hogar activo, nº de votos y el voto del
+ * usuario actual.
  */
 export async function getRecipeRating(
   recipeId: string,
 ): Promise<RecipeRatingSummary> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return { avg: null, count: 0, userRating: null };
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("recipe_ratings")
     .select("rating, user_id")
+    .eq("household_id", householdId)
     .eq("recipe_id", recipeId);
   if (error) throw error;
 

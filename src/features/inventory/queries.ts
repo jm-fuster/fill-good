@@ -8,6 +8,7 @@ import type {
 } from "@/lib/supabase/types";
 import { baseUnitFactor, unitFamily } from "@/lib/units";
 import {
+  getActiveHouseholdId,
   getCurrentHousehold,
   getHouseholdMembers,
 } from "@/features/household/queries";
@@ -85,10 +86,13 @@ export type StarterGroup = {
 };
 
 export async function getCategories(): Promise<Category[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("categories")
     .select("id, name, icon, sort_order")
+    .eq("household_id", householdId)
     .order("sort_order", { ascending: true });
   if (error) throw error;
   return (data ?? []).map((c) => ({
@@ -101,23 +105,29 @@ export async function getCategories(): Promise<Category[]> {
 
 /**
  * Ids de producto anclados por el usuario actual ("Mis habituales", E5). La RLS
- * de `user_pinned_products` ya restringe a los pines del propio usuario, así que
- * un select simple devuelve solo los suyos.
+ * de `user_pinned_products` restringe a los pines del propio usuario, pero un
+ * usuario con varios hogares tiene pines en cada uno: hay que acotar al activo.
  */
 export async function getPinnedProductIds(): Promise<Set<string>> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return new Set();
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("user_pinned_products")
-    .select("product_id");
+    .select("product_id")
+    .eq("household_id", householdId);
   if (error) throw error;
   return new Set((data ?? []).map((r) => r.product_id));
 }
 
 export async function getProducts(): Promise<ProductOption[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("products")
     .select("id, name, default_unit, default_location, category_id")
+    .eq("household_id", householdId)
     .order("name", { ascending: true });
   if (error) throw error;
   return (data ?? []).map((p) => ({
@@ -147,14 +157,20 @@ type StarterCatalogRow = {
  * grupo final. Alfabético dentro de cada grupo.
  */
 export async function getStarterCatalog(): Promise<StarterGroup[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const [{ data: products, error: prodErr }, { data: inv, error: invErr }] =
     await Promise.all([
       supabase
         .from("products")
         .select("id, name, category:categories(id, name, icon, sort_order)")
+        .eq("household_id", householdId)
         .order("name", { ascending: true }),
-      supabase.from("inventory_items").select("product_id"),
+      supabase
+        .from("inventory_items")
+        .select("product_id")
+        .eq("household_id", householdId),
     ]);
   if (prodErr) throw prodErr;
   if (invErr) throw invErr;
@@ -212,11 +228,19 @@ export type ProductStock = { quantity: number; unit: UnitType };
 export async function getStockByProduct(): Promise<
   Record<string, ProductStock>
 > {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return {};
   const supabase = createServerSupabaseClient();
   const [{ data: inv, error: invErr }, { data: prods, error: prodErr }] =
     await Promise.all([
-      supabase.from("inventory_items").select("product_id, quantity, unit"),
-      supabase.from("products").select("id, default_unit"),
+      supabase
+        .from("inventory_items")
+        .select("product_id, quantity, unit")
+        .eq("household_id", householdId),
+      supabase
+        .from("products")
+        .select("id, default_unit")
+        .eq("household_id", householdId),
     ]);
   if (invErr) throw invErr;
   if (prodErr) throw prodErr;
@@ -268,8 +292,9 @@ type HistoryRow = {
 
 /**
  * Movimientos de inventario de los últimos {@link HISTORY_WINDOW_DAYS} días
- * (F5), con el nombre del producto y quién lo hizo. La RLS ya restringe al
- * hogar; el filtro por fecha usa el índice `(household_id, created_at)`.
+ * (F5), con el nombre del producto y quién lo hizo. Acotado al hogar activo (la
+ * RLS solo comprueba membresía); el filtro usa el índice
+ * `(household_id, created_at)`.
  * Devuelve también `nowMs` (referencia temporal calculada aquí, no en el
  * componente de render, para no romper la regla de pureza).
  */
@@ -291,6 +316,7 @@ export async function getInventoryHistory(): Promise<{
       .select(
         "id, quantity, unit, kind, created_by, created_at, product:products(name)",
       )
+      .eq("household_id", household.id)
       .gte("created_at", since)
       .order("created_at", { ascending: false }),
     getHouseholdMembers(household.id),
@@ -332,6 +358,8 @@ type InventoryRow = {
 };
 
 export async function getInventory(): Promise<InventoryEntry[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   // Cadena inferida y aviso de ahorro se leen MATERIALIZADOS del embed de
   // products (se recalculan al confirmar ticket / fusionar / cambiar preferencia,
@@ -342,6 +370,7 @@ export async function getInventory(): Promise<InventoryEntry[]> {
     .select(
       "id, product_id, location, quantity, unit, expiry_date, use_soon, product:products(name, min_quantity, pack_size, preferred_chain, inferred_chain, savings_tip, icon, category:categories(id, name, icon))",
     )
+    .eq("household_id", householdId)
     .order("updated_at", { ascending: false });
   if (error) throw error;
 
@@ -387,19 +416,22 @@ type ReviewRow = {
 
 /**
  * Items de inventario por id, para la revisión de caducidades tras la compra.
- * La RLS ya restringe a los del hogar del usuario; se conserva el orden de los
- * ids recibidos (el mismo en que se compraron/tocaron).
+ * Acotado al hogar activo; se conserva el orden de los ids recibidos (el mismo
+ * en que se compraron/tocaron).
  */
 export async function getInventoryItemsByIds(
   ids: string[],
 ): Promise<ReviewEntry[]> {
   if (ids.length === 0) return [];
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("inventory_items")
     .select(
       "id, location, quantity, unit, expiry_date, use_soon, product:products(name, icon, category:categories(icon))",
     )
+    .eq("household_id", householdId)
     .in("id", ids);
   if (error) throw error;
 

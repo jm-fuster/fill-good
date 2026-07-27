@@ -196,11 +196,16 @@ export async function updateRecipeAction(
       seasons: d.seasons,
       instructions: d.instructions,
     })
+    .eq("household_id", household.id)
     .eq("id", id);
   if (updErr) return { error: "No se pudo guardar la receta." };
 
   // Reemplaza los ingredientes por completo (más simple que diferenciar).
-  await supabase.from("recipe_ingredients").delete().eq("recipe_id", id);
+  await supabase
+    .from("recipe_ingredients")
+    .delete()
+    .eq("household_id", household.id)
+    .eq("recipe_id", id);
   if (d.ingredients.length > 0) {
     const rows = await buildIngredientRows(
       supabase,
@@ -222,10 +227,16 @@ export async function updateRecipeAction(
 export async function deleteRecipeAction(
   id: string,
 ): Promise<RecipeActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
   // menu_entries.recipe_id es ON DELETE SET NULL: el menú conserva el hueco
   // como texto vacío en vez de romperse.
-  const { error } = await supabase.from("recipes").delete().eq("id", id);
+  const { error } = await supabase
+    .from("recipes")
+    .delete()
+    .eq("household_id", household.id)
+    .eq("id", id);
   if (error) return { error: "No se pudo eliminar la receta." };
   revalidatePath("/recetas");
   revalidatePath("/menus");
@@ -247,6 +258,7 @@ export async function saveGeneratedRecipeAction(
   const { data: recipe } = await supabase
     .from("recipes")
     .select("id, name, is_saved")
+    .eq("household_id", household.id)
     .eq("id", recipeId)
     .maybeSingle();
   if (!recipe) return { error: "No se encontró la receta." };
@@ -260,6 +272,7 @@ export async function saveGeneratedRecipeAction(
   const { error: updErr } = await supabase
     .from("recipes")
     .update({ is_saved: true, normalized_name: normalized })
+    .eq("household_id", household.id)
     .eq("id", recipeId);
   if (updErr) return { error: "No se pudo guardar en el recetario." };
 
@@ -267,6 +280,7 @@ export async function saveGeneratedRecipeAction(
   const { data: ings } = await supabase
     .from("recipe_ingredients")
     .select("id, name, product_id")
+    .eq("household_id", household.id)
     .eq("recipe_id", recipeId);
   const unlinked = (ings ?? []).filter((i) => !i.product_id);
   if (unlinked.length > 0) {

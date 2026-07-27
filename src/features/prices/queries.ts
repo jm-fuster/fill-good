@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getActiveHouseholdId } from "@/features/household/queries";
 import type { UnitType } from "@/lib/supabase/types";
 import { computeInferredChains } from "./infer-chain";
 import { computeChainSavings, type ChainSavingsTip } from "./chain-savings";
@@ -38,6 +39,8 @@ type Row = {
 
 /** Productos con historial de precios, ordenados por gasto total. */
 export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("receipt_items")
@@ -46,6 +49,7 @@ export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
       // esta última de E7): hay que nombrar la relación o PostgREST da PGRST201.
       "product_id, total_price, quantity, unit, purchased_at, store_chain, product:products!receipt_items_product_id_fkey(name)",
     )
+    .eq("household_id", householdId)
     .not("product_id", "is", null)
     .not("total_price", "is", null)
     .not("purchased_at", "is", null)
@@ -91,10 +95,13 @@ export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
 export const getLatestUnitPrices = cache(async (): Promise<
   Map<string, { price: number; unit: UnitType }>
 > => {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return new Map();
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("receipt_items")
     .select("product_id, total_price, quantity, unit, purchased_at")
+    .eq("household_id", householdId)
     .not("product_id", "is", null)
     .not("total_price", "is", null)
     .not("purchased_at", "is", null)
@@ -123,10 +130,13 @@ export const getLatestUnitPrices = cache(async (): Promise<
  */
 export const getInferredChains = cache(
   async (): Promise<Map<string, string>> => {
+    const householdId = await getActiveHouseholdId();
+    if (!householdId) return new Map();
     const supabase = createServerSupabaseClient();
     const { data, error } = await supabase
       .from("receipt_items")
       .select("product_id, store_chain")
+      .eq("household_id", householdId)
       .not("product_id", "is", null)
       .not("store_chain", "is", null);
     if (error) throw error;
@@ -146,16 +156,22 @@ export const getInferredChains = cache(
 export const getChainSavingsTips = cache(async (): Promise<
   Map<string, ChainSavingsTip>
 > => {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return new Map();
   const supabase = createServerSupabaseClient();
   const [{ data: rows, error }, { data: products, error: prodErr }] =
     await Promise.all([
       supabase
         .from("receipt_items")
         .select("product_id, total_price, quantity, store_chain")
+        .eq("household_id", householdId)
         .not("product_id", "is", null)
         .not("total_price", "is", null)
         .not("store_chain", "is", null),
-      supabase.from("products").select("id, preferred_chain"),
+      supabase
+        .from("products")
+        .select("id, preferred_chain")
+        .eq("household_id", householdId),
     ]);
   if (error) throw error;
   if (prodErr) throw prodErr;
@@ -194,13 +210,21 @@ export const getChainSavingsTips = cache(async (): Promise<
 export async function getProductPriceHistory(
   productId: string,
 ): Promise<{ name: string; points: PricePoint[] } | null> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return null;
   const supabase = createServerSupabaseClient();
 
   const [{ data: product }, { data, error }] = await Promise.all([
-    supabase.from("products").select("name").eq("id", productId).maybeSingle(),
+    supabase
+      .from("products")
+      .select("name")
+      .eq("household_id", householdId)
+      .eq("id", productId)
+      .maybeSingle(),
     supabase
       .from("receipt_items")
       .select("purchased_at, total_price, quantity, unit, store_chain")
+      .eq("household_id", householdId)
       .eq("product_id", productId)
       .not("purchased_at", "is", null)
       .not("total_price", "is", null)

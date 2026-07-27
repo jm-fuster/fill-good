@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getActiveHouseholdId } from "@/features/household/queries";
 import type { UnitType } from "@/lib/supabase/types";
 
 /**
@@ -67,12 +68,15 @@ function percentile(values: number[], p: number): number {
 }
 
 export async function getPriceAlerts(): Promise<PriceAlert[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("receipt_items")
     .select(
       "product_id, total_price, quantity, unit, purchased_at, product:products!receipt_items_product_id_fkey(name)",
     )
+    .eq("household_id", householdId)
     .not("product_id", "is", null)
     .not("total_price", "is", null)
     .not("purchased_at", "is", null)

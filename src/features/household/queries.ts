@@ -99,6 +99,19 @@ export const getCurrentHousehold = cache(
   },
 );
 
+/**
+ * Id del hogar ACTIVO, o null si el usuario no pertenece a ninguno.
+ *
+ * Atajo para las consultas que solo necesitan acotar por `household_id`. Es
+ * OBLIGATORIO acotar: la RLS solo comprueba «¿eres miembro de este hogar?», así
+ * que en un usuario con varios hogares una consulta sin `.eq("household_id", …)`
+ * devuelve las filas de TODOS ellos mezcladas (y las que usan `.maybeSingle()`
+ * fallan directamente con múltiples filas).
+ */
+export const getActiveHouseholdId = cache(async (): Promise<string | null> => {
+  return (await getCurrentHousehold())?.id ?? null;
+});
+
 /** Miembros de un hogar, ordenados por antigüedad. */
 export async function getHouseholdMembers(
   householdId: string,

@@ -1,7 +1,10 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getCurrentHousehold } from "@/features/household/queries";
+import {
+  getActiveHouseholdId,
+  getCurrentHousehold,
+} from "@/features/household/queries";
 import { suggestCandidates, type HouseholdMatchData } from "@/lib/matching";
 import type { UnitType } from "@/lib/supabase/types";
 
@@ -88,10 +91,13 @@ export async function getPendingReceipts(): Promise<PendingReceipt[]> {
 export async function getReceipt(
   receiptId: string,
 ): Promise<ReceiptHeader | null> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return null;
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("receipts")
     .select("id, store_name, store_chain, purchased_at, total_amount, status")
+    .eq("household_id", householdId)
     .eq("id", receiptId)
     .maybeSingle();
   if (error) throw error;
@@ -109,6 +115,8 @@ export async function getReceipt(
 export async function getReceiptItems(
   receiptId: string,
 ): Promise<ReceiptItem[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("receipt_items")
@@ -117,6 +125,7 @@ export async function getReceiptItems(
       // esta última de E7): hay que nombrar la relación o PostgREST da PGRST201.
       "id, raw_text, description, quantity, unit, is_weighted, total_price, price_per_kg, product_id, suggested_product_id, match_status, product:products!receipt_items_product_id_fkey(name)",
     )
+    .eq("household_id", householdId)
     .eq("receipt_id", receiptId)
     .order("position", { ascending: true });
   if (error) throw error;

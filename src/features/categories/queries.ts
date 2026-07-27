@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getActiveHouseholdId } from "@/features/household/queries";
 
 export type StoreCategory = {
   id: string;
@@ -15,10 +16,13 @@ export type StoreCategory = {
  * de /lista y el modo compra para ordenar por pasillos.
  */
 export async function getStoreCategories(): Promise<StoreCategory[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("categories")
     .select("id, name, icon, sort_order")
+    .eq("household_id", householdId)
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
   if (error) throw error;

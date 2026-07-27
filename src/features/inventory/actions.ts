@@ -75,7 +75,11 @@ export async function addInventoryAction(
     if (d.categoryId) updates.category_id = d.categoryId;
     if (d.unit === "ud") updates.pack_size = packSize;
     if (Object.keys(updates).length > 0) {
-      await supabase.from("products").update(updates).eq("id", productId);
+      await supabase
+        .from("products")
+        .update(updates)
+        .eq("household_id", household.id)
+        .eq("id", productId);
     }
   } else {
     const { data: created, error: insErr } = await supabase
@@ -195,6 +199,8 @@ export async function setInventoryQuantityAction(
   if (!Number.isFinite(quantity) || quantity < 0) {
     return { error: "Cantidad no válida." };
   }
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
 
@@ -203,12 +209,14 @@ export async function setInventoryQuantityAction(
   const { data: prev } = await supabase
     .from("inventory_items")
     .select("household_id, product_id, quantity, unit")
+    .eq("household_id", household.id)
     .eq("id", id)
     .maybeSingle();
 
   const { error } = await supabase
     .from("inventory_items")
     .update({ quantity, updated_by: userId })
+    .eq("household_id", household.id)
     .eq("id", id);
   if (error) return { error: "No se pudo actualizar la cantidad." };
 
@@ -301,6 +309,7 @@ export async function updateInventoryAction(
   const { error: prodErr } = await supabase
     .from("products")
     .update(productUpdate)
+    .eq("household_id", household.id)
     .eq("id", d.productId);
   if (prodErr) return { error: "No se pudo guardar el nombre." };
 
@@ -330,9 +339,14 @@ export async function updateInventoryAction(
         use_soon: d.useSoon,
         updated_by: userId,
       })
+      .eq("household_id", household.id)
       .eq("id", target.id);
     if (mergeErr) return { error: "No se pudo mover el producto." };
-    await supabase.from("inventory_items").delete().eq("id", d.inventoryId);
+    await supabase
+      .from("inventory_items")
+      .delete()
+      .eq("household_id", household.id)
+      .eq("id", d.inventoryId);
   } else {
     const { error: invErr } = await supabase
       .from("inventory_items")
@@ -343,6 +357,7 @@ export async function updateInventoryAction(
         use_soon: d.useSoon,
         updated_by: userId,
       })
+      .eq("household_id", household.id)
       .eq("id", d.inventoryId);
     if (invErr) return { error: "No se pudo guardar." };
   }
@@ -483,10 +498,15 @@ export async function deleteInventoryAction(
   const { data: item } = await supabase
     .from("inventory_items")
     .select("product_id, quantity, unit")
+    .eq("household_id", household.id)
     .eq("id", id)
     .maybeSingle();
 
-  const { error } = await supabase.from("inventory_items").delete().eq("id", id);
+  const { error } = await supabase
+    .from("inventory_items")
+    .delete()
+    .eq("household_id", household.id)
+    .eq("id", id);
   if (error) return { error: "No se pudo eliminar." };
 
   if (item && Number(item.quantity) > 0) {
@@ -515,8 +535,8 @@ export type ExpiryReviewUpdate = {
 /**
  * Revisión de caducidades tras la compra: fija `expiry_date` / `use_soon` en
  * lote para los items recién comprados. Solo escribe filas que cambian de
- * verdad; la RLS restringe a los del hogar. Es idempotente y opcional (omitir
- * no llama a esta acción).
+ * verdad, y solo del hogar activo. Es idempotente y opcional (omitir no llama a
+ * esta acción).
  */
 export async function saveExpiryReviewAction(
   updates: ExpiryReviewUpdate[],
@@ -539,6 +559,7 @@ export async function saveExpiryReviewAction(
         use_soon: u.useSoon,
         updated_by: userId,
       })
+      .eq("household_id", household.id)
       .eq("id", u.id);
     if (error) return { error: "No se pudieron guardar los cambios." };
   }

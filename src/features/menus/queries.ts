@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getActiveHouseholdId } from "@/features/household/queries";
 import type { MenuRuleKind } from "./rules";
 
 export type MealSlot = "lunch" | "dinner";
@@ -58,10 +59,16 @@ function mapEntryRow(r: EntryRow): MenuEntry {
 }
 
 export async function getWeekMenu(weekStart: string): Promise<WeekMenu | null> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return null;
   const supabase = createServerSupabaseClient();
+  // El filtro por hogar no es solo cosmético: la unicidad de `week_start` es POR
+  // hogar, así que sin él un usuario con dos hogares que tengan menú esa semana
+  // recibía dos filas y `.maybeSingle()` fallaba.
   const { data, error } = await supabase
     .from("weekly_menus")
     .select("id, generated_by")
+    .eq("household_id", householdId)
     .eq("week_start", weekStart)
     .maybeSingle();
   if (error) throw error;
@@ -69,12 +76,15 @@ export async function getWeekMenu(weekStart: string): Promise<WeekMenu | null> {
 }
 
 export async function getMenuEntries(menuId: string): Promise<MenuEntry[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("menu_entries")
     .select(
       "id, date, meal_slot, position, recipe_id, free_text, cooked_at, source, pinned, recipe:recipes(name, is_saved, source)",
     )
+    .eq("household_id", householdId)
     .eq("menu_id", menuId)
     .order("date", { ascending: true })
     .order("meal_slot", { ascending: true })
@@ -104,10 +114,13 @@ export async function getWeekMenusWithEntries(
   for (const w of weeks) result.set(w, { menu: null, entries: [] });
   if (weeks.length === 0) return result;
 
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return result;
   const supabase = createServerSupabaseClient();
   const { data: menus, error: menusErr } = await supabase
     .from("weekly_menus")
     .select("id, generated_by, week_start")
+    .eq("household_id", householdId)
     .in("week_start", weeks);
   if (menusErr) throw menusErr;
   if (!menus || menus.length === 0) return result;
@@ -126,6 +139,7 @@ export async function getWeekMenusWithEntries(
     .select(
       "menu_id, id, date, meal_slot, position, recipe_id, free_text, cooked_at, source, pinned, recipe:recipes(name, is_saved, source)",
     )
+    .eq("household_id", householdId)
     .in("menu_id", [...weekByMenuId.keys()])
     .order("date", { ascending: true })
     .order("meal_slot", { ascending: true })
@@ -165,17 +179,19 @@ type MenuRuleRow = {
 };
 
 /**
- * Reglas del hogar (activas e inactivas) para la sección "Reglas del menú".
- * Devolver también las inactivas permite reactivarlas desde la UI. RLS limita
- * las filas al hogar del usuario.
+ * Reglas del hogar ACTIVO (activas e inactivas) para la sección "Reglas del
+ * menú". Devolver también las inactivas permite reactivarlas desde la UI.
  */
 export async function getMenuRules(): Promise<MenuRule[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("menu_rules")
     .select(
       "id, kind, recipe_id, value, text_rule, active, created_at, recipe:recipes(name)",
     )
+    .eq("household_id", householdId)
     .order("active", { ascending: false })
     .order("created_at", { ascending: true });
   if (error) throw error;
@@ -221,15 +237,19 @@ export const DEFAULT_MENU_PREFS: MenuPrefs = {
 };
 
 /**
- * Preferencias del menú del hogar. Sin fila → defaults con `configured: false`
- * (el generador se comporta como antes y la UI ofrece el onboarding). RLS
- * limita la fila al hogar del usuario.
+ * Preferencias del menú del hogar ACTIVO. Sin fila → defaults con
+ * `configured: false` (el generador se comporta como antes y la UI ofrece el
+ * onboarding). Sin el filtro por hogar, un usuario con preferencias en dos
+ * hogares recibía dos filas y `.maybeSingle()` fallaba.
  */
 export async function getMenuPrefs(): Promise<MenuPrefs> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return DEFAULT_MENU_PREFS;
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("household_menu_prefs")
     .select("goal, diet_style, avoid_text, servings, plan_breakfast")
+    .eq("household_id", householdId)
     .maybeSingle();
   if (error) throw error;
   if (!data) return DEFAULT_MENU_PREFS;
@@ -251,16 +271,20 @@ export type RecipeDetail = {
 };
 
 export async function getRecipe(recipeId: string): Promise<RecipeDetail | null> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return null;
   const supabase = createServerSupabaseClient();
   const [{ data: recipe }, { data: ingredients }] = await Promise.all([
     supabase
       .from("recipes")
       .select("name, description, servings")
+      .eq("household_id", householdId)
       .eq("id", recipeId)
       .maybeSingle(),
     supabase
       .from("recipe_ingredients")
       .select("name, quantity, unit")
+      .eq("household_id", householdId)
       .eq("recipe_id", recipeId),
   ]);
   if (!recipe) return null;

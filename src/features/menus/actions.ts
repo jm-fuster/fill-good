@@ -70,9 +70,12 @@ async function ensureMenu(
   householdId: string,
   weekStart: string,
 ): Promise<string | null> {
+  // La unicidad de `week_start` es POR hogar: sin el filtro, un usuario con dos
+  // hogares con menú esa semana recibía dos filas y `.maybeSingle()` fallaba.
   const { data: existing } = await supabase
     .from("weekly_menus")
     .select("id")
+    .eq("household_id", householdId)
     .eq("week_start", weekStart)
     .maybeSingle();
   if (existing) return existing.id;
@@ -92,6 +95,7 @@ async function ensureMenu(
  */
 async function nextPosition(
   supabase: SupabaseClient<Database>,
+  householdId: string,
   menuId: string,
   date: string,
   slot: string,
@@ -99,6 +103,7 @@ async function nextPosition(
   const { data: last } = await supabase
     .from("menu_entries")
     .select("position")
+    .eq("household_id", householdId)
     .eq("menu_id", menuId)
     .eq("date", date)
     .eq("meal_slot", slot)
@@ -153,7 +158,11 @@ async function cleanupOrphanEphemeralRecipes(
 
   const orphans = ephemeralIds.filter((id) => !referenced.has(id));
   if (orphans.length > 0) {
-    await supabase.from("recipes").delete().in("id", orphans);
+    await supabase
+      .from("recipes")
+      .delete()
+      .eq("household_id", householdId)
+      .in("id", orphans);
   }
 }
 
@@ -385,11 +394,16 @@ export async function generateMenuAction(
   // "replace" arrasa toda la semana; "fill" borra solo lo generado por IA que no
   // esté fijado y deja intactas las entradas conservadas.
   if (mode === "replace") {
-    await supabase.from("menu_entries").delete().eq("menu_id", menuId);
+    await supabase
+      .from("menu_entries")
+      .delete()
+      .eq("household_id", household.id)
+      .eq("menu_id", menuId);
   } else {
     await supabase
       .from("menu_entries")
       .delete()
+      .eq("household_id", household.id)
       .eq("menu_id", menuId)
       .eq("source", "ai")
       .eq("pinned", false);
@@ -481,6 +495,7 @@ export async function generateMenuAction(
   await supabase
     .from("weekly_menus")
     .update({ generated_by: "ai" })
+    .eq("household_id", household.id)
     .eq("id", menuId);
 
   // Limpia recetas efímeras huérfanas de generaciones anteriores.
@@ -516,7 +531,13 @@ export async function addMenuEntryAction(
   const menuId = await ensureMenu(supabase, household.id, weekStart);
   if (!menuId) return { error: "No se pudo crear el menú." };
 
-  const position = await nextPosition(supabase, menuId, date, slot);
+  const position = await nextPosition(
+    supabase,
+    household.id,
+    menuId,
+    date,
+    slot,
+  );
 
   const { error } = await supabase.from("menu_entries").insert({
     menu_id: menuId,
@@ -560,6 +581,7 @@ export async function updateMenuEntryAction(
   const { error } = await supabase
     .from("menu_entries")
     .update({ free_text: text, recipe_id: null, source: "manual" })
+    .eq("household_id", household.id)
     .eq("id", entryId);
   if (error) return { error: "No se pudo guardar el plato." };
 
@@ -578,6 +600,7 @@ export async function removeMenuEntryAction(
   const { error } = await supabase
     .from("menu_entries")
     .delete()
+    .eq("household_id", household.id)
     .eq("id", entryId);
   if (error) return { error: "No se pudo quitar el plato." };
 
@@ -605,6 +628,7 @@ export async function moveMenuEntryAction(
   const { data: entry } = await supabase
     .from("menu_entries")
     .select("menu_id, date, meal_slot, cooked_at")
+    .eq("household_id", household.id)
     .eq("id", entryId)
     .maybeSingle();
   if (!entry) return { error: "No se encontró la entrada del menú." };
@@ -623,12 +647,19 @@ export async function moveMenuEntryAction(
     }
   }
 
-  const position = await nextPosition(supabase, entry.menu_id, date, slot);
+  const position = await nextPosition(
+    supabase,
+    household.id,
+    entry.menu_id,
+    date,
+    slot,
+  );
 
   // Mover es un gesto manual: la entrada pasa a protegerse de la regeneración (N2).
   const { error } = await supabase
     .from("menu_entries")
     .update({ date, meal_slot: slot, position, source: "manual" })
+    .eq("household_id", household.id)
     .eq("id", entryId);
   if (error) return { error: "No se pudo mover el plato." };
 
@@ -653,11 +684,18 @@ export async function duplicateMenuEntryAction(
   const { data: entry } = await supabase
     .from("menu_entries")
     .select("menu_id, recipe_id, free_text")
+    .eq("household_id", household.id)
     .eq("id", entryId)
     .maybeSingle();
   if (!entry) return { error: "No se encontró la entrada del menú." };
 
-  const position = await nextPosition(supabase, entry.menu_id, date, slot);
+  const position = await nextPosition(
+    supabase,
+    household.id,
+    entry.menu_id,
+    date,
+    slot,
+  );
 
   const { error } = await supabase.from("menu_entries").insert({
     menu_id: entry.menu_id,
@@ -694,6 +732,7 @@ export async function copyPreviousWeekAction(
   const prevMenu = await supabase
     .from("weekly_menus")
     .select("id")
+    .eq("household_id", household.id)
     .eq("week_start", prevWeekStart)
     .maybeSingle();
   const prevMenuId = prevMenu.data?.id;
@@ -711,6 +750,7 @@ export async function copyPreviousWeekAction(
   const { data: existing } = await supabase
     .from("menu_entries")
     .select("id")
+    .eq("household_id", household.id)
     .eq("menu_id", menuId)
     .limit(1);
   if (existing && existing.length > 0) {
@@ -761,6 +801,7 @@ export async function toggleEntryPinnedAction(
   const { error } = await supabase
     .from("menu_entries")
     .update({ pinned })
+    .eq("household_id", household.id)
     .eq("id", entryId);
   if (error) return { error: "No se pudo actualizar el plato." };
 
@@ -785,6 +826,7 @@ export async function rerollMenuEntryAction(
   const { data: entry } = await supabase
     .from("menu_entries")
     .select("menu_id, date, meal_slot, position")
+    .eq("household_id", household.id)
     .eq("id", entryId)
     .maybeSingle();
   if (!entry) return { error: "No se encontró la entrada del menú." };
@@ -960,6 +1002,7 @@ export async function rerollMenuEntryAction(
       source: "ai",
       cooked_at: null,
     })
+    .eq("household_id", household.id)
     .eq("id", entryId);
   if (error) return { error: "No se pudo cambiar el plato." };
 
@@ -988,16 +1031,18 @@ export async function toggleEntryCookedAction(
     const { error } = await supabase
       .from("menu_entries")
       .update({ cooked_at: null })
+      .eq("household_id", household.id)
       .eq("id", entryId);
     if (error) return { error: "No se pudo actualizar la entrada." };
     revalidatePath("/menus");
     return { ok: true };
   }
 
-  // Recupera la fecha real de la entrada (RLS garantiza que es del hogar).
+  // Recupera la fecha real de la entrada, acotada al hogar activo.
   const { data: entry } = await supabase
     .from("menu_entries")
     .select("date")
+    .eq("household_id", household.id)
     .eq("id", entryId)
     .maybeSingle();
   if (!entry) return { error: "No se encontró la entrada del menú." };
@@ -1011,6 +1056,7 @@ export async function toggleEntryCookedAction(
   const { error } = await supabase
     .from("menu_entries")
     .update({ cooked_at: entry.date })
+    .eq("household_id", household.id)
     .eq("id", entryId);
   if (error) return { error: "No se pudo actualizar la entrada." };
 
@@ -1039,6 +1085,7 @@ export async function computeCookedDeductionsAction(
   const { data: ingredients } = await supabase
     .from("recipe_ingredients")
     .select("name, quantity, unit, product_id")
+    .eq("household_id", household.id)
     .eq("recipe_id", recipeId);
   if (!ingredients || ingredients.length === 0) return { deductions: [] };
 
@@ -1123,6 +1170,7 @@ export async function confirmCookedDeductionsAction(
       const { error } = await supabase
         .from("inventory_items")
         .update({ quantity: newQty, updated_by: userId })
+        .eq("household_id", household.id)
         .eq("id", lot.id);
       if (error) return { error: "No se pudo actualizar el inventario." };
       remaining -= take;
@@ -1251,7 +1299,13 @@ export async function addRecipeToMenuAction(
   const date = todayLocalISO();
   const slot = new Date().getHours() < 16 ? "lunch" : "dinner";
 
-  const position = await nextPosition(supabase, menuId, date, slot);
+  const position = await nextPosition(
+    supabase,
+    household.id,
+    menuId,
+    date,
+    slot,
+  );
 
   const { error } = await supabase.from("menu_entries").insert({
     menu_id: menuId,
@@ -1294,6 +1348,7 @@ export async function computeMissingForMenuAction(
   const { data: entries } = await supabase
     .from("menu_entries")
     .select("recipe_id")
+    .eq("household_id", household.id)
     .eq("menu_id", menuId)
     .not("recipe_id", "is", null);
   const recipeIds = [...new Set((entries ?? []).map((e) => e.recipe_id))].filter(
@@ -1306,6 +1361,7 @@ export async function computeMissingForMenuAction(
   const { data: ingredients } = await supabase
     .from("recipe_ingredients")
     .select("name, quantity, unit, product_id")
+    .eq("household_id", household.id)
     .in("recipe_id", recipeIds);
 
   const [inventory, catalog] = await Promise.all([
@@ -1334,6 +1390,7 @@ export async function computeMissingForMenuAction(
   const { data: listItems } = await supabase
     .from("shopping_list_items")
     .select("name, product_id")
+    .eq("household_id", household.id)
     .eq("list_id", list.id);
   const listProductIds = new Set<string>();
   const listNames = new Set<string>();
@@ -1395,6 +1452,7 @@ export async function confirmMissingToListAction(
   const { data: last } = await supabase
     .from("shopping_list_items")
     .select("position")
+    .eq("household_id", household.id)
     .eq("list_id", list.id)
     .order("position", { ascending: false })
     .limit(1)
@@ -1485,6 +1543,7 @@ export async function toggleRuleAction(
   const { error } = await supabase
     .from("menu_rules")
     .update({ active })
+    .eq("household_id", household.id)
     .eq("id", ruleId);
   if (error) return { error: "No se pudo actualizar la regla." };
 
@@ -1498,7 +1557,11 @@ export async function deleteRuleAction(ruleId: string): Promise<RuleState> {
   if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
 
-  const { error } = await supabase.from("menu_rules").delete().eq("id", ruleId);
+  const { error } = await supabase
+    .from("menu_rules")
+    .delete()
+    .eq("household_id", household.id)
+    .eq("id", ruleId);
   if (error) return { error: "No se pudo borrar la regla." };
 
   revalidatePath("/menus");

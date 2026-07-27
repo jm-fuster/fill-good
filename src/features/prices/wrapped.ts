@@ -5,6 +5,7 @@ import { es } from "date-fns/locale";
 
 import { roundCents } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getActiveHouseholdId } from "@/features/household/queries";
 import { getMonthlyTripStats } from "@/features/shopping-list/queries";
 import { getMonthlySpending, getWasteInsight } from "./spending";
 
@@ -91,6 +92,9 @@ export async function getMonthlyWrapped(
   const monthStartStr = format(monthStart, "yyyy-MM-dd");
   const nextStartStr = format(nextStart, "yyyy-MM-dd");
 
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return null;
+
   const [{ data: itemRows }, tripStats] = await Promise.all([
     supabase
       .from("receipt_items")
@@ -98,6 +102,7 @@ export async function getMonthlyWrapped(
       .select(
         "product_id, total_price, product:products!receipt_items_product_id_fkey(name)",
       )
+      .eq("household_id", householdId)
       .not("product_id", "is", null)
       .not("total_price", "is", null)
       .gte("purchased_at", monthStartStr)

@@ -211,9 +211,12 @@ export async function addProductToListAction(
   const list = await getActiveList();
   if (!list) return { error: "No hay lista activa." };
 
+  // El productId llega del cliente: acotarlo al hogar activo evita enlazar la
+  // lista con un producto del OTRO hogar del usuario (la RLS lo permitiría).
   const { data: product } = await supabase
     .from("products")
     .select("id, name, default_unit")
+    .eq("household_id", household.id)
     .eq("id", productId)
     .maybeSingle();
   if (!product) return { error: "Producto no encontrado." };
@@ -489,6 +492,7 @@ export async function checkoutAction(): Promise<
       const { data: p } = await supabase
         .from("products")
         .select("default_unit, default_location, pack_size")
+        .eq("household_id", household.id)
         .eq("id", productId)
         .maybeSingle();
       if (p) {

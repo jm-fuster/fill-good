@@ -4,7 +4,10 @@ import { auth } from "@clerk/nextjs/server";
 import { addMonths, format, parseISO } from "date-fns";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { getCurrentHousehold } from "@/features/household/queries";
+import {
+  getActiveHouseholdId,
+  getCurrentHousehold,
+} from "@/features/household/queries";
 import { getLatestUnitPrices } from "@/features/prices/queries";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import { baseUnitFactor, unitFamily } from "@/lib/units";
@@ -71,11 +74,17 @@ export type HabitualProduct = {
 };
 
 export async function getActiveList(): Promise<ActiveList | null> {
+  const household = await getCurrentHousehold();
+  if (!household) return null;
   const supabase = createServerSupabaseClient();
+  // Acotado al hogar activo: sin el filtro, un usuario con dos hogares recibía
+  // la lista MÁS ANTIGUA de cualquiera de ellos (la del otro hogar, casi
+  // siempre) y toda la pantalla /lista trabajaba sobre la casa equivocada.
   const query = () =>
     supabase
       .from("shopping_lists")
       .select("id, name")
+      .eq("household_id", household.id)
       .eq("status", "active")
       .order("created_at", { ascending: true })
       .limit(1)
@@ -83,8 +92,6 @@ export async function getActiveList(): Promise<ActiveList | null> {
 
   let { data } = await query();
   if (!data) {
-    const household = await getCurrentHousehold();
-    if (!household) return null;
     await supabase.rpc("ensure_active_list", { hid: household.id });
     ({ data } = await query());
   }
@@ -101,6 +108,8 @@ export async function getActiveListBadge(): Promise<{
   listId: string | null;
   pendingCount: number;
 }> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return { listId: null, pendingCount: 0 };
   const supabase = createServerSupabaseClient();
   // Una sola query (antes 2 secuenciales: lista → count): el count de artículos
   // pendientes va embebido y filtrado en el propio embed. supabase-js devuelve
@@ -108,6 +117,7 @@ export async function getActiveListBadge(): Promise<{
   const { data: list } = await supabase
     .from("shopping_lists")
     .select("id, shopping_list_items(count)")
+    .eq("household_id", householdId)
     .eq("status", "active")
     .eq("shopping_list_items.is_checked", false)
     .order("created_at", { ascending: true })
@@ -127,10 +137,13 @@ export async function getActiveListBadge(): Promise<{
  * lista activa como `getActiveList`): si no hay lista, no hay nada que marcar.
  */
 export async function getActiveListProductIds(): Promise<Set<string>> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return new Set();
   const supabase = createServerSupabaseClient();
   const { data: list } = await supabase
     .from("shopping_lists")
     .select("id")
+    .eq("household_id", householdId)
     .eq("status", "active")
     .order("created_at", { ascending: true })
     .limit(1)
@@ -140,6 +153,7 @@ export async function getActiveListProductIds(): Promise<Set<string>> {
   const { data } = await supabase
     .from("shopping_list_items")
     .select("product_id")
+    .eq("household_id", householdId)
     .eq("list_id", list.id)
     .not("product_id", "is", null);
   return new Set(
@@ -198,6 +212,8 @@ const NO_CATEGORY_SORT = 9_000;
 export async function getShoppingModeItems(
   listId: string,
 ): Promise<ShoppingModeItem[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   // La cadena inferida se lee MATERIALIZADA del embed (products.inferred_chain);
   // getLatestUnitPrices se queda (solo corre aquí, en /lista/compra).
@@ -207,6 +223,7 @@ export async function getShoppingModeItems(
       .select(
         "id, name, quantity, unit, is_checked, product_id, product:products(preferred_chain, inferred_chain, icon, category:categories(name, icon, sort_order))",
       )
+      .eq("household_id", householdId)
       .eq("list_id", listId)
       .order("position", { ascending: true })
       .order("created_at", { ascending: true }),
@@ -265,6 +282,8 @@ type ListItemRow = {
 };
 
 export async function getListItems(listId: string): Promise<ListItem[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
   // Cadena inferida y aviso de ahorro se leen MATERIALIZADOS del embed de
@@ -274,6 +293,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
     .select(
       "id, name, quantity, unit, is_checked, product_id, added_by, product:products(preferred_chain, inferred_chain, savings_tip, icon, category:categories(name, icon, sort_order))",
     )
+    .eq("household_id", householdId)
     .eq("list_id", listId)
     .order("is_checked", { ascending: true })
     .order("position", { ascending: true })
@@ -355,6 +375,8 @@ function suggestedQuantityFor(
  * Ninguna sugiere algo que ya esté en la lista. low_stock tiene precedencia.
  */
 export async function getSuggestions(listId: string): Promise<Suggestion[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const [
     { data: products },
@@ -366,16 +388,22 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
       .from("products")
       .select(
         "id, name, min_quantity, default_unit, purchase_count, pack_size",
-      ),
-    supabase.from("inventory_items").select("product_id, quantity"),
+      )
+      .eq("household_id", householdId),
+    supabase
+      .from("inventory_items")
+      .select("product_id, quantity")
+      .eq("household_id", householdId),
     supabase
       .from("shopping_list_items")
       .select("product_id")
+      .eq("household_id", householdId)
       .eq("list_id", listId)
       .not("product_id", "is", null),
     supabase
       .from("receipt_items")
       .select("product_id, purchased_at")
+      .eq("household_id", householdId)
       .not("product_id", "is", null)
       .not("purchased_at", "is", null)
       .order("purchased_at", { ascending: true }),
@@ -465,12 +493,15 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
  * habitualidad (más comprados primero) y luego alfabético como desempate.
  */
 export async function getProductCatalog(): Promise<CatalogProduct[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("products")
     .select(
       "id, name, normalized_name, default_unit, default_location, purchase_count, pack_size",
     )
+    .eq("household_id", householdId)
     .order("purchase_count", { ascending: false })
     .order("name", { ascending: true });
   if (error) throw error;
@@ -492,19 +523,26 @@ export async function getProductCatalog(): Promise<CatalogProduct[]> {
 export async function getHabitualProducts(
   listId: string,
 ): Promise<HabitualProduct[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
   const supabase = createServerSupabaseClient();
   const [{ data: products }, { data: inventory }, { data: items }] =
     await Promise.all([
       supabase
         .from("products")
         .select("id, name, default_unit, default_location, purchase_count")
+        .eq("household_id", householdId)
         .gte("purchase_count", 2)
         .order("purchase_count", { ascending: false })
         .order("name", { ascending: true }),
-      supabase.from("inventory_items").select("product_id, quantity"),
+      supabase
+        .from("inventory_items")
+        .select("product_id, quantity")
+        .eq("household_id", householdId),
       supabase
         .from("shopping_list_items")
         .select("product_id")
+        .eq("household_id", householdId)
         .eq("list_id", listId)
         .not("product_id", "is", null),
     ]);
@@ -559,6 +597,10 @@ const RECURRING_EXTRA_MIN_TIMES = 2;
 export async function getMonthlyTripStats(
   month: string,
 ): Promise<MonthlyTripStats> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) {
+    return { tripsMatched: 0, tripsPerfect: 0, topExtra: null };
+  }
   const supabase = createServerSupabaseClient();
   const monthStart = parseISO(`${month}-01`);
   const monthStartStr = format(monthStart, "yyyy-MM-dd");
@@ -567,6 +609,7 @@ export async function getMonthlyTripStats(
   const { data: tripRows } = await supabase
     .from("shopping_trips")
     .select("id, product_ids, receipt_id")
+    .eq("household_id", householdId)
     .not("receipt_id", "is", null)
     .gte("closed_at", monthStartStr)
     .lt("closed_at", nextStartStr);
@@ -586,6 +629,7 @@ export async function getMonthlyTripStats(
       .select(
         "receipt_id, product_id, description, product:products!receipt_items_product_id_fkey(name)",
       )
+      .eq("household_id", householdId)
       .in("receipt_id", receiptIds)
       .not("product_id", "is", null);
 
