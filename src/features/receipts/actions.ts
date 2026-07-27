@@ -866,6 +866,9 @@ export async function confirmReceiptAction(
   revalidatePath("/precios");
   revalidatePath("/perfil");
   revalidatePath("/escanear");
+  // `/lista` porque `linkReceiptToTrip` acaba de emparejar la compra con este
+  // ticket: sin revalidar, el aviso «¿Tienes el ticket?» seguiría ahí ya escaneado.
+  revalidatePath("/lista");
 
   // Trabajo posterior FUERA del camino crítico: el cliente recibe la respuesta al
   // cerrar el ticket; esto sale después vía after().

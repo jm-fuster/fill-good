@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { vibrateTick } from "@/lib/haptics";
 import { chainLabel } from "@/features/prices/chains";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
+import { ScanTicketNudge } from "@/features/receipts/components/scan-ticket-nudge";
 import { formatQuantity } from "@/lib/units";
 import { usePersistedFlag } from "@/hooks/use-persisted-flag";
 import { useRealtimeList } from "../use-realtime-list";
@@ -32,6 +33,7 @@ import type {
   CatalogProduct,
   HabitualProduct,
   ListItem,
+  PendingTicketTrip,
   Suggestion,
 } from "../queries";
 import {
@@ -64,12 +66,15 @@ export function ShoppingListView({
   suggestions,
   habituales,
   catalog,
+  pendingTicket,
 }: {
   listId: string;
   initialItems: ListItem[];
   suggestions: Suggestion[];
   habituales: HabitualProduct[];
   catalog: CatalogProduct[];
+  /** Compra cerrada sin ticket: ofrece escanearlo (G2). null = nada que ofrecer. */
+  pendingTicket: PendingTicketTrip | null;
 }) {
   useRealtimeList(listId);
   const router = useRouter();
@@ -309,6 +314,10 @@ export function ShoppingListView({
         onListProductIds={onListProductIds}
         defaultOptions={focusOptions}
       />
+
+      {/* Debajo del alta a propósito: el gesto frecuente (añadir) manda, y el
+          aviso no puede empujarlo fuera del alcance del pulgar. */}
+      {pendingTicket ? <ScanTicketNudge trip={pendingTicket} /> : null}
 
       {allItems.length === 0 ? (
         <EmptyState

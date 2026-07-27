@@ -11,6 +11,10 @@ import { checkoutAction } from "../actions";
  * footer del modo compra (L7). Vuelca lo marcado al inventario y redirige a la
  * revisión de caducidades; si no hay ids, `exitTo` decide si navegar a otra
  * ruta (modo compra → `/lista`) o solo refrescar (quedarse en `/lista`).
+ *
+ * `origen=lista` distingue esta entrada a la revisión de la que llega tras
+ * confirmar un ticket: solo aquí tiene sentido ofrecer escanearlo (quien viene
+ * de un ticket ya lo ha hecho).
  */
 export function useCheckout(exitTo?: string) {
   const router = useRouter();
@@ -30,7 +34,9 @@ export function useCheckout(exitTo?: string) {
       );
       const ids = r.inventoryItemIds ?? [];
       if (ids.length > 0) {
-        router.push(`/inventario/revision?items=${ids.join(",")}`);
+        router.push(
+          `/inventario/revision?items=${ids.join(",")}&origen=lista`,
+        );
       } else if (exitTo) {
         router.push(exitTo);
       } else {

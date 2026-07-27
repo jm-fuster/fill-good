@@ -13,16 +13,19 @@ import {
   getListItems,
   getProductCatalog,
   getSuggestions,
+  getTripPendingTicket,
 } from "@/features/shopping-list/queries";
 
 export const metadata: Metadata = { title: "Lista de la compra" };
 
 export default async function ListaPage() {
-  // getProductCatalog no depende de list.id → va en la primera tanda junto a
-  // getActiveList (antes esperaba a tener la lista: waterfall innecesario).
-  const [list, catalog] = await Promise.all([
+  // getProductCatalog y getTripPendingTicket no dependen de list.id → van en la
+  // primera tanda junto a getActiveList (antes el catálogo esperaba a tener la
+  // lista: waterfall innecesario).
+  const [list, catalog, pendingTicket] = await Promise.all([
     getActiveList(),
     getProductCatalog(),
+    getTripPendingTicket(),
   ]);
 
   if (!list) {
@@ -59,6 +62,7 @@ export default async function ListaPage() {
         suggestions={suggestions}
         habituales={habituales}
         catalog={catalog}
+        pendingTicket={pendingTicket}
       />
     </PageContainer>
   );

@@ -1,7 +1,7 @@
 import "server-only";
 
 import { auth } from "@clerk/nextjs/server";
-import { addMonths, format, parseISO } from "date-fns";
+import { addMonths, format, formatISO, parseISO, subHours } from "date-fns";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
@@ -13,6 +13,7 @@ import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import { baseUnitFactor, unitFamily } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import { compareTripToReceipt } from "./trip-comparison";
+import { TRIP_MATCH_WINDOW_HOURS } from "./trips";
 
 export type ActiveList = { id: string; name: string };
 
@@ -565,6 +566,36 @@ export async function getHabitualProducts(
       defaultLocation: p.default_location,
       purchaseCount: p.purchase_count,
     }));
+}
+
+/** Compra cerrada desde la lista que sigue sin ticket escaneado (G2). */
+export type PendingTicketTrip = { id: string };
+
+/**
+ * Última compra cerrada desde la lista que aún no tiene ticket y que TODAVÍA se
+ * podría emparejar con uno. Es lo que permite ofrecer el escaneo más tarde —
+ * cuando se llega a casa con el ticket de papel— en vez de bifurcar el botón de
+ * «Finalizar compra» en dos (finalizar / finalizar y escanear), que duplicaría
+ * la entrada al inventario.
+ *
+ * La ventana es la misma que usa `linkReceiptToTrip`: pasada esa ventana el
+ * ticket ya no se enlazaría con esta compra, así que seguir ofreciéndolo sería
+ * engañoso.
+ */
+export async function getTripPendingTicket(): Promise<PendingTicketTrip | null> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return null;
+  const supabase = createServerSupabaseClient();
+  const { data } = await supabase
+    .from("shopping_trips")
+    .select("id")
+    .eq("household_id", householdId)
+    .is("receipt_id", null)
+    .gte("closed_at", formatISO(subHours(new Date(), TRIP_MATCH_WINDOW_HOURS)))
+    .order("closed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data ? { id: data.id } : null;
 }
 
 export type MonthlyTripStats = {
