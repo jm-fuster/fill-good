@@ -2,19 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ListChecks, Plus, Trash2 } from "lucide-react";
+import { ListChecks, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  ResponsiveModal,
-  ResponsiveModalClose,
-  ResponsiveModalContent,
-  ResponsiveModalDescription,
-  ResponsiveModalFooter,
-  ResponsiveModalHeader,
-  ResponsiveModalTitle,
-} from "@/components/ui/responsive-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -48,80 +39,61 @@ function describeRule(rule: MenuRule): string {
 type FreqBound = "recipe_min_week" | "recipe_max_week";
 type Mode = "recipe" | "free_text";
 
-export function MenuRules({
+/**
+ * Bloque de reglas dentro de «Ajustes del menú» (ver `MenuSettings`). Antes era
+ * una sección colapsable al final de /menus; ahora vive junto a las
+ * preferencias, porque las dos cosas responden a la misma pregunta: cómo genera
+ * la IA. El alta es un formulario en línea, no otro modal: se abre desde un
+ * modal y anidar bottom sheets es frágil.
+ */
+export function MenuRulesFields({
   rules,
   recipes,
 }: {
   rules: MenuRule[];
   recipes: SavedRecipe[];
 }) {
-  const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
 
-  const activeCount = rules.filter((r) => r.active).length;
-
   return (
-    <section className="rounded-xl border">
-      <h2>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-controls="menu-rules-body"
-          className="flex min-h-11 w-full items-center gap-2 p-3 text-left"
-        >
-          <ListChecks className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <span className="font-medium">Reglas del menú</span>
-          {activeCount > 0 ? (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-              {activeCount} {activeCount === 1 ? "activa" : "activas"}
-            </span>
-          ) : null}
-          <ChevronDown
-            className={cn(
-              "ml-auto size-4 shrink-0 text-muted-foreground transition-transform",
-              open && "rotate-180",
-            )}
+    <section className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h3 className="flex items-center gap-2 text-sm font-medium">
+          <ListChecks
+            className="size-4 shrink-0 text-muted-foreground"
             aria-hidden
           />
-        </button>
-      </h2>
+          Reglas del menú
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          Cada cuánto quieres una receta, o instrucciones libres.
+        </p>
+      </div>
 
-      {open ? (
-        <div id="menu-rules-body" className="flex flex-col gap-3 px-3 pb-3">
-          <p className="text-xs text-muted-foreground">
-            Condicionan cómo se genera el menú con IA: cada cuánto quieres una
-            receta o instrucciones libres.
-          </p>
+      {rules.length === 0 ? (
+        <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+          Aún no hay reglas. Añade la primera para guiar tus menús.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-2">
+          {rules.map((rule) => (
+            <RuleRow key={rule.id} rule={rule} />
+          ))}
+        </ul>
+      )}
 
-          {rules.length === 0 ? (
-            <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-              Aún no hay reglas. Añade la primera para guiar tus menús.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {rules.map((rule) => (
-                <RuleRow key={rule.id} rule={rule} />
-              ))}
-            </ul>
-          )}
-
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setAdding(true)}
-            className="self-start"
-          >
-            <Plus aria-hidden /> Añadir regla
-          </Button>
-        </div>
-      ) : null}
-
-      <AddRuleDrawer
-        open={adding}
-        recipes={recipes}
-        onOpenChange={setAdding}
-      />
+      {adding ? (
+        <AddRuleForm recipes={recipes} onDone={() => setAdding(false)} />
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => setAdding(true)}
+          className="self-start"
+        >
+          <Plus aria-hidden /> Añadir regla
+        </Button>
+      )}
     </section>
   );
 }
@@ -184,40 +156,24 @@ function RuleRow({ rule }: { rule: MenuRule }) {
   );
 }
 
-function AddRuleDrawer({
-  open,
+function AddRuleForm({
   recipes,
-  onOpenChange,
+  onDone,
 }: {
-  open: boolean;
   recipes: SavedRecipe[];
-  onOpenChange: (open: boolean) => void;
+  onDone: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
-  const [mode, setMode] = useState<Mode>("recipe");
+  const noRecipes = recipes.length === 0;
+
+  const [mode, setMode] = useState<Mode>(noRecipes ? "free_text" : "recipe");
   const [recipeId, setRecipeId] = useState("");
   const [bound, setBound] = useState<FreqBound>("recipe_min_week");
   const [times, setTimes] = useState("1");
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
-
-  const noRecipes = recipes.length === 0;
-
-  function reset() {
-    setMode(noRecipes ? "free_text" : "recipe");
-    setRecipeId("");
-    setBound("recipe_min_week");
-    setTimes("1");
-    setText("");
-    setError(null);
-  }
-
-  function handleOpenChange(next: boolean) {
-    if (next) reset();
-    onOpenChange(next);
-  }
 
   function submit() {
     setError(null);
@@ -249,22 +205,16 @@ function AddRuleDrawer({
         return;
       }
       toast.success("Regla añadida");
-      onOpenChange(false);
+      onDone();
       router.refresh();
     });
   }
 
   return (
-    <ResponsiveModal open={open} onOpenChange={handleOpenChange}>
-      <ResponsiveModalContent>
-        <ResponsiveModalHeader>
-          <ResponsiveModalTitle>Nueva regla del menú</ResponsiveModalTitle>
-          <ResponsiveModalDescription>
-            Elige la frecuencia de una receta o escribe una instrucción libre.
-          </ResponsiveModalDescription>
-        </ResponsiveModalHeader>
+    <div className="flex flex-col gap-4 rounded-xl border p-3">
+      <p className="text-sm font-medium">Nueva regla</p>
 
-        <div className="flex flex-col gap-4 px-4">
+      <div className="flex flex-col gap-4">
           {/* Selector de modo */}
           <div role="group" aria-label="Tipo de regla" className="flex gap-2">
             <Button
@@ -376,25 +326,26 @@ function AddRuleDrawer({
               {error}
             </p>
           ) : null}
-        </div>
+      </div>
 
-        <ResponsiveModalFooter className="gap-2">
-          <Button
-            type="button"
-            size="lg"
-            onClick={submit}
-            disabled={mode === "recipe" && noRecipes}
-            loading={pending}
-          >
-            {pending ? "Guardando…" : "Añadir regla"}
-          </Button>
-          <ResponsiveModalClose asChild>
-            <Button type="button" variant="ghost">
-              Cancelar
-            </Button>
-          </ResponsiveModalClose>
-        </ResponsiveModalFooter>
-      </ResponsiveModalContent>
-    </ResponsiveModal>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          onClick={submit}
+          disabled={mode === "recipe" && noRecipes}
+          loading={pending}
+        >
+          {pending ? "Guardando…" : "Añadir regla"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onDone}
+          disabled={pending}
+        >
+          Cancelar
+        </Button>
+      </div>
+    </div>
   );
 }

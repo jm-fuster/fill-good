@@ -276,6 +276,14 @@
   #contenido {
     padding: 0 !important;
   }
+  /* «Imprimir» se dispara desde el sheet de más acciones del menú: overlay y
+     contenido de los modales fuera, o la hoja saldría con el sheet encima. */
+  [data-slot="drawer-overlay"],
+  [data-slot="drawer-content"],
+  [data-slot="dialog-overlay"],
+  [data-slot="dialog-content"] {
+    display: none !important;
+  }
   html,
   body {
     background: #ffffff !important;

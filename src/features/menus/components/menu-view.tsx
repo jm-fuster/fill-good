@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Copy,
   Lightbulb,
+  MoreHorizontal,
   MoveRight,
   Pin,
   PinOff,
@@ -20,6 +21,8 @@ import {
   RefreshCw,
   Share2,
   Sparkles,
+  Trash2,
+  type LucideIcon,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -93,6 +96,7 @@ export function MenuView({
   weekCost,
   slots,
   canCopyPrevious,
+  settingsSlot,
 }: {
   weekStart: string;
   menuId: string | null;
@@ -100,6 +104,12 @@ export function MenuView({
   weekCost: { total: number; complete: boolean } | null;
   slots: SlotDef[];
   canCopyPrevious: boolean;
+  /**
+   * Botón de «Ajustes del menú» (`MenuSettings`), que viaja junto al botón de
+   * generar. Llega como slot desde el servidor para que esta vista no cargue
+   * con las preferencias ni las reglas, que no usa para nada.
+   */
+  settingsSlot: React.ReactNode;
 }) {
   const router = useRouter();
   const [generating, startGenerate] = useTransition();
@@ -127,10 +137,17 @@ export function MenuView({
   // Hay trabajo que la regeneración respetuosa conservaría (fijado o manual):
   // solo entonces tiene sentido ofrecer el "Rehacer todo" destructivo.
   const hasPreservable = entries.some((e) => e.pinned || e.source === "manual");
-  const [confirmReplace, setConfirmReplace] = useState(false);
   const [copying, startCopy] = useTransition();
+  // Acciones secundarias de la semana (copiar, compartir, imprimir, rehacer):
+  // viven en un sheet tras «⋯» en vez de apiladas como botones grandes. La
+  // confirmación de «rehacer» es una segunda vista del MISMO sheet: encadenar
+  // dos ResponsiveModal pelea con el cierre por historial (E11).
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [actionsView, setActionsView] = useState<"list" | "replace">("list");
+  const hasSecondaryActions = canCopyPrevious || hasEntries || hasPreservable;
 
   function copyPrevious() {
+    setActionsOpen(false);
     startCopy(async () => {
       const r = await copyPreviousWeekAction(weekStart);
       if (r.error) toast.error(r.error);
@@ -142,7 +159,7 @@ export function MenuView({
   }
 
   function generate(mode: "fill" | "replace") {
-    setConfirmReplace(false);
+    setActionsOpen(false);
     startGenerate(async () => {
       const r = await generateMenuAction(weekStart, mode);
       if (r.error) toast.error(r.error);
@@ -183,6 +200,7 @@ export function MenuView({
 
   async function share() {
     if (!menuId) return;
+    setActionsOpen(false);
     try {
       const res = await fetch(`/api/menus/${menuId}/imagen`);
       if (!res.ok) throw new Error("fetch failed");
@@ -212,6 +230,9 @@ export function MenuView({
   }
 
   function print() {
+    // El sheet aún se está desmontando al imprimir; los overlays se ocultan por
+    // CSS en `@media print` (globals.css), así que no hay que esperarlo.
+    setActionsOpen(false);
     window.print();
   }
 
@@ -245,13 +266,13 @@ export function MenuView({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between print:hidden">
+      <div className="flex items-center gap-1 print:hidden">
         <Button variant="ghost" size="icon" asChild aria-label="Semana anterior">
           <Link href={`/menus?week=${shiftWeek(weekStart, -1)}`}>
             <ChevronLeft aria-hidden />
           </Link>
         </Button>
-        <p className="text-sm font-medium">
+        <p className="flex-1 text-center text-sm font-medium">
           Semana del{" "}
           {format(parseISO(weekStart), "d 'de' MMMM", { locale: es })}
         </p>
@@ -260,6 +281,16 @@ export function MenuView({
             <ChevronRight aria-hidden />
           </Link>
         </Button>
+        {hasSecondaryActions ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setActionsOpen(true)}
+            aria-label="Más acciones de la semana"
+          >
+            <MoreHorizontal aria-hidden />
+          </Button>
+        ) : null}
       </div>
 
       {weekCost ? (
@@ -273,89 +304,142 @@ export function MenuView({
         </p>
       ) : null}
 
-      <div className="flex flex-col gap-2 print:hidden sm:flex-row">
+      {/*
+        Un solo primario en pantalla: generar con IA. Los ajustes que condicionan
+        a la IA van a su lado (icono), y las acciones secundarias de la semana en
+        el sheet de «⋯». «¿Qué hago hoy?» queda como enlace: sigue a un toque,
+        pero deja de competir con el generador.
+      */}
+      <div className="flex flex-col gap-2 print:hidden">
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => generate("fill")}
+            loading={generating}
+            size="lg"
+            className="flex-1"
+          >
+            <Sparkles aria-hidden />
+            {generating
+              ? "Generando menú…"
+              : hasPreservable
+                ? "Completar menú con IA"
+                : "Generar menú con IA"}
+          </Button>
+          {settingsSlot}
+        </div>
+        {hasPreservable ? (
+          <p className="text-center text-xs text-muted-foreground">
+            Completar respeta tus platos fijados y manuales.
+          </p>
+        ) : null}
         <Button
-          onClick={() => generate("fill")}
-          loading={generating}
-          size="lg"
-          className="sm:flex-1"
-        >
-          <Sparkles aria-hidden />
-          {generating
-            ? "Generando menú…"
-            : hasPreservable
-              ? "Completar menú con IA"
-              : "Generar menú con IA"}
-        </Button>
-        <Button
+          variant="link"
           onClick={askTonight}
           loading={askingTonight}
-          variant="outline"
-          size="lg"
-          className="sm:flex-1"
+          className="self-center"
         >
           <Lightbulb aria-hidden />
           {askingTonight ? "Pensando…" : "¿Qué hago hoy?"}
         </Button>
       </div>
 
-      {canCopyPrevious ? (
-        <Button
-          onClick={copyPrevious}
-          loading={copying}
-          variant="outline"
-          size="lg"
-          className="print:hidden"
-        >
-          <CalendarDays aria-hidden />
-          {copying ? "Copiando…" : "Copiar la semana anterior"}
-        </Button>
-      ) : null}
-
-      {hasPreservable ? (
-        <p className="-mt-2 text-center text-xs text-muted-foreground print:hidden">
-          Completar respeta tus platos fijados y manuales.{" "}
-          <button
-            type="button"
-            onClick={() => setConfirmReplace(true)}
-            disabled={generating}
-            className="font-medium text-foreground underline underline-offset-2 disabled:opacity-50"
-          >
-            Rehacer todo desde cero
-          </button>
-        </p>
-      ) : null}
-
       <ResponsiveModal
-        open={confirmReplace}
-        onOpenChange={(o) => !o && setConfirmReplace(false)}
+        open={actionsOpen}
+        onOpenChange={(o) => {
+          setActionsOpen(o);
+          if (!o) setActionsView("list");
+        }}
       >
         <ResponsiveModalContent>
-          <ResponsiveModalHeader>
-            <ResponsiveModalTitle>Rehacer todo el menú</ResponsiveModalTitle>
-            <ResponsiveModalDescription>
-              Se borrará toda la semana —incluidos tus platos fijados y los que
-              has editado o añadido a mano— y se generará un menú nuevo. Esta
-              acción no se puede deshacer.
-            </ResponsiveModalDescription>
-          </ResponsiveModalHeader>
-          <ResponsiveModalFooter className="gap-2">
-            <Button
-              type="button"
-              variant="destructive"
-              size="lg"
-              onClick={() => generate("replace")}
-              loading={generating}
-            >
-              <Sparkles aria-hidden />
-              {generating ? "Rehaciendo…" : "Rehacer todo"}
-            </Button>
-            <ResponsiveModalClose asChild>
-              <Button type="button" variant="ghost">
-                Cancelar
-              </Button>
-            </ResponsiveModalClose>
-          </ResponsiveModalFooter>
+          {actionsView === "replace" ? (
+            <>
+              <ResponsiveModalHeader>
+                <ResponsiveModalTitle>
+                  Rehacer todo el menú
+                </ResponsiveModalTitle>
+                <ResponsiveModalDescription>
+                  Se borrará toda la semana —incluidos tus platos fijados y los
+                  que has editado o añadido a mano— y se generará un menú nuevo.
+                  Esta acción no se puede deshacer.
+                </ResponsiveModalDescription>
+              </ResponsiveModalHeader>
+              <ResponsiveModalFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="lg"
+                  onClick={() => generate("replace")}
+                  loading={generating}
+                >
+                  <Sparkles aria-hidden />
+                  {generating ? "Rehaciendo…" : "Rehacer todo"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setActionsView("list")}
+                  disabled={generating}
+                >
+                  <ChevronLeft aria-hidden />
+                  Volver
+                </Button>
+              </ResponsiveModalFooter>
+            </>
+          ) : (
+            <>
+              <ResponsiveModalHeader>
+                <ResponsiveModalTitle>Más acciones</ResponsiveModalTitle>
+                <ResponsiveModalDescription>
+                  Sobre la semana del{" "}
+                  {format(parseISO(weekStart), "d 'de' MMMM", { locale: es })}.
+                </ResponsiveModalDescription>
+              </ResponsiveModalHeader>
+              <div className="flex flex-col gap-1 p-4 pt-0">
+                {canCopyPrevious ? (
+                  <Button
+                    variant="ghost"
+                    onClick={copyPrevious}
+                    loading={copying}
+                    className="min-h-12 justify-start"
+                  >
+                    <CalendarDays aria-hidden />
+                    {copying ? "Copiando…" : "Copiar la semana anterior"}
+                  </Button>
+                ) : null}
+                {hasEntries ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      onClick={share}
+                      className="min-h-12 justify-start"
+                    >
+                      <Share2 aria-hidden />
+                      Compartir el menú
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={print}
+                      className="min-h-12 justify-start"
+                    >
+                      <Printer aria-hidden />
+                      Imprimir
+                    </Button>
+                  </>
+                ) : null}
+                {hasPreservable ? (
+                  <Button
+                    variant="ghost"
+                    onClick={() => setActionsView("replace")}
+                    disabled={generating}
+                    className="min-h-12 justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    <Sparkles aria-hidden />
+                    Rehacer todo desde cero
+                  </Button>
+                ) : null}
+              </div>
+            </>
+          )}
         </ResponsiveModalContent>
       </ResponsiveModal>
 
@@ -410,14 +494,23 @@ export function MenuView({
                         </button>
                       );
                     })}
+                    {/*
+                      Hueco libre: solo un «+». Con el texto «Añadir plato» en
+                      cada hueco había más botones que platos y la semana se
+                      leía como interfaz, no como menú. El nombre completo vive
+                      en el aria-label y el target sigue siendo de 44px.
+                    */}
                     <button
                       type="button"
                       onClick={() => openAdd(date, slot)}
-                      className={cn(
-                        "flex min-h-11 items-center gap-1 rounded-lg border border-dashed p-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted print:hidden",
-                      )}
+                      aria-label={`Añadir plato · ${slot.label} del ${format(
+                        parseISO(date),
+                        "EEEE d",
+                        { locale: es },
+                      )}`}
+                      className="flex min-h-11 items-center justify-center rounded-lg border border-dashed text-muted-foreground transition-colors hover:bg-muted hover:text-foreground print:hidden"
                     >
-                      <Plus className="size-3.5" aria-hidden /> Añadir plato
+                      <Plus className="size-4" aria-hidden />
                     </button>
                   </div>
                 );
@@ -437,29 +530,6 @@ export function MenuView({
         >
           {addingList ? "Calculando…" : "Añadir a la lista lo que falte"}
         </Button>
-      ) : null}
-
-      {hasEntries ? (
-        <div className="flex gap-2 print:hidden">
-          <Button
-            variant="outline"
-            size="lg"
-            className="flex-1"
-            onClick={share}
-          >
-            <Share2 aria-hidden />
-            Compartir
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            className="flex-1"
-            onClick={print}
-          >
-            <Printer aria-hidden />
-            Imprimir
-          </Button>
-        </div>
       ) : null}
 
       <MissingReviewDrawer
@@ -508,6 +578,45 @@ export function MenuView({
         }}
       />
     </div>
+  );
+}
+
+/**
+ * Celda de acción secundaria del drawer de un plato: icono arriba, etiqueta
+ * corta debajo. Con etiqueta visible (no solo `aria-label`) para que se siga
+ * entendiendo de un vistazo, ocupando un tercio del ancho.
+ */
+function EntryActionTile({
+  icon: Icon,
+  label,
+  onClick,
+  loading,
+  disabled,
+  pressed,
+  destructive,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  loading?: boolean;
+  disabled?: boolean;
+  /** Acción de dos estados (fijar/desfijar): refleja el estado actual. */
+  pressed?: boolean;
+  destructive?: boolean;
+}) {
+  return (
+    <Button
+      type="button"
+      variant={pressed ? "secondary" : destructive ? "destructive" : "outline"}
+      onClick={onClick}
+      loading={loading}
+      disabled={disabled}
+      aria-pressed={pressed}
+      className="h-auto min-h-16 flex-col gap-1 px-1 py-2 text-[0.7rem] leading-tight whitespace-normal"
+    >
+      <Icon aria-hidden />
+      {label}
+    </Button>
   );
 }
 
@@ -767,6 +876,54 @@ function EditEntryDrawer({
               placeholder="p. ej. Lentejas con verduras"
             />
           </div>
+          {/*
+            Acciones secundarias del plato en rejilla de iconos con etiqueta:
+            apiladas como botones anchos eran hasta seis filas que enterraban el
+            plato y el «Guardar». Cada celda mantiene los 44px de target.
+          */}
+          {!isNew ? (
+            <div className="grid grid-cols-3 gap-2">
+              <EntryActionTile
+                icon={RefreshCw}
+                label={rerolling ? "Pensando…" : "Otra idea"}
+                onClick={reroll}
+                loading={rerolling}
+              />
+              <EntryActionTile
+                icon={pinned ? PinOff : Pin}
+                label={pinned ? "Quitar fijado" : "Fijar"}
+                onClick={togglePinned}
+                loading={pinningPending}
+                pressed={pinned}
+              />
+              <EntryActionTile
+                icon={MoveRight}
+                label="Mover a…"
+                onClick={() => setMode("move")}
+              />
+              <EntryActionTile
+                icon={Copy}
+                label="Duplicar en…"
+                onClick={() => setMode("duplicate")}
+              />
+              {editing?.canSaveToRecipes ? (
+                <EntryActionTile
+                  icon={BookmarkPlus}
+                  label={savingRecipe ? "Guardando…" : "A mi recetario"}
+                  onClick={saveToRecipes}
+                  loading={savingRecipe}
+                />
+              ) : null}
+              <EntryActionTile
+                icon={Trash2}
+                label="Quitar del menú"
+                onClick={remove}
+                disabled={pending}
+                destructive
+              />
+            </div>
+          ) : null}
+
           <ResponsiveModalFooter className="gap-2 px-0">
             <Button
               type="submit"
@@ -780,49 +937,6 @@ function EditEntryDrawer({
                   ? "Añadir plato"
                   : "Guardar"}
             </Button>
-            {!isNew ? (
-              <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={reroll}
-                  loading={rerolling}
-                >
-                  <RefreshCw aria-hidden />
-                  {rerolling ? "Pensando otra idea…" : "Otra idea"}
-                </Button>
-                <Button
-                  type="button"
-                  variant={pinned ? "secondary" : "outline"}
-                  onClick={togglePinned}
-                  loading={pinningPending}
-                  aria-pressed={pinned}
-                >
-                  {pinned ? <PinOff aria-hidden /> : <Pin aria-hidden />}
-                  {pinningPending
-                    ? "Guardando…"
-                    : pinned
-                      ? "Fijado · quitar"
-                      : "Fijar"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setMode("move")}
-                >
-                  <MoveRight aria-hidden />
-                  Mover a…
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setMode("duplicate")}
-                >
-                  <Copy aria-hidden />
-                  Duplicar en…
-                </Button>
-              </>
-            ) : null}
             {canMarkCooked ? (
               <Button
                 type="button"
@@ -837,27 +951,6 @@ function EditEntryDrawer({
                   : cooked
                     ? "Cocinado · deshacer"
                     : "Lo cocinamos"}
-              </Button>
-            ) : null}
-            {editing?.canSaveToRecipes ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={saveToRecipes}
-                loading={savingRecipe}
-              >
-                <BookmarkPlus aria-hidden />
-                {savingRecipe ? "Guardando…" : "Guardar en mi recetario"}
-              </Button>
-            ) : null}
-            {!isNew ? (
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={remove}
-                disabled={pending}
-              >
-                Quitar del menú
               </Button>
             ) : null}
             <ResponsiveModalClose asChild>

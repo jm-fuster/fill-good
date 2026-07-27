@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -37,7 +36,7 @@ const DIET_OPTIONS: { value: DietStyle; label: string }[] = [
   { value: "gluten_free", label: "Sin gluten" },
 ];
 
-type FormState = {
+export type FormState = {
   goal: MenuGoal;
   dietStyle: DietStyle;
   avoidText: string;
@@ -54,7 +53,7 @@ const DEFAULT_FORM: FormState = {
   planBreakfast: false,
 };
 
-function toState(prefs: MenuPrefs): FormState {
+export function toState(prefs: MenuPrefs): FormState {
   return {
     goal: prefs.goal,
     dietStyle: prefs.dietStyle,
@@ -64,7 +63,7 @@ function toState(prefs: MenuPrefs): FormState {
   };
 }
 
-function toInput(s: FormState): MenuPrefsInput {
+export function toInput(s: FormState): MenuPrefsInput {
   return {
     goal: s.goal,
     dietStyle: s.dietStyle,
@@ -74,8 +73,8 @@ function toInput(s: FormState): MenuPrefsInput {
   };
 }
 
-/** Campos compartidos por el onboarding y la sección de edición. */
-function PrefsFields({
+/** Campos compartidos por el onboarding y «Ajustes del menú». */
+export function PrefsFields({
   state,
   onChange,
 }: {
@@ -241,72 +240,5 @@ export function MenuPrefsOnboarding() {
         </ResponsiveModalFooter>
       </ResponsiveModalContent>
     </ResponsiveModal>
-  );
-}
-
-/**
- * Sección "Preferencias del menú" (N3): edición posterior, junto a las reglas.
- * Colapsable, mismo patrón que MenuRules.
- */
-export function MenuPrefs({ prefs }: { prefs: MenuPrefs }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [state, setState] = useState<FormState>(toState(prefs));
-  const [saving, startSave] = useTransition();
-
-  function save() {
-    startSave(async () => {
-      const r = await saveMenuPrefsAction(toInput(state));
-      if (r.error) {
-        toast.error(r.error);
-        return;
-      }
-      toast.success("Preferencias guardadas");
-      router.refresh();
-    });
-  }
-
-  return (
-    <section className="rounded-xl border">
-      <h2>
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-controls="menu-prefs-body"
-          className="flex min-h-11 w-full items-center gap-2 p-3 text-left"
-        >
-          <SlidersHorizontal
-            className="size-4 shrink-0 text-muted-foreground"
-            aria-hidden
-          />
-          <span className="font-medium">Preferencias del menú</span>
-          <ChevronDown
-            className={cn(
-              "ml-auto size-4 shrink-0 text-muted-foreground transition-transform",
-              open && "rotate-180",
-            )}
-            aria-hidden
-          />
-        </button>
-      </h2>
-
-      {open ? (
-        <div
-          id="menu-prefs-body"
-          className="flex flex-col gap-4 px-3 pb-3 animate-in fade-in slide-in-from-top-1 duration-200"
-        >
-          <PrefsFields state={state} onChange={setState} />
-          <Button
-            type="button"
-            onClick={save}
-            loading={saving}
-            className="self-start"
-          >
-            {saving ? "Guardando…" : "Guardar preferencias"}
-          </Button>
-        </div>
-      ) : null}
-    </section>
   );
 }

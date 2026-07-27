@@ -12,12 +12,17 @@ export default function MenusLoading() {
         description="Planifica la semana con lo que tienes en casa."
       />
       <div className="flex flex-col gap-4" aria-hidden>
-        <div className="flex items-center justify-between">
-          <Skeleton className="size-9 rounded-lg" />
-          <Skeleton className="h-4 w-40" />
-          <Skeleton className="size-9 rounded-lg" />
+        <div className="flex items-center gap-1">
+          <Skeleton className="size-11 shrink-0 rounded-lg" />
+          <Skeleton className="mx-auto h-4 w-40" />
+          <Skeleton className="size-11 shrink-0 rounded-lg" />
+          <Skeleton className="size-11 shrink-0 rounded-lg" />
         </div>
-        <Skeleton className="h-11 w-full rounded-lg" />
+        {/* Héroe: generar con IA + ajustes, tal como los pinta MenuView. */}
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-12 flex-1 rounded-lg" />
+          <Skeleton className="size-12 shrink-0 rounded-lg" />
+        </div>
         <div className="flex flex-col gap-3">
           {[0, 1, 2, 3, 4, 5, 6].map((day) => (
             <Skeleton key={day} className="h-24 w-full rounded-xl" />

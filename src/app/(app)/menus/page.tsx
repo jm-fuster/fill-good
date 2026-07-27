@@ -4,11 +4,8 @@ import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
 import { MenuView } from "@/features/menus/components/menu-view";
-import { MenuRules } from "@/features/menus/components/menu-rules";
-import {
-  MenuPrefs,
-  MenuPrefsOnboarding,
-} from "@/features/menus/components/menu-prefs";
+import { MenuSettings } from "@/features/menus/components/menu-settings";
+import { MenuPrefsOnboarding } from "@/features/menus/components/menu-prefs";
 import {
   getMenuPrefs,
   getMenuRules,
@@ -95,11 +92,12 @@ export default async function MenusPage({
           weekCost={weekCost}
           slots={slots}
           canCopyPrevious={canCopyPrevious}
+          // Preferencias y reglas ya no son dos secciones al final de la página:
+          // viajan con el botón de generar, que es lo que condicionan.
+          settingsSlot={
+            <MenuSettings prefs={prefs} rules={rules} recipes={recipes} />
+          }
         />
-        <div className="flex flex-col gap-4 print:hidden">
-          <MenuPrefs prefs={prefs} />
-          <MenuRules rules={rules} recipes={recipes} />
-        </div>
       </div>
       {!prefs.configured ? <MenuPrefsOnboarding /> : null}
     </PageContainer>
