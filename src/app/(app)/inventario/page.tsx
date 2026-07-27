@@ -46,7 +46,6 @@ export default async function InventarioPage({
     <PageContainer>
       <PageHeader
         title="Inventario"
-        description="Tu despensa, nevera y congelador."
         action={
           <div className="flex items-center gap-2">
             <Button

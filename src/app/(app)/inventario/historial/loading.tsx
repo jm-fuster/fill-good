@@ -8,8 +8,7 @@ export default function HistorialLoading() {
     <PageContainer>
       <LoadingStatus />
       <PageHeader
-        title="Historial de movimientos"
-        description="Lo que se ha consumido, tirado y repuesto en los últimos 30 días."
+        title="Movimientos de los últimos 30 días"
         backHref="/inventario"
         backLabel="Inventario"
       />

@@ -7,10 +7,7 @@ export default function ListaLoading() {
   return (
     <PageContainer>
       <LoadingStatus />
-      <PageHeader
-        title="Lista de la compra"
-        description="Compartida con tu hogar en tiempo real."
-      />
+      <PageHeader title="Lista de la compra" />
       <div className="flex flex-col gap-4" aria-hidden>
         <Skeleton className="h-11 w-full rounded-lg" />
         <div className="flex flex-col gap-2">

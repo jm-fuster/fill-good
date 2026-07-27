@@ -86,7 +86,6 @@ export default async function MenusPage({
       <div className="print:hidden">
         <PageHeader
           title="Menús"
-          description="Planifica la semana con lo que tienes en casa."
           action={
             menu && entries.length > 0 ? (
               <MenuShareActions menuId={menu.id} />

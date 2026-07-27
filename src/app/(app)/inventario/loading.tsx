@@ -7,10 +7,7 @@ export default function InventarioLoading() {
   return (
     <PageContainer>
       <LoadingStatus />
-      <PageHeader
-        title="Inventario"
-        description="Tu despensa, nevera y congelador."
-      />
+      <PageHeader title="Inventario" />
       <div className="flex flex-col gap-6" aria-hidden>
         {[0, 1].map((group) => (
           <div key={group}>

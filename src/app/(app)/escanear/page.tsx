@@ -15,13 +15,9 @@ export default async function EscanearPage() {
     <PageContainer>
       <PageHeader
         title="Añadir ticket"
-        description="Sube o fotografía el ticket: la IA lee los productos y precios."
+        description="La IA lee los productos y precios; tú los revisas antes de guardar."
       />
       <ScanForm />
-      <p className="mt-6 text-sm text-muted-foreground text-pretty">
-        Tras leer el ticket podrás revisar cada producto antes de añadirlo a tu
-        inventario. Los precios alimentan el historial para ver tendencias.
-      </p>
       <PendingReceipts receipts={pending} />
     </PageContainer>
   );

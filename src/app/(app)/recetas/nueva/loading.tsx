@@ -9,7 +9,6 @@ export default function NuevaRecetaLoading() {
       <LoadingStatus />
       <PageHeader
         title="Nueva receta"
-        description="Añade los datos del plato y sus ingredientes."
         backHref="/recetas"
         backLabel="Mis recetas"
       />

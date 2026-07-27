@@ -7,10 +7,7 @@ export default function MenusLoading() {
   return (
     <PageContainer>
       <LoadingStatus />
-      <PageHeader
-        title="Menús"
-        description="Planifica la semana con lo que tienes en casa."
-      />
+      <PageHeader title="Menús" />
       <div className="flex flex-col gap-4" aria-hidden>
         <div className="flex items-center gap-1">
           <Skeleton className="size-11 shrink-0 rounded-lg" />

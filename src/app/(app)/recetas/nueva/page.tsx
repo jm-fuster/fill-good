@@ -17,7 +17,6 @@ export default async function NuevaRecetaPage() {
     <PageContainer>
       <PageHeader
         title="Nueva receta"
-        description="Añade los datos del plato y sus ingredientes."
         backHref="/recetas"
         backLabel="Mis recetas"
       />

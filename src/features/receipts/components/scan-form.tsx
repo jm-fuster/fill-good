@@ -161,8 +161,8 @@ export function ScanForm() {
       </button>
 
       <p className="text-sm text-muted-foreground">
-        ¿Ticket largo o arrugado? Escanéalo con una app (Notas, Google Drive…) y
-        súbelo como PDF: la lectura será más precisa.
+        Si el ticket es largo o está arrugado, súbelo escaneado en PDF: se lee
+        mejor.
       </p>
     </div>
   );

@@ -52,10 +52,7 @@ export default async function ListaPage() {
 
   return (
     <PageContainer>
-      <PageHeader
-        title="Lista de la compra"
-        description="Compartida con tu hogar en tiempo real."
-      />
+      <PageHeader title="Lista de la compra" />
       <ShoppingListView
         listId={list.id}
         initialItems={items}
