@@ -517,7 +517,13 @@ function ListRow({
   }
 
   return (
-    <div className="group relative overflow-hidden rounded-lg animate-in fade-in zoom-in-95 duration-200">
+    <div
+      className="group relative overflow-hidden rounded-lg animate-in fade-in zoom-in-95 duration-200"
+      // Safari no recorta al border-radius del padre cuando un hijo usa
+      // transform (bleed de las esquinas del fondo rojo al deslizar); esta
+      // máscara fuerza el clip correcto sin afectar a otros navegadores.
+      style={{ WebkitMaskImage: "-webkit-radial-gradient(white, black)" }}
+    >
       {/* Fondo revelado al deslizar hacia la izquierda. */}
       <div
         aria-hidden
