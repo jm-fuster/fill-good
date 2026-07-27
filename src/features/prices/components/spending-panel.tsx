@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { formatEuroSigned } from "@/lib/money";
+import { formatEuro, formatEuroSigned } from "@/lib/money";
 import {
   Card,
   CardAction,
@@ -20,10 +20,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import type { MonthlySpending, SpendingBreakdownItem } from "../spending";
-
-function euro(n: number) {
-  return `${n.toFixed(2).replace(".", ",")} €`;
-}
 
 // Colores categóricos en orden fijo (tokens del design system). Nunca se
 // ciclan: a partir del 5º, el desglose los agrupa en "Otros".
@@ -69,7 +65,7 @@ function BreakdownBars({
               <div className="flex items-baseline justify-between gap-2 text-sm">
                 <span className="truncate">{item.label}</span>
                 <span className="shrink-0 font-medium tabular-nums">
-                  {euro(item.total)}
+                  {formatEuro(item.total)}
                 </span>
               </div>
               <div
@@ -130,7 +126,7 @@ function SavingsBlock({
               <Tag className="size-3.5 shrink-0" aria-hidden />
               Descuentos del ticket
             </span>
-            <span className="tabular-nums">{euro(discountTotal)}</span>
+            <span className="tabular-nums">{formatEuro(discountTotal)}</span>
           </li>
         ) : null}
         {savingsByPrice !== 0 ? (
@@ -173,8 +169,8 @@ function BudgetBar({ total, budget }: { total: number; budget: number }) {
       <div className="flex items-baseline justify-between gap-2 text-sm">
         <span className="text-muted-foreground">Objetivo mensual</span>
         <span className="tabular-nums">
-          <span className={cn("font-medium", textColor)}>{euro(total)}</span>
-          <span className="text-muted-foreground"> / {euro(budget)}</span>
+          <span className={cn("font-medium", textColor)}>{formatEuro(total)}</span>
+          <span className="text-muted-foreground"> / {formatEuro(budget)}</span>
         </span>
       </div>
       <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
@@ -185,8 +181,8 @@ function BudgetBar({ total, budget }: { total: number; budget: number }) {
       </div>
       <p className={cn("text-xs", over ? "text-destructive" : "text-muted-foreground")}>
         {over
-          ? `Te has pasado ${euro(total - budget)} del objetivo`
-          : `Te quedan ${euro(budget - total)} este mes`}
+          ? `Te has pasado ${formatEuro(total - budget)} del objetivo`
+          : `Te quedan ${formatEuro(budget - total)} este mes`}
       </p>
     </div>
   );
@@ -251,7 +247,7 @@ export function SpendingPanel({ data }: { data: MonthlySpending }) {
             <div className="flex flex-wrap items-end justify-between gap-2">
               <div>
                 <p className="text-3xl font-semibold tabular-nums">
-                  {euro(total)}
+                  {formatEuro(total)}
                 </p>
                 {prevTotal > 0 ? (
                   <p
@@ -265,7 +261,7 @@ export function SpendingPanel({ data }: { data: MonthlySpending }) {
                     ) : (
                       <TrendingUp className="size-4" aria-hidden />
                     )}
-                    {euro(Math.abs(delta))} {spentLess ? "menos" : "más"} que el
+                    {formatEuro(Math.abs(delta))} {spentLess ? "menos" : "más"} que el
                     mes anterior
                   </p>
                 ) : (
@@ -290,7 +286,7 @@ export function SpendingPanel({ data }: { data: MonthlySpending }) {
               <details className="group">
                 <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm text-destructive">
                   <Trash2 className="size-4" aria-hidden />
-                  Has tirado {euro(discardedTotal)} este mes
+                  Has tirado {formatEuro(discardedTotal)} este mes
                   {discardedByProduct.length > 0 ? (
                     <span className="text-xs text-muted-foreground group-open:hidden">
                       · ver detalle
@@ -308,7 +304,7 @@ export function SpendingPanel({ data }: { data: MonthlySpending }) {
                           {d.label}
                         </span>
                         <span className="shrink-0 tabular-nums">
-                          {euro(d.total)}
+                          {formatEuro(d.total)}
                         </span>
                       </li>
                     ))}

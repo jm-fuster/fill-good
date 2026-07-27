@@ -10,13 +10,10 @@ import { getMonthlySpending } from "@/features/prices/spending";
 import { getPriceAlerts } from "@/features/prices/alerts";
 import { SpendingPanel } from "@/features/prices/components/spending-panel";
 import { PriceAlerts } from "@/features/prices/components/price-alerts";
+import { formatEuro } from "@/lib/money";
 import { UNIT_LABELS } from "@/lib/units";
 
 export const metadata: Metadata = { title: "Precios" };
-
-function euro(n: number) {
-  return `${n.toFixed(2).replace(".", ",")} €`;
-}
 
 export default async function PreciosPage({
   searchParams,
@@ -61,13 +58,13 @@ export default async function PreciosPage({
                   <p className="text-sm text-muted-foreground">
                     {r.purchases}{" "}
                     {r.purchases === 1 ? "compra" : "compras"} · último{" "}
-                    {euro(r.lastUnitPrice)}/{UNIT_LABELS[r.unit]}
+                    {formatEuro(r.lastUnitPrice)}/{UNIT_LABELS[r.unit]}
                   </p>
                 </div>
                 <div className="flex items-center gap-1 text-right">
                   <div>
                     <p className="font-medium tabular-nums">
-                      {euro(r.totalSpent)}
+                      {formatEuro(r.totalSpent)}
                     </p>
                     <p className="text-xs text-muted-foreground">gastado</p>
                   </div>

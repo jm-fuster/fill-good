@@ -40,6 +40,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getWeekDays, shiftWeek } from "@/lib/dates";
+import { formatEuro } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { saveGeneratedRecipeAction } from "@/features/recipes/actions";
 import { formatQuantity, UNIT_LABELS } from "@/lib/units";
@@ -84,10 +85,6 @@ type Editing = {
   cookedAt: string | null;
   pinned: boolean;
 };
-
-function euro(n: number) {
-  return `${n.toFixed(2).replace(".", ",")} €`;
-}
 
 export function MenuView({
   weekStart,
@@ -270,7 +267,7 @@ export function MenuView({
           Coste estimado de la semana:{" "}
           <span className="font-medium text-chart-3">
             {weekCost.complete ? "≈ " : "≥ "}
-            {euro(weekCost.total)}
+            {formatEuro(weekCost.total)}
           </span>
           {weekCost.complete ? "" : " (parcial)"}
         </p>

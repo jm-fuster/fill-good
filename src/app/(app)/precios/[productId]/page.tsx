@@ -10,14 +10,11 @@ import { PriceChart } from "@/features/prices/components/price-chart";
 import { CHAIN_LABELS } from "@/features/prices/chains";
 import { computeChainComparison } from "@/features/prices/chain-comparison";
 import { getProductPriceHistory } from "@/features/prices/queries";
+import { formatEuro } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { UNIT_LABELS } from "@/lib/units";
 
 export const metadata: Metadata = { title: "Precio" };
-
-function euro(n: number) {
-  return `${n.toFixed(2).replace(".", ",")} €`;
-}
 
 export default async function PrecioDetallePage({
   params,
@@ -60,9 +57,9 @@ export default async function PrecioDetallePage({
       ) : (
         <div className="flex flex-col gap-6">
           <div className="grid grid-cols-3 gap-2">
-            <Stat label="Mínimo" value={euro(min)} accent="success" />
-            <Stat label="Último" value={euro(last)} />
-            <Stat label="Máximo" value={euro(max)} accent="warning" />
+            <Stat label="Mínimo" value={formatEuro(min)} accent="success" />
+            <Stat label="Último" value={formatEuro(last)} />
+            <Stat label="Máximo" value={formatEuro(max)} accent="warning" />
           </div>
 
           {points.length > 1 ? (
@@ -91,7 +88,7 @@ export default async function PrecioDetallePage({
                     <div className="min-w-0">
                       <p className="font-medium">{c.label}</p>
                       <p className="text-xs text-muted-foreground">
-                        media {euro(c.avgPrice)}/{UNIT_LABELS[unit]} ·{" "}
+                        media {formatEuro(c.avgPrice)}/{UNIT_LABELS[unit]} ·{" "}
                         {c.count} compras
                       </p>
                     </div>
@@ -140,7 +137,7 @@ export default async function PrecioDetallePage({
                           {CHAIN_LABELS[p.storeChain] ?? p.storeChain}
                         </td>
                         <td className="py-2 text-right font-mono tabular-nums">
-                          {euro(p.unitPrice)}/{UNIT_LABELS[p.unit]}
+                          {formatEuro(p.unitPrice)}/{UNIT_LABELS[p.unit]}
                         </td>
                       </tr>
                     ))}

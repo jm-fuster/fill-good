@@ -17,13 +17,9 @@ import {
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
 import { SettingsButtonRow } from "@/features/settings/components/settings-list";
+import { formatEuro } from "@/lib/money";
 
 import { updateMonthlyBudgetAction } from "../actions";
-
-/** Mismo formato de euros que el panel de gasto. */
-function euros(n: number) {
-  return `${n.toFixed(2).replace(".", ",")} €`;
-}
 
 /**
  * Objetivo de gasto en el índice de Ajustes: una fila con el valor actual que
@@ -66,7 +62,7 @@ export function BudgetRow({ budget }: { budget: number | null }) {
         icon={Target}
         label="Objetivo de gasto"
         hint="Al mes, para el panel de precios"
-        value={budget === null ? "Sin definir" : euros(budget)}
+        value={budget === null ? "Sin definir" : formatEuro(budget)}
         onClick={() => setOpen(true)}
       />
       <ResponsiveModalContent>

@@ -1,11 +1,8 @@
 import { Coins } from "lucide-react";
 
+import { formatEuro } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import type { RecipeCost } from "../cost";
-
-function euro(n: number) {
-  return `${n.toFixed(2).replace(".", ",")} €`;
-}
 
 /**
  * Badge de coste estimado (M7), acento de precios `chart-3`. Presentacional y
@@ -23,8 +20,8 @@ export function CostBadge({
   if (cost.pricedCount === 0) return null;
 
   const label = cost.complete
-    ? `Coste estimado ${euro(cost.total)}`
-    : `Coste estimado desde ${euro(cost.total)}, ${cost.pricedCount} de ${cost.totalCount} ingredientes con precio`;
+    ? `Coste estimado ${formatEuro(cost.total)}`
+    : `Coste estimado desde ${formatEuro(cost.total)}, ${cost.pricedCount} de ${cost.totalCount} ingredientes con precio`;
 
   return (
     <span
@@ -37,7 +34,7 @@ export function CostBadge({
       <Coins className="size-3.5" aria-hidden />
       <span aria-hidden>
         {cost.complete ? "≈ " : "≥ "}
-        {euro(cost.total)}
+        {formatEuro(cost.total)}
         {!cost.complete ? (
           <span className="font-normal text-muted-foreground">
             {" "}

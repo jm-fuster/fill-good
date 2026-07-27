@@ -26,6 +26,7 @@ import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
 import { CHAIN_OPTIONS, chainLabel } from "@/features/prices/chains";
 import { vibrateTick } from "@/lib/haptics";
+import { formatEuro } from "@/lib/money";
 import { formatQuantity } from "@/lib/units";
 import { useRealtimeList } from "../use-realtime-list";
 import { toggleItemAction } from "../actions";
@@ -33,10 +34,6 @@ import type { CatalogProduct, ShoppingModeItem, Suggestion } from "../queries";
 import { AddItemForm } from "./add-item-form";
 import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import { useCheckout } from "./use-checkout";
-
-function euro(n: number) {
-  return `${n.toFixed(2).replace(".", ",")} €`;
-}
 
 /** Ranking de cadenas conocidas para ordenar los chips (desconocidas al final). */
 const CHAIN_RANK = new Map(CHAIN_OPTIONS.map((c, i) => [c.value, i]));
@@ -339,7 +336,7 @@ export function ShoppingMode({
           <div className="mx-auto flex w-full max-w-2xl items-end justify-between gap-3">
             <div>
               <p className="text-2xl font-semibold tabular-nums">
-                {euro(total)}
+                {formatEuro(total)}
               </p>
               <p className="text-xs text-muted-foreground">
                 estimado sobre {priced.length} de {items.length} ítems
@@ -350,7 +347,7 @@ export function ShoppingMode({
                 Queda por coger
                 <br />
                 <span className="font-medium text-foreground tabular-nums">
-                  ≈ {euro(remaining)}
+                  ≈ {formatEuro(remaining)}
                 </span>
               </p>
             ) : null}
@@ -594,7 +591,7 @@ function ShoppingModeRowItem({
           ) : null}
         </span>
         <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-          {item.lineCost != null ? euro(item.lineCost) : "—"}
+          {item.lineCost != null ? formatEuro(item.lineCost) : "—"}
         </span>
       </label>
     </li>
