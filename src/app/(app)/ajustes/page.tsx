@@ -35,13 +35,16 @@ export default async function AjustesPage() {
     getCurrentHousehold(),
     getUserHouseholds(),
   ]);
-  const displayName =
-    user?.firstName ??
-    user?.fullName ??
-    user?.primaryEmailAddress?.emailAddress ??
-    "Tu cuenta";
   const email = user?.primaryEmailAddress?.emailAddress;
   const members = household ? await getHouseholdMembers(household.id) : [];
+  // Mismo orden de preferencia que /perfil (el nombre del hogar manda): son la
+  // misma persona y verse con dos nombres según la pantalla resulta inquietante.
+  const displayName =
+    members.find((m) => m.isCurrentUser)?.displayName ??
+    user?.firstName ??
+    user?.fullName ??
+    email ??
+    "Tu cuenta";
 
   return (
     <PageContainer>

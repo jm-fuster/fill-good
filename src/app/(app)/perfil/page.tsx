@@ -8,10 +8,13 @@ import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { InstallCard } from "@/features/push/components/install-card";
 import { ProfileDashboard } from "@/features/profile/components/profile-dashboard";
+import { ProfileEditor } from "@/features/profile/components/profile-editor";
 import { getProfileOverview } from "@/features/profile/queries";
+import { HouseholdSwitcherInline } from "@/features/household/components/household-switcher";
 import {
   getCurrentHousehold,
   getHouseholdMembers,
+  getUserHouseholds,
 } from "@/features/household/queries";
 
 export const metadata: Metadata = { title: "Perfil" };
@@ -24,30 +27,64 @@ export const metadata: Metadata = { title: "Perfil" };
  * La cabecera enmarca "tú + tu hogar" a propósito: las mecánicas son
  * cooperativas, nunca individuales, así que el título es tu nombre pero lo que
  * se mide debajo es del hogar entero.
+ *
+ * Sus dos piezas son accionables, y las dos son atajos a algo que antes solo
+ * estaba en Ajustes: el avatar abre la edición de foto y nombre, y la línea del
+ * hogar abre el cambio de hogar (en móvil no había ninguna otra vía, porque el
+ * desplegable de hogares vive en el header de escritorio).
  */
 export default async function PerfilPage() {
-  const [user, household, overview] = await Promise.all([
+  const [user, household, households, overview] = await Promise.all([
     currentUser(),
     getCurrentHousehold(),
+    getUserHouseholds(),
     getProfileOverview(),
   ]);
   const members = household ? await getHouseholdMembers(household.id) : [];
+
+  // El nombre del hogar manda sobre el de Clerk: es el que ven tus convivientes
+  // (firma los movimientos del inventario) y el único que se puede editar aquí,
+  // así que enseñar otro en el título haría que "cambiar el nombre" pareciera no
+  // haber funcionado.
+  const memberName =
+    members.find((m) => m.isCurrentUser)?.displayName ?? null;
   const displayName =
+    memberName ??
     user?.firstName ??
     user?.fullName ??
     user?.primaryEmailAddress?.emailAddress ??
     "Tu cuenta";
 
+  const householdLabel = household
+    ? `${household.name} · ${
+        members.length === 1 ? "1 miembro" : `${members.length} miembros`
+      }`
+    : null;
+
   return (
     <PageContainer>
       <PageHeader
         title={displayName}
+        avatar={
+          <ProfileEditor
+            displayName={displayName}
+            currentName={memberName}
+            initialImageUrl={user?.hasImage ? user.imageUrl : null}
+            householdName={household?.name ?? null}
+          />
+        }
         description={
-          household
-            ? `${household.name} · ${
-                members.length === 1 ? "1 miembro" : `${members.length} miembros`
-              }`
-            : undefined
+          household && householdLabel ? (
+            <HouseholdSwitcherInline
+              households={households.map((h) => ({
+                id: h.id,
+                name: h.name,
+                role: h.role,
+              }))}
+              activeId={household.id}
+              label={householdLabel}
+            />
+          ) : undefined
         }
         action={
           <Button asChild variant="outline" size="icon" aria-label="Ajustes">

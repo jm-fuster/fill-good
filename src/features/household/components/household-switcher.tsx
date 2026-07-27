@@ -2,7 +2,13 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { ArrowLeftRight, Check, House, HousePlus } from "lucide-react";
+import {
+  ArrowLeftRight,
+  Check,
+  ChevronsUpDown,
+  House,
+  HousePlus,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -56,6 +62,84 @@ function useSwitchHousehold() {
 }
 
 /**
+ * Cuerpo del modal de cambio de hogar. En fichero compartido porque lo abren dos
+ * disparadores distintos (la fila de Ajustes y la línea de /perfil) y la lista
+ * tiene que ofrecer exactamente las mismas opciones desde ambos.
+ */
+function HouseholdSwitcherModalBody({
+  households,
+  activeId,
+  onDone,
+  showCreateLink,
+}: {
+  households: SwitcherHousehold[];
+  activeId: string;
+  onDone: () => void;
+  showCreateLink?: boolean;
+}) {
+  const { pending, targetId, switchTo } = useSwitchHousehold();
+
+  return (
+    <>
+      <ResponsiveModalHeader>
+        <ResponsiveModalTitle>Cambiar de hogar</ResponsiveModalTitle>
+        <ResponsiveModalDescription>
+          El inventario, la lista y los menús que ves son los del hogar activo.
+        </ResponsiveModalDescription>
+      </ResponsiveModalHeader>
+      <div className="flex flex-col gap-1 p-4 pt-0">
+        {households.map((h) => {
+          const isActive = h.id === activeId;
+          return (
+            <Button
+              key={h.id}
+              variant={isActive ? "secondary" : "ghost"}
+              disabled={pending}
+              loading={pending && targetId === h.id}
+              onClick={() => {
+                if (isActive) {
+                  onDone();
+                  return;
+                }
+                switchTo(h.id);
+              }}
+              className="h-auto min-h-12 justify-start"
+            >
+              <House aria-hidden />
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate">{h.name}</span>
+                <span className="block text-xs font-normal text-muted-foreground">
+                  {roleLabel(h.role)}
+                </span>
+              </span>
+              {isActive ? (
+                <>
+                  <Check aria-hidden />
+                  <span className="sr-only">(hogar activo)</span>
+                </>
+              ) : null}
+            </Button>
+          );
+        })}
+        {showCreateLink ? (
+          <Button
+            asChild
+            variant="ghost"
+            disabled={pending}
+            className="h-auto min-h-12 justify-start text-muted-foreground"
+          >
+            <Link href="/ajustes/hogar/nuevo">
+              <HousePlus aria-hidden />
+              Crear o unirse a otro hogar
+            </Link>
+          </Button>
+        ) : null}
+      </div>
+    </>
+  );
+}
+
+/**
  * Fila de Ajustes para alternar entre hogares (solo se renderiza con más de
  * uno). Abre un ResponsiveModal (regla E11) con la lista; elegir uno distinto
  * del activo lo convierte en el hogar activo y lleva a su inventario.
@@ -68,7 +152,6 @@ export function HouseholdSwitcherRow({
   activeId: string;
 }) {
   const [open, setOpen] = useState(false);
-  const { pending, targetId, switchTo } = useSwitchHousehold();
 
   if (households.length < 2) return null;
 
@@ -82,48 +165,63 @@ export function HouseholdSwitcherRow({
         onClick={() => setOpen(true)}
       />
       <ResponsiveModalContent>
-        <ResponsiveModalHeader>
-          <ResponsiveModalTitle>Cambiar de hogar</ResponsiveModalTitle>
-          <ResponsiveModalDescription>
-            El inventario, la lista y los menús que ves son los del hogar
-            activo.
-          </ResponsiveModalDescription>
-        </ResponsiveModalHeader>
-        <div className="flex flex-col gap-1 p-4 pt-0">
-          {households.map((h) => {
-            const isActive = h.id === activeId;
-            return (
-              <Button
-                key={h.id}
-                variant={isActive ? "secondary" : "ghost"}
-                disabled={pending}
-                loading={pending && targetId === h.id}
-                onClick={() => {
-                  if (isActive) {
-                    setOpen(false);
-                    return;
-                  }
-                  switchTo(h.id);
-                }}
-                className="h-auto min-h-12 justify-start"
-              >
-                <House aria-hidden />
-                <span className="min-w-0 flex-1 text-left">
-                  <span className="block truncate">{h.name}</span>
-                  <span className="block text-xs font-normal text-muted-foreground">
-                    {roleLabel(h.role)}
-                  </span>
-                </span>
-                {isActive ? (
-                  <>
-                    <Check aria-hidden />
-                    <span className="sr-only">(hogar activo)</span>
-                  </>
-                ) : null}
-              </Button>
-            );
-          })}
-        </div>
+        {/* Sin enlace de "crear o unirse": en Ajustes ya hay una fila propia
+            para eso dos posiciones más abajo. */}
+        <HouseholdSwitcherModalBody
+          households={households}
+          activeId={activeId}
+          onDone={() => setOpen(false)}
+        />
+      </ResponsiveModalContent>
+    </ResponsiveModal>
+  );
+}
+
+/**
+ * Línea de hogar de /perfil ("Casa · 2 miembros"), pulsable para cambiar de
+ * hogar sin pasar por Ajustes. En móvil era el único camino: el desplegable de
+ * hogares vive en el header de escritorio, que está oculto en `< md`.
+ *
+ * Con un solo hogar degrada a texto plano en vez de desaparecer: la línea es la
+ * descripción de la cabecera, y perderla dejaría el nombre del usuario suelto
+ * sin decir de qué hogar se está hablando.
+ */
+export function HouseholdSwitcherInline({
+  households,
+  activeId,
+  label,
+}: {
+  households: SwitcherHousehold[];
+  activeId: string;
+  /** Texto completo de la línea, p. ej. "Casa de Jorge · 2 miembros". */
+  label: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (households.length < 2) {
+    return <span className="text-sm text-muted-foreground">{label}</span>;
+  }
+
+  return (
+    <ResponsiveModal open={open} onOpenChange={setOpen}>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        // -mx-2 px-2: el área táctil se ensancha hacia los lados sin desalinear
+        // el texto respecto al título que tiene encima.
+        className="-mx-2 -my-1 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronsUpDown className="size-3.5 shrink-0" aria-hidden />
+        <span className="sr-only">(cambiar de hogar)</span>
+      </button>
+      <ResponsiveModalContent>
+        <HouseholdSwitcherModalBody
+          households={households}
+          activeId={activeId}
+          onDone={() => setOpen(false)}
+          showCreateLink
+        />
       </ResponsiveModalContent>
     </ResponsiveModal>
   );

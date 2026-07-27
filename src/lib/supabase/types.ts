@@ -938,6 +938,10 @@ export type Database = {
         Args: { p_household_id: string; p_name: string };
         Returns: undefined;
       };
+      set_member_display_name: {
+        Args: { p_household_id: string; p_display_name: string };
+        Returns: undefined;
+      };
       delete_household: {
         Args: { p_household_id: string };
         Returns: undefined;
