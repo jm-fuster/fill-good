@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { formatEuro, formatEuroSigned } from "@/lib/money";
 import { Card, CardContent } from "@/components/ui/card";
+import { StatTile } from "@/components/stat-tile";
 import type { MonthlyWrapped } from "../wrapped";
 
 /**
@@ -26,42 +27,6 @@ import type { MonthlyWrapped } from "../wrapped";
  * El titular es la hucha porque es la promesa del producto ("Compra lo justo,
  * ahorra más"); el gasto total va debajo como contexto, no como protagonista.
  */
-function Stat({
-  icon: Icon,
-  label,
-  value,
-  hint,
-  accent,
-}: {
-  icon: typeof PiggyBank;
-  label: string;
-  value: string;
-  hint?: string;
-  accent?: "success" | "warning" | "chart-3";
-}) {
-  return (
-    <div className="flex flex-col gap-1 rounded-xl border p-3">
-      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Icon className="size-3.5 shrink-0" aria-hidden />
-        {label}
-      </p>
-      <p
-        className={cn(
-          "text-lg font-semibold tabular-nums",
-          accent === "success" && "text-success",
-          accent === "warning" && "text-warning",
-          accent === "chart-3" && "text-chart-3",
-        )}
-      >
-        {value}
-      </p>
-      {hint ? (
-        <p className="text-xs text-muted-foreground text-pretty">{hint}</p>
-      ) : null}
-    </div>
-  );
-}
-
 export function WrappedView({ data }: { data: MonthlyWrapped }) {
   const {
     monthLabel,
@@ -145,7 +110,7 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
           </Card>
 
           <div className="grid grid-cols-2 gap-2">
-            <Stat
+            <StatTile
               icon={Receipt}
               label="Frente al mes anterior"
               value={formatEuroSigned(-spentDelta)}
@@ -165,7 +130,7 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
                 barra en vivo de /precios— porque esto es un recuento a toro
                 pasado: informar, no alarmar por algo que ya no tiene arreglo. */}
             {budget != null ? (
-              <Stat
+              <StatTile
                 icon={Target}
                 label="Objetivo del mes"
                 value={
@@ -187,7 +152,7 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
             ) : null}
 
             {topProduct ? (
-              <Stat
+              <StatTile
                 icon={Star}
                 label="Producto estrella"
                 value={topProduct.label}
@@ -197,7 +162,7 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
             ) : null}
 
             {bestChain ? (
-              <Stat
+              <StatTile
                 icon={Store}
                 label="Dónde más ahorras"
                 value={bestChain.label}
@@ -207,7 +172,7 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
             ) : null}
 
             {tripsMatched > 0 ? (
-              <Stat
+              <StatTile
                 icon={ListChecks}
                 label="Compras perfectas"
                 value={`${tripsPerfect} de ${tripsMatched}`}
@@ -221,7 +186,7 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
             ) : null}
 
             {wastedTotal > 0 ? (
-              <Stat
+              <StatTile
                 icon={Trash2}
                 label="Comida tirada"
                 value={formatEuro(wastedTotal)}
@@ -233,7 +198,7 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
                 accent="warning"
               />
             ) : (
-              <Stat
+              <StatTile
                 icon={Sprout}
                 label="Comida tirada"
                 value="Nada"
@@ -243,7 +208,7 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
             )}
 
             {topExtra ? (
-              <Stat
+              <StatTile
                 icon={CirclePlus}
                 label="Capricho recurrente"
                 value={topExtra.label}

@@ -456,6 +456,7 @@ export async function mergeProductsAction(
 
   revalidatePath("/inventario");
   revalidatePath("/precios");
+  revalidatePath("/perfil");
   return { ok: true };
 }
 
@@ -501,6 +502,7 @@ export async function deleteInventoryAction(
 
   revalidatePath("/inventario");
   revalidatePath("/precios");
+  revalidatePath("/perfil");
   return { ok: true };
 }
 

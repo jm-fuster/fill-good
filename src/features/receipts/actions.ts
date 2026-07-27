@@ -864,6 +864,7 @@ export async function confirmReceiptAction(
 
   revalidatePath("/inventario");
   revalidatePath("/precios");
+  revalidatePath("/perfil");
   revalidatePath("/escanear");
 
   // Trabajo posterior FUERA del camino crítico: el cliente recibe la respuesta al

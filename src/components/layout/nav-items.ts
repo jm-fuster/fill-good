@@ -1,8 +1,8 @@
 import {
   CalendarDays,
+  CircleUser,
   Package,
   ScanLine,
-  Settings,
   ShoppingCart,
   type LucideIcon,
 } from "lucide-react";
@@ -11,6 +11,7 @@ import {
  * Entradas de la navegación principal, compartidas entre la bottom nav (móvil)
  * y el sidebar (escritorio) para que ambas se mantengan sincronizadas.
  * El recetario vive bajo Menús: esa pestaña se mantiene activa en /recetas*.
+ * Ajustes y el resumen del mes cuelgan de Perfil, y mantienen su pestaña activa.
  */
 export type NavItem = {
   href: string;
@@ -35,7 +36,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: CalendarDays,
     matchPrefixes: ["/recetas"],
   },
-  { href: "/ajustes", label: "Ajustes", icon: Settings },
+  {
+    href: "/perfil",
+    label: "Perfil",
+    icon: CircleUser,
+    matchPrefixes: ["/ajustes", "/resumen"],
+  },
 ];
 
 /** ¿La ruta actual corresponde a esta entrada (incluidos sus prefijos)? */

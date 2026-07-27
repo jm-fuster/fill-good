@@ -26,8 +26,8 @@ export default async function ResumenPage({
         description={
           wrapped ? wrapped.monthLabel : "Cómo ha ido el mes en tu hogar."
         }
-        backHref="/precios"
-        backLabel="Precios"
+        backHref="/perfil"
+        backLabel="Perfil"
       />
       {wrapped ? <WrappedView data={wrapped} /> : null}
     </PageContainer>

@@ -10,7 +10,6 @@ import { DeleteAccountRow } from "@/features/account/components/delete-account-r
 import { LogoutRow } from "@/features/account/components/logout-row";
 import { BudgetRow } from "@/features/household/components/budget-row";
 import { HouseholdSwitcherRow } from "@/features/household/components/household-switcher";
-import { InstallCard } from "@/features/push/components/install-card";
 import { PushStatusRow } from "@/features/push/components/push-status-row";
 import {
   SettingsControlRow,
@@ -46,7 +45,14 @@ export default async function AjustesPage() {
 
   return (
     <PageContainer>
-      <PageHeader title="Ajustes" description="Tu hogar y tus preferencias." />
+      {/* Ajustes ya no tiene pestaña propia: cuelga del engranaje de /perfil, así
+          que en móvil este enlace es la única salida hacia atrás. */}
+      <PageHeader
+        title="Ajustes"
+        description="Tu hogar y tus preferencias."
+        backHref="/perfil"
+        backLabel="Perfil"
+      />
       <div className="flex flex-col gap-6">
         <div className="flex min-h-14 items-center justify-between gap-3 rounded-xl bg-card px-4 py-3 ring-1 ring-foreground/10">
           <div className="min-w-0">
@@ -57,11 +63,6 @@ export default async function AjustesPage() {
           </div>
           <UserButton />
         </div>
-
-        {/* Solo se renderiza si la app se puede instalar aquí. Va en la raíz de
-            Ajustes, no dentro de una subpágina: es la acción de mayor valor para
-            quien todavía usa la web, y en iOS es requisito previo del push. */}
-        <InstallCard />
 
         {household ? (
           <SettingsGroup title="Hogar">

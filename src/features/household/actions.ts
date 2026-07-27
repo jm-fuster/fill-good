@@ -157,6 +157,7 @@ export async function updateMonthlyBudgetAction(
 
   revalidatePath("/ajustes");
   revalidatePath("/precios");
+  revalidatePath("/perfil");
   return { ok: true };
 }
 

@@ -5,9 +5,8 @@ import { cn } from "@/lib/utils";
 import { formatEuroSigned } from "@/lib/money";
 
 /**
- * Hucha del mes en curso, en la pantalla de entrada de facto de la app (G1):
- * /precios no está en la bottom nav, así que este es el único sitio donde la
- * mayoría de usuarios la ve fuera del momento de confirmar un ticket.
+ * Hucha del mes en curso, en la pantalla de entrada de facto de la app (G1).
+ * Engancha con /perfil, que es donde vive el marcador completo del hogar.
  *
  * Saldo NETO con su signo real: un mes flojo se muestra en `warning`, no se
  * escamotea. Toda la fila es el enlace (no solo el icono) para que el target
@@ -18,7 +17,7 @@ export function SavingsStrip({ total }: { total: number }) {
 
   return (
     <Link
-      href="/precios"
+      href="/perfil"
       className="flex min-h-11 items-center justify-between gap-2 rounded-xl border p-3 text-sm transition-colors hover:bg-muted"
     >
       <span className="flex items-center gap-1.5 text-muted-foreground">

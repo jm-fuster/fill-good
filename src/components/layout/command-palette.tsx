@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   BookOpen,
   CalendarDays,
+  CircleUser,
   History,
   LineChart,
   Package,
@@ -13,6 +14,7 @@ import {
   Search,
   Settings,
   ShoppingCart,
+  Sparkles,
   Store,
   type LucideIcon,
 } from "lucide-react";
@@ -35,7 +37,9 @@ const NAV: readonly PaletteItem[] = [
   { label: "Lista de la compra", href: "/lista", icon: ShoppingCart },
   { label: "Menús", href: "/menus", icon: CalendarDays },
   { label: "Mis recetas", href: "/recetas", icon: BookOpen },
+  { label: "Perfil", href: "/perfil", icon: CircleUser },
   { label: "Precios", href: "/precios", icon: LineChart },
+  { label: "Resumen del mes", href: "/resumen", icon: Sparkles },
   { label: "Historial de inventario", href: "/inventario/historial", icon: History },
   { label: "Ajustes", href: "/ajustes", icon: Settings },
 ];
