@@ -1,6 +1,7 @@
 import "server-only";
 
 import { auth } from "@clerk/nextjs/server";
+import { addMonths, format, parseISO } from "date-fns";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentHousehold } from "@/features/household/queries";
@@ -8,6 +9,7 @@ import { getLatestUnitPrices } from "@/features/prices/queries";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import { baseUnitFactor, unitFamily } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
+import { compareTripToReceipt } from "./trip-comparison";
 
 export type ActiveList = { id: string; name: string };
 
@@ -525,4 +527,111 @@ export async function getHabitualProducts(
       defaultLocation: p.default_location,
       purchaseCount: p.purchase_count,
     }));
+}
+
+export type MonthlyTripStats = {
+  /** Compras cerradas desde la lista que se emparejaron con un ticket. */
+  tripsMatched: number;
+  /** De esas, cuántas no tuvieron ni un producto fuera de lista. */
+  tripsPerfect: number;
+  /** El extra que más veces se repitió en el mes; null si ninguno se repite. */
+  topExtra: { label: string; value: number } | null;
+};
+
+/** Compras mínimas fuera de lista para que un extra cuente como "capricho". */
+const RECURRING_EXTRA_MIN_TIMES = 2;
+
+/**
+ * Compras perfectas del mes (G2): cuántas compras cerradas desde la lista se
+ * emparejaron con un ticket, cuántas de ellas no tuvieron ningún producto fuera
+ * de lista, y cuál fue el capricho más repetido.
+ *
+ * Vive aquí y no en `prices/wrapped.ts` porque el dato es de la lista de la
+ * compra (`shopping_trips` + `compareTripToReceipt`), y lo consumen varias
+ * pantallas: el resumen del mes cerrado y el marcador del mes en curso.
+ *
+ * Se recalcula desde los snapshots en cada lectura en vez de guardarse al
+ * confirmar el ticket, para que una mejora futura del emparejamiento se refleje
+ * también en los meses ya pasados.
+ *
+ * @param month Mes objetivo en formato "yyyy-MM".
+ */
+export async function getMonthlyTripStats(
+  month: string,
+): Promise<MonthlyTripStats> {
+  const supabase = createServerSupabaseClient();
+  const monthStart = parseISO(`${month}-01`);
+  const monthStartStr = format(monthStart, "yyyy-MM-dd");
+  const nextStartStr = format(addMonths(monthStart, 1), "yyyy-MM-dd");
+
+  const { data: tripRows } = await supabase
+    .from("shopping_trips")
+    .select("id, product_ids, receipt_id")
+    .not("receipt_id", "is", null)
+    .gte("closed_at", monthStartStr)
+    .lt("closed_at", nextStartStr);
+
+  const trips = tripRows ?? [];
+  const receiptIds = trips
+    .map((t) => t.receipt_id)
+    .filter((id): id is string => id !== null);
+
+  let tripsPerfect = 0;
+  const extraCounts = new Map<string, number>();
+
+  if (receiptIds.length > 0) {
+    const { data: boughtRows } = await supabase
+      .from("receipt_items")
+      // 2 FKs a products → hay que nombrar la relación o PostgREST da PGRST201.
+      .select(
+        "receipt_id, product_id, description, product:products!receipt_items_product_id_fkey(name)",
+      )
+      .in("receipt_id", receiptIds)
+      .not("product_id", "is", null);
+
+    type BoughtRow = {
+      receipt_id: string;
+      product_id: string;
+      description: string;
+      product: { name: string } | null;
+    };
+    const byReceipt = new Map<string, BoughtRow[]>();
+    for (const r of (boughtRows ?? []) as unknown as BoughtRow[]) {
+      const arr = byReceipt.get(r.receipt_id);
+      if (arr) arr.push(r);
+      else byReceipt.set(r.receipt_id, [r]);
+    }
+
+    for (const trip of trips) {
+      if (!trip.receipt_id) continue;
+      const bought = byReceipt.get(trip.receipt_id) ?? [];
+      const comparison = compareTripToReceipt(
+        trip.product_ids ?? [],
+        bought.map((b) => ({
+          productId: b.product_id,
+          // El nombre del catálogo agrupa mejor entre compras que la descripción
+          // del ticket, que varía de una tienda a otra.
+          label: b.product?.name ?? b.description,
+        })),
+      );
+      if (comparison.perfect) tripsPerfect += 1;
+      for (const extra of comparison.extras) {
+        extraCounts.set(extra, (extraCounts.get(extra) ?? 0) + 1);
+      }
+    }
+  }
+
+  // Solo cuenta como "capricho" lo que se repite: una compra puntual fuera de
+  // lista es la vida normal, no un patrón sobre el que valga la pena hablar.
+  const topExtraEntry = [...extraCounts.entries()]
+    .filter(([, times]) => times >= RECURRING_EXTRA_MIN_TIMES)
+    .sort((a, b) => b[1] - a[1])[0];
+
+  return {
+    tripsMatched: trips.length,
+    tripsPerfect,
+    topExtra: topExtraEntry
+      ? { label: topExtraEntry[0], value: topExtraEntry[1] }
+      : null,
+  };
 }

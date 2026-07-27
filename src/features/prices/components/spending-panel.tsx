@@ -2,17 +2,14 @@ import Link from "next/link";
 import {
   ChevronLeft,
   ChevronRight,
-  PiggyBank,
   Receipt,
-  Sprout,
-  Tag,
   Trash2,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { formatEuro, formatEuroSigned } from "@/lib/money";
+import { formatEuro } from "@/lib/money";
 import {
   Card,
   CardAction,
@@ -20,12 +17,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { BudgetBar } from "./budget-bar";
+import { SavingsBlock } from "./savings-block";
+import { WasteStreakLine } from "./waste-streak-line";
 import type {
   MonthlySpending,
   SpendingBreakdownItem,
   WasteInsight,
 } from "../spending";
-import type { WasteStreak } from "../waste";
 
 // Colores categóricos en orden fijo (tokens del design system). Nunca se
 // ciclan: a partir del 5º, el desglose los agrupa en "Otros".
@@ -93,132 +92,6 @@ function BreakdownBars({
         })}
       </ul>
     </section>
-  );
-}
-
-/**
- * Hucha del hogar (G1): saldo neto del mes, con el desglose de sus dos
- * componentes siempre visible (no colapsado). Un número grande sin explicación
- * es justo lo que hace que la gente deje de creerse este tipo de pantallas; con
- * solo dos líneas de desglose no hace falta un <details>.
- */
-function SavingsBlock({
-  savingsTotal,
-  discountTotal,
-  savingsByPrice,
-}: {
-  savingsTotal: number;
-  discountTotal: number;
-  savingsByPrice: number;
-}) {
-  if (discountTotal <= 0 && savingsByPrice === 0) return null;
-  const positive = savingsTotal >= 0;
-
-  return (
-    <div className="flex flex-col gap-2 rounded-lg border p-3">
-      <p
-        className={cn(
-          "flex items-center gap-1.5 text-sm font-medium",
-          positive ? "text-success" : "text-warning",
-        )}
-      >
-        <PiggyBank className="size-4 shrink-0" aria-hidden />
-        Hucha del hogar: {formatEuroSigned(savingsTotal)}
-      </p>
-      <ul className="flex flex-col gap-1 pl-6 text-xs text-muted-foreground">
-        {discountTotal > 0 ? (
-          <li className="flex items-baseline justify-between gap-2">
-            <span className="flex items-center gap-1">
-              <Tag className="size-3.5 shrink-0" aria-hidden />
-              Descuentos del ticket
-            </span>
-            <span className="tabular-nums">{formatEuro(discountTotal)}</span>
-          </li>
-        ) : null}
-        {savingsByPrice !== 0 ? (
-          <li className="flex items-baseline justify-between gap-2">
-            <span className="flex items-center gap-1">
-              {savingsByPrice > 0 ? (
-                <TrendingDown className="size-3.5 shrink-0" aria-hidden />
-              ) : (
-                <TrendingUp className="size-3.5 shrink-0" aria-hidden />
-              )}
-              Precio frente a lo habitual
-            </span>
-            <span className="tabular-nums">{formatEuroSigned(savingsByPrice)}</span>
-          </li>
-        ) : null}
-      </ul>
-    </div>
-  );
-}
-
-/**
- * Racha sin desperdicio (G3). Solo aparece cuando el mes va limpio: si ya hay
- * algo tirado, la línea de desperdicio cuenta la verdad y añadir aquí "tu récord
- * fueron 8 semanas" sonaría a restregarlo.
- *
- * El récord se menciona únicamente cuando la racha en curso NO es la mejor, para
- * dar contexto sin convertirlo en una vara de medir permanente.
- */
-function WasteStreakLine({ streak }: { streak: WasteStreak }) {
-  if (streak.currentWeeks < 1) return null;
-
-  return (
-    <p className="flex items-center gap-1.5 text-sm text-success">
-      <Sprout className="size-4 shrink-0" aria-hidden />
-      {streak.currentWeeks === 1
-        ? "1 semana sin tirar comida"
-        : `${streak.currentWeeks} semanas sin tirar comida`}
-      {streak.isBest ? (
-        <span className="text-xs text-muted-foreground">· tu mejor racha</span>
-      ) : (
-        <span className="text-xs text-muted-foreground">
-          · tu récord son {streak.bestWeeks}
-        </span>
-      )}
-    </p>
-  );
-}
-
-function BudgetBar({ total, budget }: { total: number; budget: number }) {
-  const pct = budget > 0 ? (total / budget) * 100 : 0;
-  const width = Math.min(pct, 100);
-  const over = total > budget;
-  const near = pct > 85 && !over;
-
-  const barColor = over
-    ? "bg-destructive"
-    : near
-      ? "bg-warning"
-      : "bg-success";
-  const textColor = over
-    ? "text-destructive"
-    : near
-      ? "text-warning"
-      : "text-success";
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-baseline justify-between gap-2 text-sm">
-        <span className="text-muted-foreground">Objetivo mensual</span>
-        <span className="tabular-nums">
-          <span className={cn("font-medium", textColor)}>{formatEuro(total)}</span>
-          <span className="text-muted-foreground"> / {formatEuro(budget)}</span>
-        </span>
-      </div>
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn("h-full rounded-full transition-all", barColor)}
-          style={{ width: `${width}%` }}
-        />
-      </div>
-      <p className={cn("text-xs", over ? "text-destructive" : "text-muted-foreground")}>
-        {over
-          ? `Te has pasado ${formatEuro(total - budget)} del objetivo`
-          : `Te quedan ${formatEuro(budget - total)} este mes`}
-      </p>
-    </div>
   );
 }
 
