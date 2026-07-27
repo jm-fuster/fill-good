@@ -70,6 +70,50 @@
       opacity: 0.35;
     }
   }
+
+  /* Hucha de /perfil (G1): la moneda cae por la ranura al entrar en la pantalla
+     y la hucha acusa el golpe. Se anima UNA vez y solo transform/opacity, que el
+     compositor resuelve sin recalcular layout: un bucle infinito aquí sería una
+     animación permanente en la pantalla más visitada, y el coste en batería no
+     lo paga la gracia. `prefers-reduced-motion` las neutraliza globalmente (ver
+     la regla al final de @layer base). */
+  --animate-coin-drop: coin-drop 700ms ease-in 1 both;
+  --animate-piggy-nudge: piggy-nudge 700ms ease-out 1 both;
+
+  @keyframes coin-drop {
+    0% {
+      transform: translate(-50%, -160%) scale(0.85);
+      opacity: 0;
+    }
+    25% {
+      opacity: 1;
+    }
+    /* 60% (~420ms): la moneda toca el lomo. Que aterrice pronto y no al final
+       es lo que la hace leerse como una caída y no como un descenso flotando;
+       el resto del tiempo es la moneda entrando en la hucha. */
+    60% {
+      transform: translate(-50%, 0) scale(1);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(-50%, 45%) scale(0.4);
+      opacity: 0;
+    }
+  }
+
+  @keyframes piggy-nudge {
+    0%,
+    58% {
+      transform: rotate(0deg);
+    }
+    /* El meneo entra justo DESPUÉS del aterrizaje: es el acuse del golpe. */
+    72% {
+      transform: rotate(-3.5deg);
+    }
+    100% {
+      transform: rotate(0deg);
+    }
+  }
 }
 
 :root {

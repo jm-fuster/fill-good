@@ -14,13 +14,37 @@ import { roundCents } from "@/lib/money";
 import type { UnitType } from "@/lib/supabase/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentHousehold } from "@/features/household/queries";
-import { CHAIN_LABELS } from "./chains";
+import { CHAIN_LABELS, chainLabel } from "./chains";
 import { getLatestUnitPrices } from "./queries";
 import { computeWasteStreak, valueDiscard, type WasteStreak } from "./waste";
 
 export type SpendingBreakdownItem = {
   key: string;
   label: string;
+  total: number;
+};
+
+/**
+ * Un movimiento de la hucha: lo que aportó UN ticket. Es el desglose que hace
+ * creíble el saldo del mes — "+12,45 €" en grande solo se sostiene si puedes
+ * abrirlo y ver de qué compras salió.
+ */
+export type SavingsEntry = {
+  id: string;
+  /** Fecha de compra "yyyy-MM-dd"; null si el ticket no la traía. */
+  purchasedAt: string | null;
+  /**
+   * Fecha ya formateada ("12 jul"). Se resuelve aquí y no en el componente para
+   * no arrastrar date-fns y su locale al bundle de cliente: la lista de
+   * movimientos es interactiva, pero sus fechas son inmutables.
+   */
+  dateLabel: string | null;
+  chainLabel: string;
+  /** Descuentos impresos en el ticket (nunca negativo). */
+  discount: number;
+  /** Desvío de precio frente a lo habitual; negativo = pagaste de más. */
+  byPrice: number;
+  /** discount + byPrice: lo que este ticket aportó (o restó) a la hucha. */
   total: number;
 };
 
@@ -46,6 +70,13 @@ export type MonthlySpending = {
   savingsByPrice: number;
   /** discountTotal + savingsByPrice: lo que el mes ha aportado a la hucha. */
   savingsTotal: number;
+  /**
+   * Movimientos de la hucha, del más reciente al más antiguo. Sale del mismo
+   * recorrido de `receipts` que los totales, así que no cuesta una consulta
+   * extra. Solo entran los tickets que movieron el saldo: un ticket sin
+   * descuentos ni desvío de precio no es un movimiento, es una compra normal.
+   */
+  savingsEntries: SavingsEntry[];
   budget: number | null;
   byCategory: SpendingBreakdownItem[];
   byChain: SpendingBreakdownItem[];
@@ -234,7 +265,7 @@ export async function getMonthlySpending(
       supabase
         .from("receipts")
         .select(
-          "total_amount, discount_total, savings_amount, store_chain, purchased_at",
+          "id, total_amount, discount_total, savings_amount, store_chain, purchased_at",
         )
         .eq("status", "confirmed")
         .gte("purchased_at", prevStartStr)
@@ -266,6 +297,7 @@ export async function getMonthlySpending(
   let savingsByPrice = 0;
   const chainTotals = new Map<string, number>();
   const chainSavings = new Map<string, number>();
+  const savingsEntries: SavingsEntry[] = [];
 
   for (const r of receiptRows ?? []) {
     const amount = Number(r.total_amount) || 0;
@@ -276,13 +308,27 @@ export async function getMonthlySpending(
     if (inTarget) {
       total += amount;
       receiptCount += 1;
-      discountTotal += Number(r.discount_total) || 0;
-      savingsByPrice += Number(r.savings_amount) || 0;
+      const discount = Number(r.discount_total) || 0;
+      const byPrice = Number(r.savings_amount) || 0;
+      discountTotal += discount;
+      savingsByPrice += byPrice;
       const chain = r.store_chain ?? OTHER_KEY;
       chainTotals.set(chain, (chainTotals.get(chain) ?? 0) + amount);
-      const saved =
-        (Number(r.discount_total) || 0) + (Number(r.savings_amount) || 0);
+      const saved = discount + byPrice;
       chainSavings.set(chain, (chainSavings.get(chain) ?? 0) + saved);
+      if (roundCents(saved) !== 0) {
+        savingsEntries.push({
+          id: r.id,
+          purchasedAt: r.purchased_at,
+          dateLabel: r.purchased_at
+            ? format(parseISO(r.purchased_at), "d MMM", { locale: es })
+            : null,
+          chainLabel: r.store_chain ? chainLabel(r.store_chain) : "Otros",
+          discount: roundCents(discount),
+          byPrice: roundCents(byPrice),
+          total: roundCents(saved),
+        });
+      }
     } else {
       // Mes anterior (solo para el delta).
       prevTotal += amount;
@@ -358,6 +404,11 @@ export async function getMonthlySpending(
     discountTotal,
     savingsByPrice: roundCents(savingsByPrice),
     savingsTotal: roundCents(discountTotal + savingsByPrice),
+    // Del más reciente al más antiguo. Los tickets sin fecha van al final: no
+    // se pueden ordenar y encabezar la lista con ellos sería desconcertante.
+    savingsEntries: savingsEntries.sort((a, b) =>
+      (b.purchasedAt ?? "").localeCompare(a.purchasedAt ?? ""),
+    ),
     budget: household.monthlyBudget,
     byCategory,
     byChain,

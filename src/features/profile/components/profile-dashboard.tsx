@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
 import { StatTile } from "@/components/stat-tile";
 import { BudgetBar } from "@/features/prices/components/budget-bar";
-import { SavingsBlock } from "@/features/prices/components/savings-block";
+import { SavingsPiggy } from "./savings-piggy";
 import {
   SettingsGroup,
   SettingsLinkRow,
@@ -72,6 +72,7 @@ export function ProfileDashboard({ data }: { data: ProfileOverview }) {
     discountTotal,
     savingsByPrice,
     savingsTotal,
+    savingsEntries,
     budget,
   } = spending;
 
@@ -146,11 +147,11 @@ export function ProfileDashboard({ data }: { data: ProfileOverview }) {
   return (
     <div className="flex flex-col gap-4">
       {hasSavings ? (
-        <SavingsBlock
-          variant="hero"
+        <SavingsPiggy
           savingsTotal={savingsTotal}
           discountTotal={discountTotal}
           savingsByPrice={savingsByPrice}
+          entries={savingsEntries}
         />
       ) : (
         // Ya hay compras, pero todavía no hay con qué calcular la hucha (ni
