@@ -32,6 +32,7 @@ import {
 } from "@/lib/similarity";
 import type { UnitType } from "@/lib/supabase/types";
 import type { ReceiptSavingsSummary } from "@/features/prices/savings";
+import type { TripComparison } from "@/features/shopping-list/trip-comparison";
 import type {
   ReceiptHeader,
   ReceiptItem,
@@ -131,6 +132,7 @@ export function ReceiptReview({
   // que ninguna vía de cierre puede perder trabajo.
   const [celebration, setCelebration] = useState<{
     summary: ReceiptSavingsSummary;
+    trip?: TripComparison;
     href: string;
   } | null>(null);
   const [rows, setRows] = useState<Row[]>(() =>
@@ -201,12 +203,17 @@ export function ReceiptReview({
           ? `/inventario/revision?items=${ids.join(",")}`
           : "/inventario";
 
-      // Hucha (G1): solo se interrumpe el flujo cuando hay un ahorro real que
-      // contar. Sin ahorro (o con saldo negativo) se navega igual que siempre:
-      // el saldo neto vive en /precios y aquí no se regaña a nadie.
+      // Celebración (G1 + G2): solo se interrumpe el flujo cuando hay una buena
+      // noticia real que contar, sea dinero ahorrado o una compra ceñida a la
+      // lista. Sin ninguna de las dos se navega igual que siempre: el saldo neto
+      // vive en /precios y aquí no se regaña a nadie. En particular, tener
+      // extras NO abre el modal por sí solo.
       const summary = result.savings;
-      if (summary && summary.total > 0) {
-        setCelebration({ summary, href });
+      const trip = result.trip;
+      const worthCelebrating =
+        (summary?.total ?? 0) > 0 || (trip?.perfect ?? false);
+      if (summary && worthCelebrating) {
+        setCelebration({ summary, trip, href });
         return;
       }
       router.push(href);
@@ -487,6 +494,7 @@ export function ReceiptReview({
       {celebration ? (
         <SavingsCelebration
           summary={celebration.summary}
+          trip={celebration.trip}
           open
           onContinue={() => {
             const { href } = celebration;

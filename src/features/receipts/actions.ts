@@ -26,6 +26,10 @@ import {
 } from "@/features/prices/savings";
 import { notifyPriceRises } from "@/features/push/notify";
 import { linkReceiptToTrip } from "@/features/shopping-list/trips";
+import {
+  compareTripToReceipt,
+  type TripComparison,
+} from "@/features/shopping-list/trip-comparison";
 import { confirmPayloadSchema } from "./schemas";
 import type { ConfirmPayload } from "./schemas";
 
@@ -294,6 +298,8 @@ export async function confirmReceiptAction(
   warnings?: string[];
   /** Aportación de este ticket a la hucha del hogar (G1). */
   savings?: ReceiptSavingsSummary;
+  /** Lista vs. ticket (G2); ausente si no hay compra que emparejar. */
+  trip?: TripComparison;
 }> {
   // Validación de entrada (zod): acota cantidad, descripción y longitudes antes
   // de tocar inventario e historial de precios. Ver ./schemas.
@@ -807,6 +813,26 @@ export async function confirmReceiptAction(
     })),
   });
 
+  // 2.66 Compra perfecta (G2): enlaza este ticket con la compra cerrada desde la
+  //      lista y compara ambas. Sube al camino crítico —antes vivía en after()—
+  //      porque ahora la tarjeta se muestra en la misma celebración: calcularlo
+  //      después sería calcularlo tarde. Devuelve null si no hay compra que
+  //      emparejar, que es lo normal en quien escanea tickets sin usar la lista.
+  const tripProductIds = await linkReceiptToTrip(supabase, {
+    receiptId: payload.receiptId,
+    householdId: household.id,
+    purchasedAt,
+  });
+  const trip = tripProductIds
+    ? compareTripToReceipt(
+        tripProductIds,
+        processable.map((r) => ({
+          productId: r.productId,
+          label: r.description,
+        })),
+      )
+    : null;
+
   // 2.7 Cierre del ticket. Al confirmar, `raw_extraction` (el JSON completo de la
   //     IA, ~5–15 KB/fila) ya no se lee nunca más: los descuentos quedan
   //     materializados en `discount_total` justo arriba. Se vacía para no acumular
@@ -846,19 +872,11 @@ export async function confirmReceiptAction(
   //     de los productos afectados: solo cambian cuando cambia el histórico.
   //  2. Aviso push de subidas de precio (M10c). Inerte sin claves VAPID; jamás
   //     rompe la confirmación (try/catch dentro).
-  //  3. Enlazar este ticket con la compra cerrada desde la lista (G2). Va aquí y
-  //     no en el camino crítico porque todavía no hay UI que dependa de él: solo
-  //     deja el dato listo para cuando la haya.
   const notifyIds = [...affectedProductIds];
   const notifyUserId = userId ?? null;
   after(async () => {
     await refreshPriceInsights(supabase, household.id, notifyIds);
     await notifyPriceRises(household.id, notifyIds, notifyUserId);
-    await linkReceiptToTrip(supabase, {
-      receiptId: payload.receiptId,
-      householdId: household.id,
-      purchasedAt,
-    });
   });
 
   return {
@@ -867,5 +885,6 @@ export async function confirmReceiptAction(
     inventoryItemIds,
     warnings,
     savings: summarizeReceiptSavings(savings, discountTotal),
+    trip: trip ?? undefined,
   };
 }
