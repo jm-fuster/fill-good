@@ -9,6 +9,7 @@ import {
   Sprout,
   Star,
   Store,
+  Target,
   Trash2,
 } from "lucide-react";
 
@@ -67,6 +68,8 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
     prevMonth,
     nextMonth,
     hasData,
+    isClosed,
+    budget,
     spentTotal,
     spentDelta,
     receiptCount,
@@ -155,6 +158,33 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
               }
               accent={spentDelta <= 0 ? "success" : "warning"}
             />
+
+            {/* Único "reto" del plan (G5): el objetivo de gasto que ya existía,
+                aquí con marco de resultado. Sin tabla ni ciclo de vida propios.
+                Pasarse usa `warning` y no `destructive` —a diferencia de la
+                barra en vivo de /precios— porque esto es un recuento a toro
+                pasado: informar, no alarmar por algo que ya no tiene arreglo. */}
+            {budget != null ? (
+              <Stat
+                icon={Target}
+                label="Objetivo del mes"
+                value={
+                  isClosed
+                    ? spentTotal <= budget
+                      ? "Cumplido"
+                      : "Superado"
+                    : `${formatEuro(spentTotal)} de ${formatEuro(budget)}`
+                }
+                hint={
+                  spentTotal <= budget
+                    ? isClosed
+                      ? `${formatEuro(budget - spentTotal)} por debajo`
+                      : `Te quedan ${formatEuro(budget - spentTotal)}`
+                    : `${formatEuro(spentTotal - budget)} por encima`
+                }
+                accent={spentTotal <= budget ? "success" : "warning"}
+              />
+            ) : null}
 
             {topProduct ? (
               <Stat

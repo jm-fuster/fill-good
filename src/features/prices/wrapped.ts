@@ -32,6 +32,19 @@ export type MonthlyWrapped = {
   nextMonth: string | null;
   /** Falso = el mes no tiene ni una compra confirmada; la pantalla lo dice y ya. */
   hasData: boolean;
+  /**
+   * El mes ya terminó. Distingue "cerrasteis por debajo del objetivo" (un
+   * resultado) de "vais por X" (un marcador en juego): dar por cumplido un
+   * objetivo a mitad de mes sería felicitar antes de tiempo.
+   */
+  isClosed: boolean;
+  /**
+   * Objetivo de gasto del hogar (`households.monthly_budget`), si lo tiene.
+   * Es el único "reto" del plan (G5) que se implementa, y a propósito sin
+   * infraestructura propia: el objetivo ya existía y ya se configura en
+   * Ajustes, así que esto solo le pone marco de reto al cerrar el mes.
+   */
+  budget: number | null;
 
   spentTotal: number;
   /** spentTotal − mes anterior. Negativo = has gastado menos. */
@@ -192,6 +205,8 @@ export async function getMonthlyWrapped(
     prevMonth: format(subMonths(monthStart, 1), "yyyy-MM"),
     nextMonth: canGoForward ? format(nextStart, "yyyy-MM") : null,
     hasData: spending.receiptCount > 0,
+    isClosed: nextStart <= startOfMonth(today),
+    budget: spending.budget,
 
     spentTotal: roundCents(spending.total),
     spentDelta: roundCents(spending.delta),
