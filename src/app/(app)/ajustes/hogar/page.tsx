@@ -7,6 +7,7 @@ import { HouseholdSettings } from "@/features/household/components/household-set
 import {
   getCurrentHousehold,
   getHouseholdMembers,
+  getUserHouseholds,
 } from "@/features/household/queries";
 
 export const metadata: Metadata = { title: "Mi hogar" };
@@ -15,7 +16,10 @@ export default async function HogarPage() {
   const household = await getCurrentHousehold();
   // El layout de (app) ya redirige sin hogar; esto además estrecha el tipo.
   if (!household) redirect("/onboarding");
-  const members = await getHouseholdMembers(household.id);
+  const [members, households] = await Promise.all([
+    getHouseholdMembers(household.id),
+    getUserHouseholds(),
+  ]);
 
   return (
     <PageContainer>
@@ -25,7 +29,15 @@ export default async function HogarPage() {
         backHref="/ajustes"
         backLabel="Ajustes"
       />
-      <HouseholdSettings household={household} members={members} />
+      <HouseholdSettings
+        household={household}
+        households={households.map((h) => ({
+          id: h.id,
+          name: h.name,
+          role: h.role,
+        }))}
+        members={members}
+      />
     </PageContainer>
   );
 }

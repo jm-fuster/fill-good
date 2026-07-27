@@ -186,40 +186,6 @@ export async function getWasteInsight(): Promise<WasteInsight | null> {
   return { streak, monthlyAverage };
 }
 
-export type MonthlySavingsBadge = { total: number };
-
-/**
- * Versión ligera de la hucha del mes en curso, para la tira de /inventario
- * (G1): una sola query sobre `receipts`, sin las agregaciones de categoría,
- * cadena o desperdicio que solo hacen falta en /precios. null = sin ningún
- * ticket confirmado este mes (la tira no se muestra: un "0,00 €" sin contexto
- * es peor que no mostrar nada).
- */
-export async function getMonthlySavingsBadge(): Promise<MonthlySavingsBadge | null> {
-  const household = await getCurrentHousehold();
-  if (!household) return null;
-
-  const supabase = createServerSupabaseClient();
-  const today = new Date();
-  const monthStart = format(startOfMonth(today), "yyyy-MM-dd");
-  const nextMonthStart = format(startOfMonth(addMonths(today, 1)), "yyyy-MM-dd");
-
-  const { data, error } = await supabase
-    .from("receipts")
-    .select("discount_total, savings_amount")
-    .eq("status", "confirmed")
-    .gte("purchased_at", monthStart)
-    .lt("purchased_at", nextMonthStart);
-  if (error) throw error;
-  if (!data || data.length === 0) return null;
-
-  const total = data.reduce(
-    (sum, r) => sum + (Number(r.discount_total) || 0) + (Number(r.savings_amount) || 0),
-    0,
-  );
-  return { total: roundCents(total) };
-}
-
 /** Normaliza un "yyyy-MM" arbitrario a uno válido; si no lo es, usa el actual. */
 function resolveMonth(month: string | undefined, today: Date): string {
   if (month && /^\d{4}-\d{2}$/.test(month)) {

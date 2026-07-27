@@ -28,7 +28,6 @@ import {
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
 import { Button } from "@/components/ui/button";
-import { SettingsButtonRow } from "@/features/settings/components/settings-list";
 import { cn } from "@/lib/utils";
 import type { MemberRole } from "@/lib/supabase/types";
 
@@ -140,11 +139,11 @@ function HouseholdSwitcherModalBody({
 }
 
 /**
- * Fila de Ajustes para alternar entre hogares (solo se renderiza con más de
- * uno). Abre un ResponsiveModal (regla E11) con la lista; elegir uno distinto
+ * Botón de /ajustes/hogar para alternar entre hogares (solo se renderiza con más
+ * de uno). Abre un ResponsiveModal (regla E11) con la lista; elegir uno distinto
  * del activo lo convierte en el hogar activo y lleva a su inventario.
  */
-export function HouseholdSwitcherRow({
+export function HouseholdSwitcherButton({
   households,
   activeId,
 }: {
@@ -157,16 +156,17 @@ export function HouseholdSwitcherRow({
 
   return (
     <ResponsiveModal open={open} onOpenChange={setOpen}>
-      <SettingsButtonRow
-        icon={ArrowLeftRight}
-        label="Cambiar de hogar"
-        hint="Alterna entre tus hogares"
-        value={`${households.length} hogares`}
+      <Button
+        variant="outline"
         onClick={() => setOpen(true)}
-      />
+        className="justify-start"
+      >
+        <ArrowLeftRight aria-hidden />
+        Cambiar de hogar
+      </Button>
       <ResponsiveModalContent>
-        {/* Sin enlace de "crear o unirse": en Ajustes ya hay una fila propia
-            para eso dos posiciones más abajo. */}
+        {/* Sin enlace de "crear o unirse": la tarjeta que abre este botón ya
+            tiene el suyo justo debajo. */}
         <HouseholdSwitcherModalBody
           households={households}
           activeId={activeId}

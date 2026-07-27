@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
-import { Home, HousePlus, Info, ListOrdered, Palette } from "lucide-react";
+import { Home, Info, ListOrdered, Palette } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
@@ -9,7 +9,6 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { DeleteAccountRow } from "@/features/account/components/delete-account-row";
 import { LogoutRow } from "@/features/account/components/logout-row";
 import { BudgetRow } from "@/features/household/components/budget-row";
-import { HouseholdSwitcherRow } from "@/features/household/components/household-switcher";
 import { PushStatusRow } from "@/features/push/components/push-status-row";
 import {
   SettingsControlRow,
@@ -19,7 +18,6 @@ import {
 import {
   getCurrentHousehold,
   getHouseholdMembers,
-  getUserHouseholds,
 } from "@/features/household/queries";
 
 export const metadata: Metadata = { title: "Ajustes" };
@@ -30,10 +28,9 @@ export const metadata: Metadata = { title: "Ajustes" };
  * que se resuelve de un toque (tema) o en un modal corto (objetivo de gasto).
  */
 export default async function AjustesPage() {
-  const [user, household, households] = await Promise.all([
+  const [user, household] = await Promise.all([
     currentUser(),
     getCurrentHousehold(),
-    getUserHouseholds(),
   ]);
   const email = user?.primaryEmailAddress?.emailAddress;
   const members = household ? await getHouseholdMembers(household.id) : [];
@@ -73,18 +70,10 @@ export default async function AjustesPage() {
               href="/ajustes/hogar"
               icon={Home}
               label={household.name}
-              hint="Invitaciones, miembros y propiedad"
+              hint="Invitaciones, miembros y cambio de hogar"
               value={
                 members.length === 1 ? "1 miembro" : `${members.length} miembros`
               }
-            />
-            <HouseholdSwitcherRow
-              households={households.map((h) => ({
-                id: h.id,
-                name: h.name,
-                role: h.role,
-              }))}
-              activeId={household.id}
             />
             <BudgetRow budget={household.monthlyBudget} />
             <SettingsLinkRow
@@ -92,12 +81,6 @@ export default async function AjustesPage() {
               icon={ListOrdered}
               label="Orden de la tienda"
               hint="Ordena los pasillos según tu supermercado"
-            />
-            <SettingsLinkRow
-              href="/ajustes/hogar/nuevo"
-              icon={HousePlus}
-              label="Crear o unirse a otro hogar"
-              hint="Una segunda residencia, la casa de vacaciones…"
             />
           </SettingsGroup>
         ) : null}

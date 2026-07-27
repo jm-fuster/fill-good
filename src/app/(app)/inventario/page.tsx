@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { History, LineChart, Package, ScanLine } from "lucide-react";
+import { History, Package, ScanLine } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -17,8 +17,6 @@ import {
   getProducts,
   getStarterCatalog,
 } from "@/features/inventory/queries";
-import { SavingsStrip } from "@/features/prices/components/savings-strip";
-import { getMonthlySavingsBadge } from "@/features/prices/spending";
 import { getActiveListProductIds } from "@/features/shopping-list/queries";
 
 export const metadata: Metadata = { title: "Inventario" };
@@ -31,21 +29,14 @@ export default async function InventarioPage({
   const { q, estado } = await searchParams;
   const estadoParam = estado ?? null;
   const initialFilter = isStatusFilter(estadoParam) ? estadoParam : null;
-  const [
-    entries,
-    categories,
-    products,
-    onListProductIds,
-    pinnedProductIds,
-    savingsBadge,
-  ] = await Promise.all([
-    getInventory(),
-    getCategories(),
-    getProducts(),
-    getActiveListProductIds(),
-    getPinnedProductIds(),
-    getMonthlySavingsBadge(),
-  ]);
+  const [entries, categories, products, onListProductIds, pinnedProductIds] =
+    await Promise.all([
+      getInventory(),
+      getCategories(),
+      getProducts(),
+      getActiveListProductIds(),
+      getPinnedProductIds(),
+    ]);
   const productNames = products.map((p) => p.name);
   // El selector "¿Qué tienes ya en casa?" solo tiene sentido con el inventario
   // vacío; solo entonces consultamos el catálogo sembrado que aún no está en él.
@@ -68,16 +59,6 @@ export default async function InventarioPage({
                 <History aria-hidden />
               </Link>
             </Button>
-            <Button
-              asChild
-              variant="outline"
-              size="icon"
-              aria-label="Ver precios"
-            >
-              <Link href="/precios">
-                <LineChart aria-hidden />
-              </Link>
-            </Button>
             {/* FAB en móvil, botón en el header en escritorio (mismo modal). */}
             <AddProductDrawer
               categories={categories}
@@ -86,12 +67,6 @@ export default async function InventarioPage({
           </div>
         }
       />
-
-      {savingsBadge ? (
-        <div className="mb-6">
-          <SavingsStrip total={savingsBadge.total} />
-        </div>
-      ) : null}
 
       {entries.length === 0 ? (
         <div className="flex flex-col gap-6">

@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: "Otro hogar" };
  * Añadir un hogar más sin abandonar el actual (E-multihogar): una segunda
  * residencia, la casa de vacaciones… Reutiliza el formulario del onboarding;
  * al crear o unirse, el hogar nuevo pasa a ser el activo (cookie) y se puede
- * alternar desde Ajustes o el selector del header.
+ * alternar desde /ajustes/hogar, la cabecera de /perfil o el selector del header.
  */
 export default function NuevoHogarPage() {
   return (
@@ -18,8 +18,8 @@ export default function NuevoHogarPage() {
       <PageHeader
         title="Otro hogar"
         description="Crea un hogar adicional o únete a uno existente con su código de invitación. El nuevo hogar pasará a ser el activo, y podrás cambiar entre ellos cuando quieras."
-        backHref="/ajustes"
-        backLabel="Ajustes"
+        backHref="/ajustes/hogar"
+        backLabel="Mi hogar"
       />
       <OnboardingForm />
     </PageContainer>

@@ -1,7 +1,15 @@
 "use client";
 
 import { useState, useSyncExternalStore, useTransition } from "react";
-import { Copy, LogOut, RefreshCw, Share2, TriangleAlert } from "lucide-react";
+import Link from "next/link";
+import {
+  Copy,
+  HousePlus,
+  LogOut,
+  RefreshCw,
+  Share2,
+  TriangleAlert,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +32,10 @@ import {
 } from "@/components/ui/responsive-modal";
 import type { CurrentHousehold, HouseholdMember } from "../queries";
 import { leaveHouseholdAction, regenerateInviteCodeAction } from "../actions";
+import {
+  HouseholdSwitcherButton,
+  type SwitcherHousehold,
+} from "./household-switcher";
 import { RenameHouseholdDrawer } from "./rename-household-drawer";
 import { TransferOwnershipDrawer } from "./transfer-ownership-drawer";
 import { OwnerLeaveDrawer } from "./owner-leave-drawer";
@@ -32,14 +44,21 @@ import { DeleteHouseholdDrawer } from "./delete-household-drawer";
 /**
  * Contenido de /ajustes/hogar. Antes era una única card dentro del índice de
  * Ajustes, donde competía con todo lo demás; aquí es la página completa, dividida
- * en tres secciones (invitar · miembros · gestión) para que lo irreversible viva
- * al final y no en medio de la pantalla raíz.
+ * en secciones (invitar · miembros · tus hogares · gestión) para que lo
+ * irreversible viva al final y no en medio de la pantalla raíz.
+ *
+ * Todo lo relativo a hogares vive aquí, incluido cambiar de hogar y añadir uno
+ * nuevo: en el índice de Ajustes eran dos filas más que competían con las
+ * preferencias, y su sitio natural es la pantalla del hogar.
  */
 export function HouseholdSettings({
   household,
+  households,
   members,
 }: {
   household: CurrentHousehold;
+  /** Todos los hogares del usuario, para alternar entre ellos. */
+  households: SwitcherHousehold[];
   members: HouseholdMember[];
 }) {
   const [pending, startTransition] = useTransition();
@@ -167,6 +186,33 @@ export function HouseholdSettings({
               </li>
             ))}
           </ul>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Tus hogares</CardTitle>
+          <CardDescription>
+            {households.length > 1
+              ? "El inventario, la lista y los menús que ves son los del hogar activo."
+              : "Puedes tener más de un hogar: una segunda residencia, la casa de vacaciones…"}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex flex-col gap-2">
+            {/* Con un solo hogar el botón no se renderiza y queda solo el de
+                añadir; de ahí que la descripción cambie según el número. */}
+            <HouseholdSwitcherButton
+              households={households}
+              activeId={household.id}
+            />
+            <Button asChild variant="outline" className="justify-start">
+              <Link href="/ajustes/hogar/nuevo">
+                <HousePlus aria-hidden />
+                Crear o unirse a otro hogar
+              </Link>
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
