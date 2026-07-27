@@ -8,12 +8,12 @@ import {
   Check,
   Layers,
   List,
-  Minus,
   Plus,
   ShoppingCart,
   Store,
   Trash2,
   TrendingDown,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,27 +26,36 @@ import { vibrateTick } from "@/lib/haptics";
 import { chainLabel } from "@/features/prices/chains";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import { ScanTicketNudge } from "@/features/receipts/components/scan-ticket-nudge";
-import { formatQuantity } from "@/lib/units";
+import {
+  defaultListQuantity,
+  formatQuantity,
+  isCountableOrUnset,
+} from "@/lib/units";
 import { usePersistedFlag } from "@/hooks/use-persisted-flag";
 import { useRealtimeList } from "../use-realtime-list";
 import type {
   CatalogProduct,
-  HabitualProduct,
   ListItem,
   PendingTicketTrip,
   Suggestion,
 } from "../queries";
 import {
   deleteListItemAction,
+  dismissSuggestionAction,
   reorderListItemsAction,
   restoreListItemAction,
-  setListItemQuantityAction,
+  restoreSuggestionAction,
   toggleItemAction,
 } from "../actions";
+import {
+  suggestionReasonLabel,
+  suggestionReasonShort,
+} from "../suggestion-reason";
 import { groupByCategory } from "../grouping";
 import { AddItemForm } from "./add-item-form";
 import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import { ItemReorderList } from "./item-reorder-list";
+import { QuantityStepper } from "./quantity-stepper";
 import type { AutocompleteOption } from "./product-autocomplete";
 import { useCheckout } from "./use-checkout";
 import { EditListItemDrawer } from "./edit-list-item-drawer";
@@ -64,14 +73,12 @@ export function ShoppingListView({
   listId,
   initialItems,
   suggestions,
-  habituales,
   catalog,
   pendingTicket,
 }: {
   listId: string;
   initialItems: ListItem[];
   suggestions: Suggestion[];
-  habituales: HabitualProduct[];
   catalog: CatalogProduct[];
   /** Compra cerrada sin ticket: ofrece escanearlo (G2). null = nada que ofrecer. */
   pendingTicket: PendingTicketTrip | null;
@@ -83,6 +90,10 @@ export function ShoppingListView({
   const [pendingAdds, setPendingAdds] = useState<PendingAdd[]>([]);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [editItem, setEditItem] = useState<ListItem | null>(null);
+  // Sugerencias descartadas en esta sesión: se ocultan al instante y el servidor
+  // las silencia un mes. Al llegar el refresh ya no vienen, así que el set solo
+  // cubre la ventana entre el clic y la respuesta.
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   // L10 — Agrupar por categoría (persistido en localStorage, por dispositivo).
   const [grouped, setGrouped] = usePersistedFlag("lista:grouped");
   // L14 — Modo reordenar (arrastrar artículos). Efímero, no se persiste.
@@ -192,7 +203,9 @@ export function ShoppingListView({
     const optimistic: ListItem = {
       id: tempId,
       name: input.name,
-      quantity: input.quantity,
+      // Mismo defecto que aplica el servidor, para que la fila no parpadee de
+      // «+» a «− 1 +» cuando llega el refresh.
+      quantity: input.quantity ?? defaultListQuantity(input.unit),
       unit: input.unit,
       isChecked: false,
       productId: input.kind === "product" ? input.productId : null,
@@ -230,6 +243,42 @@ export function ShoppingListView({
     return true;
   }
 
+  // Descartar una sugerencia: la silencia un mes en todo el hogar. Con
+  // "Deshacer", porque es un clic pequeño junto al de añadir y equivocarse aquí
+  // significaría no volver a ver ese producto sugerido en un mes.
+  function dismissSuggestion(s: Suggestion) {
+    setDismissedIds((prev) => new Set(prev).add(s.productId));
+    dismissSuggestionAction(s.productId).then((r) => {
+      if (r?.error) {
+        setDismissedIds((prev) => {
+          const next = new Set(prev);
+          next.delete(s.productId);
+          return next;
+        });
+        toast.error(r.error);
+        return;
+      }
+      toast(`${s.name} descartado`, {
+        duration: 5000,
+        action: {
+          label: "Deshacer",
+          onClick: () => {
+            setDismissedIds((prev) => {
+              const next = new Set(prev);
+              next.delete(s.productId);
+              return next;
+            });
+            restoreSuggestionAction(s.productId).then((res) => {
+              if (res?.error) toast.error(res.error);
+              else router.refresh();
+            });
+          },
+        },
+      });
+      router.refresh();
+    });
+  }
+
   // Ítems optimistas aún no presentes en los datos del servidor.
   const optimisticItems = pendingAdds
     .filter((p) => !(p.realId && items.some((i) => i.id === p.realId)))
@@ -246,17 +295,12 @@ export function ShoppingListView({
   const onListProductIds = new Set<string>();
   for (const i of allItems) if (i.productId) onListProductIds.add(i.productId);
 
-  // Evita repetir en "Habituales" lo que ya sale en "Se está acabando".
-  const suggestedIds = new Set(suggestions.map((s) => s.productId));
   const visibleSuggestions = suggestions.filter(
-    (s) => !onListProductIds.has(s.productId),
-  );
-  const habitualChips = habituales.filter(
-    (h) => !suggestedIds.has(h.id) && !onListProductIds.has(h.id),
+    (s) => !onListProductIds.has(s.productId) && !dismissedIds.has(s.productId),
   );
 
-  // L4: opciones al enfocar el input vacío (sugerencias primero, luego
-  // habituales), resueltas contra el catálogo para reutilizar el mismo alta.
+  // L4: opciones al enfocar el input vacío, resueltas contra el catálogo para
+  // reutilizar el mismo alta.
   const catalogById = new Map(catalog.map((p) => [p.id, p]));
   const focusOptions: AutocompleteOption[] = [];
   const seenFocus = new Set<string>();
@@ -264,19 +308,7 @@ export function ShoppingListView({
     const product = catalogById.get(s.productId);
     if (!product || seenFocus.has(product.id)) continue;
     seenFocus.add(product.id);
-    focusOptions.push({
-      product,
-      reason:
-        s.reason === "restock" && s.intervalDays
-          ? `cada ~${s.intervalDays} días`
-          : "Quedan pocas",
-    });
-  }
-  for (const h of habitualChips) {
-    const product = catalogById.get(h.id);
-    if (!product || seenFocus.has(product.id)) continue;
-    seenFocus.add(product.id);
-    focusOptions.push({ product, reason: "Habitual" });
+    focusOptions.push({ product, reason: suggestionReasonShort(s) });
   }
 
   // L14 — Modo reordenar: vista enfocada solo con los pendientes arrastrables.
@@ -422,11 +454,11 @@ export function ShoppingListView({
       )}
 
       {visibleSuggestions.length > 0 ? (
-        <Suggestions suggestions={visibleSuggestions} onAdd={addItem} />
-      ) : null}
-
-      {habitualChips.length > 0 ? (
-        <Habituales products={habitualChips} onAdd={addItem} />
+        <Suggestions
+          suggestions={visibleSuggestions}
+          onAdd={addItem}
+          onDismiss={dismissSuggestion}
+        />
       ) : null}
 
       {done.length > 0 ? <CheckoutBar count={done.length} /> : null}
@@ -447,6 +479,13 @@ export function ShoppingListView({
 
 /** Umbral (px) de deslizamiento para confirmar "Quitar". */
 const SWIPE_THRESHOLD = 72;
+
+/**
+ * Sugerencias visibles antes de plegar el resto. Con "agotado" entre las
+ * fuentes, una despensa grande puede generar decenas: se muestran las más
+ * urgentes y el resto queda a un toque, nunca truncado en silencio.
+ */
+const SUGGESTIONS_MAX = 8;
 
 function ListRow({
   item,
@@ -475,7 +514,7 @@ function ListRow({
   const swiped = useRef(false);
 
   // Contable = se cuenta de una en una: unidad "ud" o sin unidad (L9).
-  const countable = item.unit == null || item.unit === "ud";
+  const countable = isCountableOrUnset(item.unit);
 
   function onPointerDown(e: React.PointerEvent) {
     // Solo gesto táctil/lápiz; en escritorio se usa el botón papelera.
@@ -622,7 +661,13 @@ function ListRow({
           </span>
         </button>
         {/* Stepper ±1 inline para unidades contables (ud o sin unidad) (L9). */}
-        {countable ? <QuantityStepper item={item} /> : null}
+        {countable ? (
+          <QuantityStepper
+            itemId={item.id}
+            name={item.name}
+            quantity={item.quantity}
+          />
+        ) : null}
         {/* Papelera: siempre visible en táctil (móvil, donde no hay hover ni se
             descubre el swipe); en escritorio se oculta y se revela al hover/foco. */}
         <Button
@@ -635,89 +680,6 @@ function ListRow({
           <Trash2 aria-hidden className="text-muted-foreground" />
         </Button>
       </div>
-    </div>
-  );
-}
-
-/**
- * Stepper ±1 inline para ítems contables (L9). Optimista con persistencia
- * "debounced": una sola escritura al servidor tras dejar de pulsar. "−" sobre
- * 1 deja el ítem sin cantidad (null); "+" sobre sin-cantidad empieza en 1.
- */
-function QuantityStepper({ item }: { item: ListItem }) {
-  const [qty, setQty] = useState<number | null>(item.quantity);
-  const [serverQty, setServerQty] = useState<number | null>(item.quantity);
-  // Reconciliar con el servidor (Realtime/refresh) sin pisar el optimismo local.
-  if (serverQty !== item.quantity) {
-    setServerQty(item.quantity);
-    setQty(item.quantity);
-  }
-
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latest = useRef<number | null>(item.quantity);
-
-  function persist(next: number | null) {
-    latest.current = next;
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
-      setListItemQuantityAction(item.id, latest.current).then((r) => {
-        if (r?.error) toast.error(r.error);
-      });
-    }, 600);
-  }
-
-  function change(next: number | null) {
-    setQty(next);
-    persist(next);
-  }
-
-  const dec = () => change(qty != null && qty > 1 ? qty - 1 : null);
-  const inc = () => change((qty ?? 0) + 1);
-
-  return (
-    <div className="flex shrink-0 items-center">
-      {qty != null ? (
-        <>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={`Restar uno a ${item.name}`}
-            onClick={dec}
-          >
-            <Minus aria-hidden className="text-muted-foreground" />
-          </Button>
-          <span
-            className="min-w-6 text-center text-sm tabular-nums"
-            aria-live="polite"
-          >
-            {/* La key remonta solo el número: pequeño "pop" al cambiar sin
-                reemplazar la región aria-live. */}
-            <span
-              key={qty}
-              className="inline-block animate-in zoom-in-50 duration-150"
-            >
-              {qty}
-            </span>
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={`Sumar uno a ${item.name}`}
-            onClick={inc}
-          >
-            <Plus aria-hidden className="text-muted-foreground" />
-          </Button>
-        </>
-      ) : (
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={`Añadir cantidad a ${item.name}`}
-          onClick={inc}
-        >
-          <Plus aria-hidden className="text-muted-foreground" />
-        </Button>
-      )}
     </div>
   );
 }
@@ -745,27 +707,33 @@ function SavingsBadge({ tip }: { tip: ChainSavingsTip }) {
   );
 }
 
+/**
+ * Lo que te falta: caducado, bajo mínimo, agotado o toca reponer. En lista y no
+ * en chips sueltos porque cada fila tiene que caber el motivo —una sugerencia
+ * sin explicar por qué aparece se ignora— y un «Descartar» con área táctil de
+ * verdad al lado del de añadir.
+ */
 function Suggestions({
   suggestions,
   onAdd,
+  onDismiss,
 }: {
   suggestions: Suggestion[];
   onAdd: (input: AddInput) => Promise<boolean>;
+  onDismiss: (s: Suggestion) => void;
 }) {
+  const [showAll, setShowAll] = useState(false);
+  const visible = showAll ? suggestions : suggestions.slice(0, SUGGESTIONS_MAX);
+  const hidden = suggestions.length - visible.length;
+
   return (
     <section className="rounded-xl border border-dashed p-3">
-      <h2 className="mb-2 text-sm font-medium">Sugerencias</h2>
-      <div className="flex flex-wrap gap-2">
-        {suggestions.map((s) => {
-          const reason =
-            s.reason === "restock" && s.intervalDays
-              ? `Sueles comprarlo cada ~${s.intervalDays} días`
-              : "Quedan pocas";
-          return (
-            <Button
-              key={s.productId}
-              variant="outline"
-              size="sm"
+      <h2 className="mb-1 text-sm font-medium">Te puede faltar</h2>
+      <ul className="flex flex-col gap-0.5">
+        {visible.map((s) => (
+          <li key={s.productId} className="flex items-center gap-1">
+            <button
+              type="button"
               onClick={() =>
                 onAdd({
                   kind: "product",
@@ -775,53 +743,46 @@ function Suggestions({
                   unit: s.unit,
                 })
               }
-              className="h-auto flex-col items-start gap-0.5 py-1.5"
+              className="flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-lg px-1 text-left transition-colors hover:bg-muted"
+              aria-label={`Añadir ${formatQuantity(s.suggestedQuantity, s.unit)} de ${s.name}`}
             >
-              <span className="flex items-center gap-1">
-                <Plus aria-hidden className="size-3.5" />
-                {s.name}
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <Plus className="size-4" aria-hidden />
               </span>
-              <span className="text-xs font-normal text-muted-foreground">
-                {reason}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium">
+                  {s.name}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {suggestionReasonLabel(s)}
+                </span>
               </span>
+              <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+                {formatQuantity(s.suggestedQuantity, s.unit)}
+              </span>
+            </button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={`Descartar ${s.name}`}
+              onClick={() => onDismiss(s)}
+            >
+              <X aria-hidden className="text-muted-foreground" />
             </Button>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-function Habituales({
-  products,
-  onAdd,
-}: {
-  products: HabitualProduct[];
-  onAdd: (input: AddInput) => Promise<boolean>;
-}) {
-  return (
-    <section className="rounded-xl border border-dashed p-3">
-      <h2 className="mb-2 text-sm font-medium">Habituales</h2>
-      <div className="flex flex-wrap gap-2">
-        {products.map((p) => (
-          <Button
-            key={p.id}
-            variant="outline"
-            onClick={() =>
-              onAdd({
-                kind: "product",
-                productId: p.id,
-                name: p.name,
-                quantity: null,
-                unit: p.defaultUnit,
-              })
-            }
-          >
-            <Plus aria-hidden />
-            {p.name}
-          </Button>
+          </li>
         ))}
-      </div>
+      </ul>
+      {hidden > 0 || showAll ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mt-1 w-full"
+          onClick={() => setShowAll(!showAll)}
+          aria-expanded={showAll}
+        >
+          {showAll ? "Ver menos" : `Ver todas (${suggestions.length})`}
+        </Button>
+      ) : null}
     </section>
   );
 }

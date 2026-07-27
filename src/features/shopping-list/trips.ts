@@ -14,30 +14,30 @@ type Supabase = SupabaseClient<Database>;
  */
 export const TRIP_MATCH_WINDOW_HOURS = 48;
 
+/** Compra cerrada desde la lista, aún sin ticket, candidata a emparejarse. */
+export type PendingTrip = { id: string; productIds: string[] };
+
 /**
- * Enlaza un ticket recién confirmado con la compra cerrada desde la lista que le
- * corresponda (G2) y devuelve los productos que iban en aquella lista, para
- * poder calcular la "compra perfecta" en el acto. Sin esto, la lista y el ticket
- * quedan como dos hechos inconexos.
+ * Busca (SIN enlazar) la compra cerrada desde la lista que le corresponde a un
+ * ticket: la del hogar MÁS CERCANA en el tiempo dentro de la ventana que aún no
+ * tenga ticket. La condición "aún no tenga ticket" es lo que impide que dos
+ * tickets del mismo día reclamen la misma compra.
  *
- * Elige el `shopping_trip` del hogar MÁS CERCANO en el tiempo dentro de la
- * ventana que aún no tenga ticket. La condición "aún no tenga ticket" es lo que
- * impide que dos tickets del mismo día reclamen la misma compra.
+ * Se usa en dos momentos distintos y por eso no tiene efectos: al ABRIR la
+ * revisión, para saber qué productos ya entraron al inventario en el checkout y
+ * no volver a sumarlos; y al CONFIRMAR, desde `linkReceiptToTrip`.
  *
  * Devuelve `null` cuando no hay compra que emparejar, que es un caso normal y
- * frecuente (quien escanea tickets sin usar la lista), no un error.
- *
- * Best-effort en el fallo: si algo revienta, devuelve `null` y la tarjeta
- * simplemente no aparece. Confirmar el ticket nunca puede depender de esto.
+ * frecuente (quien escanea tickets sin usar la lista), no un error. Best-effort
+ * en el fallo: si algo revienta, devuelve `null`.
  */
-export async function linkReceiptToTrip(
+export async function findPendingTrip(
   supabase: Supabase,
   {
-    receiptId,
     householdId,
     purchasedAt,
-  }: { receiptId: string; householdId: string; purchasedAt: string | null },
-): Promise<string[] | null> {
+  }: { householdId: string; purchasedAt: string | null },
+): Promise<PendingTrip | null> {
   try {
     // `purchased_at` es una fecha sin hora; se ancla al mediodía para que la
     // ventana cubra por igual la noche anterior y la siguiente.
@@ -60,16 +60,42 @@ export async function linkReceiptToTrip(
       return d < bestD ? t : best;
     });
 
+    return { id: target.id, productIds: target.product_ids ?? [] };
+  } catch (err) {
+    console.error("findPendingTrip falló (best-effort):", err);
+    return null;
+  }
+}
+
+/**
+ * Enlaza un ticket recién confirmado con la compra cerrada desde la lista que le
+ * corresponda (G2) y devuelve los productos que iban en aquella lista, para
+ * poder calcular la "compra perfecta" en el acto. Sin esto, la lista y el ticket
+ * quedan como dos hechos inconexos.
+ *
+ * Best-effort en el fallo: si algo revienta, devuelve `null` y la tarjeta
+ * simplemente no aparece. Confirmar el ticket nunca puede depender de esto.
+ */
+export async function linkReceiptToTrip(
+  supabase: Supabase,
+  {
+    receiptId,
+    householdId,
+    purchasedAt,
+  }: { receiptId: string; householdId: string; purchasedAt: string | null },
+): Promise<string[] | null> {
+  const trip = await findPendingTrip(supabase, { householdId, purchasedAt });
+  if (!trip) return null;
+  try {
     const { error: updateErr } = await supabase
       .from("shopping_trips")
       .update({ receipt_id: receiptId })
-      .eq("id", target.id)
+      .eq("id", trip.id)
       // Relectura de la condición: si otro ticket confirmado en paralelo ya la
       // reclamó entre el select y el update, este update no toca nada.
       .is("receipt_id", null);
     if (updateErr) throw updateErr;
-
-    return target.product_ids ?? [];
+    return trip.productIds;
   } catch (err) {
     console.error("linkReceiptToTrip falló (best-effort):", err);
     return null;

@@ -5,6 +5,7 @@ import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ReceiptReview } from "@/features/receipts/components/receipt-review";
 import {
+  getAlreadyStockedProductIds,
   getReceipt,
   getReceiptItems,
   getReceiptSuggestions,
@@ -23,9 +24,10 @@ export default async function RevisarPage({
   if (!receipt) notFound();
   if (receipt.status === "confirmed") redirect("/inventario");
 
-  const [items, products] = await Promise.all([
+  const [items, products, alreadyStockedProductIds] = await Promise.all([
     getReceiptItems(receiptId),
     getProductCatalog(),
+    getAlreadyStockedProductIds(receipt),
   ]);
   const suggestions = await getReceiptSuggestions(items);
 
@@ -33,7 +35,7 @@ export default async function RevisarPage({
     <PageContainer>
       <PageHeader
         title="Revisar ticket"
-        description="Ajusta lo que haga falta y confirma. Lo marcado pasará al inventario."
+        description="Ajusta lo que haga falta y confirma."
         backHref="/escanear"
         backLabel="Añadir ticket"
       />
@@ -53,6 +55,10 @@ export default async function RevisarPage({
             .map((p) => [p.id, p.packSize as number]),
         )}
         suggestions={suggestions}
+        alreadyStockedProductIds={alreadyStockedProductIds}
+        unitByProduct={Object.fromEntries(
+          products.map((p) => [p.id, p.defaultUnit]),
+        )}
       />
     </PageContainer>
   );

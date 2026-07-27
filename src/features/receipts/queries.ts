@@ -6,6 +6,7 @@ import {
   getCurrentHousehold,
 } from "@/features/household/queries";
 import { suggestCandidates, type HouseholdMatchData } from "@/lib/matching";
+import { findPendingTrip } from "@/features/shopping-list/trips";
 import type { UnitType } from "@/lib/supabase/types";
 
 export type ReceiptHeader = {
@@ -145,6 +146,32 @@ export async function getReceiptItems(
     matchStatus: r.match_status,
     matchedProductName: r.product?.name ?? null,
   }));
+}
+
+/**
+ * Productos que YA entraron al inventario al pulsar «Finalizar compra» en la
+ * lista, y que por tanto este ticket no debe volver a sumar.
+ *
+ * El checkout de la lista (`checkoutAction`) y la confirmación de un ticket
+ * (`confirmReceiptAction`) son dos vías independientes de entrada al inventario.
+ * Quien sigue el aviso «¿Tienes el ticket?» las encadena, y sin esta lista el
+ * stock entraría dos veces. Con ella, esas líneas se revisan igual —precio,
+ * historial, hucha— pero no vuelven a sumar existencias.
+ *
+ * Devuelve vacío cuando el ticket no se corresponde con ninguna compra cerrada
+ * desde la lista, que es lo normal en quien escanea tickets sin usarla.
+ */
+export async function getAlreadyStockedProductIds(
+  receipt: ReceiptHeader,
+): Promise<string[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
+  const supabase = createServerSupabaseClient();
+  const trip = await findPendingTrip(supabase, {
+    householdId,
+    purchasedAt: receipt.purchasedAt,
+  });
+  return trip?.productIds ?? [];
 }
 
 /** Sugerencia fuzzy (E6): id del producto candidato para una línea sin match. */

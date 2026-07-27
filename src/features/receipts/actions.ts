@@ -294,6 +294,8 @@ export async function confirmReceiptAction(
   error?: string;
   ok?: boolean;
   added?: number;
+  /** Líneas que no sumaron stock por venir de una compra ya finalizada. */
+  alreadyStocked?: number;
   inventoryItemIds?: string[];
   warnings?: string[];
   /** Aportación de este ticket a la hucha del hogar (G1). */
@@ -340,6 +342,7 @@ export async function confirmReceiptAction(
     0,
   );
   let added = 0;
+  let alreadyStocked = 0;
   const inventoryItemIds: string[] = [];
   const warnings: string[] = [];
   const affectedProductIds = new Set<string>();
@@ -401,6 +404,13 @@ export async function confirmReceiptAction(
     description: string;
     quantity: number;
     unit: UnitType;
+    /**
+     * Cómo entra al inventario. Normalmente igual que `quantity`/`unit`, pero
+     * los productos al peso pueden contarse por piezas en casa (0,72 kg → 1 ud)
+     * sin tocar la línea, que es la que alimenta el historial de precios.
+     */
+    stockQuantity: number;
+    stockUnit: UnitType;
     /** Resuelto ya (enlazado/existente) o null hasta insertar el producto nuevo. */
     productId: string | null;
     /** normalized_name para re-resolver tras insertar los productos nuevos. */
@@ -408,6 +418,8 @@ export async function confirmReceiptAction(
     location: LocationType;
     matchStatus: string;
     isNew: boolean;
+    /** Su stock ya entró en el checkout de la lista: aquí solo cuenta el precio. */
+    priceOnly: boolean;
   };
 
   const skippedIds: string[] = [];
@@ -434,6 +446,9 @@ export async function confirmReceiptAction(
     }
 
     const rawText = itemRow?.raw_text ?? null;
+    // Cómo entra al inventario: por defecto, tal cual lo dice el ticket.
+    const stockUnit = dec.stockUnit ?? dec.unit;
+    const stockQuantity = dec.stockQuantity ?? dec.quantity;
 
     // Solo se acepta el enlace si el producto pertenece al catálogo del hogar;
     // un id ajeno u obsoleto (merge/borrado) cae al camino por nombre.
@@ -444,11 +459,14 @@ export async function confirmReceiptAction(
         description: dec.description,
         quantity: dec.quantity,
         unit: dec.unit,
+        stockQuantity,
+        stockUnit,
         productId: dec.productId,
         normKey: null,
         location: productById.get(dec.productId)?.default_location ?? "pantry",
         matchStatus: "manual",
         isNew: false,
+        priceOnly: dec.priceOnly,
       });
       continue;
     }
@@ -462,18 +480,24 @@ export async function confirmReceiptAction(
         description: dec.description,
         quantity: dec.quantity,
         unit: dec.unit,
+        stockQuantity,
+        stockUnit,
         productId: existing.id,
         normKey: null,
         location: existing.default_location,
         matchStatus: "manual",
         isNew: false,
+        priceOnly: dec.priceOnly,
       });
     } else {
       if (!newProductsByNorm.has(normalized)) {
         newProductsByNorm.set(normalized, {
           name: dec.description,
           normalized_name: normalized,
-          default_unit: dec.unit,
+          // La unidad del producto es la de su STOCK, no la de la línea: si esta
+          // calabaza se cuenta por piezas, el producto nace en "ud" y el próximo
+          // ticket en kg ya no chocará con el inventario.
+          default_unit: stockUnit,
         });
       }
       resolved.push({
@@ -482,11 +506,15 @@ export async function confirmReceiptAction(
         description: dec.description,
         quantity: dec.quantity,
         unit: dec.unit,
+        stockQuantity,
+        stockUnit,
         productId: null,
         normKey: normalized,
         location: "pantry",
         matchStatus: "new_product",
         isNew: true,
+        // Un producto que no existía no pudo entrar en el checkout de la lista.
+        priceOnly: false,
       });
     }
   }
@@ -661,23 +689,39 @@ export async function confirmReceiptAction(
     // `cantidad × pack` unidades al inventario (la línea del ticket conserva la
     // cantidad de compra).
     const packSize =
-      r.unit === "ud" ? (packByProduct.get(r.productId) ?? null) : null;
-    const invQty = packSize ? r.quantity * packSize : r.quantity;
+      r.stockUnit === "ud" ? (packByProduct.get(r.productId) ?? null) : null;
+    const invQty = packSize ? r.stockQuantity * packSize : r.stockQuantity;
 
     const key = invKey(r.productId, r.location);
     const inv = invSim.get(key);
+
+    // Ya contabilizado en el checkout de la lista: esta línea aporta precio e
+    // historial, pero NO existencias (sumarlas duplicaría el stock). Se exige
+    // que la fila de inventario exista de verdad: si no está, el checkout no
+    // llegó a crearla y saltarse la suma perdería stock en silencio, así que
+    // cae al camino normal.
+    if (r.priceOnly && inv) {
+      // Se apunta igualmente su fila para que la revisión de caducidades siga
+      // ofreciéndola: es lo recién comprado, y quien omitió las fechas al
+      // finalizar la compra merece una segunda oportunidad de ponerlas.
+      lineKeys.push(key);
+      affectedProductIds.add(r.productId);
+      alreadyStocked += 1;
+      continue;
+    }
+
     let addedToInventory = false;
     if (inv) {
       // NO sumar magnitudes de unidades distintas (ud + l = disparate).
-      if (inv.unit === r.unit) {
+      if (inv.unit === r.stockUnit) {
         inv.quantity += invQty;
         inv.dirty = true;
         addedToInventory = true;
       } else {
         warnings.push(
           `«${r.description}»: compraste ${formatQuantity(
-            r.quantity,
-            r.unit,
+            r.stockQuantity,
+            r.stockUnit,
           )} pero en tu inventario está en ${UNIT_LABELS[inv.unit]}. No se sumó automáticamente; ajústalo a mano.`,
         );
       }
@@ -687,7 +731,7 @@ export async function confirmReceiptAction(
         product_id: r.productId,
         location: r.location,
         quantity: invQty,
-        unit: r.unit,
+        unit: r.stockUnit,
         existing: false,
         dirty: true,
       });
@@ -702,7 +746,7 @@ export async function confirmReceiptAction(
         household_id: household.id,
         product_id: r.productId,
         quantity: invQty,
-        unit: r.unit,
+        unit: r.stockUnit,
         kind: "restocked",
         created_by: userId ?? null,
       });
@@ -886,6 +930,7 @@ export async function confirmReceiptAction(
   return {
     ok: true,
     added,
+    alreadyStocked,
     inventoryItemIds,
     warnings,
     savings: summarizeReceiptSavings(savings, discountTotal),

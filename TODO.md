@@ -118,7 +118,11 @@ checkout, stepper) y, si se hacen ambas, F4 va primero (F5 registra cantidades y
 - [x] Incrementar contadores en `checkoutAction` y `confirmReceiptAction`.
 - [x] Query en `/lista` que devuelva el catálogo ligero ordenado por habitualidad.
 - [x] Componente `ProductAutocomplete` accesible; integrarlo en `add-item-form.tsx`.
-- [x] Sección "Habituales" con chips de un toque.
+- [x] Sección "Habituales" con chips de un toque. **RETIRADA (2026-07-27).** Al ampliar
+  `getSuggestions` con las fuentes `expired` y `out_of_stock`, la sección quedaba siempre vacía
+  (la vista ya filtraba de los chips todo lo que fuera sugerencia) y su fuente —comprado ≥2 veces
+  y sin stock— es un subconjunto de `out_of_stock`, que además dice el motivo y se puede
+  descartar. `getHabitualProducts` y el tipo `HabitualProduct` ya no existen.
 
 > **Nota de implementación (A2):** migración `supabase/migrations/20260720073534_products_habits.sql`
 > (columnas `purchase_count`/`last_purchased_at`, backfill desde `receipt_items` y función atómica

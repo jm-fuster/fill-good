@@ -14,6 +14,7 @@ import type {
   LocationType,
   UnitType,
 } from "@/lib/supabase/types";
+import { UNIT_LABELS } from "@/lib/units";
 import {
   addInventorySchema,
   editInventorySchema,
@@ -294,6 +295,7 @@ export async function updateInventoryAction(
     preferred_chain: string | null;
     icon: string | null;
     pack_size?: number | null;
+    default_unit?: UnitType;
   } = {
     name: d.name,
     normalized_name: normalized,
@@ -306,6 +308,10 @@ export async function updateInventoryAction(
   };
   // Pack (F4): solo se toca para filas contables (ud); null lo limpia.
   if (d.unit === "ud") productUpdate.pack_size = d.packSize;
+  // La unidad de la fila editada pasa a ser la del producto: es la que usarán
+  // las próximas compras y sugerencias, y dejarlas desalineadas reproduciría el
+  // conflicto de unidades en el siguiente ticket.
+  if (d.unit) productUpdate.default_unit = d.unit;
   const { error: prodErr } = await supabase
     .from("products")
     .update(productUpdate)
@@ -323,7 +329,7 @@ export async function updateInventoryAction(
   // cantidades y borramos la fila movida; si no, movemos la fila.
   const { data: target } = await supabase
     .from("inventory_items")
-    .select("id, quantity")
+    .select("id, quantity, unit")
     .eq("household_id", household.id)
     .eq("product_id", d.productId)
     .eq("location", d.location)
@@ -331,6 +337,13 @@ export async function updateInventoryAction(
     .maybeSingle();
 
   if (target) {
+    // Sumar magnitudes de unidades distintas (2 ud + 0,7 kg) daría un número sin
+    // significado, así que se rechaza en vez de fusionar a ciegas.
+    if (d.unit && target.unit !== d.unit) {
+      return {
+        error: `Ya tienes este producto en esa ubicación medido en ${UNIT_LABELS[target.unit]}. Unifica la unidad antes de moverlo.`,
+      };
+    }
     const { error: mergeErr } = await supabase
       .from("inventory_items")
       .update({
@@ -353,6 +366,7 @@ export async function updateInventoryAction(
       .update({
         location: d.location,
         quantity: d.quantity,
+        ...(d.unit ? { unit: d.unit } : {}),
         expiry_date: d.expiryDate,
         use_soon: d.useSoon,
         updated_by: userId,

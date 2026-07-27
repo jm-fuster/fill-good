@@ -14,14 +14,24 @@ import type { PendingTicketTrip } from "@/features/shopping-list/queries";
  * casa con el papel en la mano un rato después.
  *
  * Por qué un aviso descartable y no un segundo botón junto a «Finalizar compra»:
- * el checkout y la confirmación de un ticket son dos vías **independientes** de
- * entrada al inventario (`checkoutAction` y `confirmReceiptAction`), así que
- * encadenarlas metería el stock dos veces. Y no hace falta decidirlo en la caja:
- * el cruce lista↔ticket se resuelve solo y en diferido — `linkReceiptToTrip`
- * empareja el ticket con la compra cerrada cuando llegue, dentro de su ventana
- * de 48 h (`src/features/shopping-list/trips.ts`).
+ * no hace falta decidirlo en la caja. El cruce lista↔ticket se resuelve solo y
+ * en diferido — `linkReceiptToTrip` empareja el ticket con la compra cerrada
+ * cuando llegue, dentro de su ventana de 48 h (`shopping-list/trips.ts`).
+ *
+ * El checkout y la confirmación de un ticket siguen siendo dos vías
+ * independientes de entrada al inventario (`checkoutAction` y
+ * `confirmReceiptAction`), pero encadenarlas ya NO duplica el stock: la revisión
+ * del ticket marca como «solo precio» los productos que la compra emparejada ya
+ * metió (`getAlreadyStockedProductIds`).
  */
-export function ScanTicketNudge({ trip }: { trip: PendingTicketTrip }) {
+export function ScanTicketNudge({
+  trip,
+  compact = false,
+}: {
+  trip: PendingTicketTrip;
+  /** Una sola línea, para pantallas donde el aviso no es la tarea principal. */
+  compact?: boolean;
+}) {
   // Silenciar es POR COMPRA (la clave lleva el id): descartar el aviso de esta
   // compra no debe callar el de la siguiente. Al ser la misma clave en las dos
   // pantallas, descartarlo en una lo descarta también en la otra.
@@ -29,6 +39,30 @@ export function ScanTicketNudge({ trip }: { trip: PendingTicketTrip }) {
     `lista:ticket-descartado:${trip.id}`,
   );
   if (dismissed) return null;
+
+  if (compact) {
+    return (
+      <section className="flex items-center gap-2 rounded-xl border border-dashed p-2 pl-3">
+        <ReceiptText className="size-4 shrink-0 text-chart-3" aria-hidden />
+        <p className="min-w-0 flex-1 text-sm">¿Tienes el ticket?</p>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/escanear">
+            <ScanLine aria-hidden />
+            Escanear
+          </Link>
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Descartar el aviso del ticket"
+          onClick={() => setDismissed(true)}
+          className="shrink-0"
+        >
+          <X aria-hidden className="text-muted-foreground" />
+        </Button>
+      </section>
+    );
+  }
 
   return (
     <section className="flex flex-col gap-3 rounded-xl border border-dashed p-3">

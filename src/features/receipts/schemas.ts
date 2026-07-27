@@ -19,6 +19,30 @@ export const confirmItemDecisionSchema = z.object({
   unit,
   productId: z.string().nullable().catch(null),
   skip: z.boolean(),
+  /**
+   * La línea se revisa (precio, historial, alias, hucha) pero NO suma
+   * existencias, porque ese stock ya entró al «Finalizar compra» en la lista.
+   * Opcional para no romper payloads en vuelo de una versión anterior.
+   */
+  priceOnly: z.boolean().optional().default(false),
+  /**
+   * Cómo entra la línea al INVENTARIO cuando no coincide con lo que dice el
+   * ticket: la calabaza de «0,72 kg» que en casa se cuenta como «1 calabaza».
+   * `null` = igual que la línea.
+   *
+   * La línea conserva SIEMPRE su cantidad y unidad reales, porque el historial
+   * de precios se calcula con ellas (€/kg): reinterpretarla como 1 ud
+   * convertiría 2,08 €/kg en 1,50 €/ud y contaminaría las comparaciones.
+   */
+  stockQuantity: z
+    .number()
+    .finite()
+    .min(0)
+    .max(1_000_000)
+    .nullable()
+    .optional()
+    .default(null),
+  stockUnit: unit.nullable().optional().default(null),
 });
 
 /** Payload completo de confirmReceiptAction. */

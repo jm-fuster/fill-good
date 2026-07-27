@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
-import { formatQuantity } from "@/lib/units";
+import { defaultListQuantity, formatQuantity } from "@/lib/units";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { recordStockEvent } from "@/features/inventory/events";
 import type { UnitType } from "@/lib/supabase/types";
@@ -154,13 +154,14 @@ export async function addListItemAction(
   }
 
   const unit = d.unit ?? product?.default_unit ?? null;
+  const quantity = d.quantity ?? defaultListQuantity(unit);
 
   // L3: si ya está en la lista (sin marcar), fusionar en vez de duplicar.
   const merged = await mergeIntoExisting(
     supabase,
     list.id,
     { productId: product?.id ?? null, normalized },
-    { quantity: d.quantity ?? null, unit },
+    { quantity, unit },
   );
   if (merged) {
     revalidatePath("/lista");
@@ -185,7 +186,7 @@ export async function addListItemAction(
       household_id: household.id,
       product_id: product?.id ?? null,
       name: d.name,
-      quantity: d.quantity,
+      quantity,
       unit,
       added_by: userId,
       position,
@@ -221,11 +222,11 @@ export async function addProductToListAction(
     .maybeSingle();
   if (!product) return { error: "Producto no encontrado." };
 
+  const resolvedUnit = unit ?? product.default_unit;
   const qty =
     typeof quantity === "number" && Number.isFinite(quantity) && quantity > 0
       ? quantity
-      : null;
-  const resolvedUnit = unit ?? product.default_unit;
+      : defaultListQuantity(resolvedUnit);
 
   // L3: fusionar con el ítem existente (sin marcar) si ya está en la lista.
   const merged = await mergeIntoExisting(
@@ -269,6 +270,56 @@ export async function addProductToListAction(
   return { ok: true, itemId: inserted.id };
 }
 
+/** Cuánto se calla una sugerencia descartada antes de volver a ofrecerse. */
+const SUGGESTION_SNOOZE_DAYS = 30;
+
+/**
+ * «Descartar» una sugerencia de la lista: silencia ese producto un mes. Es un
+ * silencio temporal y no un "nunca más" porque casi todo en una despensa es
+ * cíclico — el bote que hoy no repones puede hacerte falta el mes que viene, y
+ * un descarte permanente obligaría a acordarse de deshacerlo.
+ *
+ * Va en el producto (por hogar), no por usuario: la lista es compartida y lo que
+ * uno descarta no debe reaparecerle al otro.
+ */
+export async function dismissSuggestionAction(
+  productId: string,
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+  const until = new Date();
+  until.setDate(until.getDate() + SUGGESTION_SNOOZE_DAYS);
+
+  const { error } = await supabase
+    .from("products")
+    .update({ suggestions_snoozed_until: until.toISOString() })
+    .eq("household_id", household.id)
+    .eq("id", productId);
+  if (error) return { error: "No se pudo descartar la sugerencia." };
+
+  revalidatePath("/lista");
+  return { ok: true };
+}
+
+/** Deshace un «Descartar»: el producto vuelve a poder sugerirse ya mismo. */
+export async function restoreSuggestionAction(
+  productId: string,
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase
+    .from("products")
+    .update({ suggestions_snoozed_until: null })
+    .eq("household_id", household.id)
+    .eq("id", productId);
+  if (error) return { error: "No se pudo recuperar la sugerencia." };
+
+  revalidatePath("/lista");
+  return { ok: true };
+}
+
 export async function updateListItemAction(
   _prev: ActionState,
   formData: FormData,
@@ -285,12 +336,16 @@ export async function updateListItemAction(
   const d = parsed.data;
   const supabase = createServerSupabaseClient();
 
+  const unit = d.unit ?? null;
   const { error } = await supabase
     .from("shopping_list_items")
     .update({
       name: d.name,
-      quantity: d.quantity,
-      unit: d.unit ?? null,
+      // Sostiene el invariante «un contable siempre tiene cantidad»: vaciar el
+      // campo en el editor vale 1, no el estado sin stepper. Cambiar la unidad a
+      // granel sí devuelve el ítem a «sin cantidad» si se deja en blanco.
+      quantity: d.quantity ?? defaultListQuantity(unit),
+      unit,
     })
     .eq("id", d.itemId);
   if (error) return { error: "No se pudo guardar." };

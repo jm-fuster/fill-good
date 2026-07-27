@@ -9,7 +9,6 @@ import { PageHeader } from "@/components/layout/page-header";
 import { ShoppingListView } from "@/features/shopping-list/components/shopping-list-view";
 import {
   getActiveList,
-  getHabitualProducts,
   getListItems,
   getProductCatalog,
   getSuggestions,
@@ -47,10 +46,9 @@ export default async function ListaPage() {
   }
 
   // Estas sí dependen de list.id.
-  const [items, suggestions, habituales] = await Promise.all([
+  const [items, suggestions] = await Promise.all([
     getListItems(list.id),
     getSuggestions(list.id),
-    getHabitualProducts(list.id),
   ]);
 
   return (
@@ -60,7 +58,6 @@ export default async function ListaPage() {
         listId={list.id}
         initialItems={items}
         suggestions={suggestions}
-        habituales={habituales}
         catalog={catalog}
         pendingTicket={pendingTicket}
       />

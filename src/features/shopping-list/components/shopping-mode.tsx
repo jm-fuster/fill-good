@@ -27,12 +27,14 @@ import { cn } from "@/lib/utils";
 import { CHAIN_OPTIONS, chainLabel } from "@/features/prices/chains";
 import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
-import { formatQuantity } from "@/lib/units";
+import { formatQuantity, isCountableOrUnset } from "@/lib/units";
 import { useRealtimeList } from "../use-realtime-list";
 import { toggleItemAction } from "../actions";
 import type { CatalogProduct, ShoppingModeItem, Suggestion } from "../queries";
 import { AddItemForm } from "./add-item-form";
 import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
+import { QuantityStepper } from "./quantity-stepper";
+import { suggestionReasonLabel } from "../suggestion-reason";
 import { useCheckout } from "./use-checkout";
 
 /** Ranking de cadenas conocidas para ordenar los chips (desconocidas al final). */
@@ -539,7 +541,13 @@ export function ShoppingMode({
   );
 }
 
-/** Fila de un ítem en el modo compra (checkbox + nombre + coste estimado). */
+/**
+ * Fila de un ítem en el modo compra (checkbox + nombre + cantidad + coste).
+ *
+ * El stepper vive FUERA del `<label>` a propósito: dentro, cada pulsación de
+ * «+»/«−» activaría también el checkbox asociado al label y marcaría el
+ * artículo sin querer.
+ */
 function ShoppingModeRowItem({
   item,
   onToggle,
@@ -552,11 +560,14 @@ function ShoppingModeRowItem({
 }) {
   const cbId = `shop-${item.id}`;
   const showChain = item.preferredChain && item.preferredChain !== activeChain;
+  // Contables: ajustables en el pasillo cuando no hay tantos como apuntaste.
+  // A granel la cantidad se sigue mostrando como texto (se pesa en la tienda).
+  const countable = isCountableOrUnset(item.unit);
   return (
-    <li>
+    <li className="flex items-center gap-1 rounded-lg transition-colors hover:bg-muted">
       <label
         htmlFor={cbId}
-        className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2 transition-colors hover:bg-muted"
+        className="flex min-h-12 min-w-0 flex-1 cursor-pointer items-center gap-3 pl-2"
       >
         <Checkbox
           id={cbId}
@@ -573,12 +584,12 @@ function ShoppingModeRowItem({
         />
         <span
           className={cn(
-            "flex-1 text-base",
+            "min-w-0 flex-1 text-base",
             item.isChecked && "text-muted-foreground line-through",
           )}
         >
           {item.name}
-          {item.quantity != null && item.unit ? (
+          {!countable && item.quantity != null && item.unit ? (
             <span className="ml-2 text-sm text-muted-foreground">
               {formatQuantity(item.quantity, item.unit)}
             </span>
@@ -590,10 +601,17 @@ function ShoppingModeRowItem({
             </span>
           ) : null}
         </span>
-        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-          {item.lineCost != null ? formatEuro(item.lineCost) : "—"}
-        </span>
       </label>
+      {countable ? (
+        <QuantityStepper
+          itemId={item.id}
+          name={item.name}
+          quantity={item.quantity}
+        />
+      ) : null}
+      <span className="shrink-0 pr-2 text-sm tabular-nums text-muted-foreground">
+        {item.lineCost != null ? formatEuro(item.lineCost) : "—"}
+      </span>
     </li>
   );
 }
@@ -648,10 +666,7 @@ function RecommendedSection({
       </h2>
       <ul className="flex flex-col gap-1">
         {suggestions.map((s) => {
-          const reason =
-            s.reason === "restock" && s.intervalDays
-              ? `Sueles comprarlo cada ~${s.intervalDays} días`
-              : "Quedan pocas";
+          const reason = suggestionReasonLabel(s);
           return (
             <li key={s.productId}>
               <button

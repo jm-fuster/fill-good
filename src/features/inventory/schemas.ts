@@ -84,7 +84,9 @@ export const editInventorySchema = z.object({
     .transform((v) => v === "true"),
   minQuantity: optionalNumber,
   packSize: positiveOptionalNumber,
-  // Unidad de la fila editada; solo sirve para saber si el pack aplica (ud).
+  // Unidad de la fila: decide si el pack aplica (ud) y es editable, para poder
+  // recolocar lo que entró de un ticket con la unidad equivocada (la calabaza
+  // que llegó como 0,72 kg y en casa es 1 pieza).
   unit: unit.optional(),
   // Tienda preferida (L15): clave de cadena o vacío → null (sin preferencia).
   preferredChain: z

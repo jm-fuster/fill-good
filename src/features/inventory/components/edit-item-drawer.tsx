@@ -33,8 +33,12 @@ import {
 } from "@/components/product-combobox";
 import { cn } from "@/lib/utils";
 import { CHAIN_OPTIONS, chainLabel } from "@/features/prices/chains";
-import { formatQuantity, LOCATION_OPTIONS, UNIT_LABELS } from "@/lib/units";
-import type { InventoryEventKind, LocationType } from "@/lib/supabase/types";
+import { formatQuantity, LOCATION_OPTIONS, UNIT_OPTIONS } from "@/lib/units";
+import type {
+  InventoryEventKind,
+  LocationType,
+  UnitType,
+} from "@/lib/supabase/types";
 import type { Category, InventoryEntry } from "../queries";
 import { getInventoryStatus } from "../status";
 import {
@@ -237,6 +241,16 @@ export function EditItemDrawer({
   if (serverChain !== entry.preferredChain) {
     setServerChain(entry.preferredChain);
     setPreferredChain(entry.preferredChain ?? "");
+  }
+
+  // Unidad de la fila. Editable para poder recolocar lo que entró de un ticket
+  // con la unidad equivocada: una calabaza llega como «0,72 kg» y sin poder
+  // pasarla a «1 ud» se queda sin stepper de ±1 para siempre.
+  const [unit, setUnit] = useState<UnitType>(entry.unit);
+  const [serverUnit, setServerUnit] = useState(entry.unit);
+  if (serverUnit !== entry.unit) {
+    setServerUnit(entry.unit);
+    setUnit(entry.unit);
   }
 
   const [expiryDate, setExpiryDate] = useState<string | null>(
@@ -453,20 +467,39 @@ export function EditItemDrawer({
             </Select>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-quantity">
-              Cantidad ({UNIT_LABELS[entry.unit]})
-            </Label>
-            <Input
-              id="edit-quantity"
-              name="quantity"
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="any"
-              defaultValue={entry.quantity}
-              required
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-quantity">Cantidad</Label>
+              <Input
+                id="edit-quantity"
+                name="quantity"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="any"
+                defaultValue={entry.quantity}
+                required
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-unit">Unidad</Label>
+              <Select
+                value={unit}
+                onValueChange={(v) => setUnit(v as UnitType)}
+                name="unit"
+              >
+                <SelectTrigger id="edit-unit" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {UNIT_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <ExpiryQuickPicker
@@ -492,9 +525,8 @@ export function EditItemDrawer({
             />
           </div>
 
-          {entry.unit === "ud" ? (
+          {unit === "ud" ? (
             <div className="flex flex-col gap-2">
-              <input type="hidden" name="unit" value={entry.unit} />
               <Label htmlFor="edit-pack">
                 Unidades por compra{" "}
                 <span className="text-muted-foreground">(opcional)</span>

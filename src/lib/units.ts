@@ -21,6 +21,29 @@ export function isCountable(unit: UnitType): boolean {
   return unit === "ud";
 }
 
+/**
+ * Igual que {@link isCountable} pero admitiendo «sin unidad», que es como queda
+ * un alta de texto libre sin producto de catálogo detrás: cuenta como contable
+ * porque lo que se apunta ahí son piezas ("pan", "lechuga").
+ */
+export function isCountableOrUnset(unit: UnitType | null): boolean {
+  return unit === null || unit === "ud";
+}
+
+/**
+ * Cantidad con la que nace un artículo de la lista cuando el usuario no dice
+ * ninguna. Los contables arrancan en 1 para que el stepper «− 1 +» esté a la
+ * vista desde el principio: «sin cantidad» y «1» ya se comportaban igual al
+ * finalizar la compra, así que era un estado invisible que solo servía para
+ * esconder los controles.
+ *
+ * Los que se compran a granel (kg/g/l/ml) siguen naciendo sin cantidad: ahí sí
+ * significa algo distinto de «1 kg» («tomates, ya veré cuántos cojo»).
+ */
+export function defaultListQuantity(unit: UnitType | null): number | null {
+  return isCountableOrUnset(unit) ? 1 : null;
+}
+
 export type UnitFamily = "count" | "weight" | "volume";
 
 /**

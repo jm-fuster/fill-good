@@ -161,6 +161,8 @@ export type Database = {
           icon: string | null;
           purchase_count: number;
           last_purchased_at: string | null;
+          /** Hasta cuándo no sugerir este producto en /lista (null = no silenciado). */
+          suggestions_snoozed_until: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -184,6 +186,7 @@ export type Database = {
           icon?: string | null;
           purchase_count?: number;
           last_purchased_at?: string | null;
+          suggestions_snoozed_until?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -207,6 +210,7 @@ export type Database = {
           icon?: string | null;
           purchase_count?: number;
           last_purchased_at?: string | null;
+          suggestions_snoozed_until?: string | null;
           created_at?: string;
           updated_at?: string;
         };

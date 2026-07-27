@@ -37,7 +37,11 @@ export type ListItem = {
   savings?: ChainSavingsTip | null;
 };
 
-export type SuggestionReason = "low_stock" | "restock";
+export type SuggestionReason =
+  | "low_stock"
+  | "expired"
+  | "out_of_stock"
+  | "restock";
 
 export type Suggestion = {
   productId: string;
@@ -63,15 +67,6 @@ export type CatalogProduct = {
   purchaseCount: number;
   /** Unidades por compra (F4); null = sin pack. */
   packSize: number | null;
-};
-
-/** Producto habitual sugerido como chip de un toque. */
-export type HabitualProduct = {
-  id: string;
-  name: string;
-  defaultUnit: UnitType;
-  defaultLocation: LocationType;
-  purchaseCount: number;
 };
 
 export async function getActiveList(): Promise<ActiveList | null> {
@@ -366,14 +361,21 @@ function suggestedQuantityFor(
 }
 
 /**
- * Sugerencias de compra con dos fuentes (M5), en una sola consulta agregada
- * (sin N+1):
- *  · "low_stock" — productos con mínimo definido cuyo stock total está por
- *    debajo del mínimo (comportamiento original).
- *  · "restock" — productos con ≥3 compras cuya cadencia habitual (mediana de
- *    intervalos entre compras) ya se ha cumplido desde la última y que no tienen
- *    stock (o están por debajo del mínimo). Cadencias > 60 días se descartan.
- * Ninguna sugiere algo que ya esté en la lista. low_stock tiene precedencia.
+ * Sugerencias de compra (M5), en una sola consulta agregada (sin N+1). Fuentes,
+ * en orden de precedencia (la primera que casa gana; un producto sale una vez):
+ *  · "low_stock" — mínimo definido y stock total por debajo. Va primero porque
+ *    es la única regla que el usuario ha escrito explícitamente.
+ *  · "expired" — hay algún lote caducado. OJO: el stock caducado SIGUE contando
+ *    como stock en el resto de fuentes (no se descuenta), justo por eso hace
+ *    falta esta: un bote caducado bloquearía "agotado" y "reposición" y el
+ *    producto no se sugeriría nunca.
+ *  · "out_of_stock" — sin existencias y con al menos una compra a la espalda
+ *    (algo que nunca has comprado no es que "se te haya acabado").
+ *  · "restock" — ≥3 compras cuya cadencia habitual (mediana de intervalos) ya se
+ *    ha cumplido. Cadencias > 60 días se descartan.
+ *
+ * Nunca se sugiere algo que ya esté en la lista, ni un producto silenciado con
+ * «Descartar» cuyo plazo siga vigente (`suggestions_snoozed_until`).
  */
 export async function getSuggestions(listId: string): Promise<Suggestion[]> {
   const householdId = await getActiveHouseholdId();
@@ -388,12 +390,12 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
     supabase
       .from("products")
       .select(
-        "id, name, min_quantity, default_unit, purchase_count, pack_size",
+        "id, name, min_quantity, default_unit, purchase_count, pack_size, suggestions_snoozed_until",
       )
       .eq("household_id", householdId),
     supabase
       .from("inventory_items")
-      .select("product_id, quantity")
+      .select("product_id, quantity, expiry_date")
       .eq("household_id", householdId),
     supabase
       .from("shopping_list_items")
@@ -410,12 +412,21 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
       .order("purchased_at", { ascending: true }),
   ]);
 
+  const todayISO = new Date().toISOString().slice(0, 10);
+
   const stockByProduct = new Map<string, number>();
+  // Productos con algún lote ya caducado (con existencias: un lote a 0 ya está
+  // consumido o tirado, y avisar de él sería ruido).
+  const expiredProducts = new Set<string>();
   for (const row of inventory ?? []) {
+    const qty = Number(row.quantity);
     stockByProduct.set(
       row.product_id,
-      (stockByProduct.get(row.product_id) ?? 0) + Number(row.quantity),
+      (stockByProduct.get(row.product_id) ?? 0) + qty,
     );
+    if (qty > 0 && row.expiry_date && row.expiry_date < todayISO) {
+      expiredProducts.add(row.product_id);
+    }
   }
   const onList = new Set((items ?? []).map((i) => i.product_id));
 
@@ -428,14 +439,24 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
     else datesByProduct.set(row.product_id, [row.purchased_at]);
   }
 
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const nowISO = new Date().toISOString();
   const suggestions: Suggestion[] = [];
+  // Habitualidad de cada producto sugerido, solo para ordenar al final.
+  const purchaseCountById = new Map<string, number>();
 
   for (const p of products ?? []) {
     if (onList.has(p.id)) continue;
+    // Descartado por el usuario y aún dentro del plazo de silencio.
+    if (
+      p.suggestions_snoozed_until &&
+      p.suggestions_snoozed_until > nowISO
+    ) {
+      continue;
+    }
     const stock = stockByProduct.get(p.id) ?? 0;
     const min = p.min_quantity === null ? null : Number(p.min_quantity);
     const packSize = p.pack_size === null ? null : Number(p.pack_size);
+    purchaseCountById.set(p.id, p.purchase_count);
 
     // Fuente 1: por debajo del mínimo (precedencia).
     if (min !== null && stock < min) {
@@ -454,7 +475,41 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
       continue;
     }
 
-    // Fuente 2: reposición por cadencia.
+    // Fuente 2: hay algún lote caducado.
+    if (expiredProducts.has(p.id)) {
+      suggestions.push({
+        productId: p.id,
+        name: p.name,
+        unit: p.default_unit,
+        reason: "expired",
+        suggestedQuantity: suggestedQuantityFor(
+          p.default_unit,
+          stock,
+          min,
+          packSize,
+        ),
+      });
+      continue;
+    }
+
+    // Fuente 3: se acabó y es algo que ya has comprado alguna vez.
+    if (stock <= 0 && p.purchase_count > 0) {
+      suggestions.push({
+        productId: p.id,
+        name: p.name,
+        unit: p.default_unit,
+        reason: "out_of_stock",
+        suggestedQuantity: suggestedQuantityFor(
+          p.default_unit,
+          stock,
+          min,
+          packSize,
+        ),
+      });
+      continue;
+    }
+
+    // Fuente 4: reposición por cadencia.
     if (p.purchase_count < RESTOCK_MIN_PURCHASES) continue;
     const dates = datesByProduct.get(p.id) ?? [];
     if (dates.length < RESTOCK_MIN_PURCHASES) continue;
@@ -485,6 +540,25 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
       });
     }
   }
+
+  // Lo más accionable primero: la regla que el usuario escribió (mínimo), luego
+  // el hecho concreto (caducado), luego la ausencia (agotado) y por último la
+  // predicción (cadencia). A igualdad, lo que más se compra manda: en una casa
+  // con catálogo grande, "agotado" puede devolver decenas de filas y sin orden
+  // la leche quedaría detrás de un bote de comino.
+  const REASON_PRIORITY: Record<SuggestionReason, number> = {
+    low_stock: 0,
+    expired: 1,
+    out_of_stock: 2,
+    restock: 3,
+  };
+  suggestions.sort(
+    (a, b) =>
+      REASON_PRIORITY[a.reason] - REASON_PRIORITY[b.reason] ||
+      (purchaseCountById.get(b.productId) ?? 0) -
+        (purchaseCountById.get(a.productId) ?? 0) ||
+      a.name.localeCompare(b.name, "es"),
+  );
 
   return suggestions;
 }
@@ -517,56 +591,11 @@ export async function getProductCatalog(): Promise<CatalogProduct[]> {
   }));
 }
 
-/**
- * Productos habituales (comprados ≥ 2 veces) que no están ya en la lista ni
- * tienen stock en el inventario. Se ofrecen como chips de un toque.
- */
-export async function getHabitualProducts(
-  listId: string,
-): Promise<HabitualProduct[]> {
-  const householdId = await getActiveHouseholdId();
-  if (!householdId) return [];
-  const supabase = createServerSupabaseClient();
-  const [{ data: products }, { data: inventory }, { data: items }] =
-    await Promise.all([
-      supabase
-        .from("products")
-        .select("id, name, default_unit, default_location, purchase_count")
-        .eq("household_id", householdId)
-        .gte("purchase_count", 2)
-        .order("purchase_count", { ascending: false })
-        .order("name", { ascending: true }),
-      supabase
-        .from("inventory_items")
-        .select("product_id, quantity")
-        .eq("household_id", householdId),
-      supabase
-        .from("shopping_list_items")
-        .select("product_id")
-        .eq("household_id", householdId)
-        .eq("list_id", listId)
-        .not("product_id", "is", null),
-    ]);
-
-  const stockByProduct = new Map<string, number>();
-  for (const row of inventory ?? []) {
-    stockByProduct.set(
-      row.product_id,
-      (stockByProduct.get(row.product_id) ?? 0) + Number(row.quantity),
-    );
-  }
-  const onList = new Set((items ?? []).map((i) => i.product_id));
-
-  return (products ?? [])
-    .filter((p) => !onList.has(p.id) && (stockByProduct.get(p.id) ?? 0) <= 0)
-    .map((p) => ({
-      id: p.id,
-      name: p.name,
-      defaultUnit: p.default_unit,
-      defaultLocation: p.default_location,
-      purchaseCount: p.purchase_count,
-    }));
-}
+// La antigua `getHabitualProducts` (chips "Habituales": comprado ≥2 veces y sin
+// stock) desapareció al ampliar `getSuggestions`: su fuente "out_of_stock" cubre
+// exactamente lo mismo y además DICE por qué («Se ha agotado») y se puede
+// descartar. Mantener las dos habría dejado una sección permanentemente vacía,
+// porque la lista ya filtraba de los chips todo lo que fuera sugerencia.
 
 /** Compra cerrada desde la lista que sigue sin ticket escaneado (G2). */
 export type PendingTicketTrip = { id: string };

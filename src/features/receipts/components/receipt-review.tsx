@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Link2, ScanLine } from "lucide-react";
+import { Check, Link2, PackageCheck, ScanLine } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -98,7 +98,50 @@ type Row = {
   rawText: string | null;
   /** Estado del match al escanear: fija el orden/agrupación (no cambia en vivo). */
   initialStatus: string;
+  /**
+   * Unidad EXPLÍCITA con la que el usuario quiere que la línea entre al
+   * inventario. `null` = automática (ver `stockUnitOf`).
+   */
+  stockUnitOverride: UnitType | null;
+  /**
+   * Decisión EXPLÍCITA del usuario sobre si la línea suma existencias. `null` =
+   * automático: se deduce del producto asociado (ver `isPriceOnly`), para que
+   * cambiar de producto en el combobox recalcule el aviso solo.
+   */
+  priceOnlyOverride: boolean | null;
 };
+
+/**
+ * Chip de dos estados para elegir cómo entra una línea al inventario (kg o ud).
+ * `aria-pressed` en vez de radiogroup: son dos alternativas sin etiqueta de
+ * grupo visible, y el patrón de botón conmutado ya se usa en el filtro de
+ * tiendas del modo compra.
+ */
+function StockUnitChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex min-h-8 items-center rounded-full border px-3 text-xs font-medium transition-colors",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "bg-background text-muted-foreground hover:bg-muted",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
 
 /** Una línea "necesita decisión" si la IA no la asoció a un producto existente. */
 function needsDecision(status: string): boolean {
@@ -111,6 +154,8 @@ export function ReceiptReview({
   products,
   packByProduct = {},
   suggestions = [],
+  alreadyStockedProductIds = [],
+  unitByProduct = {},
 }: {
   receipt: ReceiptHeader;
   items: ReceiptItem[];
@@ -119,6 +164,13 @@ export function ReceiptReview({
   packByProduct?: Record<string, number>;
   /** Candidatos fuzzy del servidor por línea (E6): catálogo + aliases. */
   suggestions?: ReceiptSuggestion[];
+  /**
+   * Productos que ya entraron al inventario al «Finalizar compra» en la lista.
+   * Sus líneas se revisan igual, pero por defecto no vuelven a sumar stock.
+   */
+  alreadyStockedProductIds?: string[];
+  /** Unidad por defecto de cada producto del catálogo, para el stock al peso. */
+  unitByProduct?: Record<string, UnitType>;
 }) {
   const router = useRouter();
   const [storeName, setStoreName] = useState(receipt.storeName ?? "");
@@ -150,6 +202,8 @@ export function ReceiptReview({
         totalPrice: i.totalPrice,
         rawText: i.rawText,
         initialStatus: i.matchStatus,
+        priceOnlyOverride: null,
+        stockUnitOverride: null,
       }))
       .sort(
         (a, b) =>
@@ -164,16 +218,62 @@ export function ReceiptReview({
     );
   }
 
+  const alreadyStocked = useMemo(
+    () => new Set(alreadyStockedProductIds),
+    [alreadyStockedProductIds],
+  );
+
+  /**
+   * ¿Esta línea debe guardar solo el precio, sin sumar existencias? Por defecto
+   * sí cuando su producto ya entró al inventario al finalizar la compra desde la
+   * lista: `checkoutAction` y `confirmReceiptAction` son dos vías independientes
+   * de entrada al stock y encadenarlas lo metería dos veces. La decisión manual
+   * del usuario siempre gana.
+   */
+  function isPriceOnly(row: Row): boolean {
+    return (
+      row.priceOnlyOverride ??
+      (row.productId !== null && alreadyStocked.has(row.productId))
+    );
+  }
+
+  /**
+   * Unidad con la que la línea entra al INVENTARIO, que no siempre es la del
+   * ticket: una calabaza se vende a 0,72 kg pero en casa es «1 calabaza», y el
+   * stepper de ±1 solo existe para lo contable. El precio se sigue guardando en
+   * €/kg pase lo que pase (ver `stockUnit` en receipts/schemas.ts).
+   *
+   * Por defecto se respeta el ticket, salvo que el producto asociado ya se lleve
+   * por unidades: ahí seguir en kg solo produciría el aviso de «compraste kg
+   * pero tu inventario está en ud» y una corrección a mano.
+   */
+  function stockUnitOf(row: Row): UnitType {
+    if (row.stockUnitOverride) return row.stockUnitOverride;
+    if (row.unit === "ud") return "ud";
+    const productUnit = row.productId ? unitByProduct[row.productId] : undefined;
+    return productUnit === "ud" ? "ud" : row.unit;
+  }
+
   async function confirm() {
     setPending(true);
-    const decisions: ConfirmItemDecision[] = rows.map((r) => ({
-      itemId: r.itemId,
-      description: r.description.trim() || "Producto",
-      quantity: Number(r.quantity.replace(",", ".")) || 1,
-      unit: r.unit,
-      productId: r.productId,
-      skip: !r.include,
-    }));
+    const decisions: ConfirmItemDecision[] = rows.map((r) => {
+      // Solo se manda el destino del stock cuando difiere del ticket; una pieza
+      // suelta entra como 1 y, si son varias, se ajusta luego con el stepper del
+      // inventario (que es justo lo que pasar a unidades desbloquea).
+      const stockUnit = stockUnitOf(r);
+      const redirected = stockUnit !== r.unit;
+      return {
+        itemId: r.itemId,
+        description: r.description.trim() || "Producto",
+        quantity: Number(r.quantity.replace(",", ".")) || 1,
+        unit: r.unit,
+        productId: r.productId,
+        skip: !r.include,
+        priceOnly: isPriceOnly(r),
+        stockQuantity: redirected ? 1 : null,
+        stockUnit: redirected ? stockUnit : null,
+      };
+    });
     try {
       const result = await confirmReceiptAction({
         receiptId: receipt.id,
@@ -186,11 +286,26 @@ export function ReceiptReview({
         toast.error(result.error);
         return;
       }
-      toast.success(
-        `${result.added} producto${result.added === 1 ? "" : "s"} añadido${
-          result.added === 1 ? "" : "s"
-        } al inventario`,
-      );
+      const stocked = result.added ?? 0;
+      const reused = result.alreadyStocked ?? 0;
+      if (stocked > 0) {
+        toast.success(
+          `${stocked} producto${stocked === 1 ? "" : "s"} añadido${
+            stocked === 1 ? "" : "s"
+          } al inventario`,
+        );
+      }
+      if (reused > 0) {
+        toast(
+          reused === 1
+            ? "1 producto ya estaba en tu inventario desde la lista: solo hemos guardado su precio."
+            : `${reused} productos ya estaban en tu inventario desde la lista: solo hemos guardado sus precios.`,
+          { duration: 6000 },
+        );
+      }
+      if (stocked === 0 && reused === 0) {
+        toast.success("Ticket confirmado");
+      }
       // Conflictos de unidad (E3): nunca en silencio. El Toaster es global y
       // sobrevive a la navegación, así que se ven en la página de destino.
       for (const w of result.warnings ?? []) {
@@ -229,6 +344,8 @@ export function ReceiptReview({
   }
 
   const includedCount = rows.filter((r) => r.include).length;
+  const priceOnlyCount = rows.filter((r) => r.include && isPriceOnly(r)).length;
+  const stockingCount = includedCount - priceOnlyCount;
   const pendingRows = rows.filter((r) => needsDecision(r.initialStatus));
   const matchedRows = rows.filter((r) => !needsDecision(r.initialStatus));
 
@@ -260,15 +377,20 @@ export function ReceiptReview({
   function renderRow(row: Row) {
     const linked = row.productId !== null;
     const duplicate = duplicateCandidates.get(row.itemId) ?? null;
+    // Solo se ofrece la decisión "sumar o no" en las líneas donde hay algo que
+    // decidir: las de un producto que ya entró al inventario desde la lista.
+    const fromTrip = row.productId !== null && alreadyStocked.has(row.productId);
+    const priceOnly = isPriceOnly(row);
+    const stockUnit = stockUnitOf(row);
     // Pack (F4): si la línea está en ud y su producto tiene pack, avisamos de la
     // conversión que se aplicará al inventario (el precio no se toca).
     const pack =
       row.unit === "ud" && row.productId
         ? packByProduct[row.productId]
         : undefined;
-    const packQty = Number(row.quantity.replace(",", "."));
+    const qtyValue = Number(row.quantity.replace(",", "."));
     const packTotal =
-      pack && Number.isFinite(packQty) && packQty > 0 ? packQty * pack : null;
+      pack && Number.isFinite(qtyValue) && qtyValue > 0 ? qtyValue * pack : null;
     return (
       <div
         key={row.itemId}
@@ -359,14 +481,74 @@ export function ReceiptReview({
                 </Button>
               </div>
             ) : null}
-            {packTotal !== null ? (
+            {/* Sin sentido cuando la línea no va a sumar existencias. */}
+            {packTotal !== null && !priceOnly ? (
               <p className="text-xs text-muted-foreground">
-                {formatQuantity(packQty, "ud")} × pack de {pack} → entran{" "}
+                {formatQuantity(qtyValue, "ud")} × pack de {pack} → entran{" "}
                 <span className="font-medium text-foreground">
                   {formatQuantity(packTotal, "ud")}
                 </span>{" "}
                 al inventario
               </p>
+            ) : null}
+            {/* Peso → piezas. Solo tiene sentido en líneas al peso o volumen que
+                sí van a sumar stock: lo contable ya se cuenta de una en una. */}
+            {!priceOnly && row.unit !== "ud" ? (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-muted-foreground">
+                  Al inventario:
+                </span>
+                <StockUnitChip
+                  label={formatQuantity(qtyValue || 1, row.unit)}
+                  active={stockUnit === row.unit}
+                  onClick={() =>
+                    update(row.itemId, { stockUnitOverride: row.unit })
+                  }
+                />
+                <StockUnitChip
+                  label="1 ud"
+                  active={stockUnit === "ud"}
+                  onClick={() =>
+                    update(row.itemId, { stockUnitOverride: "ud" })
+                  }
+                />
+              </div>
+            ) : null}
+            {fromTrip ? (
+              priceOnly ? (
+                <div className="flex items-center gap-2 rounded-lg bg-muted p-2">
+                  <p className="flex-1 text-xs text-muted-foreground">
+                    Ya entró al inventario al finalizar la compra. Solo
+                    guardamos su precio.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      update(row.itemId, { priceOnlyOverride: false })
+                    }
+                  >
+                    Sumar igual
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 rounded-lg bg-warning/10 p-2">
+                  <p className="flex-1 text-xs text-warning">
+                    Se sumará al stock que ya entró al finalizar la compra.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      update(row.itemId, { priceOnlyOverride: true })
+                    }
+                  >
+                    No sumar
+                  </Button>
+                </div>
+              )
             ) : null}
           </div>
         ) : null}
@@ -439,6 +621,23 @@ export function ReceiptReview({
           Productos ({includedCount} de {rows.length})
         </h2>
 
+        {/* Por qué parte del ticket no suma stock: se explica una vez arriba y
+            se recuerda en cada línea, porque es un comportamiento que sorprende
+            si no se cuenta (el ticket «no hace nada» con esos productos). */}
+        {priceOnlyCount > 0 ? (
+          <p className="mb-3 flex items-start gap-2 rounded-lg bg-muted p-2.5 text-xs text-muted-foreground">
+            <PackageCheck className="mt-px size-4 shrink-0" aria-hidden />
+            <span>
+              {priceOnlyCount === 1
+                ? "1 producto ya entró"
+                : `${priceOnlyCount} productos ya entraron`}{" "}
+              en tu inventario al finalizar esta compra desde la lista. De{" "}
+              {priceOnlyCount === 1 ? "ese" : "esos"} solo guardamos el precio,
+              para no duplicar el stock.
+            </span>
+          </p>
+        ) : null}
+
         {pendingRows.length > 0 ? (
           <div className="mb-3 flex flex-col gap-2">
             <p className="text-xs font-medium text-warning">
@@ -487,7 +686,11 @@ export function ReceiptReview({
           onClick={confirm}
         >
           <Check aria-hidden />
-          {pending ? "Guardando…" : "Confirmar y añadir al inventario"}
+          {pending
+            ? "Guardando…"
+            : stockingCount > 0
+              ? "Confirmar y añadir al inventario"
+              : "Confirmar y guardar precios"}
         </Button>
       </div>
 

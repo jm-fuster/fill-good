@@ -36,10 +36,15 @@ export default async function RevisionPage({
         title="Revisar caducidades"
         description="Pon fecha a lo que acabas de comprar o márcalo para consumir pronto. Todo es opcional: puedes omitir."
       />
-      {/* El espaciado lo pone la página: `PageContainer` no lleva gap. */}
+      {/* Compacto aquí: la tarea de esta pantalla es poner fechas, y el bloque
+          grande del aviso competía con ella. No puede ir debajo del formulario
+          porque su barra de acciones es `fixed` en móvil y lo taparía.
+          Irse a escanear ya no pierde trabajo: al confirmar el ticket, sus
+          líneas vuelven a ofrecer esta misma revisión de caducidades.
+          El espaciado lo pone la página: `PageContainer` no lleva gap. */}
       {pendingTicket ? (
-        <div className="mb-3">
-          <ScanTicketNudge trip={pendingTicket} />
+        <div className="mb-4">
+          <ScanTicketNudge trip={pendingTicket} compact />
         </div>
       ) : null}
       <ExpiryReview entries={entries} />
