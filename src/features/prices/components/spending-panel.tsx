@@ -4,6 +4,7 @@ import {
   ChevronRight,
   PiggyBank,
   Receipt,
+  Sprout,
   Tag,
   Trash2,
   TrendingDown,
@@ -19,7 +20,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { MonthlySpending, SpendingBreakdownItem } from "../spending";
+import type {
+  MonthlySpending,
+  SpendingBreakdownItem,
+  WasteInsight,
+} from "../spending";
+import type { WasteStreak } from "../waste";
 
 // Colores categóricos en orden fijo (tokens del design system). Nunca se
 // ciclan: a partir del 5º, el desglose los agrupa en "Otros".
@@ -147,6 +153,34 @@ function SavingsBlock({
   );
 }
 
+/**
+ * Racha sin desperdicio (G3). Solo aparece cuando el mes va limpio: si ya hay
+ * algo tirado, la línea de desperdicio cuenta la verdad y añadir aquí "tu récord
+ * fueron 8 semanas" sonaría a restregarlo.
+ *
+ * El récord se menciona únicamente cuando la racha en curso NO es la mejor, para
+ * dar contexto sin convertirlo en una vara de medir permanente.
+ */
+function WasteStreakLine({ streak }: { streak: WasteStreak }) {
+  if (streak.currentWeeks < 1) return null;
+
+  return (
+    <p className="flex items-center gap-1.5 text-sm text-success">
+      <Sprout className="size-4 shrink-0" aria-hidden />
+      {streak.currentWeeks === 1
+        ? "1 semana sin tirar comida"
+        : `${streak.currentWeeks} semanas sin tirar comida`}
+      {streak.isBest ? (
+        <span className="text-xs text-muted-foreground">· tu mejor racha</span>
+      ) : (
+        <span className="text-xs text-muted-foreground">
+          · tu récord son {streak.bestWeeks}
+        </span>
+      )}
+    </p>
+  );
+}
+
 function BudgetBar({ total, budget }: { total: number; budget: number }) {
   const pct = budget > 0 ? (total / budget) * 100 : 0;
   const width = Math.min(pct, 100);
@@ -188,7 +222,18 @@ function BudgetBar({ total, budget }: { total: number; budget: number }) {
   );
 }
 
-export function SpendingPanel({ data }: { data: MonthlySpending }) {
+export function SpendingPanel({
+  data,
+  waste,
+}: {
+  data: MonthlySpending;
+  /**
+   * Racha y media de desperdicio (G3). La racha es un hecho de AHORA, así que la
+   * página solo la pasa cuando se está viendo el mes en curso; navegar a marzo
+   * no debe mostrar "llevas 3 semanas sin tirar".
+   */
+  waste?: WasteInsight | null;
+}) {
   const {
     monthLabel,
     prevMonth,
@@ -282,6 +327,10 @@ export function SpendingPanel({ data }: { data: MonthlySpending }) {
               savingsByPrice={savingsByPrice}
             />
 
+            {waste?.streak && discardedTotal === 0 ? (
+              <WasteStreakLine streak={waste.streak} />
+            ) : null}
+
             {discardedTotal > 0 ? (
               <details className="group">
                 <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm text-destructive">
@@ -311,6 +360,16 @@ export function SpendingPanel({ data }: { data: MonthlySpending }) {
                   </ul>
                 ) : null}
               </details>
+            ) : null}
+
+            {/* Comparación contra la propia media, no contra un ideal: es la
+                diferencia entre "vas mejor de lo normal" y "no eres perfecto". */}
+            {waste?.monthlyAverage != null && discardedTotal > 0 ? (
+              <p className="pl-6 text-xs text-muted-foreground text-pretty">
+                {discardedTotal < waste.monthlyAverage
+                  ? `Menos que tus ${formatEuro(waste.monthlyAverage)} habituales al mes.`
+                  : `Tu media mensual son ${formatEuro(waste.monthlyAverage)}.`}
+              </p>
             ) : null}
 
             {budget != null ? <BudgetBar total={total} budget={budget} /> : null}

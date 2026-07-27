@@ -1,15 +1,22 @@
 import "server-only";
 
-import { addMonths, format, parseISO, startOfMonth, subMonths } from "date-fns";
+import {
+  addMonths,
+  differenceInCalendarMonths,
+  format,
+  parseISO,
+  startOfMonth,
+  subMonths,
+} from "date-fns";
 import { es } from "date-fns/locale";
 
 import { roundCents } from "@/lib/money";
-import { baseUnitFactor, unitFamily } from "@/lib/units";
 import type { UnitType } from "@/lib/supabase/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { CHAIN_LABELS } from "./chains";
 import { getLatestUnitPrices } from "./queries";
+import { computeWasteStreak, valueDiscard, type WasteStreak } from "./waste";
 
 export type SpendingBreakdownItem = {
   key: string;
@@ -48,6 +55,99 @@ export type MonthlySpending = {
 };
 
 const OTHER_KEY = "otros";
+
+/** Meses de histórico de descartes que se miran para la racha y la media. */
+const WASTE_HISTORY_MONTHS = 12;
+
+/** Meses completos mínimos para que una "media habitual" signifique algo. */
+const MIN_MONTHS_FOR_AVERAGE = 2;
+
+export type WasteInsight = {
+  streak: WasteStreak | null;
+  /**
+   * Media de € tirados por mes en meses YA CERRADOS. Excluye el mes en curso
+   * (que va a medias y arrastraría la media hacia abajo) y es null mientras no
+   * haya histórico suficiente: comparar contra una media de un solo mes sería
+   * comparar contra el ruido.
+   */
+  monthlyAverage: number | null;
+};
+
+/**
+ * Racha sin desperdicio y media habitual de desperdicio (G3). Una sola consulta
+ * sobre `inventory_events` acotada a {@link WASTE_HISTORY_MONTHS}, más otra
+ * mínima para saber desde cuándo registra el hogar. `getLatestUnitPrices` está
+ * envuelta en `cache()`, así que compartir render con `getMonthlySpending` no
+ * cuesta una segunda lectura del histórico de precios.
+ */
+export async function getWasteInsight(): Promise<WasteInsight | null> {
+  const household = await getCurrentHousehold();
+  if (!household) return null;
+
+  const supabase = createServerSupabaseClient();
+  const today = new Date();
+  const currentMonthStart = startOfMonth(today);
+  const historyStart = format(
+    subMonths(currentMonthStart, WASTE_HISTORY_MONTHS),
+    "yyyy-MM-dd",
+  );
+
+  const [{ data: discards }, { data: firstRows }, prices] = await Promise.all([
+    supabase
+      .from("inventory_events")
+      .select("created_at, product_id, quantity, unit")
+      .eq("kind", "discarded")
+      .gte("created_at", historyStart)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("inventory_events")
+      .select("created_at")
+      .order("created_at", { ascending: true })
+      .limit(1),
+    getLatestUnitPrices(),
+  ]);
+
+  const firstActivity = firstRows?.[0]?.created_at ?? null;
+  const rows = discards ?? [];
+
+  const streak = computeWasteStreak(
+    rows.map((r) => r.created_at),
+    firstActivity,
+    today,
+  );
+
+  // Total tirado en meses YA CERRADOS (el mes en curso va a medias y hundiría
+  // la media).
+  const currentMonthKey = format(currentMonthStart, "yyyy-MM");
+  let closedWaste = 0;
+  for (const r of rows) {
+    if (!r.product_id) continue;
+    if (format(new Date(r.created_at), "yyyy-MM") === currentMonthKey) continue;
+    closedWaste += valueDiscard(r, prices.get(r.product_id));
+  }
+
+  // El divisor son TODOS los meses cerrados observados, no solo aquellos en los
+  // que se tiró algo: un mes impecable tiene que tirar de la media hacia abajo.
+  // Contarlo de otro modo daría una "media habitual" sistemáticamente inflada,
+  // y entonces cualquier mes normal parecería un éxito.
+  const windowStart = new Date(`${historyStart}T00:00:00`);
+  const firstActivityDate = firstActivity ? new Date(firstActivity) : null;
+  const observationStart =
+    firstActivityDate && firstActivityDate > windowStart
+      ? firstActivityDate
+      : windowStart;
+  const monthsClosed = differenceInCalendarMonths(
+    currentMonthStart,
+    startOfMonth(observationStart),
+  );
+
+  const monthlyAverage =
+    monthsClosed >= MIN_MONTHS_FOR_AVERAGE
+      ? roundCents(closedWaste / monthsClosed)
+      : null;
+
+  return { streak, monthlyAverage };
+}
 
 export type MonthlySavingsBadge = { total: number };
 
@@ -213,12 +313,8 @@ export async function getMonthlySpending(
   let discardedTotal = 0;
   for (const e of (discardRows ?? []) as unknown as DiscardRow[]) {
     if (!e.product_id) continue;
-    const price = prices.get(e.product_id);
-    if (!price || unitFamily(price.unit) !== unitFamily(e.unit)) continue;
-    const value =
-      (price.price / baseUnitFactor(price.unit)) *
-      (Number(e.quantity) * baseUnitFactor(e.unit));
-    if (!(value > 0)) continue;
+    const value = valueDiscard(e, prices.get(e.product_id));
+    if (value === 0) continue;
     discardedTotal += value;
     const name = e.product?.name ?? "Producto";
     discardTotals.set(name, (discardTotals.get(name) ?? 0) + value);
