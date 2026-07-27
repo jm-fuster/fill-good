@@ -1,14 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Camera, Loader2, Upload } from "lucide-react";
+import { Camera, Loader2, ScanLine, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { compressImage } from "@/lib/image";
 import { scanReceiptAction } from "../actions";
+
+// El escáner solo se descarga cuando alguien lo abre: arrastra el visor, la
+// detección de bordes y la rectificación, que no hacen falta para subir un PDF.
+const DocumentScanner = dynamic(
+  () => import("./document-scanner").then((mod) => mod.DocumentScanner),
+  { ssr: false },
+);
 
 /** ¿Es un archivo que la IA puede leer (imagen o PDF)? */
 function isSupported(file: File) {
@@ -21,22 +29,16 @@ export function ScanForm() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  // La cámara falló (permiso denegado, sin cámara…): se ofrece la foto normal.
+  const [cameraBlocked, setCameraBlocked] = useState(false);
 
-  const handleFile = useCallback(
-    async (file: File) => {
+  const submit = useCallback(
+    async (payload: Blob, filename: string, type: string) => {
       setPending(true);
       try {
-        let payload: Blob = file;
-        let filename = file.name || "ticket";
-        if (file.type.startsWith("image/")) {
-          payload = await compressImage(file);
-          filename = "ticket.jpg";
-        }
         const fd = new FormData();
-        fd.append(
-          "file",
-          new File([payload], filename, { type: payload.type || file.type }),
-        );
+        fd.append("file", new File([payload], filename, { type }));
         const result = await scanReceiptAction({}, fd);
         if (result.error) {
           toast.error(result.error);
@@ -51,6 +53,24 @@ export function ScanForm() {
       }
     },
     [router],
+  );
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      setPending(true);
+      try {
+        if (file.type.startsWith("image/")) {
+          const compressed = await compressImage(file);
+          await submit(compressed, "ticket.jpg", compressed.type || file.type);
+          return;
+        }
+        await submit(file, file.name || "ticket", file.type);
+      } catch {
+        toast.error("No se pudo procesar el archivo.");
+        setPending(false);
+      }
+    },
+    [submit],
   );
 
   // Pegar (Ctrl/Cmd+V) una imagen del portapapeles: en escritorio es lo natural
@@ -78,6 +98,30 @@ export function ScanForm() {
     else if (files.length > 0)
       toast.error("Formato no válido. Arrastra una imagen o un PDF.");
   }
+
+  const handleScannerCapture = useCallback(
+    (file: File) => {
+      setScannerOpen(false);
+      // El recorte ya sale enderezado y con el lado mayor a 1600 px, igual que
+      // `compressImage`. Pasarlo otra vez por ahí solo añadiría una segunda
+      // compresión JPEG, y lo que se pierde son los bordes del texto — justo lo
+      // que la IA tiene que leer.
+      void submit(file, file.name, file.type);
+    },
+    [submit],
+  );
+
+  const handleScannerUnavailable = useCallback((reason: string) => {
+    setScannerOpen(false);
+    setCameraBlocked(true);
+    toast.info(reason);
+  }, []);
+
+  const handleScannerError = useCallback((message: string) => {
+    toast.error(message);
+  }, []);
+
+  const handleScannerCancel = useCallback(() => setScannerOpen(false), []);
 
   if (pending) {
     return (
@@ -116,12 +160,21 @@ export function ScanForm() {
         }}
       />
 
-      {/* Móvil (< md): la cámara trasera es la vía natural, como acción primaria. */}
+      {/* Móvil (< md): el escáner es la vía natural. Recorta y endereza el
+          ticket antes de subirlo, que es lo que mejora la lectura de la IA. Si
+          la cámara no está disponible se cae a la foto del sistema. */}
       <div className="flex flex-col gap-3 md:hidden">
-        <Button size="lg" onClick={() => cameraRef.current?.click()}>
-          <Camera aria-hidden />
-          Hacer foto al ticket
-        </Button>
+        {cameraBlocked ? (
+          <Button size="lg" onClick={() => cameraRef.current?.click()}>
+            <Camera aria-hidden />
+            Hacer foto al ticket
+          </Button>
+        ) : (
+          <Button size="lg" onClick={() => setScannerOpen(true)}>
+            <ScanLine aria-hidden />
+            Escanear ticket
+          </Button>
+        )}
         <Button
           size="lg"
           variant="outline"
@@ -132,9 +185,10 @@ export function ScanForm() {
         </Button>
       </div>
 
-      {/* Escritorio (≥ md): arrastrar y soltar, clic o pegar. No se ofrece "hacer
-          foto" porque la webcam del portátil no aporta y `capture` degrada a un
-          selector de archivos igual que "subir". */}
+      {/* Escritorio (≥ md): arrastrar y soltar, clic o pegar. No se ofrece el
+          escáner porque la webcam de un portátil no encuadra un ticket con
+          dignidad, y `capture` degrada a un selector de archivos igual que
+          "subir". */}
       <button
         type="button"
         onClick={() => fileRef.current?.click()}
@@ -164,6 +218,15 @@ export function ScanForm() {
         Si el ticket es largo o está arrugado, súbelo escaneado en PDF: se lee
         mejor.
       </p>
+
+      {scannerOpen ? (
+        <DocumentScanner
+          onCapture={handleScannerCapture}
+          onCancel={handleScannerCancel}
+          onUnavailable={handleScannerUnavailable}
+          onError={handleScannerError}
+        />
+      ) : null}
     </div>
   );
 }

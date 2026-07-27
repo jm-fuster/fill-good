@@ -76,10 +76,14 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   // No filtrar la ruta completa al navegar a otro origen.
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  // Desactivar APIs del navegador que la app no usa.
+  // Desactivar APIs del navegador que la app no usa. `camera=(self)` está
+  // habilitada solo para el propio origen porque el escáner de tickets abre un
+  // visor en vivo con getUserMedia (document-scanner.tsx); con `camera=()` el
+  // navegador la deniega incluso a la propia app. Los iframes de terceros
+  // (Clerk, Cloudflare) siguen sin poder pedirla, que es lo que importa.
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(), browsing-topics=()",
+    value: "camera=(self), microphone=(), geolocation=(), browsing-topics=()",
   },
   { key: "X-DNS-Prefetch-Control", value: "on" },
   // Report-Only mientras `cspEnforce` sea false: NO bloquea, solo reporta.
