@@ -178,8 +178,8 @@ export function HouseholdSwitcherRow({
 }
 
 /**
- * Línea de hogar de /perfil ("Casa · 2 miembros"), pulsable para cambiar de
- * hogar sin pasar por Ajustes. En móvil era el único camino: el desplegable de
+ * Línea de hogar de /perfil ("Casa de Jorge"), pulsable para cambiar de hogar
+ * sin pasar por Ajustes. En móvil era el único camino: el desplegable de
  * hogares vive en el header de escritorio, que está oculto en `< md`.
  *
  * Con un solo hogar degrada a texto plano en vez de desaparecer: la línea es la
@@ -193,7 +193,7 @@ export function HouseholdSwitcherInline({
 }: {
   households: SwitcherHousehold[];
   activeId: string;
-  /** Texto completo de la línea, p. ej. "Casa de Jorge · 2 miembros". */
+  /** Texto completo de la línea, p. ej. "Casa de Jorge". */
   label: string;
 }) {
   const [open, setOpen] = useState(false);

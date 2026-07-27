@@ -55,11 +55,7 @@ export default async function PerfilPage() {
     user?.primaryEmailAddress?.emailAddress ??
     "Tu cuenta";
 
-  const householdLabel = household
-    ? `${household.name} · ${
-        members.length === 1 ? "1 miembro" : `${members.length} miembros`
-      }`
-    : null;
+  const householdLabel = household?.name ?? null;
 
   return (
     <PageContainer>

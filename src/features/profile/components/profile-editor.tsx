@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Camera, Pencil, Trash2 } from "lucide-react";
+import { Camera, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -168,12 +168,33 @@ export function ProfileEditor({
         </ResponsiveModalHeader>
 
         <div className="flex items-center gap-4 px-4">
-          <Avatar className="size-20">
-            {imageUrl ? <AvatarImage src={imageUrl} alt="" /> : null}
-            <AvatarFallback className="text-xl font-medium">
-              {initials}
-            </AvatarFallback>
-          </Avatar>
+          <button
+            type="button"
+            disabled={busy}
+            aria-label={imageUrl ? "Cambiar foto" : "Añadir foto"}
+            onClick={() => fileRef.current?.click()}
+            className="relative inline-flex shrink-0 rounded-full outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-70"
+          >
+            <Avatar className="size-20">
+              {imageUrl ? <AvatarImage src={imageUrl} alt="" /> : null}
+              <AvatarFallback className="text-xl font-medium">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            {/* Mismo lenguaje visual que el avatar de /perfil: la insignia
+                señala que la foto entera es el disparador, así que no hace
+                falta un botón de texto aparte para "cambiar foto". */}
+            <span
+              aria-hidden
+              className="absolute -right-0.5 -bottom-0.5 inline-flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-background"
+            >
+              {uploading ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Camera className="size-3.5" />
+              )}
+            </span>
+          </button>
           <div className="flex min-w-0 flex-1 flex-col gap-2">
             <input
               ref={fileRef}
@@ -188,17 +209,9 @@ export function ProfileEditor({
                 if (file) void changePhoto(file);
               }}
             />
-            <Button
-              type="button"
-              variant="outline"
-              loading={uploading}
-              disabled={busy}
-              onClick={() => fileRef.current?.click()}
-              className="justify-start"
-            >
-              <Camera aria-hidden />
-              {imageUrl ? "Cambiar foto" : "Añadir foto"}
-            </Button>
+            <p className="text-xs text-muted-foreground text-pretty">
+              Toca la foto para {imageUrl ? "cambiarla" : "añadirla"}.
+            </p>
             {imageUrl ? (
               <Button
                 type="button"
