@@ -473,6 +473,10 @@ export async function checkoutAction(): Promise<
   }
 
   const inventoryItemIds: string[] = [];
+  // Snapshot de la compra (G2): los productos que realmente se llevaron, ya
+  // resueltos. Se acumula durante el bucle porque los items de texto libre no
+  // tienen product_id hasta que se crean aquí.
+  const tripProductIds: string[] = [];
 
   for (const item of checked) {
     // Resolver producto: enlazado, o resolver/crear por nombre normalizado.
@@ -576,7 +580,29 @@ export async function checkoutAction(): Promise<
     // Memoria de habitualidad: este producto se ha comprado.
     if (productId) {
       await supabase.rpc("bump_product_purchase", { pid: productId });
+      tripProductIds.push(productId);
     }
+  }
+
+  // Snapshot de la compra (G2) ANTES del borrado: es el único instante en que
+  // existe la información de qué había en la lista. Best-effort — perder el
+  // snapshot degrada una comparación futura, pero no puede impedir que el
+  // usuario cierre su compra.
+  try {
+    // El cliente NO lanza en error de BD: devuelve { error }. Hay que mirarlo, o
+    // un snapshot fallido pasaría desapercibido, que es justo el dato que esta
+    // escritura existe para no perder.
+    const { error: tripErr } = await supabase.from("shopping_trips").insert({
+      household_id: household.id,
+      closed_by: userId,
+      product_ids: [...new Set(tripProductIds)],
+      item_count: checked.length,
+    });
+    if (tripErr) {
+      console.error("Snapshot de compra falló (best-effort):", tripErr);
+    }
+  } catch (err) {
+    console.error("Snapshot de compra falló (best-effort):", err);
   }
 
   const ids = checked.map((c) => c.id);

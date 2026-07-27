@@ -455,6 +455,49 @@ export type Database = {
         };
         Relationships: [];
       };
+      shopping_trips: {
+        Row: {
+          id: string;
+          household_id: string;
+          closed_at: string;
+          closed_by: string | null;
+          product_ids: string[];
+          item_count: number;
+          receipt_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          closed_at?: string;
+          closed_by?: string | null;
+          product_ids?: string[];
+          item_count?: number;
+          receipt_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          closed_at?: string;
+          closed_by?: string | null;
+          product_ids?: string[];
+          item_count?: number;
+          receipt_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "shopping_trips_household_id_fkey";
+            columns: ["household_id"];
+            referencedRelation: "households";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shopping_trips_receipt_id_fkey";
+            columns: ["receipt_id"];
+            referencedRelation: "receipts";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       receipts: {
         Row: {
           id: string;
@@ -471,6 +514,7 @@ export type Database = {
           created_at: string;
           confirmed_at: string | null;
           discount_total: number;
+          savings_amount: number;
         };
         Insert: {
           id?: string;
@@ -487,6 +531,7 @@ export type Database = {
           created_at?: string;
           confirmed_at?: string | null;
           discount_total?: number;
+          savings_amount?: number;
         };
         Update: {
           id?: string;
@@ -503,6 +548,7 @@ export type Database = {
           created_at?: string;
           confirmed_at?: string | null;
           discount_total?: number;
+          savings_amount?: number;
         };
         Relationships: [];
       };

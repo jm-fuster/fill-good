@@ -31,12 +31,14 @@ import {
   trigramSimilarity,
 } from "@/lib/similarity";
 import type { UnitType } from "@/lib/supabase/types";
+import type { ReceiptSavingsSummary } from "@/features/prices/savings";
 import type {
   ReceiptHeader,
   ReceiptItem,
   ReceiptSuggestion,
 } from "../queries";
 import { confirmReceiptAction, type ConfirmItemDecision } from "../actions";
+import { SavingsCelebration } from "./savings-celebration";
 
 /**
  * Umbral de trigramas para el AVISO antiduplicados (E2). Más alto que el fuzzy
@@ -124,6 +126,13 @@ export function ReceiptReview({
     receipt.total === null ? "" : String(receipt.total),
   );
   const [pending, setPending] = useState(false);
+  // Celebración de la hucha (G1): retiene la navegación al destino hasta que el
+  // usuario cierra el modal. El ticket ya está confirmado en cuanto se abre, así
+  // que ninguna vía de cierre puede perder trabajo.
+  const [celebration, setCelebration] = useState<{
+    summary: ReceiptSavingsSummary;
+    href: string;
+  } | null>(null);
   const [rows, setRows] = useState<Row[]>(() =>
     // Las líneas que necesitan decisión (new_product / sin match) van primero,
     // para que no queden enterradas; dentro de cada grupo se respeta el orden
@@ -187,11 +196,20 @@ export function ReceiptReview({
       }
       // Revisión opcional de caducidades de lo recién añadido.
       const ids = result.inventoryItemIds ?? [];
-      if (ids.length > 0) {
-        router.push(`/inventario/revision?items=${ids.join(",")}`);
-      } else {
-        router.push("/inventario");
+      const href =
+        ids.length > 0
+          ? `/inventario/revision?items=${ids.join(",")}`
+          : "/inventario";
+
+      // Hucha (G1): solo se interrumpe el flujo cuando hay un ahorro real que
+      // contar. Sin ahorro (o con saldo negativo) se navega igual que siempre:
+      // el saldo neto vive en /precios y aquí no se regaña a nadie.
+      const summary = result.savings;
+      if (summary && summary.total > 0) {
+        setCelebration({ summary, href });
+        return;
       }
+      router.push(href);
     } catch {
       // Si la Server Action lanza (red caída), el botón debe recuperarse en vez
       // de quedarse en «Guardando…» para siempre.
@@ -465,6 +483,18 @@ export function ReceiptReview({
           {pending ? "Guardando…" : "Confirmar y añadir al inventario"}
         </Button>
       </div>
+
+      {celebration ? (
+        <SavingsCelebration
+          summary={celebration.summary}
+          open
+          onContinue={() => {
+            const { href } = celebration;
+            setCelebration(null);
+            router.push(href);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

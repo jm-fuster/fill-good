@@ -16,8 +16,16 @@ import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import { getCurrentHousehold } from "@/features/household/queries";
-import { refreshPriceInsights } from "@/features/prices/materialize";
+import {
+  computeSavingsForReceipt,
+  refreshPriceInsights,
+} from "@/features/prices/materialize";
+import {
+  summarizeReceiptSavings,
+  type ReceiptSavingsSummary,
+} from "@/features/prices/savings";
 import { notifyPriceRises } from "@/features/push/notify";
+import { linkReceiptToTrip } from "@/features/shopping-list/trips";
 import { confirmPayloadSchema } from "./schemas";
 import type { ConfirmPayload } from "./schemas";
 
@@ -284,6 +292,8 @@ export async function confirmReceiptAction(
   added?: number;
   inventoryItemIds?: string[];
   warnings?: string[];
+  /** Aportación de este ticket a la hucha del hogar (G1). */
+  savings?: ReceiptSavingsSummary;
 }> {
   // Validación de entrada (zod): acota cantidad, descripción y longitudes antes
   // de tocar inventario e historial de precios. Ver ./schemas.
@@ -344,7 +354,9 @@ export async function confirmReceiptAction(
   ] = await Promise.all([
     supabase
       .from("receipt_items")
-      .select("id, raw_text, added_to_inventory")
+      // `total_price` viaja en este mismo lote (no cuesta un round-trip extra) para
+      // poder valorar el ahorro del ticket (G1) sin volver a leer las líneas.
+      .select("id, raw_text, added_to_inventory, total_price")
       .eq("receipt_id", payload.receiptId),
     supabase
       .from("products")
@@ -773,6 +785,28 @@ export async function confirmReceiptAction(
     await supabase.rpc("bump_product_purchases", { pids: bumpIds });
   }
 
+  // 2.65 Hucha del hogar (G1): saldo NETO de haber pagado por encima o por debajo
+  //      de la referencia reciente de cada producto. Va en el camino crítico (una
+  //      query) a propósito: el número se muestra al usuario justo al confirmar,
+  //      que es el único momento en que le importa; calcularlo en `after()` lo
+  //      dejaría llegar tarde a su propia pantalla. Nunca lanza (devuelve 0).
+  //      En un reintento tras fallo parcial solo se valoran las líneas que queden
+  //      por procesar, porque las ya marcadas no entran en `processable`.
+  const savings = await computeSavingsForReceipt(supabase, {
+    receiptId: payload.receiptId,
+    purchasedAt,
+    paid: processable.map((r) => ({
+      productId: r.productId,
+      totalPrice: (() => {
+        const raw = itemById.get(r.itemId)?.total_price;
+        return raw === null || raw === undefined ? null : Number(raw);
+      })(),
+      quantity: r.quantity,
+      unit: r.unit,
+      label: r.description,
+    })),
+  });
+
   // 2.7 Cierre del ticket. Al confirmar, `raw_extraction` (el JSON completo de la
   //     IA, ~5–15 KB/fila) ya no se lee nunca más: los descuentos quedan
   //     materializados en `discount_total` justo arriba. Se vacía para no acumular
@@ -786,6 +820,7 @@ export async function confirmReceiptAction(
       purchased_at: purchasedAt,
       total_amount: payload.total,
       discount_total: discountTotal,
+      savings_amount: savings.net,
       status: "confirmed",
       confirmed_at: new Date().toISOString(),
       raw_extraction: null,
@@ -811,12 +846,26 @@ export async function confirmReceiptAction(
   //     de los productos afectados: solo cambian cuando cambia el histórico.
   //  2. Aviso push de subidas de precio (M10c). Inerte sin claves VAPID; jamás
   //     rompe la confirmación (try/catch dentro).
+  //  3. Enlazar este ticket con la compra cerrada desde la lista (G2). Va aquí y
+  //     no en el camino crítico porque todavía no hay UI que dependa de él: solo
+  //     deja el dato listo para cuando la haya.
   const notifyIds = [...affectedProductIds];
   const notifyUserId = userId ?? null;
   after(async () => {
     await refreshPriceInsights(supabase, household.id, notifyIds);
     await notifyPriceRises(household.id, notifyIds, notifyUserId);
+    await linkReceiptToTrip(supabase, {
+      receiptId: payload.receiptId,
+      householdId: household.id,
+      purchasedAt,
+    });
   });
 
-  return { ok: true, added, inventoryItemIds, warnings };
+  return {
+    ok: true,
+    added,
+    inventoryItemIds,
+    warnings,
+    savings: summarizeReceiptSavings(savings, discountTotal),
+  };
 }

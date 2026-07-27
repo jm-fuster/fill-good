@@ -3,6 +3,7 @@ import "server-only";
 import { addMonths, format, parseISO, startOfMonth, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 
+import { roundCents } from "@/lib/money";
 import { baseUnitFactor, unitFamily } from "@/lib/units";
 import type { UnitType } from "@/lib/supabase/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -31,6 +32,13 @@ export type MonthlySpending = {
   delta: number;
   receiptCount: number;
   discountTotal: number;
+  /**
+   * Hucha (G1): saldo NETO del mes por haber pagado por encima o por debajo de la
+   * referencia reciente de cada producto. Puede ser negativo.
+   */
+  savingsByPrice: number;
+  /** discountTotal + savingsByPrice: lo que el mes ha aportado a la hucha. */
+  savingsTotal: number;
   budget: number | null;
   byCategory: SpendingBreakdownItem[];
   byChain: SpendingBreakdownItem[];
@@ -40,6 +48,40 @@ export type MonthlySpending = {
 };
 
 const OTHER_KEY = "otros";
+
+export type MonthlySavingsBadge = { total: number };
+
+/**
+ * Versión ligera de la hucha del mes en curso, para la tira de /inventario
+ * (G1): una sola query sobre `receipts`, sin las agregaciones de categoría,
+ * cadena o desperdicio que solo hacen falta en /precios. null = sin ningún
+ * ticket confirmado este mes (la tira no se muestra: un "0,00 €" sin contexto
+ * es peor que no mostrar nada).
+ */
+export async function getMonthlySavingsBadge(): Promise<MonthlySavingsBadge | null> {
+  const household = await getCurrentHousehold();
+  if (!household) return null;
+
+  const supabase = createServerSupabaseClient();
+  const today = new Date();
+  const monthStart = format(startOfMonth(today), "yyyy-MM-dd");
+  const nextMonthStart = format(startOfMonth(addMonths(today, 1)), "yyyy-MM-dd");
+
+  const { data, error } = await supabase
+    .from("receipts")
+    .select("discount_total, savings_amount")
+    .eq("status", "confirmed")
+    .gte("purchased_at", monthStart)
+    .lt("purchased_at", nextMonthStart);
+  if (error) throw error;
+  if (!data || data.length === 0) return null;
+
+  const total = data.reduce(
+    (sum, r) => sum + (Number(r.discount_total) || 0) + (Number(r.savings_amount) || 0),
+    0,
+  );
+  return { total: roundCents(total) };
+}
 
 /** Normaliza un "yyyy-MM" arbitrario a uno válido; si no lo es, usa el actual. */
 function resolveMonth(month: string | undefined, today: Date): string {
@@ -85,7 +127,9 @@ export async function getMonthlySpending(
     await Promise.all([
       supabase
         .from("receipts")
-        .select("total_amount, discount_total, store_chain, purchased_at")
+        .select(
+          "total_amount, discount_total, savings_amount, store_chain, purchased_at",
+        )
         .eq("status", "confirmed")
         .gte("purchased_at", prevStartStr)
         .lt("purchased_at", nextStartStr),
@@ -113,6 +157,7 @@ export async function getMonthlySpending(
   let prevTotal = 0;
   let receiptCount = 0;
   let discountTotal = 0;
+  let savingsByPrice = 0;
   const chainTotals = new Map<string, number>();
 
   for (const r of receiptRows ?? []) {
@@ -125,6 +170,7 @@ export async function getMonthlySpending(
       total += amount;
       receiptCount += 1;
       discountTotal += Number(r.discount_total) || 0;
+      savingsByPrice += Number(r.savings_amount) || 0;
       const chain = r.store_chain ?? OTHER_KEY;
       chainTotals.set(chain, (chainTotals.get(chain) ?? 0) + amount);
     } else {
@@ -193,6 +239,8 @@ export async function getMonthlySpending(
     delta: total - prevTotal,
     receiptCount,
     discountTotal,
+    savingsByPrice: roundCents(savingsByPrice),
+    savingsTotal: roundCents(discountTotal + savingsByPrice),
     budget: household.monthlyBudget,
     byCategory,
     byChain,
