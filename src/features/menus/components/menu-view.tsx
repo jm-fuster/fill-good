@@ -12,14 +12,11 @@ import {
   ChevronRight,
   Copy,
   Lightbulb,
-  MoreHorizontal,
   MoveRight,
   Pin,
   PinOff,
   Plus,
-  Printer,
   RefreshCw,
-  Share2,
   Sparkles,
   Trash2,
   type LucideIcon,
@@ -96,6 +93,7 @@ export function MenuView({
   weekCost,
   slots,
   canCopyPrevious,
+  householdName,
   settingsSlot,
 }: {
   weekStart: string;
@@ -104,6 +102,8 @@ export function MenuView({
   weekCost: { total: number; complete: boolean } | null;
   slots: SlotDef[];
   canCopyPrevious: boolean;
+  /** Solo para la cabecera de la hoja impresa (D5). */
+  householdName: string | null;
   /**
    * Botón de «Ajustes del menú» (`MenuSettings`), que viaja junto al botón de
    * generar. Llega como slot desde el servidor para que esta vista no cargue
@@ -133,21 +133,17 @@ export function MenuView({
     else bySlot.set(key, [e]);
   }
   const hasRecipes = entries.some((e) => e.recipeId);
-  const hasEntries = entries.length > 0;
+  // Rango de la semana para la hoja impresa: "28 de julio – 3 de agosto".
+  const weekRange = `${format(parseISO(days[0]!), "d 'de' MMMM", {
+    locale: es,
+  })} – ${format(parseISO(days[6]!), "d 'de' MMMM", { locale: es })}`;
   // Hay trabajo que la regeneración respetuosa conservaría (fijado o manual):
   // solo entonces tiene sentido ofrecer el "Rehacer todo" destructivo.
   const hasPreservable = entries.some((e) => e.pinned || e.source === "manual");
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const [copying, startCopy] = useTransition();
-  // Acciones secundarias de la semana (copiar, compartir, imprimir, rehacer):
-  // viven en un sheet tras «⋯» en vez de apiladas como botones grandes. La
-  // confirmación de «rehacer» es una segunda vista del MISMO sheet: encadenar
-  // dos ResponsiveModal pelea con el cierre por historial (E11).
-  const [actionsOpen, setActionsOpen] = useState(false);
-  const [actionsView, setActionsView] = useState<"list" | "replace">("list");
-  const hasSecondaryActions = canCopyPrevious || hasEntries || hasPreservable;
 
   function copyPrevious() {
-    setActionsOpen(false);
     startCopy(async () => {
       const r = await copyPreviousWeekAction(weekStart);
       if (r.error) toast.error(r.error);
@@ -159,7 +155,7 @@ export function MenuView({
   }
 
   function generate(mode: "fill" | "replace") {
-    setActionsOpen(false);
+    setConfirmReplace(false);
     startGenerate(async () => {
       const r = await generateMenuAction(weekStart, mode);
       if (r.error) toast.error(r.error);
@@ -198,44 +194,6 @@ export function MenuView({
     });
   }
 
-  async function share() {
-    if (!menuId) return;
-    setActionsOpen(false);
-    try {
-      const res = await fetch(`/api/menus/${menuId}/imagen`);
-      if (!res.ok) throw new Error("fetch failed");
-      const blob = await res.blob();
-      const file = new File([blob], "menu-semanal.png", { type: "image/png" });
-
-      if (
-        typeof navigator.canShare === "function" &&
-        navigator.canShare({ files: [file] })
-      ) {
-        await navigator.share({ files: [file], title: "Menú semanal" });
-        return;
-      }
-
-      // Fallback (escritorio): descarga directa de la imagen.
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "menu-semanal.png";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      // El usuario cancela el diálogo nativo → no es un error.
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      toast.error("No se pudo generar la imagen del menú.");
-    }
-  }
-
-  function print() {
-    // El sheet aún se está desmontando al imprimir; los overlays se ocultan por
-    // CSS en `@media print` (globals.css), así que no hay que esperarlo.
-    setActionsOpen(false);
-    window.print();
-  }
-
   function openAdd(date: string, slot: SlotDef) {
     setEditing({
       entryId: null,
@@ -266,6 +224,25 @@ export function MenuView({
 
   return (
     <div className="flex flex-col gap-4">
+      {/*
+        Cabecera SOLO en papel: en pantalla el título lo da PageHeader y la
+        semana el selector, y los dos se ocultan al imprimir. Repite el lenguaje
+        de la imagen para compartir (hogar en versalita verde, título, rango).
+      */}
+      <header className="hidden print:mb-5 print:block">
+        {householdName ? (
+          <p className="text-xs font-bold tracking-widest text-primary uppercase">
+            {householdName}
+          </p>
+        ) : null}
+        <h2 className="font-heading text-2xl font-bold tracking-tight">
+          Menú de la semana
+        </h2>
+        <p className="text-sm text-muted-foreground first-letter:uppercase">
+          {weekRange}
+        </p>
+      </header>
+
       <div className="flex items-center gap-1 print:hidden">
         <Button variant="ghost" size="icon" asChild aria-label="Semana anterior">
           <Link href={`/menus?week=${shiftWeek(weekStart, -1)}`}>
@@ -281,16 +258,6 @@ export function MenuView({
             <ChevronRight aria-hidden />
           </Link>
         </Button>
-        {hasSecondaryActions ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setActionsOpen(true)}
-            aria-label="Más acciones de la semana"
-          >
-            <MoreHorizontal aria-hidden />
-          </Button>
-        ) : null}
       </div>
 
       {weekCost ? (
@@ -306,9 +273,9 @@ export function MenuView({
 
       {/*
         Un solo primario en pantalla: generar con IA. Los ajustes que condicionan
-        a la IA van a su lado (icono), y las acciones secundarias de la semana en
-        el sheet de «⋯». «¿Qué hago hoy?» queda como enlace: sigue a un toque,
-        pero deja de competir con el generador.
+        a la IA van a su lado (icono) y compartir/imprimir en la cabecera de la
+        página. «¿Qué hago hoy?» queda como enlace: sigue a un toque, pero deja
+        de competir con el generador.
       */}
       <div className="flex flex-col gap-2 print:hidden">
         <div className="flex items-center gap-2">
@@ -327,9 +294,28 @@ export function MenuView({
           </Button>
           {settingsSlot}
         </div>
+        {/*
+          Solo existe en semanas vacías (`canCopyPrevious` lo exige), así que
+          nunca compite con un menú ya puesto: ahí es la alternativa natural a
+          generar con IA.
+        */}
+        {canCopyPrevious ? (
+          <Button onClick={copyPrevious} loading={copying} variant="outline">
+            <CalendarDays aria-hidden />
+            {copying ? "Copiando…" : "Copiar la semana anterior"}
+          </Button>
+        ) : null}
         {hasPreservable ? (
           <p className="text-center text-xs text-muted-foreground">
-            Completar respeta tus platos fijados y manuales.
+            Completar respeta tus platos fijados y manuales.{" "}
+            <button
+              type="button"
+              onClick={() => setConfirmReplace(true)}
+              disabled={generating}
+              className="font-medium text-foreground underline underline-offset-2 disabled:opacity-50"
+            >
+              Rehacer todo desde cero
+            </button>
           </p>
         ) : null}
         <Button
@@ -344,102 +330,35 @@ export function MenuView({
       </div>
 
       <ResponsiveModal
-        open={actionsOpen}
-        onOpenChange={(o) => {
-          setActionsOpen(o);
-          if (!o) setActionsView("list");
-        }}
+        open={confirmReplace}
+        onOpenChange={(o) => !o && setConfirmReplace(false)}
       >
         <ResponsiveModalContent>
-          {actionsView === "replace" ? (
-            <>
-              <ResponsiveModalHeader>
-                <ResponsiveModalTitle>
-                  Rehacer todo el menú
-                </ResponsiveModalTitle>
-                <ResponsiveModalDescription>
-                  Se borrará toda la semana —incluidos tus platos fijados y los
-                  que has editado o añadido a mano— y se generará un menú nuevo.
-                  Esta acción no se puede deshacer.
-                </ResponsiveModalDescription>
-              </ResponsiveModalHeader>
-              <ResponsiveModalFooter className="gap-2">
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="lg"
-                  onClick={() => generate("replace")}
-                  loading={generating}
-                >
-                  <Sparkles aria-hidden />
-                  {generating ? "Rehaciendo…" : "Rehacer todo"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setActionsView("list")}
-                  disabled={generating}
-                >
-                  <ChevronLeft aria-hidden />
-                  Volver
-                </Button>
-              </ResponsiveModalFooter>
-            </>
-          ) : (
-            <>
-              <ResponsiveModalHeader>
-                <ResponsiveModalTitle>Más acciones</ResponsiveModalTitle>
-                <ResponsiveModalDescription>
-                  Sobre la semana del{" "}
-                  {format(parseISO(weekStart), "d 'de' MMMM", { locale: es })}.
-                </ResponsiveModalDescription>
-              </ResponsiveModalHeader>
-              <div className="flex flex-col gap-1 p-4 pt-0">
-                {canCopyPrevious ? (
-                  <Button
-                    variant="ghost"
-                    onClick={copyPrevious}
-                    loading={copying}
-                    className="min-h-12 justify-start"
-                  >
-                    <CalendarDays aria-hidden />
-                    {copying ? "Copiando…" : "Copiar la semana anterior"}
-                  </Button>
-                ) : null}
-                {hasEntries ? (
-                  <>
-                    <Button
-                      variant="ghost"
-                      onClick={share}
-                      className="min-h-12 justify-start"
-                    >
-                      <Share2 aria-hidden />
-                      Compartir el menú
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={print}
-                      className="min-h-12 justify-start"
-                    >
-                      <Printer aria-hidden />
-                      Imprimir
-                    </Button>
-                  </>
-                ) : null}
-                {hasPreservable ? (
-                  <Button
-                    variant="ghost"
-                    onClick={() => setActionsView("replace")}
-                    disabled={generating}
-                    className="min-h-12 justify-start text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Sparkles aria-hidden />
-                    Rehacer todo desde cero
-                  </Button>
-                ) : null}
-              </div>
-            </>
-          )}
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle>Rehacer todo el menú</ResponsiveModalTitle>
+            <ResponsiveModalDescription>
+              Se borrará toda la semana —incluidos tus platos fijados y los que
+              has editado o añadido a mano— y se generará un menú nuevo. Esta
+              acción no se puede deshacer.
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
+          <ResponsiveModalFooter className="gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              size="lg"
+              onClick={() => generate("replace")}
+              loading={generating}
+            >
+              <Sparkles aria-hidden />
+              {generating ? "Rehaciendo…" : "Rehacer todo"}
+            </Button>
+            <ResponsiveModalClose asChild>
+              <Button type="button" variant="ghost">
+                Cancelar
+              </Button>
+            </ResponsiveModalClose>
+          </ResponsiveModalFooter>
         </ResponsiveModalContent>
       </ResponsiveModal>
 
@@ -447,26 +366,40 @@ export function MenuView({
         Progresión responsive de la semana: móvil 1 columna (días apilados) →
         lg 2 → xl 3 tarjetas de día (con sus slots en fila). En 2xl hay sitio
         para el planificador clásico: 7 columnas, una por día, con los slots
-        apilados en vertical (2xl:grid-cols-1 en el grid interior). En impresión
-        siempre se apila. Solo cambia el CSS; el DOM y la lógica son los mismos.
+        apilados en vertical (2xl:grid-cols-1 en el grid interior).
+
+        Al imprimir se fuerza ese mismo planificador de 7 columnas —la hoja va en
+        horizontal (`@page` en globals.css)— para que la semana entre en UNA hoja:
+        sin targets táctiles ni bordes de botón, tipografía en puntos y columnas
+        altas que reparten los huecos a lo alto del folio (queda sitio para
+        apuntar a mano). Solo cambia el CSS; el DOM y la lógica son los mismos.
       */}
-      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 xl:grid-cols-3 2xl:grid-cols-7 2xl:gap-2 print:!flex print:!flex-col">
+      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 xl:grid-cols-3 2xl:grid-cols-7 2xl:gap-2 print:!grid print:!grid-cols-7 print:!gap-2">
         {days.map((date) => (
-          <div key={date} className="rounded-xl border p-3">
-            <p className="mb-2 text-sm font-semibold capitalize">
+          <div
+            key={date}
+            // 120mm de alto por columna llenan la hoja (≈160mm de los 186mm
+            // útiles de un A4 horizontal) dejando holgura para las impresoras
+            // que imponen un margen mayor que el `@page` que pedimos.
+            className="rounded-xl border p-3 print:flex print:min-h-[120mm] print:break-inside-avoid print:flex-col print:rounded-md print:p-2.5"
+          >
+            <p className="mb-2 text-sm font-semibold capitalize print:mb-2 print:text-[11pt]">
               {format(parseISO(date), "EEEE d", { locale: es })}
             </p>
             <div
               className={cn(
-                "grid items-start gap-2 2xl:grid-cols-1",
+                "grid items-start gap-2 2xl:grid-cols-1 print:!grid-cols-1 print:flex-1 print:auto-rows-fr print:gap-2",
                 slots.length === 3 ? "grid-cols-3" : "grid-cols-2",
               )}
             >
               {slots.map((slot) => {
                 const slotEntries = bySlot.get(`${date}|${slot.key}`) ?? [];
                 return (
-                  <div key={slot.key} className="flex flex-col gap-1.5">
-                    <span className="text-xs font-medium text-muted-foreground">
+                  <div
+                    key={slot.key}
+                    className="flex flex-col gap-1.5 print:gap-0.5"
+                  >
+                    <span className="text-xs font-medium text-muted-foreground print:text-[8pt] print:font-bold print:tracking-wider print:text-primary print:uppercase">
                       {slot.label}
                     </span>
                     {slotEntries.map((entry) => {
@@ -476,21 +409,25 @@ export function MenuView({
                           key={entry.id}
                           type="button"
                           onClick={() => openEdit(date, slot, entry)}
-                          className="flex min-h-11 items-start gap-1.5 rounded-lg border p-2 text-left text-sm transition-colors hover:bg-muted"
+                          className="flex min-h-11 items-start gap-1.5 rounded-lg border p-2 text-left text-sm transition-colors hover:bg-muted print:min-h-0 print:border-0 print:p-0 print:text-[10pt]"
                         >
+                          {/* Cocinado y fijado son estado de la app, no del menú
+                              que cuelgas en la nevera: no se imprimen. */}
                           {entry.cookedAt ? (
                             <Check
-                              className="mt-0.5 size-3.5 shrink-0 text-success"
+                              className="mt-0.5 size-3.5 shrink-0 text-success print:hidden"
                               aria-label="Cocinado"
                             />
                           ) : null}
                           {entry.pinned ? (
                             <Pin
-                              className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                              className="mt-0.5 size-3.5 shrink-0 text-muted-foreground print:hidden"
                               aria-label="Fijado"
                             />
                           ) : null}
-                          <span className="line-clamp-2">{text}</span>
+                          <span className="line-clamp-2 print:line-clamp-none">
+                            {text}
+                          </span>
                         </button>
                       );
                     })}
@@ -512,6 +449,16 @@ export function MenuView({
                     >
                       <Plus className="size-4" aria-hidden />
                     </button>
+                    {/* En papel el hueco vacío no puede quedar mudo (el «+» no
+                        se imprime): una raya, como en la imagen de compartir. */}
+                    {slotEntries.length === 0 ? (
+                      <span
+                        aria-hidden
+                        className="hidden text-muted-foreground print:block print:text-[10pt]"
+                      >
+                        —
+                      </span>
+                    ) : null}
                   </div>
                 );
               })}
@@ -531,6 +478,11 @@ export function MenuView({
           {addingList ? "Calculando…" : "Añadir a la lista lo que falte"}
         </Button>
       ) : null}
+
+      {/* Pie de la hoja, como en la imagen para compartir. */}
+      <p className="hidden text-[7.5pt] text-muted-foreground print:mt-4 print:block">
+        Fill Good · Compra lo justo, ahorra más
+      </p>
 
       <MissingReviewDrawer
         menuId={menuId}

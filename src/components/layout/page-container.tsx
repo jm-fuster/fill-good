@@ -40,7 +40,9 @@ export function PageContainer({
     // corre al montar (CSS puro, transform/opacity); reduced-motion la anula.
     <div
       className={cn(
-        "mx-auto w-full animate-in fade-in slide-in-from-bottom-1 duration-200",
+        // Al imprimir manda el ancho del papel: los topes de escritorio dejarían
+        // media hoja en blanco (el menú semanal sale en horizontal, D5).
+        "mx-auto w-full animate-in fade-in slide-in-from-bottom-1 duration-200 print:max-w-none",
         VARIANT_CLASSES[variant],
         className,
       )}

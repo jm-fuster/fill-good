@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
 import { MenuView } from "@/features/menus/components/menu-view";
 import { MenuSettings } from "@/features/menus/components/menu-settings";
+import { MenuShareActions } from "@/features/menus/components/menu-share-actions";
 import { MenuPrefsOnboarding } from "@/features/menus/components/menu-prefs";
 import {
   getMenuPrefs,
@@ -12,6 +13,7 @@ import {
   getWeekMenusWithEntries,
 } from "@/features/menus/queries";
 import { activeSlots } from "@/features/menus/slots";
+import { getCurrentHousehold } from "@/features/household/queries";
 import { getRecipeCostsForIds, getSavedRecipes } from "@/features/recipes/queries";
 import { getWeekStart, shiftWeek } from "@/lib/dates";
 
@@ -32,11 +34,14 @@ export default async function MenusPage({
   // prefs van en paralelo. Antes: getWeekMenu → entradas → (si vacío) menú
   // anterior → sus entradas, hasta 5 tandas secuenciales.
   const prevWeekStart = shiftWeek(weekStart, -1);
-  const [menusByWeek, rules, recipes, prefs] = await Promise.all([
+  // `getCurrentHousehold` va en `cache()` y las otras queries ya lo llaman: es
+  // gratis en este request y da el nombre del hogar para la hoja impresa.
+  const [menusByWeek, rules, recipes, prefs, household] = await Promise.all([
     getWeekMenusWithEntries([weekStart, prevWeekStart]),
     getMenuRules(),
     getSavedRecipes(),
     getMenuPrefs(),
+    getCurrentHousehold(),
   ]);
   const menu = menusByWeek.get(weekStart)?.menu ?? null;
   const entries = menusByWeek.get(weekStart)?.entries ?? [];
@@ -77,10 +82,18 @@ export default async function MenusPage({
 
   return (
     <PageContainer>
-      <PageHeader
-        title="Menús"
-        description="Planifica la semana con lo que tienes en casa."
-      />
+      {/* Al imprimir, la cabecera de la hoja la pone MenuView (D5). */}
+      <div className="print:hidden">
+        <PageHeader
+          title="Menús"
+          description="Planifica la semana con lo que tienes en casa."
+          action={
+            menu && entries.length > 0 ? (
+              <MenuShareActions menuId={menu.id} />
+            ) : undefined
+          }
+        />
+      </div>
       <div className="flex flex-col gap-4">
         <div className="print:hidden">
           <MenuSectionTabs active="semana" />
@@ -92,6 +105,7 @@ export default async function MenusPage({
           weekCost={weekCost}
           slots={slots}
           canCopyPrevious={canCopyPrevious}
+          householdName={household?.name ?? null}
           // Preferencias y reglas ya no son dos secciones al final de la página:
           // viajan con el botón de generar, que es lo que condicionan.
           settingsSlot={

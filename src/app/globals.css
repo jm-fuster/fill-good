@@ -262,6 +262,14 @@
    oculta la navegación fija y se fuerzan colores claros por si el tema activo
    es oscuro (los navegadores no imprimen fondos por defecto).
    --------------------------------------------------------------------------- */
+
+/* Horizontal: la semana son 7 columnas, y en vertical no caben sin partir la
+   hoja en dos. El margen deja sitio a la cabecera y el pie de la hoja. */
+@page {
+  size: A4 landscape;
+  margin: 12mm;
+}
+
 @media print {
   /* Bottom nav (móvil) y sidebar (escritorio): ambas fuera al imprimir. */
   nav[aria-label="Navegación principal"],
@@ -276,8 +284,8 @@
   #contenido {
     padding: 0 !important;
   }
-  /* «Imprimir» se dispara desde el sheet de más acciones del menú: overlay y
-     contenido de los modales fuera, o la hoja saldría con el sheet encima. */
+  /* Un modal abierto no debe salir impreso encima del menú (Ctrl+P con el
+     drawer de un plato abierto, p. ej.). */
   [data-slot="drawer-overlay"],
   [data-slot="drawer-content"],
   [data-slot="dialog-overlay"],
@@ -288,5 +296,21 @@
   body {
     background: #ffffff !important;
     color: #111827 !important;
+  }
+  /*
+    Imprimir SIEMPRE en claro: si el tema activo es oscuro, los tokens de `.dark`
+    darían texto casi blanco sobre papel. Se reponen a los valores de `:root`
+    (solo los que aparecen en la hoja del menú); el resto del tema oscuro da
+    igual porque no se imprime.
+  */
+  .dark {
+    --background: oklch(0.99 0.004 150);
+    --foreground: oklch(0.19 0.02 155);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.19 0.02 155);
+    --primary: oklch(0.5 0.13 155);
+    --muted: oklch(0.955 0.01 150);
+    --muted-foreground: oklch(0.48 0.02 155);
+    --border: oklch(0.92 0.01 150);
   }
 }
