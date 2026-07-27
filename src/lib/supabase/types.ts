@@ -424,6 +424,7 @@ export type Database = {
           pref_expiry: boolean;
           pref_price: boolean;
           pref_restock: boolean;
+          pref_wins: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -437,6 +438,7 @@ export type Database = {
           pref_expiry?: boolean;
           pref_price?: boolean;
           pref_restock?: boolean;
+          pref_wins?: boolean;
           created_at?: string;
           updated_at?: string;
         };
@@ -450,6 +452,7 @@ export type Database = {
           pref_expiry?: boolean;
           pref_price?: boolean;
           pref_restock?: boolean;
+          pref_wins?: boolean;
           created_at?: string;
           updated_at?: string;
         };

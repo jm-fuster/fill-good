@@ -22,7 +22,12 @@ import {
 } from "../actions";
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
-const DEFAULT_PREFS: PushPrefs = { expiry: true, price: true, restock: true };
+const DEFAULT_PREFS: PushPrefs = {
+  expiry: true,
+  price: true,
+  restock: true,
+  wins: true,
+};
 
 // "Reposición" (pref_restock) se oculta de la UI hasta que exista un emisor: la
 // preferencia se conserva en BD y en DEFAULT_PREFS para no tocar el contrato de
@@ -30,6 +35,7 @@ const DEFAULT_PREFS: PushPrefs = { expiry: true, price: true, restock: true };
 const PREF_LABELS: { key: keyof PushPrefs; label: string; hint: string }[] = [
   { key: "expiry", label: "Caducidades", hint: "Resumen diario de lo que caduca" },
   { key: "price", label: "Avisos de precio", hint: "Cuando sube algo habitual" },
+  { key: "wins", label: "Resumen del mes", hint: "Una vez al mes, el día 1" },
 ];
 
 /** base64url (clave VAPID) → Uint8Array que espera pushManager.subscribe. */

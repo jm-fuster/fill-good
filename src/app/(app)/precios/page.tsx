@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronRight, LineChart } from "lucide-react";
+import { ChevronRight, LineChart, Sparkles } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
@@ -37,6 +38,13 @@ export default async function PreciosPage({
       <PageHeader
         title="Precios"
         description="Evolución de precios de lo que compras."
+        action={
+          <Button asChild variant="outline" size="icon" aria-label="Resumen del mes">
+            <Link href="/resumen">
+              <Sparkles aria-hidden />
+            </Link>
+          </Button>
+        }
       />
 
       {rows.length === 0 ? (

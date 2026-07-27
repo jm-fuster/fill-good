@@ -49,6 +49,12 @@ export type MonthlySpending = {
   budget: number | null;
   byCategory: SpendingBreakdownItem[];
   byChain: SpendingBreakdownItem[];
+  /**
+   * Aportación a la hucha por cadena (descuentos + precio). Sale del mismo
+   * recorrido de `receipts`, sin consulta extra. Puede tener valores negativos:
+   * una cadena donde se paga de más resta.
+   */
+  savingsByChain: SpendingBreakdownItem[];
   /** Desperdicio del mes valorado en € (M8); 0 si no hay eventos valorables. */
   discardedTotal: number;
   discardedByProduct: SpendingBreakdownItem[];
@@ -259,6 +265,7 @@ export async function getMonthlySpending(
   let discountTotal = 0;
   let savingsByPrice = 0;
   const chainTotals = new Map<string, number>();
+  const chainSavings = new Map<string, number>();
 
   for (const r of receiptRows ?? []) {
     const amount = Number(r.total_amount) || 0;
@@ -273,6 +280,9 @@ export async function getMonthlySpending(
       savingsByPrice += Number(r.savings_amount) || 0;
       const chain = r.store_chain ?? OTHER_KEY;
       chainTotals.set(chain, (chainTotals.get(chain) ?? 0) + amount);
+      const saved =
+        (Number(r.discount_total) || 0) + (Number(r.savings_amount) || 0);
+      chainSavings.set(chain, (chainSavings.get(chain) ?? 0) + saved);
     } else {
       // Mes anterior (solo para el delta).
       prevTotal += amount;
@@ -299,6 +309,17 @@ export async function getMonthlySpending(
   const byChain: SpendingBreakdownItem[] = [...chainTotals.entries()]
     .map(([key, t]) => ({ key, label: CHAIN_LABELS[key] ?? key, total: t }))
     .filter((c) => c.total > 0)
+    .sort((a, b) => b.total - a.total);
+
+  // Sin filtro por > 0: aquí un negativo es información (esa cadena te cuesta
+  // dinero), no ruido que esconder.
+  const savingsByChain: SpendingBreakdownItem[] = [...chainSavings.entries()]
+    .map(([key, t]) => ({
+      key,
+      label: CHAIN_LABELS[key] ?? key,
+      total: roundCents(t),
+    }))
+    .filter((c) => c.total !== 0)
     .sort((a, b) => b.total - a.total);
 
   // Desperdicio valorado en € (M8): cantidad tirada × último precio del producto,
@@ -340,6 +361,7 @@ export async function getMonthlySpending(
     budget: household.monthlyBudget,
     byCategory,
     byChain,
+    savingsByChain,
     discardedTotal,
     discardedByProduct,
   };

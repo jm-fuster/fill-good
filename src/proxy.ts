@@ -16,6 +16,9 @@ const isPublicRoute = createRouteMatcher([
   // CRON_SECRET`, no con sesión de Clerk: sin esto, auth.protect() lo bloquearía
   // antes de su propia comprobación. La ruta valida el secreto por su cuenta.
   "/api/push/caducidades",
+  // Mismo caso: el resumen mensual (G4) lo dispara Vercel Cron el día 1 con el
+  // mismo Bearer, y valida el secreto por su cuenta.
+  "/api/push/resumen",
 ]);
 
 // authorizedParties refuerza la validación del token de Clerk frente a reuso

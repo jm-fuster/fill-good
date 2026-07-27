@@ -5,7 +5,12 @@ import { auth } from "@clerk/nextjs/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentHousehold } from "@/features/household/queries";
 
-export type PushPrefs = { expiry: boolean; price: boolean; restock: boolean };
+export type PushPrefs = {
+  expiry: boolean;
+  price: boolean;
+  restock: boolean;
+  wins: boolean;
+};
 
 export type SavePushInput = {
   endpoint: string;
@@ -68,6 +73,7 @@ export async function savePushSubscriptionAction(
       pref_expiry: input.prefs.expiry,
       pref_price: input.prefs.price,
       pref_restock: input.prefs.restock,
+      pref_wins: input.prefs.wins,
     },
     { onConflict: "endpoint" },
   );
@@ -90,6 +96,7 @@ export async function updatePushPrefsAction(
       pref_expiry: prefs.expiry,
       pref_price: prefs.price,
       pref_restock: prefs.restock,
+      pref_wins: prefs.wins,
     })
     .eq("endpoint", endpoint);
   if (error) return { error: "No se pudieron guardar las preferencias." };
@@ -119,7 +126,7 @@ export async function getMyPushPrefsAction(
   const supabase = createServerSupabaseClient();
   const { data } = await supabase
     .from("push_subscriptions")
-    .select("pref_expiry, pref_price, pref_restock")
+    .select("pref_expiry, pref_price, pref_restock, pref_wins")
     .eq("endpoint", endpoint)
     .maybeSingle();
   if (!data) return null;
@@ -127,5 +134,6 @@ export async function getMyPushPrefsAction(
     expiry: data.pref_expiry,
     price: data.pref_price,
     restock: data.pref_restock,
+    wins: data.pref_wins,
   };
 }
