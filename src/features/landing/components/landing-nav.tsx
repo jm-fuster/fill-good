@@ -11,10 +11,7 @@ import { PageContainer } from "@/components/layout/page-container";
 export function LandingNav() {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-border bg-background/85 backdrop-blur">
-      <PageContainer
-        variant="wide"
-        className="flex h-16 items-center justify-between px-4 sm:px-6"
-      >
+      <PageContainer className="flex h-16 items-center justify-between px-4 sm:px-6">
         <div className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element -- marca estática SVG local */}
           <img

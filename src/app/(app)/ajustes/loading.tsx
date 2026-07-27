@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function AjustesLoading() {
   return (
-    <PageContainer variant="default">
+    <PageContainer>
       <LoadingStatus />
       <PageHeader title="Ajustes" description="Tu hogar y tus preferencias." />
       <div className="flex flex-col gap-6" aria-hidden>

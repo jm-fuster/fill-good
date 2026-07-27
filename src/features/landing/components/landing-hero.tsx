@@ -16,10 +16,7 @@ const ENTER =
 export function LandingHero() {
   return (
     <section className="w-full">
-      <PageContainer
-        variant="wide"
-        className="px-4 pt-8 pb-16 sm:px-6 md:pt-16 md:pb-24 lg:pt-24"
-      >
+      <PageContainer className="px-4 pt-8 pb-16 sm:px-6 md:pt-16 md:pb-24 lg:pt-24">
         <div className="grid items-center gap-10 lg:grid-cols-12 lg:gap-8">
           <div className="lg:col-span-7">
             <h1

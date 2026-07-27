@@ -24,7 +24,7 @@ export default async function RevisionPage({
   if (entries.length === 0) redirect("/inventario");
 
   return (
-    <PageContainer variant="narrow">
+    <PageContainer>
       <PageHeader
         title="Revisar caducidades"
         description="Pon fecha a lo que acabas de comprar o márcalo para consumir pronto. Todo es opcional: puedes omitir."

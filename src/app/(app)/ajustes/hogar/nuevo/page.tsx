@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Otro hogar" };
  */
 export default function NuevoHogarPage() {
   return (
-    <PageContainer variant="narrow">
+    <PageContainer>
       <PageHeader
         title="Otro hogar"
         description="Crea un hogar adicional o únete a uno existente con su código de invitación. El nuevo hogar pasará a ser el activo, y podrás cambiar entre ellos cuando quieras."

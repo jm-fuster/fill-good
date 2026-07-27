@@ -15,7 +15,7 @@ export default function LegalLayout({
     <>
       <LandingNav />
       <main className="flex-1 py-10 md:py-14">
-        <PageContainer variant="default" className="px-4 sm:px-6">
+        <PageContainer variant="prose" className="px-4 sm:px-6">
           {children}
         </PageContainer>
       </main>

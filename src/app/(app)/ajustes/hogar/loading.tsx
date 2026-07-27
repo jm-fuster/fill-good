@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function HogarLoading() {
   return (
-    <PageContainer variant="narrow">
+    <PageContainer>
       <LoadingStatus />
       <PageHeader
         title="Mi hogar"

@@ -4,7 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function PrecioDetalleLoading() {
   return (
-    <PageContainer variant="wide">
+    <PageContainer>
       <LoadingStatus />
       <div aria-hidden>
         <Skeleton className="mb-2 h-5 w-24" />

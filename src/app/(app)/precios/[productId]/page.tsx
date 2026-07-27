@@ -39,7 +39,7 @@ export default async function PrecioDetallePage({
   );
 
   return (
-    <PageContainer variant="wide">
+    <PageContainer>
       <Link
         href="/precios"
         className="mb-2 inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"

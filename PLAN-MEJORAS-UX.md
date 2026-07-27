@@ -177,10 +177,10 @@ páginas a la prop para no duplicar). Aplícalo en:
 
 El touch target del enlace debe ser ≥44px de alto efectivo (padding vertical o `min-h`).
 
-### 2.5 Detalle: variant del loading de revisar
+### 2.5 Detalle: variant del loading de revisar — HECHO
 
-`src/app/(app)/escanear/[receiptId]/revisar/loading.tsx` usa `variant="default"` pero la página
-usa `wide` → salto de ancho al cargar. Iguala a `wide`.
+Resuelto de raíz: `PageContainer` tiene un único ancho para toda la app (`app`, por defecto), así
+que ninguna página ni su `loading.tsx` puede desajustarse. Ya no se pasa `variant` en la app.
 
 **Criterio de aceptación Fase 2:** un ticket abandonado aparece en `/escanear` y se puede reanudar
 o descartar; descartar pide confirmación con `ResponsiveModal`; la página de revisión tiene volver

@@ -11,7 +11,7 @@ export default async function OrdenTiendaPage() {
   const categories = await getStoreCategories();
 
   return (
-    <PageContainer variant="narrow">
+    <PageContainer>
       <PageHeader
         title="Orden de la tienda"
         description="Ordena los pasillos como en tu supermercado. La lista agrupada y el modo compra te mostrarán los productos en este orden."

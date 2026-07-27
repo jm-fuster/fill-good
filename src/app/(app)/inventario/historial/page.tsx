@@ -13,7 +13,7 @@ export default async function HistorialPage() {
   const { events, nowMs } = await getInventoryHistory();
 
   return (
-    <PageContainer variant="default">
+    <PageContainer>
       <PageHeader
         title="Historial de movimientos"
         description="Lo que se ha consumido, tirado y repuesto en los últimos 30 días."

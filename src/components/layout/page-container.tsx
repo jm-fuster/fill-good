@@ -1,28 +1,32 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Contenedor de ancho por tipo de página (E11). Centra el contenido dentro del
- * inset del shell y le pone un ancho máximo adecuado en escritorio; en móvil
- * todas las variantes quedan en `max-w-lg` (la experiencia de siempre).
+ * Contenedor de la columna de contenido (E11). Centra el contenido dentro del
+ * inset del shell y le pone el ancho máximo del sistema; en móvil siempre es
+ * `max-w-lg` (la experiencia de siempre).
  *
- *  - `narrow`  — flujos enfocados y formularios (escanear, revisión de
- *    caducidades): siempre `max-w-lg`.
- *  - `default` — listas de 1 columna legibles (lista, ajustes, precios,
- *    revisar ticket).
- *  - `wide`    — grids y datos (inventario, menús, recetas, detalle de precios).
+ * **La app tiene un único ancho**: todas sus páginas usan `app` (el valor por
+ * defecto), así los márgenes en escritorio no cambian al navegar entre
+ * inventario, lista, menús, precios o ajustes. En páginas de la app NO se pasa
+ * `variant`.
+ *
+ * Las otras variantes existen solo para superficies de texto largo fuera de la
+ * app, donde una medida más corta sí ayuda a leer:
+ *  - `prose`  — páginas legales.
+ *  - `narrow` — bloques estrechos de la landing (FAQ).
  *
  * El ancho SIEMPRE se gestiona aquí, no en las páginas ni en el shell.
  */
-export type PageContainerVariant = "narrow" | "default" | "wide";
+export type PageContainerVariant = "app" | "prose" | "narrow";
 
 const VARIANT_CLASSES: Record<PageContainerVariant, string> = {
+  app: "max-w-lg md:max-w-3xl lg:max-w-5xl xl:max-w-6xl",
+  prose: "max-w-lg md:max-w-2xl",
   narrow: "max-w-lg",
-  default: "max-w-lg md:max-w-2xl",
-  wide: "max-w-lg md:max-w-3xl lg:max-w-5xl xl:max-w-6xl",
 };
 
 export function PageContainer({
-  variant = "default",
+  variant = "app",
   className,
   children,
 }: {

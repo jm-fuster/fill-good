@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function MenusLoading() {
   return (
-    <PageContainer variant="wide">
+    <PageContainer>
       <LoadingStatus />
       <PageHeader
         title="Menús"

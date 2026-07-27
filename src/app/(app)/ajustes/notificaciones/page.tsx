@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Notificaciones" };
 
 export default function NotificacionesPage() {
   return (
-    <PageContainer variant="narrow">
+    <PageContainer>
       <PageHeader
         title="Notificaciones"
         description="Avisos en tus dispositivos sin abrir la app. La activación es por dispositivo."

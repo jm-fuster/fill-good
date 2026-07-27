@@ -12,7 +12,7 @@ export default async function EscanearPage() {
   const pending = await getPendingReceipts();
 
   return (
-    <PageContainer variant="narrow">
+    <PageContainer>
       <PageHeader
         title="Añadir ticket"
         description="Sube o fotografía el ticket: la IA lee los productos y precios."

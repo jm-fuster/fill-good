@@ -29,7 +29,7 @@ const CELL = "rounded-xl border border-border p-6";
 export function LandingBento() {
   return (
     <section className="w-full border-t border-border py-16 md:py-24">
-      <PageContainer variant="wide" className="px-4 sm:px-6">
+      <PageContainer className="px-4 sm:px-6">
         <Reveal>
           <h2 className="font-heading text-3xl font-semibold tracking-tight text-balance md:text-4xl">
             Todo lo de casa, en una sola app

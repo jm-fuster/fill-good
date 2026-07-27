@@ -16,7 +16,7 @@ export default function AppError({
   reset: () => void;
 }) {
   return (
-    <PageContainer variant="default">
+    <PageContainer>
       <ErrorScreen error={error} reset={reset} />
     </PageContainer>
   );

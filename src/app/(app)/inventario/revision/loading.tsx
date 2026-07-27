@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function RevisionLoading() {
   return (
-    <PageContainer variant="narrow">
+    <PageContainer>
       <LoadingStatus />
       <PageHeader
         title="Revisar caducidades"

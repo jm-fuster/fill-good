@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function NuevaRecetaLoading() {
   return (
-    <PageContainer variant="default">
+    <PageContainer>
       <LoadingStatus />
       <PageHeader
         title="Nueva receta"

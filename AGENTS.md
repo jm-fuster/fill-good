@@ -22,7 +22,7 @@ Referencia viva en `/styleguide` (`src/app/styleguide/page.tsx`). Tokens en `src
 - Accesibilidad WCAG 2.2 AA: labels visibles (nunca placeholder-only), `aria-label` en icon buttons, foco visible, contraste AA en ambos temas, `prefers-reduced-motion` respetado.
 - **Responsive (E11) — adaptativo, no dos apps.** Un único árbol de componentes; breakpoint del shell `md` (768px). Móvil (`< md`): bottom nav fija con `pb-safe` + FAB + bottom sheets. Escritorio (`≥ md`): sidebar lateral colapsable (`AppSidebar`, Ctrl/Cmd+B) + acciones primarias en el header + diálogos centrados. Bottom nav y sidebar conviven en el árbol y se alternan **solo con CSS** (`md:hidden` / `hidden md:block`), nunca con `useIsMobile` para el shell.
 - **Overlays SIEMPRE vía `ResponsiveModal`** (`src/components/ui/responsive-modal.tsx`): bottom sheet (`Drawer`) en `< md`, dialog centrado (`Dialog`) en `≥ md`. Nunca `Drawer`/`Dialog` directos en features.
-- **Anchos de página SIEMPRE vía `PageContainer`** (`narrow` / `default` / `wide`); no pongas `max-w-*` a mano en páginas ni en el shell.
+- **Anchos de página SIEMPRE vía `PageContainer`**; no pongas `max-w-*` a mano en páginas ni en el shell. **Dentro de la app hay un único ancho**: usa `<PageContainer>` sin `variant`, así los márgenes en escritorio no cambian al navegar entre páginas. Las variantes `prose` (legales) y `narrow` (FAQ de la landing) son solo para texto largo fuera de la app.
 - Radios: `rounded-lg` controles, `rounded-xl` tarjetas. Idioma UI: español.
 - `src/components/ui/*` son de shadcn: `button.tsx` e `input.tsx` llevan ajustes deliberados de touch target — no "resetear" a los defaults de shadcn.
 

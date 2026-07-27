@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function EditarRecetaLoading() {
   return (
-    <PageContainer variant="default">
+    <PageContainer>
       <LoadingStatus />
       {/* El título real es el nombre de la receta (dinámico); aquí usamos el de
           metadatos, coherente con backHref/variant para no saltar el layout. */}

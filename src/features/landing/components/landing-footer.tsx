@@ -7,7 +7,7 @@ export function LandingFooter() {
 
   return (
     <footer className="w-full border-t border-border py-10">
-      <PageContainer variant="wide" className="px-4 sm:px-6">
+      <PageContainer className="px-4 sm:px-6">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2.5">
             {/* eslint-disable-next-line @next/next/no-img-element -- marca estática SVG local */}

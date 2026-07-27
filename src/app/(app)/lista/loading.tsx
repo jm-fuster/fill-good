@@ -5,7 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ListaLoading() {
   return (
-    <PageContainer variant="default">
+    <PageContainer>
       <LoadingStatus />
       <PageHeader
         title="Lista de la compra"

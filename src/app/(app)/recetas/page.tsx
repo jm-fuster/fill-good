@@ -38,7 +38,7 @@ export default async function RecetasPage() {
   const costs: Record<string, RecipeCost> = Object.fromEntries(costMap);
 
   return (
-    <PageContainer variant="wide">
+    <PageContainer>
       <PageHeader
         title="Mis recetas"
         description="El recetario de tu hogar para planificar los menús."

@@ -79,7 +79,7 @@ export default async function MenusPage({
     : null;
 
   return (
-    <PageContainer variant="wide">
+    <PageContainer>
       <PageHeader
         title="Menús"
         description="Planifica la semana con lo que tienes en casa."

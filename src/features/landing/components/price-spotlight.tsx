@@ -41,7 +41,7 @@ export function PriceSpotlight() {
 
   return (
     <section className="w-full border-t border-border bg-muted py-16 md:py-24">
-      <PageContainer variant="wide" className="px-4 sm:px-6">
+      <PageContainer className="px-4 sm:px-6">
         <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
           <Reveal className="lg:order-2">
             <h2 className="font-heading text-3xl font-semibold tracking-tight text-balance md:text-4xl">

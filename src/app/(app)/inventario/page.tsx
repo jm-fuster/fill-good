@@ -43,7 +43,7 @@ export default async function InventarioPage({
   const starterGroups = entries.length === 0 ? await getStarterCatalog() : [];
 
   return (
-    <PageContainer variant="wide">
+    <PageContainer>
       <PageHeader
         title="Inventario"
         description="Tu despensa, nevera y congelador."

@@ -100,7 +100,7 @@ export default function StyleguidePage() {
   if (process.env.NODE_ENV === "production") notFound();
 
   return (
-    <PageContainer variant="wide" className="px-4 py-6 pb-16">
+    <PageContainer className="px-4 py-6 pb-16">
       <header className="mb-8 flex items-center justify-between gap-4">
         <div>
           <Link
@@ -391,32 +391,32 @@ export default function StyleguidePage() {
 
           <div className="rounded-xl border p-4">
             <p className="mb-2 font-medium">
-              <code>PageContainer</code> — ancho por tipo de página
+              <code>PageContainer</code> — un solo ancho en la app
             </p>
             <ul className="flex flex-col gap-1 text-muted-foreground">
               <li>
-                <code>narrow</code> — <code>max-w-lg</code> siempre (formularios,
-                escanear, revisión de caducidades).
+                <code>app</code> (por defecto) — <code>max-w-lg</code> hasta{" "}
+                <code>xl:max-w-6xl</code>. <strong>Todas</strong> las páginas de
+                la app: los márgenes en escritorio no cambian al navegar.
               </li>
               <li>
-                <code>default</code> — <code>max-w-lg</code> →{" "}
-                <code>md:max-w-2xl</code> (listas de 1 columna: lista, ajustes,
-                precios, revisar ticket).
+                <code>prose</code> — <code>md:max-w-2xl</code>, solo para texto
+                largo fuera de la app (páginas legales).
               </li>
               <li>
-                <code>wide</code> — hasta <code>xl:max-w-6xl</code> (grids y
-                datos: inventario, menús, recetas, detalle de precios).
+                <code>narrow</code> — <code>max-w-lg</code>, solo para bloques
+                estrechos de la landing (FAQ).
               </li>
             </ul>
             <div className="mt-3 flex flex-col gap-2" aria-hidden>
-              <div className="mx-auto h-8 w-full max-w-[8rem] rounded-lg bg-muted text-center text-xs leading-8">
-                narrow
+              <div className="h-8 w-full rounded-lg bg-muted text-center text-xs leading-8">
+                app
               </div>
               <div className="mx-auto h-8 w-full max-w-[16rem] rounded-lg bg-muted text-center text-xs leading-8">
-                default
+                prose
               </div>
-              <div className="h-8 w-full rounded-lg bg-muted text-center text-xs leading-8">
-                wide
+              <div className="mx-auto h-8 w-full max-w-[8rem] rounded-lg bg-muted text-center text-xs leading-8">
+                narrow
               </div>
             </div>
           </div>
@@ -470,8 +470,9 @@ export default function StyleguidePage() {
             <code>Drawer</code>/<code>Dialog</code> directos en features).
           </li>
           <li>
-            Anchos de página siempre vía <code>PageContainer</code>{" "}
-            (narrow/default/wide), nunca <code>max-w-*</code> a mano.
+            Anchos de página siempre vía <code>PageContainer</code>, nunca{" "}
+            <code>max-w-*</code> a mano. En la app se usa sin{" "}
+            <code>variant</code>: un único ancho para todas las páginas.
           </li>
           <li>Radios: <code>rounded-lg</code> controles, <code>rounded-xl</code> tarjetas.</li>
         </ul>

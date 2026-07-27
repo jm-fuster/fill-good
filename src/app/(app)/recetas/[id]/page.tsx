@@ -32,7 +32,7 @@ export default async function EditarRecetaPage({
   ]);
 
   return (
-    <PageContainer variant="default">
+    <PageContainer>
       <PageHeader
         title={recipe.name}
         backHref="/recetas"

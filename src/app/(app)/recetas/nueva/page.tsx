@@ -14,7 +14,7 @@ export default async function NuevaRecetaPage() {
     getStockByProduct(),
   ]);
   return (
-    <PageContainer variant="default">
+    <PageContainer>
       <PageHeader
         title="Nueva receta"
         description="Añade los datos del plato y sus ingredientes."

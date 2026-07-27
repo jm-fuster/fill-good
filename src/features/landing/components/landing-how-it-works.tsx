@@ -24,7 +24,7 @@ const STEPS = [
 export function LandingHowItWorks() {
   return (
     <section className="w-full border-t border-border py-16 md:py-24">
-      <PageContainer variant="wide" className="px-4 sm:px-6">
+      <PageContainer className="px-4 sm:px-6">
         <Reveal>
           <h2 className="max-w-[20ch] font-heading text-3xl font-semibold tracking-tight text-balance md:text-4xl">
             Del ticket a la despensa, en un minuto

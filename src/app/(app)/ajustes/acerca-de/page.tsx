@@ -19,7 +19,7 @@ export const metadata: Metadata = { title: "Acerca de" };
 
 export default function AcercaDePage() {
   return (
-    <PageContainer variant="narrow">
+    <PageContainer>
       <PageHeader
         title="Acerca de Fill Good"
         description="Compra lo justo, ahorra más."

@@ -45,7 +45,7 @@ export default async function AjustesPage() {
   const members = household ? await getHouseholdMembers(household.id) : [];
 
   return (
-    <PageContainer variant="default">
+    <PageContainer>
       <PageHeader title="Ajustes" description="Tu hogar y tus preferencias." />
       <div className="flex flex-col gap-6">
         <div className="flex min-h-14 items-center justify-between gap-3 rounded-xl bg-card px-4 py-3 ring-1 ring-foreground/10">

@@ -18,7 +18,7 @@ export default async function HogarPage() {
   const members = await getHouseholdMembers(household.id);
 
   return (
-    <PageContainer variant="narrow">
+    <PageContainer>
       <PageHeader
         title="Mi hogar"
         description={`Invitaciones, miembros y propiedad de «${household.name}».`}

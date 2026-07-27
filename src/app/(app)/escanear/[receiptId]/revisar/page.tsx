@@ -30,7 +30,7 @@ export default async function RevisarPage({
   const suggestions = await getReceiptSuggestions(items);
 
   return (
-    <PageContainer variant="wide">
+    <PageContainer>
       <PageHeader
         title="Revisar ticket"
         description="Ajusta lo que haga falta y confirma. Lo marcado pasará al inventario."

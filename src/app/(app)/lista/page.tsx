@@ -27,7 +27,7 @@ export default async function ListaPage() {
 
   if (!list) {
     return (
-      <PageContainer variant="default">
+      <PageContainer>
         <PageHeader title="Lista de la compra" />
         <EmptyState
           icon={ShoppingCart}
@@ -51,7 +51,7 @@ export default async function ListaPage() {
   ]);
 
   return (
-    <PageContainer variant="default">
+    <PageContainer>
       <PageHeader
         title="Lista de la compra"
         description="Compartida con tu hogar en tiempo real."

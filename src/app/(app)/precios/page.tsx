@@ -31,7 +31,7 @@ export default async function PreciosPage({
   ]);
 
   return (
-    <PageContainer variant="default">
+    <PageContainer>
       <PageHeader
         title="Precios"
         description="Evolución de precios de lo que compras."
