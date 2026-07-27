@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ChevronRight, LineChart, Sparkles } from "lucide-react";
+import { ChevronRight, LineChart } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
@@ -29,22 +28,13 @@ export default async function PreciosPage({
     getWasteInsight(),
   ]);
 
-  // La racha es un hecho de AHORA: solo acompaña al mes en curso, que es el
-  // único sin "mes siguiente" al que navegar.
-  const isCurrentMonth = spending?.nextMonth === null;
-
   return (
     <PageContainer>
+      {/* Sin atajo al resumen del mes: ese destino cuelga de /perfil, que es
+          quien lleva el marcador. Aquí se viene a analizar precios. */}
       <PageHeader
         title="Precios"
         description="Evolución de precios de lo que compras."
-        action={
-          <Button asChild variant="outline" size="icon" aria-label="Resumen del mes">
-            <Link href="/resumen">
-              <Sparkles aria-hidden />
-            </Link>
-          </Button>
-        }
       />
 
       {rows.length === 0 ? (
@@ -60,15 +50,7 @@ export default async function PreciosPage({
           {spending ? (
             <SpendingPanel
               data={spending}
-              waste={
-                waste
-                  ? {
-                      // La media habitual sí vale para cualquier mes; la racha no.
-                      monthlyAverage: waste.monthlyAverage,
-                      streak: isCurrentMonth ? waste.streak : null,
-                    }
-                  : null
-              }
+              wasteAverage={waste?.monthlyAverage ?? null}
             />
           ) : null}
 

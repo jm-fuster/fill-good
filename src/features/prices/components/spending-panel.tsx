@@ -18,13 +18,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { BudgetBar } from "./budget-bar";
-import { SavingsBlock } from "./savings-block";
-import { WasteStreakLine } from "./waste-streak-line";
-import type {
-  MonthlySpending,
-  SpendingBreakdownItem,
-  WasteInsight,
-} from "../spending";
+import type { MonthlySpending, SpendingBreakdownItem } from "../spending";
 
 // Colores categóricos en orden fijo (tokens del design system). Nunca se
 // ciclan: a partir del 5º, el desglose los agrupa en "Otros".
@@ -95,17 +89,22 @@ function BreakdownBars({
   );
 }
 
+/**
+ * Panel de gasto de un mes (M1). Es la herramienta de ANÁLISIS: cuánto se fue,
+ * en qué y dónde. La hucha y la racha ya no viven aquí —son el marcador del mes
+ * en curso y están en /perfil, y de cualquier mes pasado, en /resumen— para que
+ * el mismo número no se cuente de dos maneras distintas.
+ */
 export function SpendingPanel({
   data,
-  waste,
+  wasteAverage,
 }: {
   data: MonthlySpending;
   /**
-   * Racha y media de desperdicio (G3). La racha es un hecho de AHORA, así que la
-   * página solo la pasa cuando se está viendo el mes en curso; navegar a marzo
-   * no debe mostrar "llevas 3 semanas sin tirar".
+   * Media habitual de € tirados al mes (G3), para poner el desperdicio del mes
+   * en contexto. null cuando aún no hay histórico con el que comparar.
    */
-  waste?: WasteInsight | null;
+  wasteAverage?: number | null;
 }) {
   const {
     monthLabel,
@@ -115,9 +114,6 @@ export function SpendingPanel({
     prevTotal,
     delta,
     receiptCount,
-    discountTotal,
-    savingsByPrice,
-    savingsTotal,
     budget,
     byCategory,
     byChain,
@@ -194,16 +190,6 @@ export function SpendingPanel({
               </p>
             </div>
 
-            <SavingsBlock
-              savingsTotal={savingsTotal}
-              discountTotal={discountTotal}
-              savingsByPrice={savingsByPrice}
-            />
-
-            {waste?.streak && discardedTotal === 0 ? (
-              <WasteStreakLine streak={waste.streak} />
-            ) : null}
-
             {discardedTotal > 0 ? (
               <details className="group">
                 <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm text-destructive">
@@ -237,11 +223,11 @@ export function SpendingPanel({
 
             {/* Comparación contra la propia media, no contra un ideal: es la
                 diferencia entre "vas mejor de lo normal" y "no eres perfecto". */}
-            {waste?.monthlyAverage != null && discardedTotal > 0 ? (
+            {wasteAverage != null && discardedTotal > 0 ? (
               <p className="pl-6 text-xs text-muted-foreground text-pretty">
-                {discardedTotal < waste.monthlyAverage
-                  ? `Menos que tus ${formatEuro(waste.monthlyAverage)} habituales al mes.`
-                  : `Tu media mensual son ${formatEuro(waste.monthlyAverage)}.`}
+                {discardedTotal < wasteAverage
+                  ? `Menos que tus ${formatEuro(wasteAverage)} habituales al mes.`
+                  : `Tu media mensual son ${formatEuro(wasteAverage)}.`}
               </p>
             ) : null}
 
