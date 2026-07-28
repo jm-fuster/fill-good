@@ -30,6 +30,7 @@ import { LOCATION_OPTIONS, UNIT_OPTIONS } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import type { Category } from "../queries";
 import { addInventoryAction } from "../actions";
+import { ContentPerUnitFields } from "./content-per-unit-fields";
 import { ExpiryQuickPicker } from "./expiry-quick-picker";
 
 export function AddProductDrawer({
@@ -240,6 +241,8 @@ function AddProductFields({
         value={expiryDate}
         onChange={setExpiryDate}
       />
+
+      {unit === "ud" ? <ContentPerUnitFields idPrefix="add" /> : null}
 
       {unit === "ud" ? (
         <div className="flex flex-col gap-2">

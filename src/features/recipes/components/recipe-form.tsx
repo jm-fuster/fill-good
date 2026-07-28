@@ -28,8 +28,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  baseUnitFactor,
+  APPROX,
+  convertQuantity,
   formatQuantity,
+  roundQuantity,
   UNIT_OPTIONS,
   unitFamily,
 } from "@/lib/units";
@@ -92,17 +94,34 @@ function stockInfo(
   if (qty === null || !Number.isFinite(qty) || qty <= 0) {
     return { text: "En casa", tone: "success" };
   }
-  // Cantidad sin unidad, o familias distintas → mostramos stock sin veredicto.
-  if (unit === NO_UNIT || unitFamily(unit as UnitType) !== unitFamily(stock.unit)) {
-    return { text: `Tienes ${have}`, tone: "muted" };
+  // Sin unidad en la receta no hay nada que comparar.
+  if (unit === NO_UNIT) return { text: `Tienes ${have}`, tone: "muted" };
+
+  // El stock se lleva a la unidad de la receta: exacto en la misma familia y,
+  // entre ud y medida, con el contenido del envase si el producto lo declara.
+  const askUnit = unit as UnitType;
+  const stockInAskUnit = convertQuantity(
+    stock.quantity,
+    stock.unit,
+    askUnit,
+    stock.content,
+  );
+  // Sigue sin poder convertirse (ud contra peso sin contenido) → stock sin veredicto.
+  if (stockInAskUnit === null) return { text: `Tienes ${have}`, tone: "muted" };
+
+  // Al cruzar familias el equivalente se muestra entre paréntesis: "3 ud" no
+  // deja ver si llega para los 300 ml que pide la receta.
+  const crossFamily = unitFamily(askUnit) !== unitFamily(stock.unit);
+  const equivalent = formatQuantity(roundQuantity(stockInAskUnit), askUnit);
+  // Si el puente ha sido un PESO MEDIO, el equivalente es aproximado y no da
+  // para un veredicto: se muestra como pista (gris, con «≈») y decide quien
+  // cocina. Un "no te llega" en ámbar sobre un peso estimado sería mentir.
+  const approx = crossFamily && stock.content?.estimate === true;
+  if (approx) {
+    return { text: `Tienes ${have} (${APPROX} ${equivalent})`, tone: "muted" };
   }
-  // Misma familia → comparamos en unidad base con exactitud.
-  const need = qty * baseUnitFactor(unit as UnitType);
-  const stockBase = stock.quantity * baseUnitFactor(stock.unit);
-  return {
-    text: `Tienes ${have}`,
-    tone: stockBase >= need ? "success" : "warning",
-  };
+  const text = crossFamily ? `Tienes ${have} (${equivalent})` : `Tienes ${have}`;
+  return { text, tone: stockInAskUnit >= qty ? "success" : "warning" };
 }
 
 export function RecipeForm({

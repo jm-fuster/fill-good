@@ -37,7 +37,7 @@ import type { StoreCategory } from "@/features/categories/queries";
 import { chainLabel, orderChains } from "@/features/prices/chains";
 import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
-import { formatQuantity, isCountableOrUnset } from "@/lib/units";
+import { contentTotalLabel, formatQuantity } from "@/lib/units";
 import { useRealtimeList } from "../use-realtime-list";
 import { toggleItemAction } from "../actions";
 import type { CatalogProduct, ShoppingModeItem, Suggestion } from "../queries";
@@ -634,9 +634,7 @@ function ShoppingModeRowItem({
 }) {
   const cbId = `shop-${item.id}`;
   const showChain = item.preferredChain && item.preferredChain !== activeChain;
-  // Contables: ajustables en el pasillo cuando no hay tantos como apuntaste.
-  // A granel la cantidad se sigue mostrando como texto (se pesa en la tienda).
-  const countable = isCountableOrUnset(item.unit);
+  const contentTotal = contentTotalLabel(item.quantity, item.unit, item.content);
   return (
     <li className="flex items-center gap-1 rounded-lg transition-colors hover:bg-muted">
       <label
@@ -663,9 +661,10 @@ function ShoppingModeRowItem({
           )}
         >
           {item.name}
-          {!countable && item.quantity != null && item.unit ? (
+          {/* Cuánto llevas en total si el envase declara su contenido. */}
+          {contentTotal ? (
             <span className="ml-2 text-sm text-muted-foreground">
-              {formatQuantity(item.quantity, item.unit)}
+              {contentTotal}
             </span>
           ) : null}
           {showChain ? (
@@ -676,13 +675,14 @@ function ShoppingModeRowItem({
           ) : null}
         </span>
       </label>
-      {countable ? (
-        <QuantityStepper
-          itemId={item.id}
-          name={item.name}
-          quantity={item.quantity}
-        />
-      ) : null}
+      {/* Ajustable en el pasillo con cualquier unidad: apuntaste 3 cajas y solo
+          quedaban 2, o la bolsa pesó 0,75 kg en vez de 1. */}
+      <QuantityStepper
+        itemId={item.id}
+        name={item.name}
+        quantity={item.quantity}
+        unit={item.unit}
+      />
       <span className="shrink-0 pr-2 text-sm tabular-nums text-muted-foreground">
         {item.lineCost != null ? formatEuro(item.lineCost) : "—"}
       </span>

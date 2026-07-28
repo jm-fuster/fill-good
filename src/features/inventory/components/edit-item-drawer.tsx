@@ -56,6 +56,7 @@ import {
   getProductAliasesAction,
   type ProductAlias,
 } from "@/features/receipts/actions";
+import { ContentPerUnitFields } from "./content-per-unit-fields";
 import { ExpiryQuickPicker } from "./expiry-quick-picker";
 
 const NO_CATEGORY = "__none__";
@@ -581,6 +582,15 @@ export function EditItemDrawer({
               defaultValue={entry.minQuantity ?? ""}
             />
           </div>
+
+          {unit === "ud" ? (
+            <ContentPerUnitFields
+              idPrefix="edit"
+              defaultSize={entry.contentSize}
+              defaultUnit={entry.contentUnit}
+              defaultIsEstimate={entry.contentIsEstimate}
+            />
+          ) : null}
 
           {unit === "ud" ? (
             <div className="flex flex-col gap-2">

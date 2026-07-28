@@ -3,6 +3,15 @@ import { z } from "zod";
 const unit = z.enum(["ud", "g", "kg", "ml", "l"]);
 const location = z.enum(["pantry", "fridge", "freezer", "other"]);
 
+/**
+ * Unidad del contenido de un envase: solo medidas. 'ud' queda fuera a propósito
+ * (contar unidades dentro de una compra es `packSize`, no contenido).
+ */
+const contentUnit = z
+  .enum(["g", "kg", "ml", "l"], { error: "Unidad de contenido no válida." })
+  .optional()
+  .transform((v) => v ?? null);
+
 const optionalNumber = z
   .string()
   .trim()
@@ -50,6 +59,16 @@ export const addInventorySchema = z.object({
     .transform((v) => (v && v.length > 0 ? v : null)),
   minQuantity: optionalNumber,
   packSize: positiveOptionalNumber,
+  // Contenido de cada unidad (500 ml por brick). Van en pareja: la coherencia
+  // entre los dos la comprueba la acción, para poder dar un error concreto.
+  contentSize: positiveOptionalNumber,
+  contentUnit,
+  // true = el contenido es un peso medio (fruta, carne al peso), no el dato de
+  // un envase. Checkbox: llega como "on" o no llega.
+  contentIsEstimate: z
+    .string()
+    .optional()
+    .transform((v) => v === "on" || v === "true"),
 });
 
 export const editInventorySchema = z.object({
@@ -84,6 +103,16 @@ export const editInventorySchema = z.object({
     .transform((v) => v === "true"),
   minQuantity: optionalNumber,
   packSize: positiveOptionalNumber,
+  // Contenido de cada unidad (500 ml por brick). Van en pareja: la coherencia
+  // entre los dos la comprueba la acción, para poder dar un error concreto.
+  contentSize: positiveOptionalNumber,
+  contentUnit,
+  // true = el contenido es un peso medio (fruta, carne al peso), no el dato de
+  // un envase. Checkbox: llega como "on" o no llega.
+  contentIsEstimate: z
+    .string()
+    .optional()
+    .transform((v) => v === "on" || v === "true"),
   // Unidad de la fila: decide si el pack aplica (ud) y es editable, para poder
   // recolocar lo que entró de un ticket con la unidad equivocada (la calabaza
   // que llegó como 0,72 kg y en casa es 1 pieza).

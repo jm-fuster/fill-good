@@ -1,14 +1,23 @@
 /**
  * Cálculo PURO del coste estimado de una receta (M7): por ingrediente con
- * producto vinculado, último precio por unidad × cantidad, normalizando dentro
- * de la misma familia de unidad (g↔kg, ml↔l). Ingredientes sin precio, sin match
- * o con unidad de otra familia (p. ej. ud contra precio por kg) cuentan como
- * "sin precio": el total resultante es PARCIAL y nunca se presenta como total.
+ * producto vinculado, último precio por unidad × cantidad, convertido a la unidad
+ * del precio. La conversión es exacta dentro de la familia (g↔kg, ml↔l) y, entre
+ * 'ud' y una medida, usa el contenido declarado del envase: una receta con 300 ml
+ * de caldo ya sabe costear un producto que se compra por bricks de 500 ml.
+ *
+ * Ingredientes sin precio, sin match o que sigan sin poder convertirse (ud contra
+ * un precio por kg sin contenido declarado) cuentan como "sin precio": el total
+ * resultante es PARCIAL y nunca se presenta como total.
  */
-import { baseUnitFactor, unitFamily } from "@/lib/units";
+import { convertQuantity, type UnitContent } from "@/lib/units";
 import type { UnitType } from "@/lib/supabase/types";
 
-export type PriceInfo = { price: number; unit: UnitType };
+export type PriceInfo = {
+  price: number;
+  unit: UnitType;
+  /** Contenido por unidad del producto; permite costear ud↔medida. */
+  content?: UnitContent;
+};
 
 export type CostIngredient = {
   productId: string | null;
@@ -39,12 +48,17 @@ export function computeRecipeCost(
     if (!ing.productId || ing.quantity == null || ing.unit == null) continue;
     const price = priceByProduct.get(ing.productId);
     if (!price) continue;
-    // Sin conversión entre familias distintas (ud ↔ peso/volumen).
-    if (unitFamily(price.unit) !== unitFamily(ing.unit)) continue;
+    // La cantidad del ingrediente se lleva a la unidad del precio. null = no hay
+    // forma honesta de convertir (familias distintas sin contenido declarado).
+    const qtyInPriceUnit = convertQuantity(
+      ing.quantity,
+      ing.unit,
+      price.unit,
+      price.content ?? null,
+    );
+    if (qtyInPriceUnit === null) continue;
 
-    const pricePerBase = price.price / baseUnitFactor(price.unit);
-    const qtyBase = ing.quantity * baseUnitFactor(ing.unit);
-    total += pricePerBase * qtyBase;
+    total += price.price * qtyInPriceUnit;
     pricedCount += 1;
   }
 

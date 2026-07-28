@@ -11,9 +11,33 @@ import { getPriceAlerts } from "@/features/prices/alerts";
 import { SpendingPanel } from "@/features/prices/components/spending-panel";
 import { PriceAlerts } from "@/features/prices/components/price-alerts";
 import { formatEuro } from "@/lib/money";
-import { UNIT_LABELS } from "@/lib/units";
+import {
+  pricePerMeasureLabel,
+  UNIT_LABELS,
+  type UnitContent,
+} from "@/lib/units";
+import type { UnitType } from "@/lib/supabase/types";
 
 export const metadata: Metadata = { title: "Precios" };
+
+/**
+ * Equivalencia en €/kg o €/l cuando el producto declara el contenido de su
+ * envase. No se muestra nada cuando no aporta (sin contenido, o el precio ya
+ * viene por kilo o litro): un renglón vacío es peor que ninguno.
+ */
+function PerMeasure({
+  unitPrice,
+  unit,
+  content,
+}: {
+  unitPrice: number;
+  unit: UnitType;
+  content: UnitContent;
+}) {
+  const label = pricePerMeasureLabel(unitPrice, unit, content);
+  if (!label) return null;
+  return <p className="text-sm text-chart-3">{label}</p>;
+}
 
 export default async function PreciosPage({
   searchParams,
@@ -68,6 +92,13 @@ export default async function PreciosPage({
                     {r.purchases === 1 ? "compra" : "compras"} · último{" "}
                     {formatEuro(r.lastUnitPrice)}/{UNIT_LABELS[r.unit]}
                   </p>
+                  {/* Precio comparable entre formatos: es lo que "1,29 €/ud"
+                      esconde cuando cada envase trae una cantidad distinta. */}
+                  <PerMeasure
+                    unitPrice={r.lastUnitPrice}
+                    unit={r.unit}
+                    content={r.content}
+                  />
                 </div>
                 <div className="flex items-center gap-1 text-right">
                   <div>

@@ -9,7 +9,14 @@ import { Button } from "@/components/ui/button";
 import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
 import { expiryLabel, getExpiryStatus } from "@/lib/dates";
-import { formatQuantity, isCountable } from "@/lib/units";
+import {
+  contentTotalLabel,
+  formatQuantity,
+  formatQuantityValue,
+  quantityStep,
+  roundQuantity,
+  stepLabel,
+} from "@/lib/units";
 import { addProductToListAction } from "@/features/shopping-list/actions";
 import type { Category, InventoryEntry } from "../queries";
 import { getInventoryStatus } from "../status";
@@ -55,7 +62,7 @@ export function InventoryItemCard({
   }, [entry.quantity]);
 
   function changeBy(delta: number) {
-    const next = Math.max(0, Math.round((qtyRef.current + delta) * 100) / 100);
+    const next = Math.max(0, roundQuantity(qtyRef.current + delta));
     qtyRef.current = next;
     setQty(next);
     startTransition(async () => {
@@ -89,7 +96,23 @@ export function InventoryItemCard({
     useSoon: entry.useSoon,
     minQuantity: entry.minQuantity,
   });
-  const countable = isCountable(entry.unit);
+  // El stepper existe para TODA unidad: a granel el paso es el de compra
+  // (¼ kg, ½ l, 100 g/ml) en vez de 1, que en gramos no significaba nada.
+  const step = quantityStep(entry.unit);
+  const stepName = stepLabel(entry.unit);
+  // Contenido total cuando el producto declara lo que trae cada unidad: "3 ud"
+  // es lo que cuentas, "1,5 l" es lo que de verdad tienes en casa.
+  const contentTotal = contentTotalLabel(
+    qty,
+    entry.unit,
+    entry.contentSize !== null && entry.contentUnit !== null
+      ? {
+          size: entry.contentSize,
+          unit: entry.contentUnit,
+          estimate: entry.contentIsEstimate,
+        }
+      : null,
+  );
   const emptied = status.out;
   const inList = onList || addedToList;
 
@@ -129,6 +152,7 @@ export function InventoryItemCard({
                 ) : (
                   <span className="text-sm text-muted-foreground">
                     {formatQuantity(qty, entry.unit)}
+                    {contentTotal ? ` · ${contentTotal}` : null}
                   </span>
                 )}
                 {expiry ? (
@@ -158,40 +182,38 @@ export function InventoryItemCard({
             </span>
           </button>
 
-          {countable ? (
-            <div className="flex shrink-0 items-center gap-1">
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label={`Quitar una unidad de ${entry.productName}`}
-                onClick={() => changeBy(-1)}
-                disabled={qty <= 0}
-              >
-                <Minus aria-hidden />
-              </Button>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={`Quitar ${stepName} de ${entry.productName}`}
+              onClick={() => changeBy(-step)}
+              disabled={qty <= 0}
+            >
+              <Minus aria-hidden />
+            </Button>
+            <span
+              className="min-w-8 text-center text-sm font-semibold tabular-nums"
+              aria-live="polite"
+            >
+              {/* La key remonta solo el número: pequeño "pop" al cambiar sin
+                  reemplazar la región aria-live. */}
               <span
-                className="w-7 text-center text-sm font-semibold tabular-nums"
-                aria-live="polite"
+                key={qty}
+                className="inline-block animate-in zoom-in-50 duration-150"
               >
-                {/* La key remonta solo el número: pequeño "pop" al cambiar sin
-                    reemplazar la región aria-live. */}
-                <span
-                  key={qty}
-                  className="inline-block animate-in zoom-in-50 duration-150"
-                >
-                  {qty}
-                </span>
+                {formatQuantityValue(qty)}
               </span>
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label={`Añadir una unidad de ${entry.productName}`}
-                onClick={() => changeBy(1)}
-              >
-                <Plus aria-hidden />
-              </Button>
-            </div>
-          ) : null}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={`Añadir ${stepName} de ${entry.productName}`}
+              onClick={() => changeBy(step)}
+            >
+              <Plus aria-hidden />
+            </Button>
+          </div>
         </div>
 
         {emptied ? (

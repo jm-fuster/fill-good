@@ -27,9 +27,9 @@ import { chainLabel } from "@/features/prices/chains";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import { ScanTicketNudge } from "@/features/receipts/components/scan-ticket-nudge";
 import {
+  contentTotalLabel,
   defaultListQuantity,
   formatQuantity,
-  isCountableOrUnset,
 } from "@/lib/units";
 import { usePersistedFlag } from "@/hooks/use-persisted-flag";
 import { useRealtimeList } from "../use-realtime-list";
@@ -513,8 +513,11 @@ function ListRow({
   // Suprime el "click" que sigue a un deslizamiento (no abrir el editor).
   const swiped = useRef(false);
 
-  // Contable = se cuenta de una en una: unidad "ud" o sin unidad (L9).
-  const countable = isCountableOrUnset(item.unit);
+  const contentTotal = contentTotalLabel(
+    item.quantity,
+    item.unit,
+    item.content ?? null,
+  );
 
   function onPointerDown(e: React.PointerEvent) {
     // Solo gesto táctil/lápiz; en escritorio se usa el botón papelera.
@@ -644,10 +647,11 @@ function ListRow({
             )}
           >
             {item.name}
-            {/* Unidades no contables (g/kg/ml/l): la cantidad se edita en el drawer. */}
-            {!countable && item.quantity ? (
+            {/* Cuánto llevas en total cuando el envase declara su contenido:
+                "3 bricks" no dice si es litro y medio o tres. */}
+            {contentTotal ? (
               <span className="ml-1.5 text-muted-foreground">
-                · {formatQuantity(item.quantity, item.unit ?? "ud")}
+                · {contentTotal}
               </span>
             ) : null}
             {/* L15: si otra tienda sale más barata (fase 3), el aviso de ahorro
@@ -660,14 +664,14 @@ function ListRow({
             ) : null}
           </span>
         </button>
-        {/* Stepper ±1 inline para unidades contables (ud o sin unidad) (L9). */}
-        {countable ? (
-          <QuantityStepper
-            itemId={item.id}
-            name={item.name}
-            quantity={item.quantity}
-          />
-        ) : null}
+        {/* Stepper inline para cualquier unidad (L9): ±1 en contables, ±¼ kg /
+            ±½ l / ±100 g-ml a granel, que ahí muestra también la unidad. */}
+        <QuantityStepper
+          itemId={item.id}
+          name={item.name}
+          quantity={item.quantity}
+          unit={item.unit}
+        />
         {/* Papelera: siempre visible en táctil (móvil, donde no hay hover ni se
             descubre el swipe); en escritorio se oculta y se revela al hover/foco. */}
         <Button

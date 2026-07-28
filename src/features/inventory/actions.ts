@@ -42,11 +42,17 @@ export async function addInventoryAction(
     expiryDate: formData.get("expiryDate") || undefined,
     minQuantity: formData.get("minQuantity") || undefined,
     packSize: formData.get("packSize") || undefined,
+    contentSize: formData.get("contentSize") || undefined,
+    contentUnit: formData.get("contentUnit") || undefined,
+    contentIsEstimate: formData.get("contentIsEstimate") || undefined,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
   }
   const d = parsed.data;
+  if (d.contentSize !== null && d.contentUnit === null) {
+    return { error: "Elige la unidad del contenido (ml, l, g o kg)." };
+  }
   const supabase = createServerSupabaseClient();
   const normalized = normalizeName(d.name);
 
@@ -64,6 +70,22 @@ export async function addInventoryAction(
   // solo se PERSISTE el tamaño de pack para futuras compras.
   const packSize = d.unit === "ud" ? d.packSize : null;
 
+  // Contenido por unidad: describe el envase de un producto que se CUENTA, así
+  // que solo tiene sentido en 'ud' (en kg la medida ya es la cantidad). Se
+  // guarda en pareja o no se guarda.
+  const content =
+    d.unit === "ud" && d.contentSize !== null && d.contentUnit !== null
+      ? {
+          content_size: d.contentSize,
+          content_unit: d.contentUnit,
+          content_is_estimate: d.contentIsEstimate,
+        }
+      : {
+          content_size: null,
+          content_unit: null,
+          content_is_estimate: false,
+        };
+
   let productId: string;
   if (existing) {
     productId = existing.id;
@@ -71,10 +93,18 @@ export async function addInventoryAction(
       min_quantity?: number | null;
       category_id?: string;
       pack_size?: number | null;
+      content_size?: number | null;
+      content_unit?: UnitType | null;
+      content_is_estimate?: boolean;
     } = {};
     if (d.minQuantity !== null) updates.min_quantity = d.minQuantity;
     if (d.categoryId) updates.category_id = d.categoryId;
-    if (d.unit === "ud") updates.pack_size = packSize;
+    if (d.unit === "ud") {
+      updates.pack_size = packSize;
+      // Solo si el alta trae contenido: un alta rápida sin ese campo no debe
+      // borrar el que ya tenía el producto del catálogo.
+      if (content.content_size !== null) Object.assign(updates, content);
+    }
     if (Object.keys(updates).length > 0) {
       await supabase
         .from("products")
@@ -94,6 +124,7 @@ export async function addInventoryAction(
         default_location: d.location,
         min_quantity: d.minQuantity,
         pack_size: packSize,
+        ...content,
       })
       .select("id")
       .single();
@@ -260,6 +291,9 @@ export async function updateInventoryAction(
     useSoon: formData.get("useSoon") || undefined,
     minQuantity: formData.get("minQuantity") || undefined,
     packSize: formData.get("packSize") || undefined,
+    contentSize: formData.get("contentSize") || undefined,
+    contentUnit: formData.get("contentUnit") || undefined,
+    contentIsEstimate: formData.get("contentIsEstimate") || undefined,
     unit: formData.get("unit") || undefined,
     preferredChain: formData.get("preferredChain") || undefined,
     icon: formData.get("icon") || undefined,
@@ -268,6 +302,9 @@ export async function updateInventoryAction(
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
   }
   const d = parsed.data;
+  if (d.contentSize !== null && d.contentUnit === null) {
+    return { error: "Elige la unidad del contenido (ml, l, g o kg)." };
+  }
   // Icono manual (L16): solo se acepta un slug conocido del registro; cualquier
   // otra cosa se ignora (null = automático), nunca bloquea el guardado.
   const icon = isKnownIcon(d.icon) ? d.icon : null;
@@ -295,6 +332,9 @@ export async function updateInventoryAction(
     preferred_chain: string | null;
     icon: string | null;
     pack_size?: number | null;
+    content_size?: number | null;
+    content_unit?: UnitType | null;
+    content_is_estimate?: boolean;
     default_unit?: UnitType;
   } = {
     name: d.name,
@@ -308,6 +348,16 @@ export async function updateInventoryAction(
   };
   // Pack (F4): solo se toca para filas contables (ud); null lo limpia.
   if (d.unit === "ud") productUpdate.pack_size = d.packSize;
+  // Contenido por unidad: mismo trato. Aquí el campo SÍ está en el formulario,
+  // así que vaciarlo limpia el contenido (a diferencia del alta rápida).
+  if (d.unit === "ud") {
+    const hasContent = d.contentSize !== null && d.contentUnit !== null;
+    productUpdate.content_size = hasContent ? d.contentSize : null;
+    productUpdate.content_unit = hasContent ? d.contentUnit : null;
+    // Sin contenido la bandera no puede quedar en true (lo impide la
+    // restricción `products_content_estimate_needs_content`).
+    productUpdate.content_is_estimate = hasContent && d.contentIsEstimate;
+  }
   // La unidad de la fila editada pasa a ser la del producto: es la que usarán
   // las próximas compras y sugerencias, y dejarlas desalineadas reproduciría el
   // conflicto de unidades en el siguiente ticket.

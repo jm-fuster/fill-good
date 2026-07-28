@@ -6,7 +6,7 @@ import type {
   LocationType,
   UnitType,
 } from "@/lib/supabase/types";
-import { baseUnitFactor, unitFamily } from "@/lib/units";
+import { convertQuantity, roundQuantity, type UnitContent } from "@/lib/units";
 import {
   getActiveHouseholdId,
   getCurrentHousehold,
@@ -38,6 +38,14 @@ export type InventoryEntry = {
   minQuantity: number | null;
   /** Unidades que entran por compra (F4); null = sin pack. */
   packSize: number | null;
+  /**
+   * Contenido de cada unidad (500 ml por brick); null = sin contenido definido.
+   * Van en pareja y solo se usan en productos contables.
+   */
+  contentSize: number | null;
+  contentUnit: UnitType | null;
+  /** El contenido es un peso medio (fruta, carne): se muestra con «≈». */
+  contentIsEstimate: boolean;
   /** Tienda preferida MANUAL de este producto (L15); null = sin preferencia. */
   preferredChain: string | null;
   /**
@@ -216,14 +224,21 @@ export async function getStarterCatalog(): Promise<StarterGroup[]> {
 }
 
 /** Stock agregado de un producto, expresado en su unidad por defecto. */
-export type ProductStock = { quantity: number; unit: UnitType };
+export type ProductStock = {
+  quantity: number;
+  unit: UnitType;
+  /** Contenido de cada unidad; permite comparar "3 ud" contra "300 ml". */
+  content: UnitContent;
+};
 
 /**
  * Stock total por producto (suma de todas las ubicaciones), expresado en la
- * unidad por defecto del producto. Solo se suman filas de la MISMA familia de
- * unidades que la unidad por defecto (g↔kg, ml↔l se convierten con exactitud;
- * ud↔peso nunca se mezcla). Solo devuelve productos con cantidad > 0. Lo usa el
- * formulario de recetas (F3) para el badge de stock por ingrediente.
+ * unidad por defecto del producto. Las filas se convierten con `convertQuantity`:
+ * exacto dentro de la familia (g↔kg, ml↔l) y, entre 'ud' y una medida, solo si el
+ * producto declara el contenido de su envase — así una fila que entró de un ticket
+ * en 0,5 l ya suma a un producto que se cuenta por bricks. Las que sigan sin poder
+ * convertirse se ignoran, como antes. Solo devuelve productos con cantidad > 0.
+ * Lo usa el formulario de recetas (F3) para el badge de stock por ingrediente.
  */
 export async function getStockByProduct(): Promise<
   Record<string, ProductStock>
@@ -239,29 +254,51 @@ export async function getStockByProduct(): Promise<
         .eq("household_id", householdId),
       supabase
         .from("products")
-        .select("id, default_unit")
+        .select("id, default_unit, content_size, content_unit, content_is_estimate")
         .eq("household_id", householdId),
     ]);
   if (invErr) throw invErr;
   if (prodErr) throw prodErr;
 
   const defaultUnit = new Map<string, UnitType>();
-  for (const p of prods ?? []) defaultUnit.set(p.id, p.default_unit);
+  const contentByProduct = new Map<string, UnitContent>();
+  for (const p of prods ?? []) {
+    defaultUnit.set(p.id, p.default_unit);
+    contentByProduct.set(
+      p.id,
+      p.content_size === null || p.content_unit === null
+        ? null
+        : {
+            size: Number(p.content_size),
+            unit: p.content_unit,
+            estimate: p.content_is_estimate,
+          },
+    );
+  }
 
   const totals = new Map<string, number>();
   for (const row of inv ?? []) {
     const target = defaultUnit.get(row.product_id);
     if (!target) continue;
-    if (unitFamily(row.unit) !== unitFamily(target)) continue;
-    const inTarget =
-      (Number(row.quantity) * baseUnitFactor(row.unit)) /
-      baseUnitFactor(target);
+    const inTarget = convertQuantity(
+      Number(row.quantity),
+      row.unit,
+      target,
+      contentByProduct.get(row.product_id) ?? null,
+    );
+    if (inTarget === null) continue;
     totals.set(row.product_id, (totals.get(row.product_id) ?? 0) + inTarget);
   }
 
   const result: Record<string, ProductStock> = {};
   for (const [pid, qty] of totals) {
-    if (qty > 0) result[pid] = { quantity: qty, unit: defaultUnit.get(pid)! };
+    if (qty > 0) {
+      result[pid] = {
+        quantity: roundQuantity(qty),
+        unit: defaultUnit.get(pid)!,
+        content: contentByProduct.get(pid) ?? null,
+      };
+    }
   }
   return result;
 }
@@ -349,6 +386,9 @@ type InventoryRow = {
     name: string;
     min_quantity: number | null;
     pack_size: number | null;
+    content_size: number | null;
+    content_unit: UnitType | null;
+    content_is_estimate: boolean;
     preferred_chain: string | null;
     inferred_chain: string | null;
     savings_tip: ChainSavingsTip | null;
@@ -368,7 +408,7 @@ export async function getInventory(): Promise<InventoryEntry[]> {
   const { data, error } = await supabase
     .from("inventory_items")
     .select(
-      "id, product_id, location, quantity, unit, expiry_date, use_soon, product:products(name, min_quantity, pack_size, preferred_chain, inferred_chain, savings_tip, icon, category:categories(id, name, icon))",
+      "id, product_id, location, quantity, unit, expiry_date, use_soon, product:products(name, min_quantity, pack_size, content_size, content_unit, content_is_estimate, preferred_chain, inferred_chain, savings_tip, icon, category:categories(id, name, icon))",
     )
     .eq("household_id", householdId)
     .order("updated_at", { ascending: false });
@@ -394,6 +434,12 @@ export async function getInventory(): Promise<InventoryEntry[]> {
         r.product!.min_quantity === null ? null : Number(r.product!.min_quantity),
       packSize:
         r.product!.pack_size === null ? null : Number(r.product!.pack_size),
+      contentSize:
+        r.product!.content_size === null
+          ? null
+          : Number(r.product!.content_size),
+      contentUnit: r.product!.content_unit,
+      contentIsEstimate: r.product!.content_is_estimate,
       preferredChain: r.product!.preferred_chain,
       inferredChain: r.product!.inferred_chain,
       savings: (r.product!.savings_tip as ChainSavingsTip | null) ?? null,

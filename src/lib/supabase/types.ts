@@ -196,6 +196,18 @@ export type Database = {
           default_location: LocationType;
           min_quantity: number | null;
           pack_size: number | null;
+          /**
+           * Contenido de UNA unidad: 500 + 'ml' = brick de medio litro. Van
+           * siempre en pareja (o los dos null), y content_unit nunca es 'ud'
+           * (conteo→conteo es pack_size).
+           */
+          content_size: number | null;
+          content_unit: UnitType | null;
+          /**
+           * true = el contenido es un peso/volumen MEDIO (una pera, un filete),
+           * no un dato del envase: se presenta con «≈» y no da veredictos.
+           */
+          content_is_estimate: boolean;
           preferred_chain: string | null;
           // Señales de precio materializadas (L15 f2/f3). Estructura de savings_tip
           // = ChainSavingsTip (src/features/prices/chain-savings.ts).
@@ -223,6 +235,9 @@ export type Database = {
           default_location?: LocationType;
           min_quantity?: number | null;
           pack_size?: number | null;
+          content_size?: number | null;
+          content_unit?: UnitType | null;
+          content_is_estimate?: boolean;
           preferred_chain?: string | null;
           inferred_chain?: string | null;
           savings_tip?: {
@@ -247,6 +262,9 @@ export type Database = {
           default_location?: LocationType;
           min_quantity?: number | null;
           pack_size?: number | null;
+          content_size?: number | null;
+          content_unit?: UnitType | null;
+          content_is_estimate?: boolean;
           preferred_chain?: string | null;
           inferred_chain?: string | null;
           savings_tip?: {

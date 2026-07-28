@@ -10,7 +10,7 @@ import {
 } from "@/features/household/queries";
 import { getLatestUnitPrices } from "@/features/prices/queries";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
-import { baseUnitFactor, unitFamily } from "@/lib/units";
+import { convertQuantity, type UnitContent } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import { compareTripToReceipt } from "./trip-comparison";
 import { TRIP_MATCH_WINDOW_HOURS } from "./trips";
@@ -35,6 +35,11 @@ export type ListItem = {
   preferredChain?: string | null;
   /** Aviso de ahorro si otra cadena sale más barata (L15, fase 3). */
   savings?: ChainSavingsTip | null;
+  /**
+   * Contenido de cada unidad del producto; con él la lista puede decir cuánto
+   * llevas en total ("3 bricks · 1,5 l"). Ausente en altas optimistas.
+   */
+  content?: UnitContent;
 };
 
 export type SuggestionReason =
@@ -180,6 +185,8 @@ export type ShoppingModeItem = {
   categorySort: number;
   /** Coste estimado de la línea (precio × cantidad) o null si no se conoce. */
   lineCost: number | null;
+  /** Contenido de cada unidad del producto; null = no declarado. */
+  content: UnitContent;
   /** Tienda preferida del producto (L15); null = sin preferencia. */
   preferredChain: string | null;
 };
@@ -195,6 +202,9 @@ type ShoppingModeRow = {
     preferred_chain: string | null;
     inferred_chain: string | null;
     icon: string | null;
+    content_size: number | null;
+    content_unit: UnitType | null;
+    content_is_estimate: boolean;
     category: {
       id: string;
       name: string;
@@ -224,7 +234,7 @@ export async function getShoppingModeItems(
     supabase
       .from("shopping_list_items")
       .select(
-        "id, name, quantity, unit, is_checked, product_id, product:products(preferred_chain, inferred_chain, icon, category:categories(id, name, icon, sort_order))",
+        "id, name, quantity, unit, is_checked, product_id, product:products(preferred_chain, inferred_chain, icon, content_size, content_unit, content_is_estimate, category:categories(id, name, icon, sort_order))",
       )
       .eq("household_id", householdId)
       .eq("list_id", listId)
@@ -239,15 +249,16 @@ export async function getShoppingModeItems(
     const qty = r.quantity === null ? null : Number(r.quantity);
     let lineCost: number | null = null;
     const price = r.product_id ? prices.get(r.product_id) : undefined;
-    if (
-      price &&
-      qty !== null &&
-      r.unit !== null &&
-      unitFamily(price.unit) === unitFamily(r.unit)
-    ) {
-      lineCost =
-        (price.price / baseUnitFactor(price.unit)) *
-        (qty * baseUnitFactor(r.unit));
+    if (price && qty !== null && r.unit !== null) {
+      // La cantidad de la línea se lleva a la unidad del precio; con el contenido
+      // del envase ya se puede costear "500 ml" contra un precio por brick.
+      const inPriceUnit = convertQuantity(
+        qty,
+        r.unit,
+        price.unit,
+        price.content,
+      );
+      if (inPriceUnit !== null) lineCost = price.price * inPriceUnit;
     }
     return {
       id: r.id,
@@ -261,6 +272,14 @@ export async function getShoppingModeItems(
       categoryId: r.product?.category?.id ?? null,
       categorySort: r.product?.category?.sort_order ?? NO_CATEGORY_SORT,
       lineCost,
+      content:
+        r.product?.content_size == null || r.product?.content_unit == null
+          ? null
+          : {
+              size: Number(r.product.content_size),
+              unit: r.product.content_unit,
+              estimate: r.product.content_is_estimate,
+            },
       // Efectiva: la manual gana; si no hay, la inferida materializada (fase 2).
       preferredChain:
         r.product?.preferred_chain ?? r.product?.inferred_chain ?? null,
@@ -281,6 +300,9 @@ type ListItemRow = {
     inferred_chain: string | null;
     savings_tip: ChainSavingsTip | null;
     icon: string | null;
+    content_size: number | null;
+    content_unit: UnitType | null;
+    content_is_estimate: boolean;
     category: { name: string; icon: string | null; sort_order: number } | null;
   } | null;
 };
@@ -295,7 +317,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
   const { data, error } = await supabase
     .from("shopping_list_items")
     .select(
-      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(preferred_chain, inferred_chain, savings_tip, icon, category:categories(name, icon, sort_order))",
+      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(preferred_chain, inferred_chain, savings_tip, icon, content_size, content_unit, content_is_estimate, category:categories(name, icon, sort_order))",
     )
     .eq("household_id", householdId)
     .eq("list_id", listId)
@@ -320,6 +342,14 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
     // Efectiva: la manual gana; si no hay, la inferida materializada (fase 2).
     preferredChain: i.product?.preferred_chain ?? i.product?.inferred_chain ?? null,
     savings: (i.product?.savings_tip as ChainSavingsTip | null) ?? null,
+    content:
+      i.product?.content_size == null || i.product?.content_unit == null
+        ? null
+        : {
+            size: Number(i.product.content_size),
+            unit: i.product.content_unit,
+            estimate: i.product.content_is_estimate,
+          },
   }));
 }
 

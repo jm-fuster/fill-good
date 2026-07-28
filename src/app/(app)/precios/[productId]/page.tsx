@@ -12,7 +12,12 @@ import { computeChainComparison } from "@/features/prices/chain-comparison";
 import { getProductPriceHistory } from "@/features/prices/queries";
 import { formatEuro } from "@/lib/money";
 import { cn } from "@/lib/utils";
-import { UNIT_LABELS } from "@/lib/units";
+import {
+  APPROX,
+  formatQuantity,
+  pricePerMeasureLabel,
+  UNIT_LABELS,
+} from "@/lib/units";
 
 export const metadata: Metadata = { title: "Precio" };
 
@@ -25,7 +30,7 @@ export default async function PrecioDetallePage({
   const history = await getProductPriceHistory(productId);
   if (!history) notFound();
 
-  const { name, points } = history;
+  const { name, points, content } = history;
   const unit = points[0]?.unit ?? "ud";
   const prices = points.map((p) => p.unitPrice);
   const min = prices.length ? Math.min(...prices) : 0;
@@ -48,6 +53,9 @@ export default async function PrecioDetallePage({
       </h1>
       <p className="mt-1 mb-6 text-sm text-muted-foreground">
         Evolución del precio por {UNIT_LABELS[unit]}.
+        {content
+          ? ` Cada ${UNIT_LABELS[unit]} trae ${content.estimate ? `${APPROX} ` : ""}${formatQuantity(content.size, content.unit)}${content.estimate ? " de media" : ""}.`
+          : null}
       </p>
 
       {points.length === 0 ? (
@@ -57,9 +65,23 @@ export default async function PrecioDetallePage({
       ) : (
         <div className="flex flex-col gap-6">
           <div className="grid grid-cols-3 gap-2">
-            <Stat label="Mínimo" value={formatEuro(min)} accent="success" />
-            <Stat label="Último" value={formatEuro(last)} />
-            <Stat label="Máximo" value={formatEuro(max)} accent="warning" />
+            <Stat
+              label="Mínimo"
+              value={formatEuro(min)}
+              accent="success"
+              perMeasure={pricePerMeasureLabel(min, unit, content)}
+            />
+            <Stat
+              label="Último"
+              value={formatEuro(last)}
+              perMeasure={pricePerMeasureLabel(last, unit, content)}
+            />
+            <Stat
+              label="Máximo"
+              value={formatEuro(max)}
+              accent="warning"
+              perMeasure={pricePerMeasureLabel(max, unit, content)}
+            />
           </div>
 
           {points.length > 1 ? (
@@ -155,10 +177,13 @@ function Stat({
   label,
   value,
   accent,
+  perMeasure = null,
 }: {
   label: string;
   value: string;
   accent?: "success" | "warning";
+  /** Equivalente comparable entre formatos (€/kg, €/l); null = no se muestra. */
+  perMeasure?: string | null;
 }) {
   return (
     <div className="rounded-xl border p-3">
@@ -174,6 +199,9 @@ function Stat({
       >
         {value}
       </p>
+      {perMeasure ? (
+        <p className="text-xs text-chart-3 tabular-nums">{perMeasure}</p>
+      ) : null}
     </div>
   );
 }

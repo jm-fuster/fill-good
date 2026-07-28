@@ -5,6 +5,7 @@ import { cache } from "react";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getActiveHouseholdId } from "@/features/household/queries";
 import type { UnitType } from "@/lib/supabase/types";
+import type { UnitContent } from "@/lib/units";
 import { computeInferredChains } from "./infer-chain";
 import { computeChainSavings, type ChainSavingsTip } from "./chain-savings";
 
@@ -16,7 +17,43 @@ export type PriceOverviewRow = {
   lastUnitPrice: number;
   unit: UnitType;
   lastDate: string;
+  /** Contenido del envase; con él el precio se puede dar en €/kg o €/l. */
+  content: UnitContent;
 };
+
+/** Último precio conocido por producto, con el contenido de su envase. */
+export type LatestUnitPrice = {
+  price: number;
+  unit: UnitType;
+  content: UnitContent;
+};
+
+/** Columnas de contenido tal como llegan del embed de products. */
+type ContentColumns = {
+  content_size: number | null;
+  content_unit: UnitType | null;
+  content_is_estimate: boolean;
+} | null;
+
+type LatestPriceRow = {
+  product_id: string | null;
+  total_price: number | null;
+  quantity: number;
+  unit: UnitType;
+  product: ContentColumns;
+};
+
+/** Normaliza las dos columnas a `UnitContent` (van en pareja o no van). */
+function contentOf(product: ContentColumns): UnitContent {
+  if (!product || product.content_size === null || product.content_unit === null) {
+    return null;
+  }
+  return {
+    size: Number(product.content_size),
+    unit: product.content_unit,
+    estimate: product.content_is_estimate,
+  };
+}
 
 export type PricePoint = {
   date: string;
@@ -34,7 +71,9 @@ type Row = {
   unit: UnitType;
   purchased_at: string | null;
   store_chain: string | null;
-  product: { name: string } | null;
+  product:
+    | ({ name: string } & NonNullable<ContentColumns>)
+    | null;
 };
 
 /** Productos con historial de precios, ordenados por gasto total. */
@@ -47,7 +86,7 @@ export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
     .select(
       // receipt_items tiene DOS FKs a products (product_id y suggested_product_id,
       // esta última de E7): hay que nombrar la relación o PostgREST da PGRST201.
-      "product_id, total_price, quantity, unit, purchased_at, store_chain, product:products!receipt_items_product_id_fkey(name)",
+      "product_id, total_price, quantity, unit, purchased_at, store_chain, product:products!receipt_items_product_id_fkey(name, content_size, content_unit, content_is_estimate)",
     )
     .eq("household_id", householdId)
     .not("product_id", "is", null)
@@ -80,6 +119,7 @@ export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
         lastUnitPrice: unitPrice,
         unit: r.unit,
         lastDate: r.purchased_at,
+        content: contentOf(r.product),
       });
     }
   }
@@ -93,14 +133,19 @@ export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
  * con el `lastUnitPrice` que muestra el overview de precios.
  */
 export const getLatestUnitPrices = cache(async (): Promise<
-  Map<string, { price: number; unit: UnitType }>
+  Map<string, LatestUnitPrice>
 > => {
   const householdId = await getActiveHouseholdId();
   if (!householdId) return new Map();
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("receipt_items")
-    .select("product_id, total_price, quantity, unit, purchased_at")
+    // El contenido del envase viaja con el precio: sin él, costear "300 ml de
+    // caldo" contra un precio por brick sería imposible. Hay DOS FKs a products,
+    // así que la relación va nombrada (PGRST201).
+    .select(
+      "product_id, total_price, quantity, unit, purchased_at, product:products!receipt_items_product_id_fkey(content_size, content_unit, content_is_estimate)",
+    )
     .eq("household_id", householdId)
     .not("product_id", "is", null)
     .not("total_price", "is", null)
@@ -108,12 +153,17 @@ export const getLatestUnitPrices = cache(async (): Promise<
     .order("purchased_at", { ascending: true });
   if (error) throw error;
 
-  const map = new Map<string, { price: number; unit: UnitType }>();
-  for (const r of data ?? []) {
+  const rows = (data ?? []) as unknown as LatestPriceRow[];
+  const map = new Map<string, LatestUnitPrice>();
+  for (const r of rows) {
     if (!r.product_id || r.total_price === null) continue;
     const qty = Number(r.quantity) || 1;
     // asc por fecha → la última compra pisa a las anteriores.
-    map.set(r.product_id, { price: Number(r.total_price) / qty, unit: r.unit });
+    map.set(r.product_id, {
+      price: Number(r.total_price) / qty,
+      unit: r.unit,
+      content: contentOf(r.product),
+    });
   }
   return map;
 });
@@ -209,7 +259,11 @@ export const getChainSavingsTips = cache(async (): Promise<
 
 export async function getProductPriceHistory(
   productId: string,
-): Promise<{ name: string; points: PricePoint[] } | null> {
+): Promise<{
+  name: string;
+  points: PricePoint[];
+  content: UnitContent;
+} | null> {
   const householdId = await getActiveHouseholdId();
   if (!householdId) return null;
   const supabase = createServerSupabaseClient();
@@ -217,7 +271,7 @@ export async function getProductPriceHistory(
   const [{ data: product }, { data, error }] = await Promise.all([
     supabase
       .from("products")
-      .select("name")
+      .select("name, content_size, content_unit, content_is_estimate")
       .eq("household_id", householdId)
       .eq("id", productId)
       .maybeSingle(),
@@ -245,5 +299,5 @@ export async function getProductPriceHistory(
     };
   });
 
-  return { name: product.name, points };
+  return { name: product.name, points, content: contentOf(product) };
 }
