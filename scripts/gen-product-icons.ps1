@@ -75,7 +75,9 @@ $concepts = @(
   @{k='cebolla'; f='onion'}, @{k='ajo'; f='garlic'}, @{k='pimiento'; f='bell-pepper'},
   @{k='guindilla'; f='hot-pepper'}, @{k='brocoli'; f='broccoli'}, @{k='maiz'; f='ear-of-corn'},
   @{k='pepino'; f='cucumber'}, @{k='lechuga'; f='leafy-green'}, @{k='berenjena'; f='eggplant'},
-  @{k='champinon'; f='mushroom'}, @{k='aceituna'; f='olive'}, @{k='jengibre'; f='ginger-root'},
+  # OJO: 'mushroom' a secas es el matamoscas rojo de lunares (Amanita muscaria),
+  # que no se compra en ningun sitio. El champinon comestible es 'brown-mushroom'.
+  @{k='champinon'; f='brown-mushroom'}, @{k='aceituna'; f='olive'}, @{k='jengibre'; f='ginger-root'},
   @{k='cacahuetes'; f='peanuts'}, @{k='alubias'; f='beans'},
   @{k='carne'; f='cut-of-meat'}, @{k='pollo'; f='poultry-leg'}, @{k='costilla'; f='meat-on-bone'},
   @{k='bacon'; f='bacon'}, @{k='perrito'; f='hot-dog'},
@@ -166,6 +168,13 @@ $concepts = @(
   # que quien salva el tema claro son las hojas verdes (#44911B, 3.95:1). Sin hojas
   # este icono no cumple la regla de color.
   @{k='coliflor'; f='coliflor'; p='local'}
+  # NO intentes dibujar el mejillon (L16e). Se probaron 5 composiciones -- lente con
+  # carne central, dos valvas finas en V, valvas abiertas, gota con la carne anidada
+  # y un par de mejillones solapados -- y todas se leen como un OJO o como una
+  # diana: una concha con la carne dentro es inevitablemente ovalos anidados, que es
+  # el mismo fallo que tumbo la col de circulos concentricos. Esta resuelto mapeando
+  # los bivalvos a 'ostra' en guess.ts, sin slug propio. Mismo desenlace que la
+  # alcachofa: un dibujo mediocre es peor que no tener icono.
 )
 
 # Extrae el interior del <svg> y lo deja en UNA linea. La minificacion no es

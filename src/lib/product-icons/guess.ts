@@ -39,17 +39,23 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   "granny smith": "manzana-verde", "manzana golden": "manzana-verde",
   "manzanas golden": "manzana-verde",
   platano: "platano", banana: "platano", naranja: "naranja",
-  mandarina: "naranja", clementina: "naranja", limon: "limon", lima: "lima",
+  mandarina: "naranja", clementina: "naranja", pomelo: "naranja",
+  limon: "limon", lima: "lima",
   fresa: "fresa", freson: "fresa", uva: "uvas", sandia: "sandia", pina: "pina",
   pera: "pera", melocoton: "melocoton", nectarina: "melocoton",
-  albaricoque: "melocoton", cereza: "cerezas",
+  albaricoque: "melocoton", nispero: "melocoton", paraguayo: "melocoton",
+  cereza: "cerezas", picota: "cerezas",
   ciruela: "ciruela", melon: "melon", kiwi: "kiwi", mango: "mango", coco: "coco",
+  papaya: "mango", maracuya: "mango", caqui: "melocoton",
   arandano: "arandanos", frambuesa: "frambuesa", mora: "frambuesa",
+  grosella: "frambuesa", granada: "frambuesa",
+  higo: "uvas", datil: "castana", chirimoya: "pera", membrillo: "pera",
   aguacate: "aguacate", guacamole: "aguacate",
   // Verdura
   zanahoria: "zanahoria", tomate: "tomate", "tomate frito": "conserva",
   patata: "patata", "patatas fritas": "patatas-fritas", boniato: "boniato",
-  batata: "boniato", cebolla: "cebolla",
+  batata: "boniato", cebolla: "cebolla", cebolleta: "cebolla",
+  chalota: "cebolla",
   ajo: "ajo", puerro: "puerro", pimiento: "pimiento", guindilla: "guindilla",
   chile: "guindilla", brocoli: "brocoli", coliflor: "coliflor", col: "col",
   repollo: "col", lombarda: "col", maiz: "maiz",
@@ -60,29 +66,48 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   guisante: "guisantes", "judias verdes": "guisantes", pepino: "pepino",
   pepinillo: "pepino",
   calabacin: "calabacin", calabaza: "calabaza", lechuga: "lechuga",
-  canonigos: "lechuga", rucula: "lechuga",
+  canonigos: "lechuga", rucula: "lechuga", endivia: "lechuga",
+  escarola: "lechuga", berros: "lechuga", apio: "lechuga", hinojo: "lechuga",
   espinaca: "lechuga", acelga: "lechuga", esparrago: "esparragos",
   trigueros: "esparragos", berenjena: "berenjena", remolacha: "remolacha",
-  champinon: "champinon", seta: "champinon", aceituna: "aceituna",
+  nabo: "zanahoria", chirivia: "zanahoria", rabano: "zanahoria",
+  champinon: "champinon", seta: "champinon", portobello: "champinon",
+  shiitake: "champinon", boletus: "champinon",
+  aceituna: "aceituna", alcaparra: "aceituna", encurtido: "aceituna",
   jengibre: "jengibre",
   // Carne
   carne: "carne", ternera: "carne", cerdo: "carne", "carne picada": "carne",
   filete: "carne", solomillo: "carne", lomo: "carne", conejo: "carne",
+  albondiga: "carne", tofu: "carne", seitan: "carne",
   pollo: "pollo",
-  pavo: "pollo", pechuga: "pollo", costilla: "costilla", chuleta: "costilla",
+  pavo: "pollo", pechuga: "pollo", muslo: "pollo", alitas: "pollo",
+  costilla: "costilla", chuleta: "costilla",
   cordero: "costilla", bacon: "bacon", panceta: "bacon", salchicha: "perrito",
   chorizo: "perrito", embutido: "perrito", fuet: "perrito",
+  salchichon: "perrito", mortadela: "perrito", longaniza: "perrito",
+  butifarra: "perrito", morcilla: "perrito", sobrasada: "perrito",
+  chistorra: "perrito", lacon: "perrito",
   jamon: "jamon", paleta: "jamon", serrano: "jamon",
   // Pescado y marisco
   pescado: "pescado", salmon: "pescado", merluza: "pescado", atun: "pescado",
   sardina: "pescado", bacalao: "pescado", lubina: "pescado", dorada: "pescado",
-  boqueron: "pescado", gamba: "gamba", langostino: "gamba", marisco: "gamba",
-  cangrejo: "cangrejo", langosta: "langosta", calamar: "calamar",
-  sepia: "calamar", pulpo: "pulpo", mejillon: "ostra", almeja: "ostra",
-  ostra: "ostra", surimi: "surimi", "palitos de cangrejo": "surimi",
+  boqueron: "pescado", anchoa: "pescado", rape: "pescado", rodaballo: "pescado",
+  trucha: "pescado", caballa: "pescado", panga: "pescado", perca: "pescado",
+  gamba: "gamba", langostino: "gamba", marisco: "gamba", quisquilla: "gamba",
+  // "buey" a secas es carne; solo el buey DE MAR es marisco.
+  cangrejo: "cangrejo", necora: "cangrejo", "buey de mar": "cangrejo",
+  langosta: "langosta", bogavante: "langosta", cigala: "langosta",
+  calamar: "calamar", sepia: "calamar", chipiron: "calamar", pulpo: "pulpo",
+  // Todos los bivalvos comparten la concha de 'ostra'. El mejillón llegó a tener
+  // dibujo propio y se retiró: ver la nota del generador (siempre salía un ojo).
+  ostra: "ostra", mejillon: "ostra", berberecho: "ostra", almeja: "ostra",
+  navaja: "ostra", vieira: "ostra", zamburina: "ostra", percebe: "ostra",
+  surimi: "surimi", "palitos de cangrejo": "surimi",
   // Lácteos y huevos
-  leche: "leche", yogur: "yogur", yogurt: "yogur", nata: "leche",
-  batido: "leche", queso: "queso", huevo: "huevo", mantequilla: "mantequilla",
+  leche: "leche", yogur: "yogur", yogurt: "yogur", kefir: "yogur",
+  cuajada: "yogur", nata: "leche", batido: "leche",
+  queso: "queso", requeson: "queso", mascarpone: "queso", mozzarella: "queso",
+  huevo: "huevo", mantequilla: "mantequilla",
   margarina: "mantequilla", helado: "helado",
   // Panadería y cereales
   pan: "pan", "pan de molde": "pan", "pan rallado": "conserva", hogaza: "pan",
@@ -96,15 +121,26 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   "tortilla de maiz": "pan-plano", "tortillas de maiz": "pan-plano",
   arroz: "arroz", pasta: "pasta", macarron: "pasta", espagueti: "pasta",
   fideo: "pasta", tallarin: "pasta", harina: "harina",
+  cuscus: "arroz", quinoa: "arroz", bulgur: "arroz",
   cereales: "cereales", cereal: "cereales", muesli: "cereales",
   granola: "cereales", avena: "cereales",
+  tostada: "pan", biscote: "pan", picos: "pan", colines: "pan",
   // Despensa
   conserva: "conserva", lata: "conserva", garbanzo: "alubias", lenteja: "alubias",
   alubia: "alubias", judia: "alubias", legumbre: "alubias", tarro: "tarro",
   mermelada: "tarro", salsa: "tarro", mayonesa: "tarro", ketchup: "tarro",
-  miel: "miel", sal: "sal", azucar: "harina", vinagre: "tarro",
+  mostaza: "tarro", tabasco: "tarro", hummus: "tarro", pate: "tarro",
+  foie: "tarro", soja: "tarro", pisto: "conserva",
+  miel: "miel", sal: "sal", azucar: "harina", levadura: "harina",
+  gelatina: "harina", vinagre: "tarro",
   aceite: "aceite", cafe: "cafe", cacao: "chocolate", colacao: "chocolate",
-  caldo: "sopa", "frutos secos": "cacahuetes", cacahuete: "cacahuetes",
+  // Nada de "cocido" a secas: es un adjetivo ("pulpo cocido", "jamón cocido") y le
+  // ganaba por longitud al producto de verdad.
+  caldo: "sopa", sopa: "sopa", potaje: "sopa", "cocido madrileno": "sopa",
+  // "crema" sola es un guiso (de calabacín, de verduras). Las excepciones dulces
+  // y la cosmética ganan por longitud, pero la catalana necesita regla propia.
+  crema: "sopa", "crema catalana": "flan",
+  "frutos secos": "cacahuetes", cacahuete: "cacahuetes",
   nuez: "cacahuetes", almendra: "cacahuetes", avellana: "cacahuetes",
   pistacho: "cacahuetes",
   // Dulces
@@ -114,7 +150,13 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   flan: "flan", natilla: "flan", palomita: "palomitas",
   // Bebidas
   te: "tetera", infusion: "tetera", mate: "mate", refresco: "refresco",
-  cola: "refresco", agua: "agua", vino: "vino",
+  cola: "refresco", tonica: "refresco", bitter: "refresco",
+  isotonica: "refresco", "bebida energetica": "refresco", kombucha: "refresco",
+  agua: "agua", vino: "vino",
+  // El vaso de whisky de Fluent vale para cualquier licor.
+  whisky: "vaso", ron: "vaso", ginebra: "vaso", vodka: "vaso",
+  vermut: "vaso", licor: "vaso", brandy: "vaso", orujo: "vaso",
+  horchata: "brik",
   // El brik (🧃) ES un zumo, así que lo que viene en cartón va aquí y no al vaso
   // de refresco. Ojo: "zumo de naranja" cae antes en "naranja", que es más largo.
   zumo: "brik", gazpacho: "brik", "bebida vegetal": "brik",
@@ -137,16 +179,26 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   suavizante: "bote-spray", lavavajillas: "bote-spray", lejia: "bote-spray",
   limpiador: "bote-spray", limpiacristales: "bote-spray", amoniaco: "bote-spray",
   friegasuelos: "bote-spray", spray: "bote-spray", ambientador: "bote-spray",
+  quitamanchas: "bote-spray", antical: "bote-spray", insecticida: "bote-spray",
+  desinfectante: "bote-spray", abrillantador: "bote-spray",
   jabon: "jabon", gel: "jabon", champu: "bote-spray", acondicionador: "bote-spray",
   desodorante: "bote-spray", colonia: "bote-spray", perfume: "bote-spray",
+  // "crema" a secas NO vale: chocaría con crema de leche, crema catalana o crema
+  // de cacao. Solo la cosmética, que siempre lleva apellido.
+  hidratante: "bote-spray", "protector solar": "bote-spray",
+  "crema de manos": "bote-spray", "crema corporal": "bote-spray",
+  "espuma de afeitar": "bote-spray", "after shave": "bote-spray",
   "papel higienico": "papel", "papel de cocina": "papel", papel: "papel",
   servilleta: "papel", "bolsa de basura": "papelera", basura: "papelera",
   fregona: "escoba", escoba: "escoba", bayeta: "esponja",
-  "pasta de dientes": "diente", dentifrico: "diente",
+  toallita: "papel", tampon: "papel",
+  "pasta de dientes": "diente", dentifrico: "diente", enjuague: "diente",
   "cepillo de dientes": "cepillo-dientes", cuchilla: "maquinilla",
   maquinilla: "maquinilla", "maquinilla de afeitar": "maquinilla",
+  "navaja de afeitar": "maquinilla",
   tijeras: "tijeras", desatascador: "desatascador", compresa: "papel",
   panuelo: "papel", "papel aluminio": "bolsas", "papel film": "bolsas",
+  film: "bolsas", "papel de horno": "bolsas",
   "bolsa de congelacion": "bolsas", "bolsa de plastico": "bolsas",
   pintalabios: "pintalabios", maquillaje: "pintalabios", labial: "pintalabios",
   // Salud y farmacia
@@ -154,11 +206,15 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   ibuprofeno: "pastilla", paracetamol: "pastilla", aspirina: "pastilla",
   vitamina: "pastilla", analgesico: "pastilla", tirita: "tirita",
   aposito: "tirita", venda: "tirita", botiquin: "tirita", gasa: "tirita",
+  alcohol: "tirita", "agua oxigenada": "tirita", algodon: "tirita",
+  bastoncillo: "tirita", mascarilla: "tirita", betadine: "tirita",
   jeringa: "jeringa", jeringuilla: "jeringa", termometro: "termometro",
   // Cocina / despensa extra
   sarten: "sarten", especias: "hierbas", especia: "hierbas", oregano: "hierbas",
   pimienta: "hierbas", comino: "hierbas", laurel: "hierbas", perejil: "hierbas",
-  albahaca: "hierbas", condimento: "hierbas", castana: "castana",
+  albahaca: "hierbas", condimento: "hierbas", curry: "hierbas",
+  pimenton: "hierbas", azafran: "hierbas", canela: "hierbas",
+  romero: "hierbas", tomillo: "hierbas", castana: "castana",
   tetrabrik: "brik", "tetra brik": "brik",
   // Bebé y mascotas
   biberon: "biberon", papilla: "biberon", panal: "biberon", pienso: "huellas",
@@ -172,13 +228,48 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   tornillo: "martillo", destornillador: "martillo", bricolaje: "martillo",
 };
 
+/**
+ * Conectores que se tiran antes de emparejar. Las reglas de varias palabras eran
+ * literales, así que un "de" de más las rompía: quien escribía "papel de aluminio"
+ * no encontraba la regla `papel aluminio` y acababa con el rollo de papel
+ * higiénico, y "pasta dientes" (sin el "de") caía en los espaguetis, justo el caso
+ * que la regla de «gana la más larga» existe para evitar. Se aplica IGUAL al
+ * nombre y a las claves, así que da lo mismo cómo se escriba.
+ *
+ * OJO: esto NO toca `normalizeName`, que alimenta el
+ * unique(household_id, normalized_name) de la BBDD. Es solo para emparejar.
+ */
+const CONNECTORS = /(^|\s)(?:de|del|la|el|los|las|al|a|en|con|para|y)(?=\s)/g;
+
+function forMatching(normalized: string): string {
+  return normalized.replace(CONNECTORS, "$1").replace(/\s+/g, " ").trim();
+}
+
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Construye el patrón de una clave ya sin conectores. Las palabras que NO son la
+ * última toleran el plural (`bolsa(s) congelacion`), y a todas se les quita la `s`
+ * final: como el patrón no ancla el final, la última empareja por prefijo, que es
+ * lo que ya hacía que "pepino" cubriera "pepinos".
+ */
+function keywordPattern(kw: string): RegExp {
+  const words = kw.split(" ");
+  const body = words
+    .map((w, i) => {
+      const stem = escapeRe(w.replace(/s$/, ""));
+      return i === words.length - 1 ? stem : stem + "s?";
+    })
+    .join(" ");
+  return new RegExp("(^|[^a-z])" + body);
+}
+
 const RULES: Array<[RegExp, string]> = Object.entries(KEYWORD_TO_SLUG)
   .filter(([, slug]) => isKnownIcon(slug))
+  .map(([kw, slug]): [string, string] => [forMatching(normalizeName(kw)), slug])
+  // Gana la clave MÁS LARGA ya sin conectores, que es la que de verdad se compara.
   .sort((a, b) => b[0].length - a[0].length)
-  .map(([kw, slug]) => [
-    new RegExp("(^|[^a-z])" + kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
-    slug,
-  ]);
+  .map(([kw, slug]) => [keywordPattern(kw), slug]);
 
 /**
  * Adivina el slug de icono a partir del nombre del producto, o null si no hay
@@ -186,7 +277,7 @@ const RULES: Array<[RegExp, string]> = Object.entries(KEYWORD_TO_SLUG)
  */
 export function guessProductIcon(name: string | null | undefined): string | null {
   if (!name) return null;
-  const n = normalizeName(name);
+  const n = forMatching(normalizeName(name));
   if (!n) return null;
   for (const [re, slug] of RULES) {
     if (re.test(n)) return slug;

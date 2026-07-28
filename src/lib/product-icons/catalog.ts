@@ -41,7 +41,10 @@ export const ICON_SECTIONS: IconSection[] = [
   },
   {
     title: "Pescado y marisco",
-    slugs: ["pescado", "gamba", "cangrejo", "langosta", "calamar", "pulpo", "ostra", "surimi"],
+    slugs: [
+      "pescado", "gamba", "cangrejo", "langosta", "calamar", "pulpo",
+      "ostra", "surimi",
+    ],
   },
   {
     title: "Lácteos y huevos",
@@ -181,7 +184,7 @@ export const ICON_KEYWORDS: Record<string, string> = {
   arroz: "arroz risotto",
   pasta: "macarrones espaguetis fideos tallarines",
   conserva: "lata bote atun tomate frito maiz",
-  tarro: "bote mermelada salsa mayonesa",
+  tarro: "bote mermelada salsa mayonesa mostaza ketchup pate hummus encurtidos",
   cafe: "te infusion cafe",
   refresco: "cola bebida vaso",
   vino: "tinto blanco copa",
@@ -198,7 +201,7 @@ export const ICON_KEYWORDS: Record<string, string> = {
   chocolate: "cacao colacao tableta bombones",
   paquete: "otros generico caja producto",
   sarten: "cocina cacerola olla freir",
-  hierbas: "especias especia oregano pimienta comino laurel perejil albahaca romero sal condimento",
+  hierbas: "especias especia oregano pimienta comino laurel perejil albahaca romero sal condimento curry pimenton azafran canela",
   castana: "castanas frutos secos nuez",
   brik: "tetrabrik carton zumo caldo leche",
   papelera: "basura residuos bolsa cubo",
@@ -240,6 +243,9 @@ export const ICON_KEYWORDS: Record<string, string> = {
   surimi: "palitos cangrejo surimi",
   empanadilla: "empanadillas empanada gyoza",
   cereales: "cereal muesli avena granola desayuno bol",
+  ostra: "ostras mejillones berberechos almejas navajas vieiras percebes concha bivalvo",
+  champinon: "champinones setas seta portobello shiitake",
+  vaso: "whisky ron ginebra vodka vermut licor copa",
 };
 
 /** ¿Existe un icono con este slug en el registro? Fuente de verdad para validar. */
