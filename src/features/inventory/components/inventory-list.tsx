@@ -27,6 +27,7 @@ import {
 export function InventoryList({
   entries,
   categories,
+  householdChains,
   onListProductIds,
   pinnedProductIds,
   initialQuery,
@@ -34,6 +35,8 @@ export function InventoryList({
 }: {
   entries: InventoryEntry[];
   categories: Category[];
+  /** Tiendas habituales del hogar: ordenan el selector de tienda preferida. */
+  householdChains: string[];
   onListProductIds: string[];
   pinnedProductIds: string[];
   initialQuery: string;
@@ -209,6 +212,7 @@ export function InventoryList({
                     key={entry.id}
                     entry={entry}
                     categories={categories}
+                    householdChains={householdChains}
                     onList={onList.has(entry.productId)}
                     pinned
                   />
@@ -230,6 +234,7 @@ export function InventoryList({
                     key={entry.id}
                     entry={entry}
                     categories={categories}
+                    householdChains={householdChains}
                     onList={onList.has(entry.productId)}
                   />
                 ))}

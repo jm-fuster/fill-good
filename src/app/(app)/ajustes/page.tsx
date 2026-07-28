@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
-import { Home, Info, ListOrdered, Palette } from "lucide-react";
+import { Home, Info, ListOrdered, Palette, Store } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
@@ -17,10 +17,23 @@ import {
 } from "@/features/settings/components/settings-list";
 import {
   getCurrentHousehold,
+  getHouseholdChains,
   getHouseholdMembers,
+  type HouseholdChains,
 } from "@/features/household/queries";
 
 export const metadata: Metadata = { title: "Ajustes" };
+
+/**
+ * Estado de "Tus supermercados" en una palabra. Deducidas de los tickets se
+ * anuncian como tal: enseñar "2 tiendas" cuando el hogar no ha elegido nada
+ * haría creer que ya lo configuró.
+ */
+function storeChainsValue({ chains, source }: HouseholdChains): string {
+  if (chains.length === 0) return "Sin definir";
+  if (source === "receipts") return "Según tus tickets";
+  return chains.length === 1 ? "1 tienda" : `${chains.length} tiendas`;
+}
 
 /**
  * Índice de Ajustes: lista escaneable de grupos, con lo denso en subpáginas
@@ -33,7 +46,12 @@ export default async function AjustesPage() {
     getCurrentHousehold(),
   ]);
   const email = user?.primaryEmailAddress?.emailAddress;
-  const members = household ? await getHouseholdMembers(household.id) : [];
+  const [members, storeChains] = household
+    ? await Promise.all([
+        getHouseholdMembers(household.id),
+        getHouseholdChains(),
+      ])
+    : [[], { chains: [], source: "manual" as const }];
   // Mismo orden de preferencia que /perfil (el nombre del hogar manda): son la
   // misma persona y verse con dos nombres según la pantalla resulta inquietante.
   const displayName =
@@ -76,6 +94,13 @@ export default async function AjustesPage() {
               }
             />
             <BudgetRow budget={household.monthlyBudget} />
+            <SettingsLinkRow
+              href="/ajustes/tiendas"
+              icon={Store}
+              label="Tus supermercados"
+              hint="Dónde soléis comprar"
+              value={storeChainsValue(storeChains)}
+            />
             <SettingsLinkRow
               href="/ajustes/orden-tienda"
               icon={ListOrdered}

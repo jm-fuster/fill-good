@@ -112,6 +112,103 @@ export const getActiveHouseholdId = cache(async (): Promise<string | null> => {
   return (await getCurrentHousehold())?.id ?? null;
 });
 
+/**
+ * Cuántos tickets recientes se miran para deducir dónde compra el hogar. Cota de
+ * coste (la consulta entra en el render de /inventario y en el escaneo de un
+ * ticket) y de frescura: si el hogar se mudó de barrio hace 300 tickets, esas
+ * tiendas ya no son las suyas.
+ */
+const RECEIPTS_FOR_CHAIN_HINT = 200;
+
+/**
+ * Cadenas que aparecen en los tickets recientes del hogar, de la más frecuente a
+ * la menos. Se ignora `"otro"` (no identifica una tienda) igual que en la
+ * inferencia por producto de `prices/infer-chain.ts`.
+ *
+ * Consulta `receipts` (una fila por ticket) y no `receipt_items`: es la tabla
+ * pequeña y aquí no hacen falta las líneas.
+ *
+ * A diferencia de `infer-chain.ts` NO exige un mínimo de compras: allí una mala
+ * inferencia cambia el consejo de ahorro de un producto, y aquí lo único que
+ * está en juego es el orden de un selector y una pista para la IA. Con un solo
+ * ticket de una cadena ya merece salir primero.
+ */
+export async function getChainsSeenInReceipts(
+  householdId: string,
+): Promise<string[]> {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("receipts")
+    .select("store_chain")
+    .eq("household_id", householdId)
+    .not("store_chain", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(RECEIPTS_FOR_CHAIN_HINT);
+  if (error) throw error;
+
+  const counts = new Map<string, number>();
+  for (const r of data ?? []) {
+    const chain = r.store_chain;
+    if (!chain || chain === "otro") continue;
+    counts.set(chain, (counts.get(chain) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "es"))
+    .map(([chain]) => chain);
+}
+
+/**
+ * Supermercados que el hogar eligió A MANO (L15 f4), o vacío si no configuró
+ * ninguno. Se lee aparte y no dentro de `getUserHouseholds` a propósito:
+ *
+ * 1. Esa consulta está en la ruta caliente de TODAS las páginas y lanza en
+ *    error, así que pedirle una columna nueva rompería la app entera mientras la
+ *    migración no esté aplicada. Aquí el error se traga: supabase-js devuelve
+ *    `{ data: null, error }` en vez de lanzar, así que sin columna el hogar
+ *    queda "sin configurar" y las tiendas se deducen de los tickets.
+ * 2. Solo hace falta en /ajustes y donde se ordenan las cadenas, no en cada
+ *    request.
+ */
+export const getConfiguredChains = cache(
+  async (householdId: string): Promise<string[]> => {
+    const supabase = createServerSupabaseClient();
+    const { data } = await supabase
+      .from("households")
+      .select("preferred_chains")
+      .eq("id", householdId)
+      .maybeSingle();
+    return data?.preferred_chains ?? [];
+  },
+);
+
+/** Tiendas habituales efectivas del hogar y de dónde salen. */
+export type HouseholdChains = {
+  /** Claves de cadena (chains.ts). Vacío = ni configuradas ni deducibles. */
+  chains: string[];
+  /** `manual` = las eligió el hogar · `receipts` = deducidas de sus tickets. */
+  source: "manual" | "receipts";
+};
+
+/**
+ * Supermercados habituales del hogar (L15 f4). Lo CONFIGURADO manda; si no hay
+ * nada configurado, se deduce de los tickets, así que la ventaja (ordenar el
+ * selector de tienda preferida, orientar a la IA al leer un ticket) llega sin
+ * pedirle al usuario que configure nada.
+ *
+ * `cache()` porque el mismo request la pide más de una vez (página + prompt).
+ */
+export const getHouseholdChains = cache(async (): Promise<HouseholdChains> => {
+  const household = await getCurrentHousehold();
+  if (!household) return { chains: [], source: "manual" };
+
+  const configured = await getConfiguredChains(household.id);
+  if (configured.length > 0) return { chains: configured, source: "manual" };
+  return {
+    chains: await getChainsSeenInReceipts(household.id),
+    source: "receipts",
+  };
+});
+
 /** Miembros de un hogar, ordenados por antigüedad. */
 export async function getHouseholdMembers(
   householdId: string,

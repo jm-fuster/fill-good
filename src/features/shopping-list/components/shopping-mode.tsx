@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/responsive-modal";
 import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
-import { CHAIN_OPTIONS, chainLabel } from "@/features/prices/chains";
+import { chainLabel, orderChains } from "@/features/prices/chains";
 import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
 import { formatQuantity, isCountableOrUnset } from "@/lib/units";
@@ -36,18 +36,6 @@ import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import { QuantityStepper } from "./quantity-stepper";
 import { suggestionReasonLabel } from "../suggestion-reason";
 import { useCheckout } from "./use-checkout";
-
-/** Ranking de cadenas conocidas para ordenar los chips (desconocidas al final). */
-const CHAIN_RANK = new Map(CHAIN_OPTIONS.map((c, i) => [c.value, i]));
-
-/** Ordena cadenas por el orden canónico de chains.ts; desconocidas alfabéticas. */
-function orderChains(chains: string[]): string[] {
-  return [...chains].sort(
-    (a, b) =>
-      (CHAIN_RANK.get(a) ?? Infinity) - (CHAIN_RANK.get(b) ?? Infinity) ||
-      chainLabel(a).localeCompare(chainLabel(b), "es"),
-  );
-}
 
 function signatureOf(items: ShoppingModeItem[]) {
   return items

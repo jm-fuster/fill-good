@@ -19,11 +19,14 @@ import { EditItemDrawer } from "./edit-item-drawer";
 export function InventoryItemCard({
   entry,
   categories,
+  householdChains = [],
   onList = false,
   pinned = false,
 }: {
   entry: InventoryEntry;
   categories: Category[];
+  /** Tiendas habituales del hogar: ordenan el selector de tienda preferida. */
+  householdChains?: string[];
   /** El producto ya está en la lista de la compra activa. */
   onList?: boolean;
   /** El producto está en "Mis habituales" del usuario actual (E5). */
@@ -216,6 +219,7 @@ export function InventoryItemCard({
       <EditItemDrawer
         entry={{ ...entry, quantity: qty }}
         categories={categories}
+        householdChains={householdChains}
         open={editing}
         onOpenChange={setEditing}
         pinned={pinned}

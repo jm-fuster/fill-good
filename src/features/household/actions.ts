@@ -15,6 +15,7 @@ import {
   createHouseholdSchema,
   joinHouseholdSchema,
   renameHouseholdSchema,
+  storeChainsSchema,
 } from "./schemas";
 
 export type ActionState = { error?: string };
@@ -158,6 +159,39 @@ export async function updateMonthlyBudgetAction(
   revalidatePath("/ajustes");
   revalidatePath("/precios");
   revalidatePath("/perfil");
+  return { ok: true };
+}
+
+export type ChainsState = { error?: string; ok?: boolean };
+
+/**
+ * Supermercados habituales del hogar (L15 f4). Lista vacía = borrar la
+ * configuración manual, con lo que la app vuelve a deducirlas de los tickets.
+ * UPDATE directo como el objetivo de gasto: `preferred_chains` es la otra
+ * columna de `households` con grant de escritura para los miembros.
+ */
+export async function updatePreferredChainsAction(
+  chains: string[],
+): Promise<ChainsState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const parsed = storeChainsSchema.safeParse({ chains });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase
+    .from("households")
+    .update({ preferred_chains: parsed.data.chains })
+    .eq("id", household.id);
+  if (error) return { error: "No se pudieron guardar tus tiendas." };
+
+  revalidatePath("/ajustes");
+  revalidatePath("/ajustes/tiendas");
+  // El selector "Tienda preferida" del inventario se reordena con esto.
+  revalidatePath("/inventario");
   return { ok: true };
 }
 

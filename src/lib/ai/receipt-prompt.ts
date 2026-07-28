@@ -46,9 +46,30 @@ en esta lista.
 ${list}`;
 }
 
-/** Prompt de extracción con el catálogo del hogar embebido (para E7). */
+/**
+ * Tiendas habituales del hogar (L15 f4) para afinar `store_chain`: el rótulo
+ * impreso se abrevia, se corta o es el de una franquicia, y saber dónde compra
+ * este hogar deshace muchas de esas dudas. Es una PISTA, nunca una regla: forzar
+ * la cadena equivocada contamina el historial de precios, que es peor que "otro".
+ *
+ * Recibe las etiquetas ya resueltas (no importa `features/prices/chains`) para
+ * que `lib/` no dependa de una feature.
+ */
+function chainsSection(chains: { key: string; label: string }[]): string {
+  if (chains.length === 0) return "";
+  const list = chains.map((c) => `${c.label} (clave: ${c.key})`).join(", ");
+  return `
+
+Este hogar suele comprar en: ${list}. Si el ticket es de una de ellas, usa su
+clave en store_chain aunque el nombre impreso esté abreviado o cortado. Si es
+claramente de otra cadena conocida, usa la suya; y si no reconoces la tienda,
+"otro". No fuerces ninguna de las de esta lista.`;
+}
+
+/** Prompt de extracción con el catálogo y las tiendas del hogar (E7 + L15 f4). */
 export function buildReceiptPrompt(
   catalog: { id: string; name: string }[] = [],
+  chains: { key: string; label: string }[] = [],
 ): string {
-  return `${BASE_PROMPT}${catalogSection(catalog)}`;
+  return `${BASE_PROMPT}${chainsSection(chains)}${catalogSection(catalog)}`;
 }

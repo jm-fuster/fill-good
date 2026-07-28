@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { CHAIN_OPTIONS, orderChains } from "@/features/prices/chains";
+
 const householdName = z
   .string()
   .trim()
@@ -20,6 +22,24 @@ export const joinHouseholdSchema = z.object({
     .min(6, "El código no parece válido.")
     .max(12, "El código no parece válido."),
   displayName: z.string().trim().max(80).optional(),
+});
+
+const KNOWN_CHAINS = new Set(CHAIN_OPTIONS.map((c) => c.value));
+
+/**
+ * Supermercados habituales del hogar (L15 f4). Solo claves del vocabulario
+ * conocido y sin repetidos: el valor viaja al prompt de tickets y a los
+ * selectores, así que no admitimos texto libre. Se guarda en el orden canónico
+ * de `chains.ts` (no en el de los clics) para no insinuar una prioridad que la
+ * app no usa. Lista vacía es válida y significa «vuelve a deducirlas».
+ */
+export const storeChainsSchema = z.object({
+  chains: z
+    .array(z.string())
+    .max(20, "Demasiadas tiendas.")
+    .transform((list) =>
+      orderChains([...new Set(list)].filter((c) => KNOWN_CHAINS.has(c))),
+    ),
 });
 
 export type CreateHouseholdInput = z.infer<typeof createHouseholdSchema>;

@@ -22,7 +22,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -61,12 +63,15 @@ const NO_CHAIN = "__none__";
 export function EditItemDrawer({
   entry,
   categories,
+  householdChains = [],
   open,
   onOpenChange,
   pinned = false,
 }: {
   entry: InventoryEntry;
   categories: Category[];
+  /** Tiendas habituales del hogar (L15 f4): salen primero en el selector. */
+  householdChains?: string[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** El producto está en "Mis habituales" del usuario actual (E5). */
@@ -232,6 +237,22 @@ export function EditItemDrawer({
   // Icono de la categoría seleccionada (para la vista previa del automático).
   const selectedCategoryIcon =
     categories.find((c) => c.id === categoryId)?.icon ?? entry.categoryIcon;
+
+  // Tiendas del hogar primero (L15 f4): de ocho cadenas, las que este hogar no
+  // pisa nunca son ruido. Solo se agrupa si la separación aporta algo: sin
+  // tiendas habituales (o con todas marcadas) la lista plana se lee mejor.
+  const habitualChains = CHAIN_OPTIONS.filter((c) =>
+    householdChains.includes(c.value),
+  );
+  const otherChains = CHAIN_OPTIONS.filter(
+    (c) => !householdChains.includes(c.value),
+  );
+  const groupChains = habitualChains.length > 0 && otherChains.length > 0;
+  const chainItem = (c: { value: string; label: string }) => (
+    <SelectItem key={c.value} value={c.value}>
+      {c.label}
+    </SelectItem>
+  );
 
   // Tienda preferida (L15): controlada y resincronizada con el servidor.
   const [preferredChain, setPreferredChain] = useState(
@@ -401,11 +422,20 @@ export function EditItemDrawer({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NO_CHAIN}>Cualquier tienda</SelectItem>
-                {CHAIN_OPTIONS.map((c) => (
-                  <SelectItem key={c.value} value={c.value}>
-                    {c.label}
-                  </SelectItem>
-                ))}
+                {groupChains ? (
+                  <>
+                    <SelectGroup>
+                      <SelectLabel>Tus tiendas</SelectLabel>
+                      {habitualChains.map(chainItem)}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Otras</SelectLabel>
+                      {otherChains.map(chainItem)}
+                    </SelectGroup>
+                  </>
+                ) : (
+                  CHAIN_OPTIONS.map(chainItem)
+                )}
               </SelectContent>
             </Select>
             {entry.savings ? (

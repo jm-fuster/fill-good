@@ -17,6 +17,7 @@ import {
   getProducts,
   getStarterCatalog,
 } from "@/features/inventory/queries";
+import { getHouseholdChains } from "@/features/household/queries";
 import { getActiveListProductIds } from "@/features/shopping-list/queries";
 
 export const metadata: Metadata = { title: "Inventario" };
@@ -29,14 +30,21 @@ export default async function InventarioPage({
   const { q, estado } = await searchParams;
   const estadoParam = estado ?? null;
   const initialFilter = isStatusFilter(estadoParam) ? estadoParam : null;
-  const [entries, categories, products, onListProductIds, pinnedProductIds] =
-    await Promise.all([
-      getInventory(),
-      getCategories(),
-      getProducts(),
-      getActiveListProductIds(),
-      getPinnedProductIds(),
-    ]);
+  const [
+    entries,
+    categories,
+    products,
+    onListProductIds,
+    pinnedProductIds,
+    householdChains,
+  ] = await Promise.all([
+    getInventory(),
+    getCategories(),
+    getProducts(),
+    getActiveListProductIds(),
+    getPinnedProductIds(),
+    getHouseholdChains(),
+  ]);
   const productNames = products.map((p) => p.name);
   // El selector "¿Qué tienes ya en casa?" solo tiene sentido con el inventario
   // vacío; solo entonces consultamos el catálogo sembrado que aún no está en él.
@@ -96,6 +104,7 @@ export default async function InventarioPage({
         <InventoryList
           entries={entries}
           categories={categories}
+          householdChains={householdChains.chains}
           onListProductIds={[...onListProductIds]}
           pinnedProductIds={[...pinnedProductIds]}
           initialQuery={q ?? ""}

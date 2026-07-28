@@ -21,6 +21,7 @@ export type Database = {
           created_by: string;
           created_at: string;
           monthly_budget: number | null;
+          preferred_chains: string[];
         };
         Insert: {
           id?: string;
@@ -29,6 +30,7 @@ export type Database = {
           created_by: string;
           created_at?: string;
           monthly_budget?: number | null;
+          preferred_chains?: string[];
         };
         Update: {
           id?: string;
@@ -37,6 +39,7 @@ export type Database = {
           created_by?: string;
           created_at?: string;
           monthly_budget?: number | null;
+          preferred_chains?: string[];
         };
         Relationships: [];
       };

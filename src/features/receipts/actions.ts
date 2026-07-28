@@ -15,7 +15,11 @@ import { normalizeName } from "@/lib/normalize";
 import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
-import { getCurrentHousehold } from "@/features/household/queries";
+import {
+  getCurrentHousehold,
+  getHouseholdChains,
+} from "@/features/household/queries";
+import { chainLabel } from "@/features/prices/chains";
 import {
   computeSavingsForReceipt,
   refreshPriceInsights,
@@ -107,6 +111,14 @@ export async function scanReceiptAction(
   }));
   const catalogIds = new Set(promptCatalog.map((p) => p.id));
 
+  // Tiendas habituales del hogar (L15 f4): ayudan a normalizar store_chain
+  // cuando el rótulo impreso no coincide con el nombre de la cadena.
+  const { chains: householdChains } = await getHouseholdChains();
+  const promptChains = householdChains.map((key) => ({
+    key,
+    label: chainLabel(key),
+  }));
+
   // Extracción con IA (visión / documento). FilePart sirve tanto para imagen
   // como para PDF; el mediaType lo toma del propio archivo.
   let extraction;
@@ -119,7 +131,10 @@ export async function scanReceiptAction(
         {
           role: "user",
           content: [
-            { type: "text", text: buildReceiptPrompt(promptCatalog) },
+            {
+              type: "text",
+              text: buildReceiptPrompt(promptCatalog, promptChains),
+            },
             { type: "file", data: bytes, mediaType: file.type },
           ],
         },
