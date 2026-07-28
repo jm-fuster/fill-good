@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   Check,
   ChevronDown,
+  ListOrdered,
   Plus,
   ShoppingCart,
   Sparkles,
@@ -19,11 +20,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   ResponsiveModal,
   ResponsiveModalContent,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
 import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
+import { StoreOrderEditor } from "@/features/categories/components/store-order-editor";
+import type { StoreCategory } from "@/features/categories/queries";
 import { chainLabel, orderChains } from "@/features/prices/chains";
 import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
@@ -37,9 +42,18 @@ import { QuantityStepper } from "./quantity-stepper";
 import { suggestionReasonLabel } from "../suggestion-reason";
 import { useCheckout } from "./use-checkout";
 
+/**
+ * Firma de la lista para detectar datos nuevos del servidor. `categorySort` va
+ * dentro a propósito: reordenar los pasillos desde aquí no cambia ningún ítem,
+ * así que sin él la firma quedaría igual y la lista seguiría agrupada con el
+ * orden viejo hasta recargar.
+ */
 function signatureOf(items: ShoppingModeItem[]) {
   return items
-    .map((i) => `${i.id}:${i.isChecked}:${i.quantity}:${i.name}:${i.lineCost}`)
+    .map(
+      (i) =>
+        `${i.id}:${i.isChecked}:${i.quantity}:${i.name}:${i.lineCost}:${i.categorySort}`,
+    )
     .join("|");
 }
 
@@ -51,17 +65,23 @@ export function ShoppingMode({
   initialItems,
   catalog,
   suggestions,
+  categories,
 }: {
   listId: string;
   initialItems: ShoppingModeItem[];
   catalog: CatalogProduct[];
   suggestions: Suggestion[];
+  /** Pasillos del hogar en su orden actual, para corregirlo sin salir de aquí. */
+  categories: StoreCategory[];
 }) {
   useRealtimeList(listId);
   const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [sig, setSig] = useState(signatureOf(initialItems));
   const [adding, setAdding] = useState(false);
+  // Orden de pasillos en un sheet: se corrige aquí, delante de la estantería,
+  // que es donde se nota que no cuadra (también sigue en Ajustes).
+  const [ordering, setOrdering] = useState(false);
   // Recomendaciones ya añadidas en esta sesión: se ocultan al instante (el
   // refresh del servidor las excluirá después al recalcular las sugerencias).
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
@@ -434,6 +454,19 @@ export function ShoppingMode({
                   </section>
                 );
               })}
+
+              {/* El orden de pasillos solo se descubre cuando estorba, y solo
+                  estorba con varios pasillos por delante. Con uno, no aparece. */}
+              {groups.length >= 2 ? (
+                <button
+                  type="button"
+                  onClick={() => setOrdering(true)}
+                  className="flex min-h-11 items-center gap-1.5 self-start rounded-lg px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+                >
+                  <ListOrdered className="size-4 shrink-0" aria-hidden />
+                  ¿No es el orden de tu tienda? Ordena los pasillos
+                </button>
+              ) : null}
             </div>
           )}
 
@@ -523,6 +556,33 @@ export function ShoppingMode({
           <div className="px-4 pb-2">
             <AddItemForm catalog={catalog} onAdd={addItem} />
           </div>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
+
+      {/* Orden de pasillos sin salir de la compra: al guardar, el servidor
+          revalida esta ruta y los grupos de detrás se reordenan solos. `noDrag`
+          porque las filas se arrastran (si no, arrastrarlas cerraría el sheet). */}
+      <ResponsiveModal open={ordering} onOpenChange={setOrdering}>
+        <ResponsiveModalContent
+          className="z-[70]"
+          overlayClassName="z-[70]"
+          noDrag
+        >
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle>Orden de los pasillos</ResponsiveModalTitle>
+            <ResponsiveModalDescription>
+              Colócalos como los recorres en tu tienda. Se guarda al mover y la
+              lista de detrás se reordena.
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
+          <div className="px-4">
+            <StoreOrderEditor categories={categories} />
+          </div>
+          <ResponsiveModalFooter>
+            <Button variant="outline" onClick={() => setOrdering(false)}>
+              Seguir comprando
+            </Button>
+          </ResponsiveModalFooter>
         </ResponsiveModalContent>
       </ResponsiveModal>
     </div>

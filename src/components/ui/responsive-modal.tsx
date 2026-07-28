@@ -164,6 +164,7 @@ function ResponsiveModalContent({
   overlayClassName,
   children,
   onOpenAutoFocus,
+  noDrag,
 }: {
   className?: string;
   /**
@@ -175,6 +176,14 @@ function ResponsiveModalContent({
   children?: React.ReactNode;
   /** Útil en confirmaciones destructivas para enfocar la acción segura. */
   onOpenAutoFocus?: (event: Event) => void;
+  /**
+   * Desactiva el arrastre del bottom sheet DENTRO del contenido. Necesario
+   * cuando el contenido tiene su propio arrastre vertical (reordenar filas): sin
+   * esto, arrastrar una fila arrastraría el sheet y lo cerraría. Se sigue
+   * pudiendo cerrar por el asa de arriba, el overlay y «atrás». Sin efecto en la
+   * rama de escritorio (el diálogo no se arrastra).
+   */
+  noDrag?: boolean;
 }) {
   const isDesktop = useIsDesktopModal();
 
@@ -201,7 +210,10 @@ function ResponsiveModalContent({
       overlayClassName={overlayClassName}
       onOpenAutoFocus={onOpenAutoFocus}
     >
-      <div className="mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto">
+      <div
+        data-vaul-no-drag={noDrag ? "" : undefined}
+        className="mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto"
+      >
         {children}
       </div>
     </DrawerContent>
