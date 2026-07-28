@@ -76,6 +76,21 @@ export const addMenuEntrySchema = z.object({
     .max(200, "Nombre demasiado largo."),
 });
 
+/**
+ * Hueco destino del «+» (semana + día + hueco), sin plato: lo usan generar el
+ * hueco con IA y añadir una receta del recetario.
+ */
+export const slotTargetSchema = z.object({
+  weekStart: isoDate,
+  date: isoDate,
+  slot: mealSlot,
+});
+
+/** Alta de una receta del recetario en un hueco del menú. */
+export const addRecipeToSlotSchema = slotTargetSchema.extend({
+  recipeId: z.string().uuid("Elige una receta de tu recetario."),
+});
+
 /** Edición de un plato. freeText vacío = quitar la entrada (misma semántica). */
 export const updateMenuEntrySchema = z.object({
   entryId: z.string().uuid(),

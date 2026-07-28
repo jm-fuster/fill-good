@@ -104,6 +104,8 @@ export default async function MenusPage({
           weekCost={weekCost}
           slots={slots}
           canCopyPrevious={canCopyPrevious}
+          // El mismo recetario que usan las reglas: sirve al buscador del «+».
+          recipes={recipes}
           householdName={household?.name ?? null}
           // Preferencias y reglas ya no son dos secciones al final de la página:
           // viajan con el botón de generar, que es lo que condicionan.

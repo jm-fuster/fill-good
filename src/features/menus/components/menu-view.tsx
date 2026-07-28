@@ -42,8 +42,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getWeekDays, shiftWeek } from "@/lib/dates";
 import { formatEuro } from "@/lib/money";
+import { normalizeName } from "@/lib/normalize";
 import { cn } from "@/lib/utils";
 import { saveGeneratedRecipeAction } from "@/features/recipes/actions";
+import type { SavedRecipe } from "@/features/recipes/queries";
 import { formatQuantity, UNIT_LABELS } from "@/lib/units";
 import type { MenuEntry } from "../queries";
 import type { SlotDef } from "../slots";
@@ -53,6 +55,7 @@ import type { TonightCard } from "../tonight";
 import {
   addMenuEntryAction,
   addRecipeToMenuAction,
+  addRecipeToSlotAction,
   computeCookedDeductionsAction,
   computeMissingForMenuAction,
   computeTonightAction,
@@ -61,6 +64,7 @@ import {
   copyPreviousWeekAction,
   duplicateMenuEntryAction,
   generateMenuAction,
+  generateSlotEntryAction,
   moveMenuEntryAction,
   removeMenuEntryAction,
   rerollMenuEntryAction,
@@ -94,6 +98,7 @@ export function MenuView({
   weekCost,
   slots,
   canCopyPrevious,
+  recipes,
   householdName,
   settingsSlot,
 }: {
@@ -103,6 +108,12 @@ export function MenuView({
   weekCost: { total: number; complete: boolean } | null;
   slots: SlotDef[];
   canCopyPrevious: boolean;
+  /**
+   * Recetario del hogar, para el buscador del «+» (elegir una receta guardada en
+   * vez de escribir texto libre). Lo carga ya la página para los ajustes del
+   * menú: no cuesta ninguna consulta extra.
+   */
+  recipes: SavedRecipe[];
   /** Solo para la cabecera de la hoja impresa (D5). */
   householdName: string | null;
   /**
@@ -504,6 +515,7 @@ export function MenuView({
         editing={editing}
         weekStart={weekStart}
         slots={slots}
+        recipes={recipes}
         onClose={() => setEditing(null)}
         onSaved={() => {
           setEditing(null);
@@ -598,6 +610,7 @@ function EditEntryDrawer({
   editing,
   weekStart,
   slots,
+  recipes,
   onClose,
   onSaved,
   onCookedChange,
@@ -606,6 +619,7 @@ function EditEntryDrawer({
   editing: Editing | null;
   weekStart: string;
   slots: SlotDef[];
+  recipes: SavedRecipe[];
   onClose: () => void;
   onSaved: () => void;
   onCookedChange: (cookedAt: string | null) => void;
@@ -619,6 +633,9 @@ function EditEntryDrawer({
   const [picking, startPicking] = useTransition();
   const [pinningPending, startPinning] = useTransition();
   const [rerolling, startReroll] = useTransition();
+  const [generatingSlot, startGenerateSlot] = useTransition();
+  const [addingRecipe, startAddRecipe] = useTransition();
+  const [addingRecipeId, setAddingRecipeId] = useState<string | null>(null);
 
   const isNew = editing?.entryId == null;
   const cooked = Boolean(editing?.cookedAt);
@@ -636,7 +653,28 @@ function EditEntryDrawer({
     setLastKey(key);
     setValue(editing?.current ?? "");
     setMode("edit");
+    setAddingRecipeId(null);
   }
+
+  /*
+    Sugerencias del recetario para el hueco vacío. Con algo escrito, filtra por
+    nombre (sin acentos ni mayúsculas, igual que la BD); sin nada escrito, propone
+    las recetas del hueco —el desayuno no lo declara ninguna receta (meal_types es
+    comida/cena), así que ahí, o si ninguna encaja, valen todas—.
+  */
+  const query = normalizeName(value);
+  const slotRecipes = recipes.filter((r) =>
+    editing ? r.mealTypes.includes(editing.slot) : false,
+  );
+  const suggestions = (
+    query
+      ? recipes.filter((r) => normalizeName(r.name).includes(query))
+      : slotRecipes.length > 0
+        ? slotRecipes
+        : recipes
+  ).slice(0, 6);
+  // Cualquier escritura en curso bloquea el resto de vías de añadir el plato.
+  const addBusy = pending || generatingSlot || addingRecipe;
 
   function save(text: string) {
     if (!editing) return;
@@ -653,6 +691,40 @@ function EditEntryDrawer({
           );
       if (r.error) toast.error(r.error);
       else onSaved();
+    });
+  }
+
+  /**
+   * Genera con IA el plato de este hueco (solo al añadir). Sin consentimiento de
+   * IA nos quedamos en el aviso por toast: abrir aquí el modal de consentimiento
+   * encadenaría dos ResponsiveModal y el segundo se cerraría solo. Es lo mismo
+   * que hace «Otra idea» en un plato ya puesto.
+   */
+  function generateSlot() {
+    if (!editing) return;
+    const { date, slot } = editing;
+    startGenerateSlot(async () => {
+      const r = await generateSlotEntryAction(weekStart, date, slot);
+      if (r.error) toast.error(r.error);
+      else {
+        toast.success("Plato generado");
+        onSaved();
+      }
+    });
+  }
+
+  /** Añade una receta del recetario al hueco, enlazada (no como texto libre). */
+  function addRecipe(recipeId: string) {
+    if (!editing) return;
+    const { date, slot } = editing;
+    setAddingRecipeId(recipeId);
+    startAddRecipe(async () => {
+      const r = await addRecipeToSlotAction(weekStart, date, slot, recipeId);
+      if (r.error) toast.error(r.error);
+      else {
+        toast.success("Receta añadida al menú");
+        onSaved();
+      }
     });
   }
 
@@ -772,7 +844,7 @@ function EditEntryDrawer({
               : mode === "duplicate"
                 ? "Elige dónde añadir una copia de este plato."
                 : isNew
-                  ? "Añade un plato a este hueco."
+                  ? "Genéralo con IA, elige una receta de tu recetario o escríbelo."
                   : "Edita o quita este plato."}
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
@@ -840,6 +912,23 @@ function EditEntryDrawer({
           }}
           className="flex flex-col gap-4 px-4"
         >
+          {/*
+            Hueco vacío: la IA rellena SOLO este hueco (1 plato, sin tocar el
+            resto de la semana). Es la vía rápida; debajo quedan las manuales.
+          */}
+          {isNew ? (
+            <Button
+              type="button"
+              size="lg"
+              onClick={generateSlot}
+              loading={generatingSlot}
+              disabled={addBusy && !generatingSlot}
+            >
+              <Sparkles aria-hidden />
+              {generatingSlot ? "Generando plato…" : "Generar este hueco con IA"}
+            </Button>
+          ) : null}
+
           <div className="flex flex-col gap-2">
             <Label htmlFor="menu-dish">Plato</Label>
             <Input
@@ -849,6 +938,69 @@ function EditEntryDrawer({
               autoComplete="off"
               placeholder="p. ej. Lentejas con verduras"
             />
+            {/*
+              Al añadir, lo que escribes busca en tu recetario: elegir una receta
+              deja la entrada ENLAZADA (cuenta para el coste de la semana, para
+              "lo que falte" y para descontar del inventario al cocinarla), algo
+              que el texto libre no puede hacer.
+            */}
+            {isNew ? (
+              <>
+                {suggestions.length > 0 ? (
+                  <ul className="flex max-h-56 flex-col gap-1.5 overflow-y-auto">
+                    {suggestions.map((r) => (
+                      <li key={r.id}>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => addRecipe(r.id)}
+                          loading={addingRecipe && addingRecipeId === r.id}
+                          disabled={addBusy && addingRecipeId !== r.id}
+                          className="w-full justify-start"
+                        >
+                          <ChefHat aria-hidden />
+                          <span className="min-w-0 flex-1 truncate text-left">
+                            {r.name}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            receta
+                          </span>
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {value.trim() ? (
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    loading={pending}
+                    disabled={addBusy && !pending}
+                    className="justify-start"
+                  >
+                    <Plus aria-hidden />
+                    {/*
+                      El verbo y la pista van FUERA del truncado: con todo en un
+                      solo span, un plato largo se comía el "como texto libre" y
+                      la fila dejaba de decir qué hacía.
+                    */}
+                    {pending ? (
+                      <span className="flex-1 text-left">Añadiendo…</span>
+                    ) : (
+                      <>
+                        <span className="shrink-0">Añadir</span>
+                        <span className="min-w-0 flex-1 truncate text-left">
+                          «{value.trim()}»
+                        </span>
+                        <span className="shrink-0 text-xs text-muted-foreground">
+                          texto libre
+                        </span>
+                      </>
+                    )}
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
           </div>
           {/*
             Acciones secundarias del plato en rejilla de iconos con etiqueta:
@@ -899,18 +1051,21 @@ function EditEntryDrawer({
           ) : null}
 
           <ResponsiveModalFooter className="gap-2 px-0">
-            <Button
-              type="submit"
-              size="lg"
-              disabled={!value.trim()}
-              loading={pending}
-            >
-              {pending
-                ? "Guardando…"
-                : isNew
-                  ? "Añadir plato"
-                  : "Guardar"}
-            </Button>
+            {/*
+              Al añadir no hay «Guardar» en el pie: las tres vías (IA, receta y
+              texto libre) están arriba, cada una a un toque, y un primario aquí
+              solo repetiría la de texto libre.
+            */}
+            {!isNew ? (
+              <Button
+                type="submit"
+                size="lg"
+                disabled={!value.trim()}
+                loading={pending}
+              >
+                {pending ? "Guardando…" : "Guardar"}
+              </Button>
+            ) : null}
             {canMarkCooked ? (
               <Button
                 type="button"

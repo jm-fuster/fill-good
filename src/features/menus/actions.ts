@@ -59,8 +59,10 @@ import {
 } from "./rules";
 import {
   addMenuEntrySchema,
+  addRecipeToSlotSchema,
   menuPrefsInputSchema,
   menuRuleInputSchema,
+  slotTargetSchema,
   updateMenuEntrySchema,
   type MenuPrefsInput,
   type MenuRuleInput,
@@ -830,44 +832,46 @@ export async function toggleEntryPinnedAction(
 }
 
 /**
- * "Otra idea" por hueco (N2): pide UN plato alternativo a la IA para una entrada
- * concreta y la reemplaza en su misma posición (source = 'ai'), sin tocar el
- * resto de la semana. Es 1 llamada pequeña a Gemini (aceptable en free tier).
- * Tras reemplazar, limpia la receta efímera que pudiera quedar huérfana.
+ * Pide UN plato a la IA para un hueco concreto y lo materializa, devolviendo el
+ * `recipe_id` con el que enlazar la entrada: la receta del recetario que el
+ * modelo haya elegido o una receta efímera nueva (`is_saved = false`) creada a
+ * partir de su payload.
+ *
+ * Lo comparten los dos gestos de "un solo plato" —1 llamada pequeña a Gemini,
+ * aceptable en free tier—: «Otra idea» (N2), que sustituye una entrada, y
+ * generar un hueco vacío desde el «+», que inserta una nueva. Lo único que
+ * cambia es si hay un plato del que diferenciarse (`currentEntryId`), que además
+ * se excluye del "no repitas el resto de la semana".
+ *
+ * No comprueba el consentimiento de IA ni el rate-limit: eso es de las Server
+ * Actions que lo llaman, que son la frontera con el usuario.
  */
-export async function rerollMenuEntryAction(
-  entryId: string,
-): Promise<MenuState> {
-  const household = await getCurrentHousehold();
-  if (!household) return { error: "No perteneces a ningún hogar." };
-  const { userId } = await auth();
-
-  // El reroll también pasa el contexto del hogar a la IA de Google: mismo gate.
-  const consent = await getAiConsent();
-  if (!consent.consented) {
-    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
-  }
-
-  const supabase = createServerSupabaseClient();
-
-  const rateError = await enforceAiRateLimit(supabase, "menu");
-  if (rateError) return { error: rateError };
-
-  const { data: entry } = await supabase
-    .from("menu_entries")
-    .select("menu_id, date, meal_slot, position")
-    .eq("household_id", household.id)
-    .eq("id", entryId)
-    .maybeSingle();
-  if (!entry) return { error: "No se encontró la entrada del menú." };
-
+async function generateDishForSlot({
+  supabase,
+  householdId,
+  userId,
+  menuId,
+  slot,
+  currentEntryId,
+  what,
+}: {
+  supabase: SupabaseClient<Database>;
+  householdId: string;
+  userId: string | null;
+  menuId: string;
+  slot: string;
+  /** Entrada que se va a sustituir, o null si el hueco está vacío. */
+  currentEntryId: string | null;
+  /** Qué se genera, para el mensaje de error ("otra idea", "el plato"). */
+  what: string;
+}): Promise<{ recipeId?: string; error?: string }> {
   const [inventory, savedRecipes, signals, allRules, menuEntries, prefs] =
     await Promise.all([
       getInventory(),
       getSavedRecipesForMenu(),
-      getRecipeSignals(household.id),
+      getRecipeSignals(householdId),
       getMenuRules(),
-      getMenuEntries(entry.menu_id),
+      getMenuEntries(menuId),
       getMenuPrefs(),
     ]);
 
@@ -929,11 +933,16 @@ export async function rerollMenuEntryAction(
     return [];
   });
 
-  // El plato actual (a cambiar) y el resto de la semana (para no repetir).
-  const current = menuEntries.find((e) => e.id === entryId);
-  const currentDish = current?.recipeName ?? current?.freeText ?? "este plato";
+  // El plato actual (a cambiar; null si el hueco está vacío) y el resto de la
+  // semana, para no repetir. Sin `currentEntryId` no se excluye ninguno.
+  const current = currentEntryId
+    ? menuEntries.find((e) => e.id === currentEntryId)
+    : null;
+  const currentDish = current
+    ? (current.recipeName ?? current.freeText ?? "este plato")
+    : null;
   const otherDishes = menuEntries
-    .filter((e) => e.id !== entryId)
+    .filter((e) => e.id !== currentEntryId)
     .map((e) => e.recipeName ?? e.freeText ?? "")
     .filter((n) => n !== "");
 
@@ -946,7 +955,7 @@ export async function rerollMenuEntryAction(
       prompt: buildRerollPrompt({
         today: todayLocalISO(),
         season,
-        slot: entry.meal_slot,
+        slot,
         currentDish,
         inventory: invLines,
         recipes: recipeLines,
@@ -963,7 +972,7 @@ export async function rerollMenuEntryAction(
     });
     dish = object;
   } catch (err) {
-    console.error("Error al generar el plato alternativo:", err);
+    console.error("Error al generar el plato:", err);
     const kind = classifyAiError(err);
     return {
       error:
@@ -971,7 +980,7 @@ export async function rerollMenuEntryAction(
           ? "El servicio de IA está saturado ahora mismo. Espera un minuto y vuelve a intentarlo."
           : kind === "timeout"
             ? "La generación tardó demasiado. Vuelve a intentarlo."
-            : "No se pudo generar otra idea. Inténtalo de nuevo.",
+            : `No se pudo generar ${what}. Inténtalo de nuevo.`,
     };
   }
 
@@ -988,38 +997,82 @@ export async function rerollMenuEntryAction(
       : (savedByNorm.get(normalizeName(dish.recipe_name)) ?? null);
 
   // Determina el recipe_id destino: receta guardada o receta efímera nueva.
-  let newRecipeId: string;
-  if (savedId) {
-    newRecipeId = savedId;
-  } else {
-    const { data: recipe } = await supabase
-      .from("recipes")
-      .insert({
-        household_id: household.id,
-        name: dish.recipe_name,
-        normalized_name: normalizeName(dish.recipe_name),
-        description: dish.description ?? null,
-        servings: prefs.servings,
-        meal_types: [entry.meal_slot],
-        source: "ai",
-        created_by: userId,
-      })
-      .select("id")
-      .single();
-    if (!recipe) return { error: "No se pudo crear el plato alternativo." };
-    newRecipeId = recipe.id;
+  if (savedId) return { recipeId: savedId };
 
-    if (dish.ingredients.length > 0) {
-      await supabase.from("recipe_ingredients").insert(
-        dish.ingredients.map((ing) => ({
-          recipe_id: recipe.id,
-          household_id: household.id,
-          name: ing.name,
-          quantity: ing.quantity,
-          unit: ing.unit,
-        })),
-      );
-    }
+  const { data: recipe } = await supabase
+    .from("recipes")
+    .insert({
+      household_id: householdId,
+      name: dish.recipe_name,
+      normalized_name: normalizeName(dish.recipe_name),
+      description: dish.description ?? null,
+      servings: prefs.servings,
+      meal_types: [slot],
+      source: "ai",
+      created_by: userId,
+    })
+    .select("id")
+    .single();
+  if (!recipe) return { error: "No se pudo crear el plato." };
+
+  if (dish.ingredients.length > 0) {
+    await supabase.from("recipe_ingredients").insert(
+      dish.ingredients.map((ing) => ({
+        recipe_id: recipe.id,
+        household_id: householdId,
+        name: ing.name,
+        quantity: ing.quantity,
+        unit: ing.unit,
+      })),
+    );
+  }
+
+  return { recipeId: recipe.id };
+}
+
+/**
+ * "Otra idea" por hueco (N2): pide UN plato alternativo a la IA para una entrada
+ * concreta y la reemplaza en su misma posición (source = 'ai'), sin tocar el
+ * resto de la semana. Tras reemplazar, limpia la receta efímera que pudiera
+ * quedar huérfana.
+ */
+export async function rerollMenuEntryAction(
+  entryId: string,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+
+  // El reroll también pasa el contexto del hogar a la IA de Google: mismo gate.
+  const consent = await getAiConsent();
+  if (!consent.consented) {
+    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const rateError = await enforceAiRateLimit(supabase, "menu");
+  if (rateError) return { error: rateError };
+
+  const { data: entry } = await supabase
+    .from("menu_entries")
+    .select("menu_id, meal_slot")
+    .eq("household_id", household.id)
+    .eq("id", entryId)
+    .maybeSingle();
+  if (!entry) return { error: "No se encontró la entrada del menú." };
+
+  const dish = await generateDishForSlot({
+    supabase,
+    householdId: household.id,
+    userId,
+    menuId: entry.menu_id,
+    slot: entry.meal_slot,
+    currentEntryId: entryId,
+    what: "otra idea",
+  });
+  if (!dish.recipeId) {
+    return { error: dish.error ?? "No se pudo cambiar el plato." };
   }
 
   // Reemplaza la entrada en su sitio: nueva receta, sin texto libre, source 'ai'
@@ -1027,7 +1080,7 @@ export async function rerollMenuEntryAction(
   const { error } = await supabase
     .from("menu_entries")
     .update({
-      recipe_id: newRecipeId,
+      recipe_id: dish.recipeId,
       free_text: null,
       source: "ai",
       cooked_at: null,
@@ -1038,6 +1091,145 @@ export async function rerollMenuEntryAction(
 
   // La receta efímera anterior puede haber quedado huérfana.
   await cleanupOrphanEphemeralRecipes(supabase, household.id);
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * Genera con IA UN plato para un hueco concreto y lo AÑADE (el «+» de la semana).
+ * Mismo plato-a-plato que «Otra idea», pero sin nada que sustituir: es la vía
+ * para rellenar un hueco suelto sin rehacer la semana entera.
+ *
+ * Nace como `source = 'ai'`, igual que un reroll: «Completar menú con IA» puede
+ * reemplazarlo, y fijarlo lo protege.
+ */
+export async function generateSlotEntryAction(
+  weekStart: string,
+  date: string,
+  slot: string,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+
+  const parsed = slotTargetSchema.safeParse({ weekStart, date, slot });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  ({ weekStart, date, slot } = parsed.data);
+
+  const consent = await getAiConsent();
+  if (!consent.consented) {
+    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const rateError = await enforceAiRateLimit(supabase, "menu");
+  if (rateError) return { error: rateError };
+
+  const menuId = await ensureMenu(supabase, household.id, weekStart);
+  if (!menuId) return { error: "No se pudo crear el menú." };
+
+  const dish = await generateDishForSlot({
+    supabase,
+    householdId: household.id,
+    userId,
+    menuId,
+    slot,
+    currentEntryId: null,
+    what: "el plato",
+  });
+  if (!dish.recipeId) {
+    return { error: dish.error ?? "No se pudo añadir el plato." };
+  }
+
+  const position = await nextPosition(
+    supabase,
+    household.id,
+    menuId,
+    date,
+    slot,
+  );
+
+  const { error } = await supabase.from("menu_entries").insert({
+    menu_id: menuId,
+    household_id: household.id,
+    date,
+    meal_slot: slot,
+    recipe_id: dish.recipeId,
+    position,
+    source: "ai",
+  });
+  if (error) return { error: "No se pudo añadir el plato." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * Añade una receta del recetario a un hueco concreto (el «+» de la semana). Es la
+ * alternativa buena al texto libre: la entrada queda ENLAZADA a la receta
+ * (`recipe_id`), así que suma al coste de la semana (M7), entra en "Añadir a la
+ * lista lo que falte" (D3) y puede descontar del inventario al marcarla cocinada
+ * (M2). `addRecipeToMenuAction` hace lo mismo, pero solo para HOY (M6).
+ *
+ * `source` se queda en su default 'manual': elegir tú la receta es un gesto
+ * manual y «Completar menú con IA» debe respetarlo.
+ */
+export async function addRecipeToSlotAction(
+  weekStart: string,
+  date: string,
+  slot: string,
+  recipeId: string,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const parsed = addRecipeToSlotSchema.safeParse({
+    weekStart,
+    date,
+    slot,
+    recipeId,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  ({ weekStart, date, slot, recipeId } = parsed.data);
+  const supabase = createServerSupabaseClient();
+
+  // La receta debe ser del hogar activo y estar en el recetario: el buscador solo
+  // ofrece guardadas, pero el id viene del cliente.
+  const { data: recipe } = await supabase
+    .from("recipes")
+    .select("id")
+    .eq("household_id", household.id)
+    .eq("id", recipeId)
+    .eq("is_saved", true)
+    .maybeSingle();
+  if (!recipe) return { error: "Elige una receta de tu recetario." };
+
+  const menuId = await ensureMenu(supabase, household.id, weekStart);
+  if (!menuId) return { error: "No se pudo crear el menú." };
+
+  const position = await nextPosition(
+    supabase,
+    household.id,
+    menuId,
+    date,
+    slot,
+  );
+
+  const { error } = await supabase.from("menu_entries").insert({
+    menu_id: menuId,
+    household_id: household.id,
+    date,
+    meal_slot: slot,
+    recipe_id: recipeId,
+    position,
+  });
+  if (error) return { error: "No se pudo añadir el plato." };
 
   revalidatePath("/menus");
   return { ok: true };

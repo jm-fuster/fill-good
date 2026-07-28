@@ -247,8 +247,12 @@ export type RerollPromptContext = {
   season: "winter" | "summer";
   /** "breakfast" | "lunch" | "dinner": el hueco del plato a sustituir. */
   slot: string;
-  /** Nombre del plato actual (lo que el usuario quiere cambiar). */
-  currentDish: string;
+  /**
+   * Nombre del plato actual (lo que el usuario quiere cambiar) o null si el hueco
+   * está vacío: entonces no hay nada de lo que diferenciarse y solo se pide un
+   * plato para ese hueco.
+   */
+  currentDish: string | null;
   inventory: MenuInventoryLine[];
   /** Recetario ya filtrado por la temporada actual. */
   recipes: MenuRecipeLine[];
@@ -260,11 +264,12 @@ export type RerollPromptContext = {
 };
 
 /**
- * Prompt del re-roll "otra idea" (N2): pide UN solo plato alternativo para un
- * hueco concreto, con el contexto reducido (inventario, recetario de temporada,
- * reglas y los demás platos de la semana para evitar repetir). Respeta el
- * perfil del hogar (N3): objetivo, estilo de dieta, ingredientes a evitar y
- * raciones.
+ * Prompt de UN solo plato para un hueco concreto, con el contexto reducido
+ * (inventario, recetario de temporada, reglas y los demás platos de la semana
+ * para evitar repetir). Respeta el perfil del hogar (N3): objetivo, estilo de
+ * dieta, ingredientes a evitar y raciones. Sirve para dos gestos:
+ *   · "Otra idea" (N2): hay `currentDish` y se pide algo DISTINTO.
+ *   · Generar un hueco vacío desde el «+»: `currentDish` es null.
  */
 export function buildRerollPrompt(context: RerollPromptContext): string {
   const { today, season, slot, currentDish, inventory, recipes, rules } =
@@ -313,10 +318,16 @@ export function buildRerollPrompt(context: RerollPromptContext): string {
       ? context.otherDishes.map((n) => `- "${n}"`).join("\n")
       : "(ninguno todavía)";
 
+  // Con plato actual es una sustitución ("otra idea"); sin él, el hueco está
+  // vacío y basta con pedir un plato que encaje.
+  const askLine = currentDish
+    ? `Propón UN ÚNICO plato alternativo para la ${slotLabel}, DISTINTO de "${currentDish}".`
+    : `Propón UN ÚNICO plato para la ${slotLabel}.`;
+
   return `Eres un cocinero que planifica menús para un hogar en España.
 Hoy es ${today} (temporada actual: ${SEASON_LABEL[season]}).
 
-Propón UN ÚNICO plato alternativo para la ${slotLabel}, DISTINTO de "${currentDish}".
+${askLine}
 
 Objetivos, POR ORDEN DE PRIORIDAD:
 1. Respetar las reglas del hogar (más abajo).
