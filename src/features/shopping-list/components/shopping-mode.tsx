@@ -26,8 +26,13 @@ import {
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
 import { ProductIcon } from "@/components/product-icon";
+import { ChainChip } from "@/components/chain-chip";
 import { cn } from "@/lib/utils";
-import { StoreOrderEditor } from "@/features/categories/components/store-order-editor";
+import { AisleOrderPanel } from "@/features/categories/components/aisle-order-panel";
+import {
+  aisleSort,
+  type ChainAisleOrders,
+} from "@/features/categories/aisle-order";
 import type { StoreCategory } from "@/features/categories/queries";
 import { chainLabel, orderChains } from "@/features/prices/chains";
 import { vibrateTick } from "@/lib/haptics";
@@ -66,13 +71,19 @@ export function ShoppingMode({
   catalog,
   suggestions,
   categories,
+  aisleOrders,
+  chains,
 }: {
   listId: string;
   initialItems: ShoppingModeItem[];
   catalog: CatalogProduct[];
   suggestions: Suggestion[];
-  /** Pasillos del hogar en su orden actual, para corregirlo sin salir de aquí. */
+  /** Pasillos del hogar en su orden GENERAL, para corregirlo sin salir de aquí. */
   categories: StoreCategory[];
+  /** Órdenes de pasillo propios de cada tienda del hogar (excepciones). */
+  aisleOrders: ChainAisleOrders;
+  /** Supermercados del hogar (elegidos o deducidos de los tickets). */
+  chains: string[];
 }) {
   useRealtimeList(listId);
   const router = useRouter();
@@ -95,8 +106,11 @@ export function ShoppingMode({
       return next;
     });
   }
-  // L15 — Filtro por tienda: cadena activa (null = "Todas") y sección "otras
-  // tiendas" contraída por defecto.
+  // Tienda de esta compra (null = "Todas", sin decidir). Empezó siendo solo un
+  // filtro (L15) y ahora manda también en el ORDEN de los pasillos: es la misma
+  // pregunta ("¿dónde estás?") y tener dos controles para responderla dos veces
+  // sería justo la confusión que hay que evitar. Sección "otras tiendas"
+  // contraída por defecto.
   const [activeChain, setActiveChain] = useState<string | null>(null);
   const [showOther, setShowOther] = useState(false);
 
@@ -148,27 +162,29 @@ export function ShoppingMode({
     });
   }
 
-  // Cadenas presentes en la lista (para los chips del filtro), en orden canónico.
-  const chainsPresent = useMemo(() => {
-    const set = new Set<string>();
+  // Tiendas ofrecidas: las del hogar MÁS las que aparezcan como preferencia de
+  // algún ítem. Las del hogar entran aunque no haya nada suyo en la lista —son
+  // las que pueden tener orden propio—, y las de los ítems porque filtrarlas
+  // sigue teniendo sentido aunque el hogar no las tenga apuntadas.
+  const storeOptions = useMemo(() => {
+    const set = new Set(chains);
     for (const it of items) if (it.preferredChain) set.add(it.preferredChain);
     return orderChains([...set]);
-  }, [items]);
+  }, [chains, items]);
 
-  // El filtro solo aparece si aporta algo: ≥2 cadenas, o 1 cadena y algún ítem
-  // sin asignar (que se mostraría junto a ella).
-  const hasUnassigned = items.some((i) => !i.preferredChain);
-  const showChainFilter =
-    chainsPresent.length >= 2 ||
-    (chainsPresent.length === 1 && hasUnassigned);
+  // Con una sola tienda no hay pregunta que hacer: "Todas" y ella muestran lo
+  // mismo, y su orden es el general del hogar (que se edita igual desde el sheet).
+  const showStorePicker = storeOptions.length >= 2;
 
-  // Cadena efectiva: si la activa dejó de existir (cambió la lista), volvemos a
-  // "Todas" sin tocar estado en render.
+  // Tienda efectiva: si la activa dejó de existir (cambió la lista o las tiendas
+  // del hogar), volvemos a "Todas" sin tocar estado en render.
   const effectiveChain =
-    activeChain && chainsPresent.includes(activeChain) ? activeChain : null;
+    activeChain && storeOptions.includes(activeChain) ? activeChain : null;
+  const chainOrder = effectiveChain ? aisleOrders[effectiveChain] : undefined;
 
-  // Vista principal (cadena activa + sin asignar) agrupada por pasillo, y los
-  // ítems de otras tiendas agrupados por cadena para la sección secundaria.
+  // Vista principal (tienda activa + sin asignar) agrupada por pasillo EN EL
+  // ORDEN DE ESA TIENDA, y los ítems de otras tiendas agrupados por cadena para
+  // la sección secundaria.
   const { groups, otherGroups, otherPending } = useMemo(() => {
     const isMain = (it: ShoppingModeItem) =>
       effectiveChain === null ||
@@ -194,7 +210,7 @@ export function ShoppingMode({
           g = {
             name: it.categoryName,
             icon: it.categoryIcon,
-            sort: it.categorySort,
+            sort: aisleSort(it.categorySort, it.categoryId, chainOrder),
             items: [],
           };
           byCat.set(it.categoryName, g);
@@ -228,7 +244,7 @@ export function ShoppingMode({
       otherGroups: otherGroupsArr,
       otherPending: otherPendingCount,
     };
-  }, [items, effectiveChain]);
+  }, [items, effectiveChain, chainOrder]);
 
   const priced = items.filter((i) => i.lineCost != null);
   const total = priced.reduce((s, i) => s + (i.lineCost ?? 0), 0);
@@ -365,19 +381,19 @@ export function ShoppingMode({
         </div>
       ) : null}
 
-      {showChainFilter ? (
+      {showStorePicker ? (
         <div className="border-b px-4 py-2">
           <div
             className="mx-auto flex w-full max-w-2xl gap-2 overflow-x-auto"
             role="group"
-            aria-label="Filtrar por tienda"
+            aria-label="Tienda de esta compra"
           >
             <ChainChip
               label="Todas"
               active={effectiveChain === null}
               onClick={() => setActiveChain(null)}
             />
-            {chainsPresent.map((chain) => (
+            {storeOptions.map((chain) => (
               <ChainChip
                 key={chain}
                 label={chainLabel(chain)}
@@ -456,7 +472,8 @@ export function ShoppingMode({
               })}
 
               {/* El orden de pasillos solo se descubre cuando estorba, y solo
-                  estorba con varios pasillos por delante. Con uno, no aparece. */}
+                  estorba con varios pasillos por delante. Con uno, no aparece.
+                  Con tienda elegida se nombra: lo que se edita es SU orden. */}
               {groups.length >= 2 ? (
                 <button
                   type="button"
@@ -464,7 +481,9 @@ export function ShoppingMode({
                   className="flex min-h-11 items-center gap-1.5 self-start rounded-lg px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
                 >
                   <ListOrdered className="size-4 shrink-0" aria-hidden />
-                  ¿No es el orden de tu tienda? Ordena los pasillos
+                  {effectiveChain
+                    ? `¿No es el orden de ${chainLabel(effectiveChain)}? Ordena sus pasillos`
+                    : "¿No es el orden de tu tienda? Ordena los pasillos"}
                 </button>
               ) : null}
             </div>
@@ -561,7 +580,10 @@ export function ShoppingMode({
 
       {/* Orden de pasillos sin salir de la compra: al guardar, el servidor
           revalida esta ruta y los grupos de detrás se reordenan solos. `noDrag`
-          porque las filas se arrastran (si no, arrastrarlas cerraría el sheet). */}
+          porque las filas se arrastran (si no, arrastrarlas cerraría el sheet).
+
+          Sin conmutador de tienda: la de esta compra ya está elegida arriba, y
+          es la que se edita (o el orden general si no hay ninguna elegida). */}
       <ResponsiveModal open={ordering} onOpenChange={setOrdering}>
         <ResponsiveModalContent
           className="z-[70]"
@@ -571,12 +593,16 @@ export function ShoppingMode({
           <ResponsiveModalHeader>
             <ResponsiveModalTitle>Orden de los pasillos</ResponsiveModalTitle>
             <ResponsiveModalDescription>
-              Colócalos como los recorres en tu tienda. Se guarda al mover y la
+              Colócalos como los recorres en la tienda. Se guarda al mover y la
               lista de detrás se reordena.
             </ResponsiveModalDescription>
           </ResponsiveModalHeader>
           <div className="px-4">
-            <StoreOrderEditor categories={categories} />
+            <AisleOrderPanel
+              categories={categories}
+              orders={aisleOrders}
+              chain={effectiveChain}
+            />
           </div>
           <ResponsiveModalFooter>
             <Button variant="outline" onClick={() => setOrdering(false)}>
@@ -661,33 +687,6 @@ function ShoppingModeRowItem({
         {item.lineCost != null ? formatEuro(item.lineCost) : "—"}
       </span>
     </li>
-  );
-}
-
-/** Chip del filtro de tienda (L15). */
-function ChainChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "flex min-h-11 shrink-0 items-center rounded-full border px-3.5 text-sm font-medium transition-colors",
-        active
-          ? "border-primary bg-primary text-primary-foreground"
-          : "bg-background text-muted-foreground hover:bg-muted",
-      )}
-    >
-      {label}
-    </button>
   );
 }
 

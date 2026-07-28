@@ -15,13 +15,19 @@ import { reorderCategoriesAction } from "../actions";
 /**
  * Editor del "orden de la tienda": reordena las categorías (pasillos) a gusto
  * del hogar. Arrastrar desde el asa (puntero) o botones subir/bajar (teclado y
- * lectores). Al soltar/mover se persiste el nuevo `sort_order`; si falla, se
- * revierte resincronizando con el servidor.
+ * lectores). Al soltar/mover se persiste el nuevo orden; si falla, se revierte
+ * resincronizando con el servidor.
+ *
+ * `categories` llega YA en el orden a editar (general o el propio de una
+ * tienda); quien lo resuelve es `AisleOrderPanel`.
  */
 export function StoreOrderEditor({
   categories,
+  chain = null,
 }: {
   categories: StoreCategory[];
+  /** Tienda cuyo orden se edita; null = el orden general del hogar. */
+  chain?: string | null;
 }) {
   const router = useRouter();
   const ids = useMemo(() => categories.map((c) => c.id), [categories]);
@@ -32,14 +38,14 @@ export function StoreOrderEditor({
 
   const commit = useCallback(
     (orderedIds: string[]) => {
-      reorderCategoriesAction(orderedIds).then((r) => {
+      reorderCategoriesAction(orderedIds, chain).then((r) => {
         if (r?.error) {
           toast.error(r.error);
           router.refresh();
         }
       });
     },
-    [router],
+    [router, chain],
   );
 
   const { order, draggingId, registerItem, getHandleProps, move } =

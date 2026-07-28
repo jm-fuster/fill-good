@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
-import { getStoreCategories } from "@/features/categories/queries";
+import {
+  getChainAisleOrders,
+  getStoreCategories,
+} from "@/features/categories/queries";
+import { getHouseholdChains } from "@/features/household/queries";
 import { ShoppingMode } from "@/features/shopping-list/components/shopping-mode";
 import {
   getActiveList,
@@ -20,12 +24,18 @@ export default async function ModoCompraPage() {
   // compra (es el único momento en que se ve que está mal). Son unas pocas filas
   // y viajan ya en la carga de la pantalla: en el pasillo, con mala cobertura, no
   // hay que navegar a Ajustes ni pedir nada más al servidor para abrir el editor.
-  const [items, catalog, suggestions, categories] = await Promise.all([
-    getShoppingModeItems(list.id),
-    getProductCatalog(),
-    getSuggestions(list.id),
-    getStoreCategories(),
-  ]);
+  // `aisleOrders` y `chains` viajan enteros (todas las tiendas del hogar, no la
+  // del viaje): así cambiar de tienda en el pasillo reordena al instante, sin
+  // volver al servidor con la cobertura del supermercado.
+  const [items, catalog, suggestions, categories, aisleOrders, { chains }] =
+    await Promise.all([
+      getShoppingModeItems(list.id),
+      getProductCatalog(),
+      getSuggestions(list.id),
+      getStoreCategories(),
+      getChainAisleOrders(),
+      getHouseholdChains(),
+    ]);
 
   return (
     <ShoppingMode
@@ -34,6 +44,8 @@ export default async function ModoCompraPage() {
       catalog={catalog}
       suggestions={suggestions}
       categories={categories}
+      aisleOrders={aisleOrders}
+      chains={chains}
     />
   );
 }

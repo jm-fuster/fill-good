@@ -170,7 +170,13 @@ export type ShoppingModeItem = {
   categoryIcon: string | null;
   /** Icono manual del producto (L16); null = automático. */
   productIcon: string | null;
-  /** Orden de pasillo (sort_order de la categoría; sin categoría al final). */
+  /** Categoría del producto; null = sin categoría ("Otros"). */
+  categoryId: string | null;
+  /**
+   * Orden de pasillo GENERAL (sort_order de la categoría; sin categoría al
+   * final). La tienda del viaje puede tener el suyo, y ese se resuelve en el
+   * cliente con `categoryId` (features/categories/aisle-order.ts).
+   */
   categorySort: number;
   /** Coste estimado de la línea (precio × cantidad) o null si no se conoce. */
   lineCost: number | null;
@@ -190,6 +196,7 @@ type ShoppingModeRow = {
     inferred_chain: string | null;
     icon: string | null;
     category: {
+      id: string;
       name: string;
       icon: string | null;
       sort_order: number;
@@ -217,7 +224,7 @@ export async function getShoppingModeItems(
     supabase
       .from("shopping_list_items")
       .select(
-        "id, name, quantity, unit, is_checked, product_id, product:products(preferred_chain, inferred_chain, icon, category:categories(name, icon, sort_order))",
+        "id, name, quantity, unit, is_checked, product_id, product:products(preferred_chain, inferred_chain, icon, category:categories(id, name, icon, sort_order))",
       )
       .eq("household_id", householdId)
       .eq("list_id", listId)
@@ -251,6 +258,7 @@ export async function getShoppingModeItems(
       categoryName: r.product?.category?.name ?? "Otros",
       categoryIcon: r.product?.category?.icon ?? null,
       productIcon: r.product?.icon ?? null,
+      categoryId: r.product?.category?.id ?? null,
       categorySort: r.product?.category?.sort_order ?? NO_CATEGORY_SORT,
       lineCost,
       // Efectiva: la manual gana; si no hay, la inferida materializada (fase 2).

@@ -122,6 +122,42 @@ export type Database = {
           },
         ];
       };
+      // Orden de pasillos propio de una tienda; solo excepciones al orden
+      // general de categories.sort_order (ver la migración de la tabla).
+      category_chain_order: {
+        Row: {
+          household_id: string;
+          chain: string;
+          category_id: string;
+          sort_order: number;
+        };
+        Insert: {
+          household_id: string;
+          chain: string;
+          category_id: string;
+          sort_order: number;
+        };
+        Update: {
+          household_id?: string;
+          chain?: string;
+          category_id?: string;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "category_chain_order_household_id_fkey";
+            columns: ["household_id"];
+            referencedRelation: "households";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "category_chain_order_category_id_fkey";
+            columns: ["category_id"];
+            referencedRelation: "categories";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       categories: {
         Row: {
           id: string;
