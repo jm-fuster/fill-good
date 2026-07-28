@@ -10,6 +10,7 @@ import {
   getReceiptItems,
   getReceiptSuggestions,
 } from "@/features/receipts/queries";
+import { getHouseholdChains } from "@/features/household/queries";
 import { getProductCatalog } from "@/features/shopping-list/queries";
 
 export const metadata: Metadata = { title: "Revisar ticket" };
@@ -24,11 +25,13 @@ export default async function RevisarPage({
   if (!receipt) notFound();
   if (receipt.status === "confirmed") redirect("/inventario");
 
-  const [items, products, alreadyStockedProductIds] = await Promise.all([
-    getReceiptItems(receiptId),
-    getProductCatalog(),
-    getAlreadyStockedProductIds(receipt),
-  ]);
+  const [items, products, alreadyStockedProductIds, householdChains] =
+    await Promise.all([
+      getReceiptItems(receiptId),
+      getProductCatalog(),
+      getAlreadyStockedProductIds(receipt),
+      getHouseholdChains(),
+    ]);
   const suggestions = await getReceiptSuggestions(items);
 
   return (
@@ -59,6 +62,7 @@ export default async function RevisarPage({
         unitByProduct={Object.fromEntries(
           products.map((p) => [p.id, p.defaultUnit]),
         )}
+        householdChains={householdChains.chains}
       />
     </PageContainer>
   );

@@ -34,7 +34,7 @@ import {
   type ComboboxProduct,
 } from "@/components/product-combobox";
 import { cn } from "@/lib/utils";
-import { CHAIN_OPTIONS, chainLabel } from "@/features/prices/chains";
+import { chainLabel, chainOptions } from "@/features/prices/chains";
 import { formatQuantity, LOCATION_OPTIONS, UNIT_OPTIONS } from "@/lib/units";
 import type {
   InventoryEventKind,
@@ -241,10 +241,13 @@ export function EditItemDrawer({
   // Tiendas del hogar primero (L15 f4): de ocho cadenas, las que este hogar no
   // pisa nunca son ruido. Solo se agrupa si la separación aporta algo: sin
   // tiendas habituales (o con todas marcadas) la lista plana se lee mejor.
-  const habitualChains = CHAIN_OPTIONS.filter((c) =>
+  // `chainOptions` añade además las tiendas propias del hogar (f5), que por
+  // definición son suyas y caen siempre en el primer grupo.
+  const allChains = chainOptions(householdChains);
+  const habitualChains = allChains.filter((c) =>
     householdChains.includes(c.value),
   );
-  const otherChains = CHAIN_OPTIONS.filter(
+  const otherChains = allChains.filter(
     (c) => !householdChains.includes(c.value),
   );
   const groupChains = habitualChains.length > 0 && otherChains.length > 0;
@@ -434,7 +437,7 @@ export function EditItemDrawer({
                     </SelectGroup>
                   </>
                 ) : (
-                  CHAIN_OPTIONS.map(chainItem)
+                  allChains.map(chainItem)
                 )}
               </SelectContent>
             </Select>

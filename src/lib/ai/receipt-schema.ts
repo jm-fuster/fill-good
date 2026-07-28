@@ -43,37 +43,59 @@ export const receiptItemSchema = z.object({
     ),
 });
 
-export const receiptSchema = z.object({
-  store_name: z
-    .string()
-    .nullable()
-    .describe("Nombre del establecimiento tal cual aparece."),
-  store_chain: z
-    .enum([
-      "mercadona",
-      "carrefour",
-      "lidl",
-      "dia",
-      "alcampo",
-      "eroski",
-      "consum",
-      "aldi",
-      "otro",
-    ])
-    .nullable()
-    .describe("Cadena de supermercado normalizada, o 'otro'."),
-  purchase_date: z
-    .string()
-    .nullable()
-    .describe("Fecha de compra en formato YYYY-MM-DD."),
-  total: z.number().nullable().describe("Importe total del ticket en euros."),
-  items: z.array(receiptItemSchema).describe("Líneas de producto del ticket."),
-  warnings: z
-    .array(z.string())
-    .describe(
-      "Avisos: p. ej. si la suma de líneas no cuadra con el total, o baja calidad de imagen.",
-    ),
-});
+/** Las ocho cadenas que la app conoce de serie (claves de features/prices/chains). */
+export const BUILT_IN_CHAIN_KEYS = [
+  "mercadona",
+  "carrefour",
+  "lidl",
+  "dia",
+  "alcampo",
+  "eroski",
+  "consum",
+  "aldi",
+] as const;
 
-export type ReceiptExtraction = z.infer<typeof receiptSchema>;
+/**
+ * Contrato de la extracción del ticket. `store_chain` es un ENUM construido por
+ * hogar: las ocho conocidas, las tiendas propias del hogar (L15 f5) y `otro`.
+ * Que sea enum y no texto libre es lo que impide que el modelo se invente una
+ * cadena nueva por cada variante del rótulo impreso ("MERCADONA S.A.",
+ * "Mercadona Alfafar") y parta el historial de precios en pedazos.
+ *
+ * Al ser dinámico, el tipo inferido de `store_chain` es `string | null` en vez de
+ * una unión de literales; el valor se guarda como texto, así que da igual.
+ */
+export function buildReceiptSchema(customChains: string[] = []) {
+  const values = [
+    ...BUILT_IN_CHAIN_KEYS,
+    ...customChains,
+    "otro",
+  ] as unknown as [string, ...string[]];
+
+  return z.object({
+    store_name: z
+      .string()
+      .nullable()
+      .describe("Nombre del establecimiento tal cual aparece."),
+    store_chain: z
+      .enum(values)
+      .nullable()
+      .describe(
+        "Cadena de supermercado normalizada al valor EXACTO de la lista, o 'otro'.",
+      ),
+    purchase_date: z
+      .string()
+      .nullable()
+      .describe("Fecha de compra en formato YYYY-MM-DD."),
+    total: z.number().nullable().describe("Importe total del ticket en euros."),
+    items: z.array(receiptItemSchema).describe("Líneas de producto del ticket."),
+    warnings: z
+      .array(z.string())
+      .describe(
+        "Avisos: p. ej. si la suma de líneas no cuadra con el total, o baja calidad de imagen.",
+      ),
+  });
+}
+
+export type ReceiptExtraction = z.infer<ReturnType<typeof buildReceiptSchema>>;
 export type ReceiptItemExtraction = z.infer<typeof receiptItemSchema>;

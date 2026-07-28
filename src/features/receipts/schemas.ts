@@ -49,6 +49,13 @@ export const confirmItemDecisionSchema = z.object({
 export const confirmPayloadSchema = z.object({
   receiptId: z.string().uuid(),
   storeName: z.string().trim().max(200).nullable(),
+  /**
+   * Cadena corregida a mano en la revisión (L15 f5). Opcional para no romper
+   * payloads en vuelo de una versión anterior; `null` deja la que trajo la IA.
+   * El vocabulario NO se valida aquí sino en la acción, que es quien conoce las
+   * tiendas del hogar: un valor que no le ofrecimos se ignora.
+   */
+  storeChain: z.string().trim().max(40).nullable().optional(),
   purchaseDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha no válida.")

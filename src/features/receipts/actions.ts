@@ -7,7 +7,7 @@ import { generateObject } from "ai";
 
 import { getModel } from "@/lib/ai/models";
 import { classifyAiError } from "@/lib/ai/errors";
-import { receiptSchema } from "@/lib/ai/receipt-schema";
+import { buildReceiptSchema } from "@/lib/ai/receipt-schema";
 import type { ReceiptItemExtraction } from "@/lib/ai/receipt-schema";
 import { buildReceiptPrompt } from "@/lib/ai/receipt-prompt";
 import { loadHouseholdMatchData, matchLineExact } from "@/lib/matching";
@@ -19,7 +19,11 @@ import {
   getCurrentHousehold,
   getHouseholdChains,
 } from "@/features/household/queries";
-import { chainLabel } from "@/features/prices/chains";
+import {
+  chainLabel,
+  chainOptions,
+  isCustomChain,
+} from "@/features/prices/chains";
 import {
   computeSavingsForReceipt,
   refreshPriceInsights,
@@ -112,12 +116,16 @@ export async function scanReceiptAction(
   const catalogIds = new Set(promptCatalog.map((p) => p.id));
 
   // Tiendas habituales del hogar (L15 f4): ayudan a normalizar store_chain
-  // cuando el rótulo impreso no coincide con el nombre de la cadena.
+  // cuando el rótulo impreso no coincide con el nombre de la cadena. Las TIENDAS
+  // PROPIAS (f5) van además al enum del esquema: sin eso el modelo no tiene
+  // ningún valor con el que responder "esto es un ticket de Gadis" y lo único
+  // que puede decir es "otro".
   const { chains: householdChains } = await getHouseholdChains();
   const promptChains = householdChains.map((key) => ({
     key,
     label: chainLabel(key),
   }));
+  const customChains = householdChains.filter(isCustomChain);
 
   // Extracción con IA (visión / documento). FilePart sirve tanto para imagen
   // como para PDF; el mediaType lo toma del propio archivo.
@@ -125,7 +133,7 @@ export async function scanReceiptAction(
   try {
     const { object } = await generateObject({
       model: getModel("receipts"),
-      schema: receiptSchema,
+      schema: buildReceiptSchema(customChains),
       abortSignal: AbortSignal.timeout(60_000),
       messages: [
         {
@@ -341,7 +349,20 @@ export async function confirmReceiptAction(
   }
 
   const purchasedAt = payload.purchaseDate ?? receipt.purchased_at;
-  const storeChain = receipt.store_chain;
+
+  // Cadena corregida en la revisión (L15 f5). Solo se acepta si es una de las
+  // que se le ofrecieron —conocidas, tiendas del hogar u "otro"—: el valor entra
+  // en el historial de precios por tienda, así que texto libre del cliente aquí
+  // ensuciaría las comparaciones para siempre.
+  let storeChain = receipt.store_chain;
+  if (payload.storeChain) {
+    const { chains } = await getHouseholdChains();
+    const allowed = new Set([
+      ...chainOptions(chains).map((c) => c.value),
+      "otro",
+    ]);
+    if (allowed.has(payload.storeChain)) storeChain = payload.storeChain;
+  }
 
   // Descuentos (M1): las líneas is_discount se filtran al escanear y no viven en
   // receipt_items; su total sí se conserva aquí, sumando desde la extracción.
@@ -902,6 +923,7 @@ export async function confirmReceiptAction(
     .from("receipts")
     .update({
       store_name: payload.storeName,
+      store_chain: storeChain,
       purchased_at: purchasedAt,
       total_amount: payload.total,
       discount_total: discountTotal,

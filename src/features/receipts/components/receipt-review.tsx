@@ -20,6 +20,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { chainOptions } from "@/features/prices/chains";
+import {
   ProductCombobox,
   type ComboboxProduct,
 } from "@/components/product-combobox";
@@ -156,6 +164,7 @@ export function ReceiptReview({
   suggestions = [],
   alreadyStockedProductIds = [],
   unitByProduct = {},
+  householdChains = [],
 }: {
   receipt: ReceiptHeader;
   items: ReceiptItem[];
@@ -171,9 +180,15 @@ export function ReceiptReview({
   alreadyStockedProductIds?: string[];
   /** Unidad por defecto de cada producto del catálogo, para el stock al peso. */
   unitByProduct?: Record<string, UnitType>;
+  /** Tiendas del hogar (L15): opciones para corregir la cadena del ticket. */
+  householdChains?: string[];
 }) {
   const router = useRouter();
   const [storeName, setStoreName] = useState(receipt.storeName ?? "");
+  // Cadena del ticket (L15 f5). Es corregible porque de ella dependen el
+  // historial de precios por tienda y los avisos de ahorro: un ticket de Gadis
+  // archivado como "otro" no cuenta para nada.
+  const [storeChain, setStoreChain] = useState(receipt.storeChain ?? "");
   const [purchaseDate, setPurchaseDate] = useState(receipt.purchasedAt ?? "");
   const [total, setTotal] = useState(
     receipt.total === null ? "" : String(receipt.total),
@@ -278,6 +293,7 @@ export function ReceiptReview({
       const result = await confirmReceiptAction({
         receiptId: receipt.id,
         storeName: storeName.trim() || null,
+        storeChain: storeChain || null,
         purchaseDate: purchaseDate || null,
         total: total ? Number(total.replace(",", ".")) : null,
         items: decisions,
@@ -592,6 +608,22 @@ export function ReceiptReview({
               value={storeName}
               onChange={(e) => setStoreName(e.target.value)}
             />
+          </div>
+          <div className="col-span-2 flex flex-col gap-1.5 sm:col-span-1">
+            <Label htmlFor="rv-chain">Cadena</Label>
+            <Select value={storeChain} onValueChange={setStoreChain}>
+              <SelectTrigger id="rv-chain" className="w-full">
+                <SelectValue placeholder="Sin identificar" />
+              </SelectTrigger>
+              <SelectContent>
+                {chainOptions(householdChains).map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label}
+                  </SelectItem>
+                ))}
+                <SelectItem value="otro">Otra tienda</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="rv-date">Fecha</Label>

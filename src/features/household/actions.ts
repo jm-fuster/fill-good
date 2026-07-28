@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { canonicalizeChains, CHAINS_MAX } from "@/features/prices/chains";
 import {
   ACTIVE_HOUSEHOLD_COOKIE,
   getCurrentHousehold,
@@ -13,6 +14,7 @@ import {
 } from "./queries";
 import {
   createHouseholdSchema,
+  customChainSchema,
   joinHouseholdSchema,
   renameHouseholdSchema,
   storeChainsSchema,
@@ -165,17 +167,14 @@ export async function updateMonthlyBudgetAction(
 export type ChainsState = { error?: string; ok?: boolean };
 
 /**
- * Supermercados habituales del hogar (L15 f4). Lista vacía = borrar la
- * configuración manual, con lo que la app vuelve a deducirlas de los tickets.
- * UPDATE directo como el objetivo de gasto: `preferred_chains` es la otra
- * columna de `households` con grant de escritura para los miembros.
+ * Guarda la lista de tiendas del hogar ya validada y canonizada. UPDATE directo
+ * como el objetivo de gasto: `preferred_chains` es la otra columna de
+ * `households` con grant de escritura para los miembros.
  */
-export async function updatePreferredChainsAction(
+async function saveHouseholdChains(
+  householdId: string,
   chains: string[],
 ): Promise<ChainsState> {
-  const household = await getCurrentHousehold();
-  if (!household) return { error: "No perteneces a ningún hogar." };
-
   const parsed = storeChainsSchema.safeParse({ chains });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
@@ -185,14 +184,61 @@ export async function updatePreferredChainsAction(
   const { error } = await supabase
     .from("households")
     .update({ preferred_chains: parsed.data.chains })
-    .eq("id", household.id);
+    .eq("id", householdId);
   if (error) return { error: "No se pudieron guardar tus tiendas." };
 
   revalidatePath("/ajustes");
   revalidatePath("/ajustes/tiendas");
-  // El selector "Tienda preferida" del inventario se reordena con esto.
+  // El selector "Tienda preferida" del inventario se reordena con esto. La
+  // revisión de un ticket (/escanear/[id]/revisar) también ofrece estas tiendas,
+  // pero se renderiza en cada visita, así que no hace falta invalidarla.
   revalidatePath("/inventario");
   return { ok: true };
+}
+
+/**
+ * Supermercados habituales del hogar (L15 f4). Lista vacía = borrar la
+ * configuración manual, con lo que la app vuelve a deducirlas de los tickets.
+ */
+export async function updatePreferredChainsAction(
+  chains: string[],
+): Promise<ChainsState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  return saveHouseholdChains(household.id, chains);
+}
+
+/**
+ * Añade una TIENDA PROPIA del hogar (L15 f5): una cadena regional que no está
+ * entre las ocho conocidas. `base` es la lista que el usuario tiene delante, que
+ * en modo automático son las deducidas de sus tickets: añadir una tienda las
+ * promociona a elección manual, que es justo lo que la pantalla promete («si
+ * tocas algo, pasas a decidirlo tú»).
+ */
+export async function addCustomChainAction(
+  name: string,
+  base: string[],
+): Promise<ChainsState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const parsed = customChainSchema.safeParse(name);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Nombre no válido." };
+  }
+
+  // El duplicado se detecta sobre la lista ya canonizada, así que "gadis" no se
+  // cuela al lado de "Gadis" (partiría en dos el historial de precios).
+  const before = canonicalizeChains(base);
+  const after = canonicalizeChains([...base, parsed.data]);
+  if (after.length === before.length) {
+    return { error: "Ya tienes esa tienda en la lista." };
+  }
+  if (after.length > CHAINS_MAX) {
+    return { error: `No puedes tener más de ${CHAINS_MAX} tiendas.` };
+  }
+
+  return saveHouseholdChains(household.id, after);
 }
 
 export async function regenerateInviteCodeAction(): Promise<ActionState> {

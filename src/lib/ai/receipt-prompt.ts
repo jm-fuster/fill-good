@@ -3,7 +3,7 @@ const BASE_PROMPT = `Eres un asistente que extrae los datos de un ticket de comp
 Devuelve los datos siguiendo el esquema. Reglas importantes:
 
 - Idioma español. Los decimales en los tickets usan coma (2,35) pero tú devuelves números con punto (2.35).
-- store_name: el nombre del establecimiento. store_chain: normaliza a la cadena conocida (mercadona, carrefour, lidl, dia, alcampo, eroski, consum, aldi) o "otro".
+- store_name: el nombre del establecimiento. store_chain: normaliza a una de las cadenas del esquema (mercadona, carrefour, lidl, dia, alcampo, eroski, consum, aldi, y las tiendas propias del hogar si las hay más abajo) o "otro" si no es ninguna.
 - purchase_date: la fecha de la compra en formato YYYY-MM-DD.
 - total: el importe TOTAL a pagar del ticket.
 
@@ -57,13 +57,15 @@ ${list}`;
  */
 function chainsSection(chains: { key: string; label: string }[]): string {
   if (chains.length === 0) return "";
-  const list = chains.map((c) => `${c.label} (clave: ${c.key})`).join(", ");
+  const list = chains
+    .map((c) => (c.key === c.label ? `"${c.key}"` : `${c.label} (clave: ${c.key})`))
+    .join(", ");
   return `
 
 Este hogar suele comprar en: ${list}. Si el ticket es de una de ellas, usa su
-clave en store_chain aunque el nombre impreso esté abreviado o cortado. Si es
-claramente de otra cadena conocida, usa la suya; y si no reconoces la tienda,
-"otro". No fuerces ninguna de las de esta lista.`;
+clave EXACTA en store_chain (respetando mayúsculas y acentos) aunque el nombre
+impreso esté abreviado o cortado. Si es claramente de otra cadena conocida, usa
+la suya; y si no reconoces la tienda, "otro". No fuerces ninguna de esta lista.`;
 }
 
 /** Prompt de extracción con el catálogo y las tiendas del hogar (E7 + L15 f4). */

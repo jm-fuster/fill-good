@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/chart";
 import { UNIT_LABELS } from "@/lib/units";
 import type { PricePoint } from "../queries";
-import { CHAIN_LABELS } from "../chains";
+import { chainLabel } from "../chains";
 
 // Orden fijo de colores categóricos (tokens del design system).
 const CHART_COLORS = [
@@ -36,19 +36,34 @@ export function PriceChart({
   const chains: string[] = [];
   for (const p of points) if (!chains.includes(p.storeChain)) chains.push(p.storeChain);
 
+  // La clave de cada serie NO es el nombre de la cadena: las tiendas propias del
+  // hogar (L15 f5) pueden llevar espacios o puntos ("Bon Àrea", "Coviran S.A.") y
+  // ChartContainer las convierte en variables CSS (`--color-<clave>`), donde un
+  // espacio invalida la declaración entera y la línea se quedaría sin color.
+  // `s0`, `s1`… siempre son válidas; el nombre legible viaja en el config, que es
+  // de donde lo sacan la leyenda y el tooltip.
+  const series = chains.map((chain, i) => ({
+    chain,
+    key: `s${i}`,
+    label: chainLabel(chain),
+  }));
+  const keyByChain = new Map(series.map((s) => [s.chain, s.key]));
+  const labelByKey = new Map(series.map((s) => [s.key, s.label]));
+
   const config: ChartConfig = {};
-  chains.forEach((chain, i) => {
-    config[chain] = {
-      label: CHAIN_LABELS[chain] ?? chain,
+  series.forEach((s, i) => {
+    config[s.key] = {
+      label: s.label,
       color: CHART_COLORS[i % CHART_COLORS.length],
     };
   });
 
-  // Pivot por fecha: { date, [chain]: unitPrice }.
+  // Pivot por fecha: { date, [clave de serie]: unitPrice }.
   const byDate = new Map<string, Record<string, number | string>>();
   for (const p of points) {
     const row = byDate.get(p.date) ?? { date: p.date };
-    row[p.storeChain] = Number(p.unitPrice.toFixed(2));
+    const key = keyByChain.get(p.storeChain);
+    if (key) row[key] = Number(p.unitPrice.toFixed(2));
     byDate.set(p.date, row);
   }
   const data = [...byDate.values()].sort((a, b) =>
@@ -88,7 +103,7 @@ export function PriceChart({
               formatter={(value, name) => (
                 <span className="flex w-full items-center justify-between gap-2">
                   <span className="text-muted-foreground">
-                    {CHAIN_LABELS[String(name)] ?? String(name)}
+                    {labelByKey.get(String(name)) ?? String(name)}
                   </span>
                   <span className="font-mono font-medium tabular-nums">
                     {Number(value).toFixed(2)} €/{unitLabel}
@@ -98,12 +113,12 @@ export function PriceChart({
             />
           }
         />
-        {chains.map((chain) => (
+        {series.map((s) => (
           <Line
-            key={chain}
+            key={s.key}
             type="monotone"
-            dataKey={chain}
-            stroke={`var(--color-${chain})`}
+            dataKey={s.key}
+            stroke={`var(--color-${s.key})`}
             strokeWidth={2}
             dot={{ r: 4 }}
             activeDot={{ r: 6 }}
