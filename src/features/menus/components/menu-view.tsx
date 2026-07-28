@@ -1,16 +1,18 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AiConsentModal } from "@/features/ai-consent/components/ai-consent-modal";
 import {
   BookmarkPlus,
+  CalendarOff,
   Check,
   ChefHat,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  CircleCheck,
   Copy,
   Lightbulb,
   MoveRight,
@@ -20,7 +22,6 @@ import {
   RefreshCw,
   Sparkles,
   Trash2,
-  type LucideIcon,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -40,18 +41,27 @@ import {
 } from "@/components/ui/responsive-modal";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getWeekDays, shiftWeek } from "@/lib/dates";
+import { getWeekDays, shiftWeek, todayLocalISO } from "@/lib/dates";
+import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
 import { normalizeName } from "@/lib/normalize";
 import { cn } from "@/lib/utils";
 import { saveGeneratedRecipeAction } from "@/features/recipes/actions";
 import type { SavedRecipe } from "@/features/recipes/queries";
-import { formatQuantity, UNIT_LABELS } from "@/lib/units";
-import type { MenuEntry } from "../queries";
+import type { MenuEntry, PendingCheckinEntry } from "../queries";
 import type { SlotDef } from "../slots";
 import type { MissingCandidate } from "../missing";
 import type { CookedDeduction } from "../cooked";
 import type { TonightCard } from "../tonight";
+import { CookedCheckinModal } from "./cooked-checkin-modal";
+import {
+  CookedDeductionsFields,
+  deductionCount,
+  deductionPayload,
+  initialDeductionQty,
+} from "./cooked-deductions-fields";
+import { EntryActionTile } from "./entry-action-tile";
+import { SlotPickerGrid } from "./slot-picker-grid";
 import {
   addMenuEntryAction,
   addRecipeToMenuAction,
@@ -70,12 +80,55 @@ import {
   rerollMenuEntryAction,
   toggleEntryCookedAction,
   toggleEntryPinnedAction,
+  toggleEntrySkippedAction,
   updateMenuEntryAction,
 } from "../actions";
 
-/** ISO local (YYYY-MM-DD) de hoy, para comparar con la fecha de la entrada. */
-function todayISO(): string {
-  return format(new Date(), "yyyy-MM-dd");
+/**
+ * Marca (o desmarca) "cocinado" y, al marcar una entrada con receta, propone
+ * descontar sus ingredientes del inventario (M2). Compartido por la acción
+ * rápida de la celda (R1) y el botón del drawer de edición: los dos hacen
+ * exactamente lo mismo y solo difieren en qué ocurre al terminar, así que la
+ * secuencia (toggle → toast → proponer descuento) vive aquí una sola vez.
+ *
+ * `onResolved` recibe el nuevo `cooked_at` (la fecha de la entrada, o null al
+ * desmarcar) cuando no hay nada que descontar; si lo hay, se llama en su lugar
+ * a `onProposeDeductions`. El plato queda cocinado pase lo que pase con el
+ * descuento: es opt-out por gesto.
+ */
+async function runToggleCooked({
+  entryId,
+  cooked,
+  recipeId,
+  recipeName,
+  date,
+  onResolved,
+  onProposeDeductions,
+}: {
+  entryId: string;
+  cooked: boolean;
+  recipeId: string | null;
+  recipeName: string;
+  date: string;
+  onResolved: (cookedAt: string | null) => void;
+  onProposeDeductions: (recipeName: string, items: CookedDeduction[]) => void;
+}): Promise<void> {
+  const r = await toggleEntryCookedAction(entryId, cooked);
+  if (r.error) {
+    toast.error(r.error);
+    return;
+  }
+  // Al desmarcar (o si es texto libre) no se toca el inventario.
+  if (!cooked || !recipeId) {
+    toast.success(cooked ? "Marcado como cocinado" : "Ya no está cocinado");
+    onResolved(cooked ? date : null);
+    return;
+  }
+  toast.success("Marcado como cocinado");
+  const d = await computeCookedDeductionsAction(recipeId);
+  const items = d.deductions ?? [];
+  if (items.some((it) => it.deductible)) onProposeDeductions(recipeName, items);
+  else onResolved(date);
 }
 
 /** Estado de edición del drawer. `entryId === null` ⇒ añadir un plato nuevo. */
@@ -88,6 +141,7 @@ type Editing = {
   recipeId: string | null;
   canSaveToRecipes: boolean;
   cookedAt: string | null;
+  skippedAt: string | null;
   pinned: boolean;
 };
 
@@ -95,6 +149,7 @@ export function MenuView({
   weekStart,
   menuId,
   entries,
+  pendingCheckin,
   weekCost,
   slots,
   canCopyPrevious,
@@ -105,6 +160,12 @@ export function MenuView({
   weekStart: string;
   menuId: string | null;
   entries: MenuEntry[];
+  /**
+   * Platos pasados sin resolver del hogar (R2). Vienen del servidor porque el
+   * rango cruza semanas: el lunes, el domingo pendiente es de la semana anterior
+   * y no está en `entries`.
+   */
+  pendingCheckin: PendingCheckinEntry[];
   weekCost: { total: number; complete: boolean } | null;
   slots: SlotDef[];
   canCopyPrevious: boolean;
@@ -134,11 +195,29 @@ export function MenuView({
   } | null>(null);
   const [tonight, setTonight] = useState<TonightCard[] | null>(null);
   const [askingTonight, startTonight] = useTransition();
+  // Acción rápida "Lo cocinamos" desde la celda (R1): el id que se está
+  // guardando (para el spinner de SU botón, no de todos).
+  const [markingId, setMarkingId] = useState<string | null>(null);
+  const [, startMarkCooked] = useTransition();
+  // Repaso de platos pasados (R2): se abre desde el chip de la cabecera.
+  const [checkinOpen, setCheckinOpen] = useState(false);
+  /*
+    Feedback inmediato de la acción rápida: el ✔ aparece en la celda antes de que
+    el servidor conteste y la capa optimista se desvanece sola cuando termina la
+    transición (con `router.refresh()` dentro, así que ya llega el dato real).
+    Si la action falla, el ✔ se retira igual: la verdad la tiene el servidor.
+  */
+  const [optimisticEntries, markCookedOptimistic] = useOptimistic(
+    entries,
+    (list: MenuEntry[], entryId: string) =>
+      list.map((e) => (e.id === entryId ? { ...e, cookedAt: e.date } : e)),
+  );
 
   const days = getWeekDays(weekStart);
+  const today = todayLocalISO();
   // Varios platos por hueco: agrupamos por `date|slot` (ya vienen por posición).
   const bySlot = new Map<string, MenuEntry[]>();
-  for (const e of entries) {
+  for (const e of optimisticEntries) {
     const key = `${e.date}|${e.slot}`;
     const list = bySlot.get(key);
     if (list) list.push(e);
@@ -225,6 +304,7 @@ export function MenuView({
       recipeId: null,
       canSaveToRecipes: false,
       cookedAt: null,
+      skippedAt: null,
       pinned: false,
     });
   }
@@ -239,7 +319,35 @@ export function MenuView({
       recipeId: entry.recipeId,
       canSaveToRecipes: Boolean(entry.recipeId && entry.recipeIsSaved === false),
       cookedAt: entry.cookedAt,
+      skippedAt: entry.skippedAt,
       pinned: entry.pinned,
+    });
+  }
+
+  /**
+   * "Lo cocinamos" a un toque desde la celda (R1), sin abrir el drawer: mismo
+   * flujo que el botón del drawer (misma action, mismo descuento propuesto).
+   * Solo marca; desmarcar sigue viviendo en el drawer para que un toque
+   * accidental no des-cocine un plato (el descuento no se revierte).
+   */
+  function quickMarkCooked(entry: MenuEntry) {
+    vibrateTick();
+    setMarkingId(entry.id);
+    startMarkCooked(async () => {
+      markCookedOptimistic(entry.id);
+      await runToggleCooked({
+        entryId: entry.id,
+        cooked: true,
+        recipeId: entry.recipeId,
+        recipeName: entry.recipeName ?? entry.freeText ?? "",
+        date: entry.date,
+        onResolved: () => router.refresh(),
+        onProposeDeductions: (recipeName, items) => {
+          setCookedDeductions({ recipeName, items });
+          router.refresh();
+        },
+      });
+      setMarkingId(null);
     });
   }
 
@@ -280,6 +388,24 @@ export function MenuView({
           </Link>
         </Button>
       </div>
+
+      {/*
+        Repaso de días pasados (R2): solo aparece si hay algo que preguntar, y
+        entonces es lo primero que se ve bajo la semana. Discreto (outline, no
+        primario): el primario de esta pantalla es generar el menú.
+      */}
+      {pendingCheckin.length > 0 ? (
+        <Button
+          variant="outline"
+          onClick={() => setCheckinOpen(true)}
+          className="self-center print:hidden"
+        >
+          <ChefHat aria-hidden />
+          {pendingCheckin.length === 1
+            ? "Repasar 1 plato de días pasados"
+            : `Repasar días pasados (${pendingCheckin.length})`}
+        </Button>
+      ) : null}
 
       {weekCost ? (
         <p className="-mt-2 text-center text-xs text-muted-foreground print:hidden">
@@ -402,11 +528,20 @@ export function MenuView({
             // 120mm de alto por columna llenan la hoja (≈160mm de los 186mm
             // útiles de un A4 horizontal) dejando holgura para las impresoras
             // que imponen un margen mayor que el `@page` que pedimos.
-            className="rounded-xl border p-3 print:flex print:min-h-[120mm] print:break-inside-avoid print:flex-col print:rounded-md print:p-2.5"
+            //
+            // El día de hoy se distingue con el borde de marca; en papel vuelve
+            // al borde neutro (la hoja de la nevera no sabe qué día la miras).
+            className={cn(
+              "rounded-xl border p-3 print:flex print:min-h-[120mm] print:break-inside-avoid print:flex-col print:rounded-md print:p-2.5",
+              date === today && "border-primary print:border-border",
+            )}
           >
-            <p className="mb-2 text-sm font-semibold capitalize print:mb-2 print:text-[11pt]">
-              {format(parseISO(date), "EEEE d", { locale: es })}
-            </p>
+            <div className="mb-2 flex items-center gap-2">
+              <p className="text-sm font-semibold capitalize print:text-[11pt]">
+                {format(parseISO(date), "EEEE d", { locale: es })}
+              </p>
+              {date === today ? <Badge className="print:hidden">Hoy</Badge> : null}
+            </div>
             <div
               className={cn(
                 "grid items-start gap-2 2xl:grid-cols-1 print:!grid-cols-1 print:flex-1 print:auto-rows-fr print:gap-2",
@@ -418,38 +553,83 @@ export function MenuView({
                 return (
                   <div
                     key={slot.key}
-                    className="flex flex-col gap-1.5 print:gap-0.5"
+                    // Contenedor de consulta: cuando la columna del hueco es
+                    // estrecha (3 slots en móvil, 3 días por fila en xl…) la
+                    // acción rápida se apila bajo el plato en vez de robarle
+                    // 44px de ancho al nombre. Solo CSS, un único árbol.
+                    className="@container flex flex-col gap-1.5 print:gap-0.5"
                   >
                     <span className="text-xs font-medium text-muted-foreground print:text-[8pt] print:font-bold print:tracking-wider print:text-primary print:uppercase">
                       {slot.label}
                     </span>
                     {slotEntries.map((entry) => {
                       const text = entry.recipeName ?? entry.freeText ?? "";
+                      const cooked = Boolean(entry.cookedAt);
+                      // Pasado sin resolver: el día ya pasó y nadie ha dicho si
+                      // se cocinó. Tratamiento NEUTRO a propósito: `warning`
+                      // significa "caduca pronto" en toda la app.
+                      const unresolved = !cooked && entry.date < today;
+                      // Marcar solo tiene sentido en hoy o antes (igual que en
+                      // el drawer); en futuro ni se ofrece.
+                      const canQuickMark = !cooked && entry.date <= today;
                       return (
-                        <button
+                        <div
                           key={entry.id}
-                          type="button"
-                          onClick={() => openEdit(date, slot, entry)}
-                          className="flex min-h-11 items-start gap-1.5 rounded-lg border p-2 text-left text-sm transition-colors hover:bg-muted print:min-h-0 print:border-0 print:p-0 print:text-[10pt]"
+                          className="flex flex-col gap-1 @min-[9rem]:flex-row print:block"
                         >
-                          {/* Cocinado y fijado son estado de la app, no del menú
-                              que cuelgas en la nevera: no se imprimen. */}
-                          {entry.cookedAt ? (
-                            <Check
-                              className="mt-0.5 size-3.5 shrink-0 text-success print:hidden"
-                              aria-label="Cocinado"
-                            />
+                          <button
+                            type="button"
+                            onClick={() => openEdit(date, slot, entry)}
+                            className="flex min-h-11 flex-1 items-start gap-1.5 rounded-lg border p-2 text-left text-sm transition-colors hover:bg-muted print:min-h-0 print:border-0 print:p-0 print:text-[10pt]"
+                          >
+                            {/* Cocinado, pendiente y fijado son estado de la app,
+                                no del menú que cuelgas en la nevera: no se
+                                imprimen. */}
+                            {cooked ? (
+                              <Check
+                                className="mt-0.5 size-3.5 shrink-0 text-success print:hidden"
+                                aria-label="Cocinado"
+                              />
+                            ) : null}
+                            {unresolved ? (
+                              <span className="mt-1.5 flex shrink-0 print:hidden">
+                                <span
+                                  aria-hidden
+                                  className="size-1.5 rounded-full bg-muted-foreground"
+                                />
+                                <span className="sr-only">Sin marcar</span>
+                              </span>
+                            ) : null}
+                            {entry.pinned ? (
+                              <Pin
+                                className="mt-0.5 size-3.5 shrink-0 text-muted-foreground print:hidden"
+                                aria-label="Fijado"
+                              />
+                            ) : null}
+                            {/* Cocinado se atenúa, no se tacha: un plato tachado
+                                se lee como "eliminado". */}
+                            <span
+                              className={cn(
+                                "line-clamp-2 print:line-clamp-none",
+                                cooked && "text-muted-foreground print:text-inherit",
+                              )}
+                            >
+                              {text}
+                            </span>
+                          </button>
+                          {canQuickMark ? (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              aria-label={`Marcar como cocinado: ${text}`}
+                              loading={markingId === entry.id}
+                              onClick={() => quickMarkCooked(entry)}
+                              className="h-auto min-h-11 w-full self-stretch text-muted-foreground @min-[9rem]:w-11 print:hidden"
+                            >
+                              <CircleCheck aria-hidden className="size-5" />
+                            </Button>
                           ) : null}
-                          {entry.pinned ? (
-                            <Pin
-                              className="mt-0.5 size-3.5 shrink-0 text-muted-foreground print:hidden"
-                              aria-label="Fijado"
-                            />
-                          ) : null}
-                          <span className="line-clamp-2 print:line-clamp-none">
-                            {text}
-                          </span>
-                        </button>
+                        </div>
                       );
                     })}
                     {/*
@@ -523,7 +703,16 @@ export function MenuView({
         }}
         onCookedChange={(cookedAt) => {
           // Refresca los datos sin cerrar el drawer y refleja el nuevo estado.
-          setEditing((prev) => (prev ? { ...prev, cookedAt } : prev));
+          // Cocinar limpia "no se hizo" en la BD: reflejarlo también aquí.
+          setEditing((prev) =>
+            prev ? { ...prev, cookedAt, skippedAt: cookedAt ? null : prev.skippedAt } : prev,
+          );
+          router.refresh();
+        }}
+        onSkippedChange={(skippedAt) => {
+          setEditing((prev) =>
+            prev ? { ...prev, skippedAt, cookedAt: skippedAt ? null : prev.cookedAt } : prev,
+          );
           router.refresh();
         }}
         onProposeDeductions={(recipeName, items) => {
@@ -541,6 +730,14 @@ export function MenuView({
           setCookedDeductions(null);
           router.refresh();
         }}
+      />
+
+      <CookedCheckinModal
+        open={checkinOpen}
+        onOpenChange={setCheckinOpen}
+        entries={pendingCheckin}
+        slots={slots}
+        onResolved={() => router.refresh()}
       />
 
       <AiConsentModal
@@ -567,45 +764,6 @@ export function MenuView({
   );
 }
 
-/**
- * Celda de acción secundaria del drawer de un plato: icono arriba, etiqueta
- * corta debajo. Con etiqueta visible (no solo `aria-label`) para que se siga
- * entendiendo de un vistazo, ocupando un tercio del ancho.
- */
-function EntryActionTile({
-  icon: Icon,
-  label,
-  onClick,
-  loading,
-  disabled,
-  pressed,
-  destructive,
-}: {
-  icon: LucideIcon;
-  label: string;
-  onClick: () => void;
-  loading?: boolean;
-  disabled?: boolean;
-  /** Acción de dos estados (fijar/desfijar): refleja el estado actual. */
-  pressed?: boolean;
-  destructive?: boolean;
-}) {
-  return (
-    <Button
-      type="button"
-      variant={pressed ? "secondary" : destructive ? "destructive" : "outline"}
-      onClick={onClick}
-      loading={loading}
-      disabled={disabled}
-      aria-pressed={pressed}
-      className="h-auto min-h-16 flex-col gap-1 px-1 py-2 text-[0.7rem] leading-tight whitespace-normal"
-    >
-      <Icon aria-hidden />
-      {label}
-    </Button>
-  );
-}
-
 function EditEntryDrawer({
   editing,
   weekStart,
@@ -614,6 +772,7 @@ function EditEntryDrawer({
   onClose,
   onSaved,
   onCookedChange,
+  onSkippedChange,
   onProposeDeductions,
 }: {
   editing: Editing | null;
@@ -623,6 +782,7 @@ function EditEntryDrawer({
   onClose: () => void;
   onSaved: () => void;
   onCookedChange: (cookedAt: string | null) => void;
+  onSkippedChange: (skippedAt: string | null) => void;
   onProposeDeductions: (recipeName: string, items: CookedDeduction[]) => void;
 }) {
   const [value, setValue] = useState("");
@@ -630,6 +790,7 @@ function EditEntryDrawer({
   const [pending, startTransition] = useTransition();
   const [savingRecipe, startSaveRecipe] = useTransition();
   const [cooking, startCooking] = useTransition();
+  const [skipping, startSkipping] = useTransition();
   const [picking, startPicking] = useTransition();
   const [pinningPending, startPinning] = useTransition();
   const [rerolling, startReroll] = useTransition();
@@ -639,9 +800,15 @@ function EditEntryDrawer({
 
   const isNew = editing?.entryId == null;
   const cooked = Boolean(editing?.cookedAt);
+  const skipped = Boolean(editing?.skippedAt);
   const pinned = Boolean(editing?.pinned);
   // "Lo cocinamos" solo tiene sentido en entradas ya guardadas y de hoy/pasado.
-  const canMarkCooked = Boolean(editing?.entryId && editing.date <= todayISO());
+  const canMarkCooked = Boolean(editing?.entryId && editing.date <= todayLocalISO());
+  // "No se hizo" solo en días YA pasados (por el de hoy no se pregunta todavía)
+  // y sin cocinar: las dos marcas son excluyentes.
+  const canMarkSkipped = Boolean(
+    editing?.entryId && editing.date < todayLocalISO() && !cooked,
+  );
   const days = getWeekDays(weekStart);
 
   // Sincroniza el input al abrir con un plato distinto (o al pasar a "añadir").
@@ -756,28 +923,37 @@ function EditEntryDrawer({
     const recipeId = editing.recipeId;
     const recipeName = editing.current;
     const date = editing.date;
-    startCooking(async () => {
-      const r = await toggleEntryCookedAction(entryId, next);
+    startCooking(() =>
+      runToggleCooked({
+        entryId,
+        cooked: next,
+        recipeId,
+        recipeName,
+        date,
+        onResolved: onCookedChange,
+        onProposeDeductions,
+      }),
+    );
+  }
+
+  /**
+   * "No se hizo" (R2): paridad con el repaso desde el propio plato. Deja huella
+   * para no volver a preguntar y se puede deshacer (el tile va en `aria-pressed`).
+   * No toca el inventario ni ahora ni al deshacerlo.
+   */
+  function toggleSkipped() {
+    if (!editing?.entryId) return;
+    const entryId = editing.entryId;
+    const date = editing.date;
+    const next = !skipped;
+    startSkipping(async () => {
+      const r = await toggleEntrySkippedAction(entryId, next);
       if (r.error) {
         toast.error(r.error);
         return;
       }
-      // Al desmarcar (o si es texto libre) no se toca el inventario.
-      if (!next || !recipeId) {
-        toast.success(next ? "Marcado como cocinado" : "Ya no está cocinado");
-        onCookedChange(next ? date : null);
-        return;
-      }
-      // Receta cocinada: proponer descontar ingredientes (M2). El descuento es
-      // opt-out por gesto; el plato queda cocinado pase lo que pase.
-      toast.success("Marcado como cocinado");
-      const d = await computeCookedDeductionsAction(recipeId);
-      const items = d.deductions ?? [];
-      if (items.some((it) => it.deductible)) {
-        onProposeDeductions(recipeName, items);
-      } else {
-        onCookedChange(date);
-      }
+      toast.success(next ? "Anotado: no se hizo" : "Vuelve a estar pendiente");
+      onSkippedChange(next ? date : null);
     });
   }
 
@@ -851,47 +1027,19 @@ function EditEntryDrawer({
 
         {picker ? (
           <div className="flex flex-col gap-3 px-4">
-            <div
-              className={cn(
-                "grid gap-2",
-                slots.length === 3 ? "grid-cols-3" : "grid-cols-2",
-              )}
-            >
-              {days.flatMap((date) =>
-                slots.map((slot) => {
-                  const isOrigin =
-                    editing?.date === date && editing.slot === slot.key;
-                  // Mover: no al propio hueco, ni a un futuro un plato cocinado.
-                  const blocked =
-                    mode === "move" &&
-                    (isOrigin || (cooked && date > todayISO()));
-                  const disabled = blocked || picking;
-                  return (
-                    <button
-                      key={`${date}|${slot.key}`}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => pick(date, slot.key)}
-                      aria-current={isOrigin ? "true" : undefined}
-                      className={cn(
-                        "flex min-h-11 flex-col items-start gap-0.5 rounded-lg border p-2 text-left transition-colors",
-                        disabled
-                          ? "opacity-50"
-                          : "hover:bg-muted hover:border-primary",
-                        isOrigin && mode === "move" && "border-primary bg-muted",
-                      )}
-                    >
-                      <span className="text-sm font-medium capitalize">
-                        {format(parseISO(date), "EEE d", { locale: es })}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {isOrigin && mode === "move" ? "Aquí" : slot.label}
-                      </span>
-                    </button>
-                  );
-                }),
-              )}
-            </div>
+            <SlotPickerGrid
+              days={days}
+              slots={slots}
+              busy={picking}
+              originKey={editing ? `${editing.date}|${editing.slot}` : null}
+              // Mover: no al propio hueco, ni a un futuro un plato cocinado.
+              // Duplicar: el propio hueco sí vale (una copia más ese día).
+              originBlocked={mode === "move"}
+              isBlocked={(date) =>
+                mode === "move" && cooked && date > todayLocalISO()
+              }
+              onPick={pick}
+            />
             <ResponsiveModalFooter className="gap-2 px-0">
               <Button
                 type="button"
@@ -1009,6 +1157,15 @@ function EditEntryDrawer({
           */}
           {!isNew ? (
             <div className="grid grid-cols-3 gap-2">
+              {canMarkSkipped ? (
+                <EntryActionTile
+                  icon={CalendarOff}
+                  label={skipped ? "No se hizo · deshacer" : "No se hizo"}
+                  onClick={toggleSkipped}
+                  loading={skipping}
+                  pressed={skipped}
+                />
+              ) : null}
               <EntryActionTile
                 icon={RefreshCw}
                 label={rerolling ? "Pensando…" : "Otra idea"}
@@ -1251,31 +1408,18 @@ function CookedDeductionsDrawer({
   const key = data ? data.items.map((i) => i.key).join(",") : null;
   if (key !== lastKey) {
     setLastKey(key);
-    const init: Record<string, string> = {};
-    for (const it of data?.items ?? []) {
-      if (it.deductible) init[it.key] = String(it.suggestedQty);
-    }
-    setQty(init);
+    setQty(initialDeductionQty(data?.items ?? []));
   }
 
   const items = data?.items ?? [];
-  const deductibles = items.filter((i) => i.deductible);
-  const informational = items.filter((i) => !i.deductible);
-  const count = deductibles.filter(
-    (it) => (Number(qty[it.key]) || 0) > 0,
-  ).length;
+  const count = deductionCount(items, qty);
 
   function confirm() {
     if (!data) return;
-    const payload = deductibles
-      .map((it) => ({
-        productId: it.productId!,
-        unit: it.unit!,
-        quantity: Number(qty[it.key]) || 0,
-      }))
-      .filter((p) => p.quantity > 0);
     startTransition(async () => {
-      const r = await confirmCookedDeductionsAction(payload);
+      const r = await confirmCookedDeductionsAction(
+        deductionPayload(items, qty),
+      );
       if (r.error) {
         toast.error(r.error);
         return;
@@ -1304,64 +1448,13 @@ function CookedDeductionsDrawer({
         </ResponsiveModalHeader>
 
         <div className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto px-4">
-          {deductibles.length > 0 ? (
-            <ul className="flex flex-col gap-2">
-              {deductibles.map((it) => (
-                <li
-                  key={it.key}
-                  className="flex items-center justify-between gap-3 rounded-xl border p-3"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium break-words line-clamp-2">
-                      {it.productName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Tienes {formatQuantity(it.availableQty, it.unit!)}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <Input
-                      type="number"
-                      inputMode="decimal"
-                      aria-label={`Cantidad a descontar de ${it.productName}`}
-                      min={0}
-                      max={it.availableQty}
-                      step={it.unit === "ud" ? 1 : 0.01}
-                      value={qty[it.key] ?? ""}
-                      onChange={(e) =>
-                        setQty((prev) => ({ ...prev, [it.key]: e.target.value }))
-                      }
-                      className="w-20 text-right"
-                    />
-                    <span className="w-7 text-sm text-muted-foreground">
-                      {UNIT_LABELS[it.unit!]}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-
-          {informational.length > 0 ? (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-xs font-medium text-muted-foreground">
-                No se descuenta
-              </p>
-              <ul className="flex flex-col gap-1.5">
-                {informational.map((it) => (
-                  <li
-                    key={it.key}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-dashed p-2 text-sm"
-                  >
-                    <span className="min-w-0 truncate">{it.ingredientName}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {it.reason}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
+          <CookedDeductionsFields
+            items={items}
+            qty={qty}
+            onQtyChange={(k, value) =>
+              setQty((prev) => ({ ...prev, [k]: value }))
+            }
+          />
         </div>
 
         <ResponsiveModalFooter className="gap-2">

@@ -41,6 +41,25 @@ function toISODate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/**
+ * Hoy como YYYY-MM-DD en la zona de quien ejecuta: el navegador en cliente, el
+ * proceso en servidor. Vercel (fra1) corre en UTC, así que entre las 00:00 y las
+ * ~02:00 hora española el "hoy" del servidor puede ir por detrás del del
+ * usuario: es una inconsistencia ya aceptada por el código (las actions validan
+ * con la fecha del servidor y la UI decide con la del cliente). No inventar aquí
+ * otro esquema de zonas horarias.
+ */
+export function todayLocalISO(): string {
+  return toISODate(new Date());
+}
+
+/** Desplaza una fecha YYYY-MM-DD N días (negativo = hacia atrás). */
+export function shiftDays(dateISO: string, days: number): string {
+  const d = new Date(`${dateISO}T00:00:00`);
+  d.setDate(d.getDate() + days);
+  return toISODate(d);
+}
+
 /** Lunes de la semana de `d` (por defecto hoy), como YYYY-MM-DD. */
 export function getWeekStart(d: Date = new Date()): string {
   const date = new Date(d);

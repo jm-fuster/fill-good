@@ -42,6 +42,7 @@ export type FormState = {
   avoidText: string;
   servings: string;
   planBreakfast: boolean;
+  checkinEnabled: boolean;
 };
 
 /** Defaults del formulario (el onboarding parte de aquí). */
@@ -51,6 +52,7 @@ const DEFAULT_FORM: FormState = {
   avoidText: "",
   servings: "2",
   planBreakfast: false,
+  checkinEnabled: true,
 };
 
 export function toState(prefs: MenuPrefs): FormState {
@@ -60,6 +62,7 @@ export function toState(prefs: MenuPrefs): FormState {
     avoidText: prefs.avoidText ?? "",
     servings: String(prefs.servings),
     planBreakfast: prefs.planBreakfast,
+    checkinEnabled: prefs.checkinEnabled,
   };
 }
 
@@ -70,6 +73,7 @@ export function toInput(s: FormState): MenuPrefsInput {
     avoidText: s.avoidText.trim() || undefined,
     servings: Number(s.servings),
     planBreakfast: s.planBreakfast,
+    checkinEnabled: s.checkinEnabled,
   };
 }
 
@@ -160,6 +164,30 @@ export function PrefsFields({
           checked={state.planBreakfast}
           onCheckedChange={(v) => set("planBreakfast", v)}
         />
+      </div>
+
+      {/*
+        Repaso de platos pasados (R3). El apagador vive aquí y NO en Ajustes >
+        Notificaciones: esa página promete avisos en el dispositivo sin abrir la
+        app y guarda sus preferencias por suscripción push; esto es una
+        preferencia del hogar sobre lo que ocurre DENTRO de la app.
+      */}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between gap-3">
+          <Label htmlFor="prefs-checkin" className="flex-1">
+            Repaso de platos pasados
+          </Label>
+          <Switch
+            id="prefs-checkin"
+            checked={state.checkinEnabled}
+            onCheckedChange={(v) => set("checkinEnabled", v)}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Te preguntamos si llegaste a cocinar lo planificado cuando vuelvas a la
+          app. Marcar un plato como cocinado descuenta sus ingredientes del
+          inventario.
+        </p>
       </div>
 
       {/* Evitar ingredientes */}

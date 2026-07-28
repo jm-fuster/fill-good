@@ -90,6 +90,7 @@ export type Database = {
           avoid_text: string | null;
           servings: number;
           plan_breakfast: boolean;
+          checkin_enabled: boolean;
           updated_at: string;
         };
         Insert: {
@@ -99,6 +100,7 @@ export type Database = {
           avoid_text?: string | null;
           servings?: number;
           plan_breakfast?: boolean;
+          checkin_enabled?: boolean;
           updated_at?: string;
         };
         Update: {
@@ -108,6 +110,7 @@ export type Database = {
           avoid_text?: string | null;
           servings?: number;
           plan_breakfast?: boolean;
+          checkin_enabled?: boolean;
           updated_at?: string;
         };
         Relationships: [
@@ -781,6 +784,7 @@ export type Database = {
           servings: number;
           position: number;
           cooked_at: string | null;
+          skipped_at: string | null;
           source: string;
           pinned: boolean;
         };
@@ -795,6 +799,7 @@ export type Database = {
           servings?: number;
           position?: number;
           cooked_at?: string | null;
+          skipped_at?: string | null;
           source?: string;
           pinned?: boolean;
         };
@@ -809,6 +814,7 @@ export type Database = {
           servings?: number;
           position?: number;
           cooked_at?: string | null;
+          skipped_at?: string | null;
           source?: string;
           pinned?: boolean;
         };

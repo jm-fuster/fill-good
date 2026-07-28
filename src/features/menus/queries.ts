@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getActiveHouseholdId } from "@/features/household/queries";
+import { shiftDays, todayLocalISO } from "@/lib/dates";
 import type { MenuRuleKind } from "./rules";
 
 export type MealSlot = "lunch" | "dinner";
@@ -17,6 +18,12 @@ export type MenuEntry = {
   recipeSource: string | null;
   freeText: string | null;
   cookedAt: string | null;
+  /**
+   * Se planificó pero NO se cocinó (R2). Excluyente con `cookedAt`: la fecha es
+   * la de la entrada, no la del momento de contestar. Sin resolver = las dos a
+   * null, y de eso es de lo que pregunta el repaso.
+   */
+  skippedAt: string | null;
   /** Origen de la entrada: 'manual' | 'ai' (N2). Protege lo manual al regenerar. */
   source: string;
   /** El usuario la fija: la regeneración nunca la toca (N2). */
@@ -36,6 +43,7 @@ type EntryRow = {
   recipe_id: string | null;
   free_text: string | null;
   cooked_at: string | null;
+  skipped_at: string | null;
   source: string;
   pinned: boolean;
   recipe: { name: string; is_saved: boolean; source: string } | null;
@@ -53,6 +61,7 @@ function mapEntryRow(r: EntryRow): MenuEntry {
     recipeSource: r.recipe?.source ?? null,
     freeText: r.free_text,
     cookedAt: r.cooked_at,
+    skippedAt: r.skipped_at,
     source: r.source,
     pinned: r.pinned,
   };
@@ -82,7 +91,7 @@ export async function getMenuEntries(menuId: string): Promise<MenuEntry[]> {
   const { data, error } = await supabase
     .from("menu_entries")
     .select(
-      "id, date, meal_slot, position, recipe_id, free_text, cooked_at, source, pinned, recipe:recipes(name, is_saved, source)",
+      "id, date, meal_slot, position, recipe_id, free_text, cooked_at, skipped_at, source, pinned, recipe:recipes(name, is_saved, source)",
     )
     .eq("household_id", householdId)
     .eq("menu_id", menuId)
@@ -137,7 +146,7 @@ export async function getWeekMenusWithEntries(
   const { data, error } = await supabase
     .from("menu_entries")
     .select(
-      "menu_id, id, date, meal_slot, position, recipe_id, free_text, cooked_at, source, pinned, recipe:recipes(name, is_saved, source)",
+      "menu_id, id, date, meal_slot, position, recipe_id, free_text, cooked_at, skipped_at, source, pinned, recipe:recipes(name, is_saved, source)",
     )
     .eq("household_id", householdId)
     .in("menu_id", [...weekByMenuId.keys()])
@@ -153,6 +162,72 @@ export async function getWeekMenusWithEntries(
     result.get(week)!.entries.push(mapEntryRow(r));
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Repaso de cocinado (R2)
+// ---------------------------------------------------------------------------
+
+/** Plato pasado del que aún no se sabe si se cocinó, tal como lo lista el repaso. */
+export type PendingCheckinEntry = {
+  id: string;
+  date: string;
+  slot: string;
+  /** Nombre de la receta o el texto libre: lo que hay que enseñar en la fila. */
+  name: string;
+  /** Con receta hay descuento de inventario que proponer; con texto libre no. */
+  recipeId: string | null;
+};
+
+/** Días hacia atrás que abarca el repaso. */
+const CHECKIN_WINDOW_DAYS = 7;
+
+/**
+ * Platos del hogar activo pendientes de repaso: días ya pasados (nunca hoy: la
+ * cena aún no ha ocurrido) sin `cooked_at` ni `skipped_at`, dentro de una ventana
+ * de una semana. El rango CRUZA semanas a propósito —un lunes, el domingo
+ * pendiente pertenece al menú de la semana anterior—, así que no se filtra por
+ * `menu_id`. Lo resuelve el índice parcial `menu_entries_pending_checkin_idx`.
+ *
+ * Degrada en suave: si la consulta falla (p. ej. la migración aún no está
+ * aplicada) devuelve lista vacía en vez de tumbar la página que la pide.
+ */
+export async function getPendingCheckinEntries(): Promise<PendingCheckinEntry[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
+  const today = todayLocalISO();
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("menu_entries")
+    .select("id, date, meal_slot, position, recipe_id, free_text, recipe:recipes(name)")
+    .eq("household_id", householdId)
+    .gte("date", shiftDays(today, -CHECKIN_WINDOW_DAYS))
+    .lt("date", today)
+    .is("cooked_at", null)
+    .is("skipped_at", null)
+    .order("date", { ascending: true })
+    .order("meal_slot", { ascending: true })
+    .order("position", { ascending: true });
+  if (error) return [];
+
+  const rows = (data ?? []) as unknown as {
+    id: string;
+    date: string;
+    meal_slot: string;
+    recipe_id: string | null;
+    free_text: string | null;
+    recipe: { name: string } | null;
+  }[];
+  return rows
+    .map((r) => ({
+      id: r.id,
+      date: r.date,
+      slot: r.meal_slot,
+      name: r.recipe?.name ?? r.free_text ?? "",
+      recipeId: r.recipe_id,
+    }))
+    // Una entrada sin nombre no se puede preguntar ("¿cocinaste …?").
+    .filter((e) => e.name !== "");
 }
 
 /** Regla del menú tal como la consume la UI (con el nombre de la receta). */
@@ -222,6 +297,12 @@ export type MenuPrefs = {
   avoidText: string | null;
   servings: number;
   planBreakfast: boolean;
+  /**
+   * El repaso proactivo de platos pasados está activo para el hogar (R3). Sin
+   * fila de preferencias vale `true`: el repaso es la razón de ser de la feature
+   * y quien no lo quiera lo apaga.
+   */
+  checkinEnabled: boolean;
   /** Si existe fila: el onboarding ya se resolvió (aunque fuese "Ahora no"). */
   configured: boolean;
 };
@@ -233,6 +314,7 @@ export const DEFAULT_MENU_PREFS: MenuPrefs = {
   avoidText: null,
   servings: 2,
   planBreakfast: false,
+  checkinEnabled: true,
   configured: false,
 };
 
@@ -248,7 +330,9 @@ export async function getMenuPrefs(): Promise<MenuPrefs> {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("household_menu_prefs")
-    .select("goal, diet_style, avoid_text, servings, plan_breakfast")
+    .select(
+      "goal, diet_style, avoid_text, servings, plan_breakfast, checkin_enabled",
+    )
     .eq("household_id", householdId)
     .maybeSingle();
   if (error) throw error;
@@ -259,6 +343,7 @@ export async function getMenuPrefs(): Promise<MenuPrefs> {
     avoidText: data.avoid_text,
     servings: data.servings,
     planBreakfast: data.plan_breakfast,
+    checkinEnabled: data.checkin_enabled,
     configured: true,
   };
 }

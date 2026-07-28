@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { cookies } from "next/headers";
 
 import { AppSidebar } from "@/components/layout/app-sidebar";
@@ -7,6 +8,7 @@ import { NavListCountProvider } from "@/components/layout/nav-list-count";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { HouseholdSwitcherMenu } from "@/features/household/components/household-switcher";
+import { CookedCheckinBanner } from "@/features/menus/components/cooked-checkin-banner";
 import {
   getCurrentHousehold,
   getUserHouseholds,
@@ -79,6 +81,13 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
               tabIndex={-1}
               className="w-full flex-1 px-4 pt-4 pb-28 outline-none md:px-8 md:pb-8"
             >
+              {/* Repaso de platos (R3): la pregunta va donde está el usuario,
+                  no solo en /menus. En Suspense para que sus consultas no
+                  retrasen el primer paint (mismo espíritu que el badge de la
+                  nav); sin pendientes no renderiza nada. */}
+              <Suspense fallback={null}>
+                <CookedCheckinBanner />
+              </Suspense>
               {children}
             </div>
           </SidebarInset>

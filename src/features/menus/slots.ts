@@ -16,3 +16,14 @@ const DINNER: SlotDef = { key: "dinner", label: "Cena" };
 export function activeSlots(planBreakfast: boolean): SlotDef[] {
   return planBreakfast ? [BREAKFAST, LUNCH, DINNER] : [LUNCH, DINNER];
 }
+
+/**
+ * Etiqueta de un hueco a partir de su clave, sin depender de las preferencias
+ * del hogar: una entrada guardada puede ser de un hueco que el hogar ya no
+ * planifica (desayuno desactivado después) y sigue habiendo que nombrarla.
+ */
+export function slotLabel(key: string): string {
+  return (
+    [BREAKFAST, LUNCH, DINNER].find((s) => s.key === key)?.label ?? key
+  );
+}

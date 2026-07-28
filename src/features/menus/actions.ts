@@ -24,6 +24,7 @@ import {
   getWeekStart,
   relativeDaysLabel,
   shiftWeek,
+  todayLocalISO,
 } from "@/lib/dates";
 import { normalizeName } from "@/lib/normalize";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -129,15 +130,6 @@ type DishPayload = {
   description: string | null;
   ingredients: { name: string; quantity: number | null; unit: UnitType | null }[];
 };
-
-/** Fecha local de hoy (YYYY-MM-DD), para la temporada de los platos nuevos. */
-function todayLocalISO(): string {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const d = String(now.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
 
 /**
  * Housekeeping: borra las recetas efímeras (is_saved = false) del hogar que ya
@@ -631,12 +623,17 @@ export async function removeMenuEntryAction(
 }
 
 /**
- * Mueve un plato a otro hueco de la MISMA semana (N1). Actualiza `date`,
- * `meal_slot` y `position` (siguiente libre del destino, para no colisionar con
- * el unique del hueco); conserva `recipe_id`/`free_text` intactos, de modo que
- * el coste (M7) y el descuento de stock (M2) siguen funcionando. Mover a su
- * propio hueco es un no-op silencioso; no se puede mover a un día futuro un
- * plato ya cocinado.
+ * Mueve un plato a otro hueco (N1). Actualiza `date`, `meal_slot` y `position`
+ * (siguiente libre del destino, para no colisionar con el unique del hueco);
+ * conserva `recipe_id`/`free_text` intactos, de modo que el coste (M7) y el
+ * descuento de stock (M2) siguen funcionando. Mover a su propio hueco es un
+ * no-op silencioso; no se puede mover a un día futuro un plato ya cocinado.
+ *
+ * El destino puede caer en OTRA semana: entonces la entrada cambia también de
+ * `menu_id` (creando el menú de esa semana si no existe). Lo necesita el repaso
+ * (R2), donde "lo haré otro día" para un plato del viernes pasado solo tiene
+ * sentido si puede aterrizar en la semana en curso. Sin esto la entrada se
+ * quedaría con una fecha fuera de la semana de su menú: invisible en la UI.
  */
 export async function moveMenuEntryAction(
   entryId: string,
@@ -649,7 +646,7 @@ export async function moveMenuEntryAction(
 
   const { data: entry } = await supabase
     .from("menu_entries")
-    .select("menu_id, date, meal_slot, cooked_at")
+    .select("menu_id, date, meal_slot, cooked_at, menu:weekly_menus(week_start)")
     .eq("household_id", household.id)
     .eq("id", entryId)
     .maybeSingle();
@@ -659,20 +656,25 @@ export async function moveMenuEntryAction(
   if (entry.date === date && entry.meal_slot === slot) return { ok: true };
 
   // Un plato ya cocinado no puede viajar a un día futuro.
-  if (entry.cooked_at) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (new Date(`${date}T00:00:00`) > today) {
-      return {
-        error: "No puedes mover a un día futuro un plato ya cocinado.",
-      };
-    }
+  if (entry.cooked_at && date > todayLocalISO()) {
+    return { error: "No puedes mover a un día futuro un plato ya cocinado." };
+  }
+
+  // ¿Cambia de semana? Entonces cambia de menú (y se crea si hace falta).
+  const originWeek =
+    (entry as { menu: { week_start: string } | null }).menu?.week_start ?? null;
+  const targetWeek = getWeekStart(new Date(`${date}T00:00:00`));
+  let menuId = entry.menu_id;
+  if (originWeek && originWeek !== targetWeek) {
+    const targetMenuId = await ensureMenu(supabase, household.id, targetWeek);
+    if (!targetMenuId) return { error: "No se pudo mover el plato." };
+    menuId = targetMenuId;
   }
 
   const position = await nextPosition(
     supabase,
     household.id,
-    entry.menu_id,
+    menuId,
     date,
     slot,
   );
@@ -680,7 +682,7 @@ export async function moveMenuEntryAction(
   // Mover es un gesto manual: la entrada pasa a protegerse de la regeneración (N2).
   const { error } = await supabase
     .from("menu_entries")
-    .update({ date, meal_slot: slot, position, source: "manual" })
+    .update({ menu_id: menuId, date, meal_slot: slot, position, source: "manual" })
     .eq("household_id", household.id)
     .eq("id", entryId);
   if (error) return { error: "No se pudo mover el plato." };
@@ -1240,6 +1242,9 @@ export async function addRecipeToSlotAction(
  * cooked_at con la propia fecha de la entrada (señal de apetencia para C3);
  * al desmarcar, la deja en null. Solo tiene sentido en entradas de hoy o
  * pasadas: la UI oculta el botón en fechas futuras, pero aquí se valida igual.
+ *
+ * Marcar cocinado limpia `skipped_at`: las dos marcas son excluyentes (R2), así
+ * que contestar "sí, lo hicimos" borra un "no se hizo" anterior.
  */
 export async function toggleEntryCookedAction(
   entryId: string,
@@ -1269,15 +1274,65 @@ export async function toggleEntryCookedAction(
     .maybeSingle();
   if (!entry) return { error: "No se encontró la entrada del menú." };
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  if (new Date(`${entry.date}T00:00:00`) > today) {
+  if (entry.date > todayLocalISO()) {
     return { error: "Solo puedes marcar como cocinado un día que ya ha pasado." };
   }
 
   const { error } = await supabase
     .from("menu_entries")
-    .update({ cooked_at: entry.date })
+    .update({ cooked_at: entry.date, skipped_at: null })
+    .eq("household_id", household.id)
+    .eq("id", entryId);
+  if (error) return { error: "No se pudo actualizar la entrada." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * Marca o desmarca "no se hizo" (R2): espejo de `toggleEntryCookedAction`.
+ * `skipped_at` guarda la fecha de la ENTRADA (mismo criterio que `cooked_at`) y
+ * al marcarlo se limpia `cooked_at`, porque las dos marcas son excluyentes.
+ *
+ * Sirve para no volver a preguntar por un plato que no se cocinó, y de paso
+ * crea una señal nueva ("planificado y nunca cocinado") que hoy no existe. Esa
+ * señal NO se usa todavía en el generador ni en "¿Qué hago hoy?": primero
+ * acumular dato real.
+ */
+export async function toggleEntrySkippedAction(
+  entryId: string,
+  skipped: boolean,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  if (!skipped) {
+    const { error } = await supabase
+      .from("menu_entries")
+      .update({ skipped_at: null })
+      .eq("household_id", household.id)
+      .eq("id", entryId);
+    if (error) return { error: "No se pudo actualizar la entrada." };
+    revalidatePath("/menus");
+    return { ok: true };
+  }
+
+  const { data: entry } = await supabase
+    .from("menu_entries")
+    .select("date")
+    .eq("household_id", household.id)
+    .eq("id", entryId)
+    .maybeSingle();
+  if (!entry) return { error: "No se encontró la entrada del menú." };
+
+  if (entry.date > todayLocalISO()) {
+    return { error: "Ese día todavía no ha pasado." };
+  }
+
+  const { error } = await supabase
+    .from("menu_entries")
+    .update({ skipped_at: entry.date, cooked_at: null })
     .eq("household_id", household.id)
     .eq("id", entryId);
   if (error) return { error: "No se pudo actualizar la entrada." };
@@ -1821,11 +1876,46 @@ export async function saveMenuPrefsAction(
       avoid_text: d.avoidText,
       servings: d.servings,
       plan_breakfast: d.planBreakfast,
+      // Sin valor explícito se conserva el default de la columna (true) en un
+      // insert; en un update no se toca porque supabase-js omite el undefined.
+      checkin_enabled: d.checkinEnabled,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "household_id" },
   );
   if (error) return { error: "No se pudieron guardar las preferencias." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * Apaga (o vuelve a encender) el repaso de platos pasados del hogar (R3). Action
+ * ligera y dedicada porque se llama desde el propio modal de repaso —"No volver a
+ * preguntar"—, donde no hay formulario de preferencias que enviar: `upsert` con
+ * los defaults de la tabla si el hogar aún no tiene fila.
+ *
+ * La tarjeta del repaso vive en el shell (todas las páginas), pero el layout de
+ * la app es `force-dynamic`: cada navegación la reevalúa, así que basta con
+ * revalidar /menus (por el interruptor de Ajustes) y con el `router.refresh()`
+ * que hace quien llama para la página en curso.
+ */
+export async function setCheckinEnabledAction(
+  enabled: boolean,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const { error } = await supabase.from("household_menu_prefs").upsert(
+    {
+      household_id: household.id,
+      checkin_enabled: enabled,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "household_id" },
+  );
+  if (error) return { error: "No se pudo guardar la preferencia." };
 
   revalidatePath("/menus");
   return { ok: true };

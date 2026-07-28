@@ -55,6 +55,12 @@ export const menuPrefsInputSchema = z.object({
     .min(1, "Al menos 1 ración.")
     .max(12, "Como mucho 12 raciones."),
   planBreakfast: z.boolean(),
+  /**
+   * Repaso de platos pasados (R3). Por HOGAR, no por usuario: la molestia
+   * personal se resuelve con el snooze por dispositivo. Opcional para no romper
+   * a quien llame sin el campo (el onboarding parte de los defaults).
+   */
+  checkinEnabled: z.boolean().optional(),
 });
 
 export type MenuPrefsInput = z.input<typeof menuPrefsInputSchema>;

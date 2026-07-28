@@ -10,6 +10,7 @@ import { MenuPrefsOnboarding } from "@/features/menus/components/menu-prefs";
 import {
   getMenuPrefs,
   getMenuRules,
+  getPendingCheckinEntries,
   getWeekMenusWithEntries,
 } from "@/features/menus/queries";
 import { activeSlots } from "@/features/menus/slots";
@@ -36,13 +37,17 @@ export default async function MenusPage({
   const prevWeekStart = shiftWeek(weekStart, -1);
   // `getCurrentHousehold` va en `cache()` y las otras queries ya lo llaman: es
   // gratis en este request y da el nombre del hogar para la hoja impresa.
-  const [menusByWeek, rules, recipes, prefs, household] = await Promise.all([
-    getWeekMenusWithEntries([weekStart, prevWeekStart]),
-    getMenuRules(),
-    getSavedRecipes(),
-    getMenuPrefs(),
-    getCurrentHousehold(),
-  ]);
+  const [menusByWeek, rules, recipes, prefs, household, pendingCheckin] =
+    await Promise.all([
+      getWeekMenusWithEntries([weekStart, prevWeekStart]),
+      getMenuRules(),
+      getSavedRecipes(),
+      getMenuPrefs(),
+      getCurrentHousehold(),
+      // Pendientes de repaso (R2): van en la misma tanda, no añaden latencia.
+      // El rango cruza semanas, así que no se derivan de `entries`.
+      getPendingCheckinEntries(),
+    ]);
   const menu = menusByWeek.get(weekStart)?.menu ?? null;
   const entries = menusByWeek.get(weekStart)?.entries ?? [];
   const slots = activeSlots(prefs.planBreakfast);
@@ -101,6 +106,7 @@ export default async function MenusPage({
           weekStart={weekStart}
           menuId={menu?.id ?? null}
           entries={entries}
+          pendingCheckin={pendingCheckin}
           weekCost={weekCost}
           slots={slots}
           canCopyPrevious={canCopyPrevious}
