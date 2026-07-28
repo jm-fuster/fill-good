@@ -1,11 +1,14 @@
-// Guardarraíl de cumplimiento: impide publicar con los datos del responsable
-// del tratamiento sin rellenar.
+// Guardarraíl de cumplimiento: impide publicar sin identificar al responsable
+// del tratamiento.
 //
-// Los textos legales (/privacidad y /terminos) renderizan LEGAL_OWNER tal cual.
-// Si name/taxId/address/email siguen siendo los placeholders de plantilla
-// («[NIF/CIF]», etc.), la web pública quedaría sin responsable identificado
-// —incumpliendo el art. 13.1.a RGPD y el art. 10 LSSI— y con un buzón de
-// derechos inexistente. Este check detecta ese estado.
+// Solo son OBLIGATORIOS `name` y `email` (art. 13.1.a RGPD: identidad del
+// responsable + un medio de contacto). `taxId` y `address` son opcionales
+// —la LSSI art. 10 solo los exige a servicios con actividad económica— y pueden
+// quedar en "" (no se muestran); por eso este check NO los comprueba.
+//
+// Si `name` o `email` siguen siendo el placeholder de plantilla
+// («[email de contacto]», etc.) o están vacíos, la web pública quedaría sin
+// responsable identificado y sin buzón de derechos. Este check lo detecta.
 //
 // Comportamiento:
 //   - En producción de Vercel (VERCEL_ENV=production) o con --strict: FALLA
@@ -20,7 +23,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const CONFIG_PATH = join("src", "app", "(legal)", "legal-config.ts");
-const REQUIRED_FIELDS = ["name", "taxId", "address", "email"];
+// Solo los campos obligatorios del art. 13.1.a RGPD; taxId/address son opcionales.
+const REQUIRED_FIELDS = ["name", "email"];
 
 const strict =
   process.argv.includes("--strict") || process.env.VERCEL_ENV === "production";

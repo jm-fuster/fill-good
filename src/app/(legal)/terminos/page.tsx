@@ -26,12 +26,16 @@ export default function TerminosPage() {
           <li>
             <strong>Titular:</strong> {LEGAL_OWNER.name}
           </li>
-          <li>
-            <strong>NIF/CIF:</strong> {LEGAL_OWNER.taxId}
-          </li>
-          <li>
-            <strong>Dirección:</strong> {LEGAL_OWNER.address}
-          </li>
+          {LEGAL_OWNER.taxId ? (
+            <li>
+              <strong>NIF/CIF:</strong> {LEGAL_OWNER.taxId}
+            </li>
+          ) : null}
+          {LEGAL_OWNER.address ? (
+            <li>
+              <strong>Dirección:</strong> {LEGAL_OWNER.address}
+            </li>
+          ) : null}
           <li>
             <strong>Contacto:</strong> {LEGAL_OWNER.email}
           </li>
