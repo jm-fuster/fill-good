@@ -32,7 +32,7 @@ Referencia viva en `/styleguide` (`src/app/styleguide/page.tsx`). Tokens en `src
 - **La RLS NO acota al hogar activo — acótalo tú.** Las políticas solo comprueban `is_household_member(household_id)`, es decir «¿eres miembro?», no «¿es el hogar que estás viendo?». Un usuario con varios hogares es normal (multi-hogar), así que **toda** consulta a una tabla con `household_id` lleva `.eq("household_id", …)`, con el id de `getActiveHouseholdId()` (o `getCurrentHousehold()`). Sin ese filtro las filas de los dos hogares salen mezcladas, y las consultas con `.maybeSingle()` fallan directamente. Vale también para las escrituras que resuelven una fila por una clave que solo es única POR hogar (`normalized_name`, `week_start`…). Única excepción legítima: `getUserHouseholds`, que existe para listar todos.
 - IA: **siempre** vía `getModel('receipts' | 'menus')` de `src/lib/ai/models.ts` — nunca instanciar un provider en una feature. El proveedor/modelo se cambia por env vars.
 - Features en `src/features/<nombre>/{components,actions.ts,queries.ts,schemas.ts}`; UI compartida en `src/components/`.
-- Migraciones SQL en `supabase/migrations/` vía Supabase CLI; regenerar tipos tras cada migración.
+- Migraciones SQL en `supabase/migrations/`, escritas con la Supabase CLI localmente; se aplican solas al mergear a `main` (integración GitHub↔Supabase, sin branching). Regenerar tipos tras cada migración.
 - El usuario no quiere gasto en IA por ahora: mantener Gemini free tier salvo que pida lo contrario.
 
 ## Vigilancia de calidad (rendimiento + accesibilidad)
