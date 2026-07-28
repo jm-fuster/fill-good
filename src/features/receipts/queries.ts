@@ -6,6 +6,7 @@ import {
   getCurrentHousehold,
 } from "@/features/household/queries";
 import { suggestCandidates, type HouseholdMatchData } from "@/lib/matching";
+import type { AliasSighting } from "@/lib/alias-rename";
 import { findPendingTrip } from "@/features/shopping-list/trips";
 import type { UnitType } from "@/lib/supabase/types";
 
@@ -172,6 +173,47 @@ export async function getAlreadyStockedProductIds(
     purchasedAt: receipt.purchasedAt,
   });
   return trip?.productIds ?? [];
+}
+
+/**
+ * Nombres de ticket ya aprendidos que pueden generar un aviso de renombrado:
+ * los que tienen cadena conocida y el usuario no ha descartado ya.
+ *
+ * Se manda el conjunto del hogar (no solo el de los productos que trae el
+ * ticket) porque la detección corre en el CLIENTE: la cadena del ticket y el
+ * producto de cada línea se corrigen en vivo en esa misma pantalla, y un
+ * snapshot calculado en el servidor se quedaría obsoleto en el primer toque. El
+ * volumen es del mismo orden que el catálogo completo, que ya viaja a esta
+ * pantalla para el combobox.
+ *
+ * Degrada en suave: mientras la migración de `store_chain` no esté aplicada, la
+ * consulta devuelve error y aquí se traduce a "sin candidatos" (no hay avisos,
+ * nada más).
+ */
+export async function getAliasSightings(): Promise<AliasSighting[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("product_aliases")
+    .select("id, product_id, alias, alias_normalized, store_chain, last_seen_at")
+    .eq("household_id", householdId)
+    .not("store_chain", "is", null)
+    .is("rename_dismissed_at", null);
+  if (error) {
+    console.error("No se pudieron cargar los nombres por cadena:", error);
+    return [];
+  }
+  return (data ?? [])
+    .filter((a) => a.store_chain !== null)
+    .map((a) => ({
+      id: a.id,
+      productId: a.product_id,
+      alias: a.alias,
+      aliasNormalized: a.alias_normalized,
+      storeChain: a.store_chain as string,
+      lastSeenAt: a.last_seen_at,
+    }));
 }
 
 /** Sugerencia fuzzy (E6): id del producto candidato para una línea sin match. */

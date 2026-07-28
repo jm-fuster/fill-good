@@ -404,6 +404,11 @@ export type Database = {
           alias_normalized: string;
           source: string;
           created_at: string;
+          /** Cadena del último ticket que trajo este nombre (null = desconocida). */
+          store_chain: string | null;
+          last_seen_at: string | null;
+          /** El usuario ya dijo que este nombre no es un rótulo viejo. */
+          rename_dismissed_at: string | null;
         };
         Insert: {
           id?: string;
@@ -413,6 +418,9 @@ export type Database = {
           alias_normalized: string;
           source?: string;
           created_at?: string;
+          store_chain?: string | null;
+          last_seen_at?: string | null;
+          rename_dismissed_at?: string | null;
         };
         Update: {
           id?: string;
@@ -422,6 +430,9 @@ export type Database = {
           alias_normalized?: string;
           source?: string;
           created_at?: string;
+          store_chain?: string | null;
+          last_seen_at?: string | null;
+          rename_dismissed_at?: string | null;
         };
         Relationships: [];
       };

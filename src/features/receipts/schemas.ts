@@ -43,6 +43,20 @@ export const confirmItemDecisionSchema = z.object({
     .optional()
     .default(null),
   stockUnit: unit.nullable().optional().default(null),
+  /**
+   * Nombre ya aprendido que el usuario ha confirmado como rótulo VIEJO de esta
+   * línea en la misma cadena: se borra al confirmar el ticket, una vez el nombre
+   * nuevo ya está aprendido. Se borra entonces y no antes porque hasta la
+   * confirmación el nombre nuevo no existe, y abandonar la revisión a medias
+   * dejaría al producto sin ningún nombre que reconocer.
+   */
+  replaceAliasId: z.string().uuid().nullable().optional().default(null),
+  /**
+   * Nombre ya aprendido que el usuario ha confirmado como LEGÍTIMO (no es un
+   * rótulo viejo): se marca para no volver a proponer su borrado. Sin esto,
+   * decir "no" no serviría de nada y el aviso volvería en cada ticket.
+   */
+  keepAliasId: z.string().uuid().nullable().optional().default(null),
 });
 
 /** Payload completo de confirmReceiptAction. */

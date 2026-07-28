@@ -288,12 +288,24 @@ export async function deleteReceiptAction(
   return { ok: true };
 }
 
-export type ProductAlias = { id: string; alias: string };
+export type ProductAlias = {
+  id: string;
+  alias: string;
+  /** Cadena donde se vio por última vez; null = origen desconocido (L17). */
+  storeChain: string | null;
+  lastSeenAt: string | null;
+};
 
 /**
  * Aliases aprendidos que apuntan a un producto (E8). Se cargan bajo demanda al
  * abrir el drawer de edición. La RLS de `product_aliases` restringe al hogar; el
  * filtro por household_id de abajo es defensa en profundidad, no sustitución.
+ *
+ * Trae también la cadena de origen (L17) para poder agruparlos por supermercado:
+ * dos nombres en cadenas distintas son lo normal, dos en la MISMA son lo que hay
+ * que limpiar. Degrada en suave mientras la migración no esté aplicada: si la
+ * consulta falla por columna inexistente, se reintenta sin esos campos y el
+ * gestor se comporta como antes (lista plana).
  */
 export async function getProductAliasesAction(
   productId: string,
@@ -303,13 +315,32 @@ export async function getProductAliasesAction(
   const household = await getCurrentHousehold();
   if (!household) return [];
   const supabase = createServerSupabaseClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
+    .from("product_aliases")
+    .select("id, alias, store_chain, last_seen_at")
+    .eq("product_id", productId)
+    .eq("household_id", household.id)
+    .order("created_at", { ascending: true });
+  if (!error) {
+    return (data ?? []).map((a) => ({
+      id: a.id,
+      alias: a.alias,
+      storeChain: a.store_chain,
+      lastSeenAt: a.last_seen_at,
+    }));
+  }
+  const { data: legacy } = await supabase
     .from("product_aliases")
     .select("id, alias")
     .eq("product_id", productId)
     .eq("household_id", household.id)
     .order("created_at", { ascending: true });
-  return (data ?? []).map((a) => ({ id: a.id, alias: a.alias }));
+  return (legacy ?? []).map((a) => ({
+    id: a.id,
+    alias: a.alias,
+    storeChain: null,
+    lastSeenAt: null,
+  }));
 }
 
 /**
@@ -635,10 +666,21 @@ export async function confirmReceiptAction(
   );
 
   // 2.2 Aliases: un único upsert, deduplicado por alias_normalized (que es la
-  //     clave del onConflict) antes de enviar.
+  //     clave del onConflict) antes de enviar. Cada nombre guarda la CADENA en la
+  //     que se acaba de ver y la fecha de compra: de ahí sale el aviso de "en este
+  //     supermercado ya lo llamabas de otra forma" (L17). Un ticket sin cadena
+  //     identificada deja `store_chain` a null y simplemente no genera avisos.
+  const aliasSeenAt = purchasedAt ?? new Date().toISOString();
   const aliasByNorm = new Map<
     string,
-    { household_id: string; product_id: string; alias: string; alias_normalized: string }
+    {
+      household_id: string;
+      product_id: string;
+      alias: string;
+      alias_normalized: string;
+      last_seen_at: string;
+      store_chain?: string;
+    }
   >();
   for (const r of processable) {
     const alias = r.rawText || r.description;
@@ -649,21 +691,93 @@ export async function confirmReceiptAction(
         product_id: r.productId,
         alias,
         alias_normalized: aliasKey,
+        last_seen_at: aliasSeenAt,
+        // Un ticket SIN cadena identificada no debe borrar la cadena que el
+        // nombre ya tuviera: se omite la columna del upsert (PostgREST solo
+        // actualiza las que van en el objeto) en vez de escribir null. La cadena
+        // es la misma para todo el ticket, así que todas las filas del lote
+        // tienen la misma forma y el upsert sigue siendo uno solo.
+        ...(storeChain ? { store_chain: storeChain } : {}),
       });
     }
   }
+
+  // Decisiones del aviso de renombrado (L17), indexadas por línea. Se resuelven
+  // contra `processable` a propósito: una línea saltada no aprende ningún nombre
+  // y por tanto no puede autorizar el borrado de otro.
+  const renameByItem = new Map<
+    string,
+    { replaceAliasId: string | null; keepAliasId: string | null }
+  >();
+  for (const dec of payload.items) {
+    if (dec.replaceAliasId || dec.keepAliasId) {
+      renameByItem.set(dec.itemId, {
+        replaceAliasId: dec.replaceAliasId ?? null,
+        keepAliasId: dec.keepAliasId ?? null,
+      });
+    }
+  }
+
   if (aliasByNorm.size) {
     // Best-effort deliberado: los aliases son capa de aprendizaje (E8), no datos
     // primarios. Un fallo aquí no debe abortar la confirmación ni comunicarse como
     // error al usuario; solo se registra para depuración.
+    //
+    // `ignoreDuplicates` pasa a false (upsert de verdad) porque `store_chain` y
+    // `last_seen_at` tienen que refrescarse en los nombres que YA existían: si no,
+    // un nombre aprendido hace meses nunca sabría en qué cadena sigue apareciendo.
+    // El efecto secundario es deseable: reasociar a mano una línea cuyo nombre ya
+    // apuntaba a otro producto ahora SÍ corrige el aprendizaje, en vez de que el
+    // siguiente ticket vuelva a ignorar la decisión del usuario.
     const { error: aliasErr } = await supabase
       .from("product_aliases")
       .upsert([...aliasByNorm.values()], {
         onConflict: "household_id,alias_normalized",
-        ignoreDuplicates: true,
       });
     if (aliasErr) {
       console.error("Error (no crítico) al guardar aliases del ticket:", aliasErr);
+    } else if (renameByItem.size) {
+      // Rótulos renombrados (L17). Solo después de que el nombre NUEVO esté
+      // guardado: borrar antes podría dejar al producto sin ningún nombre que
+      // reconocer. Se exige `product_id` además del id porque un id obsoleto o
+      // manipulado no debe poder llevarse por delante el nombre de otro producto.
+      const toDelete: { aliasId: string; productId: string }[] = [];
+      const toDismiss: { aliasId: string; productId: string }[] = [];
+      for (const r of processable) {
+        const dec = renameByItem.get(r.itemId);
+        if (!dec) continue;
+        if (dec.replaceAliasId) {
+          toDelete.push({ aliasId: dec.replaceAliasId, productId: r.productId });
+        }
+        if (dec.keepAliasId) {
+          toDismiss.push({ aliasId: dec.keepAliasId, productId: r.productId });
+        }
+      }
+      const renameResults = await inChunks(toDelete, (d) =>
+        supabase
+          .from("product_aliases")
+          .delete()
+          .eq("id", d.aliasId)
+          .eq("product_id", d.productId)
+          .eq("household_id", household.id),
+      );
+      const dismissResults = await inChunks(toDismiss, (d) =>
+        supabase
+          .from("product_aliases")
+          .update({ rename_dismissed_at: new Date().toISOString() })
+          .eq("id", d.aliasId)
+          .eq("product_id", d.productId)
+          .eq("household_id", household.id),
+      );
+      const renameErr = [...renameResults, ...dismissResults].find(
+        (res) => res.error,
+      )?.error;
+      if (renameErr) {
+        console.error(
+          "Error (no crítico) al aplicar los renombrados de nombres:",
+          renameErr,
+        );
+      }
     }
   }
 

@@ -5,6 +5,7 @@ import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ReceiptReview } from "@/features/receipts/components/receipt-review";
 import {
+  getAliasSightings,
   getAlreadyStockedProductIds,
   getReceipt,
   getReceiptItems,
@@ -25,13 +26,19 @@ export default async function RevisarPage({
   if (!receipt) notFound();
   if (receipt.status === "confirmed") redirect("/inventario");
 
-  const [items, products, alreadyStockedProductIds, householdChains] =
-    await Promise.all([
-      getReceiptItems(receiptId),
-      getProductCatalog(),
-      getAlreadyStockedProductIds(receipt),
-      getHouseholdChains(),
-    ]);
+  const [
+    items,
+    products,
+    alreadyStockedProductIds,
+    householdChains,
+    aliasSightings,
+  ] = await Promise.all([
+    getReceiptItems(receiptId),
+    getProductCatalog(),
+    getAlreadyStockedProductIds(receipt),
+    getHouseholdChains(),
+    getAliasSightings(),
+  ]);
   const suggestions = await getReceiptSuggestions(items);
 
   return (
@@ -63,6 +70,7 @@ export default async function RevisarPage({
           products.map((p) => [p.id, p.defaultUnit]),
         )}
         householdChains={householdChains.chains}
+        aliasSightings={aliasSightings}
       />
     </PageContainer>
   );

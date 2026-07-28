@@ -26,14 +26,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { chainOptions } from "@/features/prices/chains";
+import { chainLabel, chainOptions } from "@/features/prices/chains";
 import {
   ProductCombobox,
   type ComboboxProduct,
 } from "@/components/product-combobox";
 import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/units";
+import { relativeDaysLabel } from "@/lib/dates";
 import { normalizeName } from "@/lib/normalize";
+import { findRenameCandidate, type AliasSighting } from "@/lib/alias-rename";
 import {
   MIN_FUZZY_LENGTH,
   trigramSimilarity,
@@ -117,6 +119,10 @@ type Row = {
    * cambiar de producto en el combobox recalcule el aviso solo.
    */
   priceOnlyOverride: boolean | null;
+  /** Nombre viejo que el usuario ha confirmado como renombrado (L17): se borrará. */
+  replaceAliasId: string | null;
+  /** Nombre viejo que el usuario ha confirmado como legítimo (L17): no avisar más. */
+  keepAliasId: string | null;
 };
 
 /**
@@ -151,6 +157,34 @@ function StockUnitChip({
   );
 }
 
+/**
+ * Rótulo VIEJO del mismo producto en la MISMA cadena para cada línea (L17): el
+ * caso "Mercadona ha cambiado la etiqueta y ahora tendrías dos nombres del mismo
+ * artículo". Se calcula en cliente y no en servidor porque depende de dos cosas
+ * que se corrigen en esta misma pantalla: la cadena del ticket y el producto de
+ * cada línea. Solo aplica a líneas asociadas: un producto nuevo no tiene nombres
+ * previos que limpiar.
+ */
+function buildRenameCandidates(
+  rows: Row[],
+  aliases: AliasSighting[],
+  storeChain: string | null,
+): Map<string, AliasSighting> {
+  const map = new Map<string, AliasSighting>();
+  for (const r of rows) {
+    if (!r.include || !r.productId) continue;
+    const candidate = findRenameCandidate(aliases, {
+      productId: r.productId,
+      storeChain,
+      // El nombre que se aprenderá al confirmar: el mismo criterio que usa
+      // `confirmReceiptAction` (texto crudo del ticket, o la descripción).
+      rawName: r.rawText || r.description,
+    });
+    if (candidate) map.set(r.itemId, candidate);
+  }
+  return map;
+}
+
 /** Una línea "necesita decisión" si la IA no la asoció a un producto existente. */
 function needsDecision(status: string): boolean {
   return status !== "auto" && status !== "manual";
@@ -165,6 +199,7 @@ export function ReceiptReview({
   alreadyStockedProductIds = [],
   unitByProduct = {},
   householdChains = [],
+  aliasSightings = [],
 }: {
   receipt: ReceiptHeader;
   items: ReceiptItem[];
@@ -182,6 +217,11 @@ export function ReceiptReview({
   unitByProduct?: Record<string, UnitType>;
   /** Tiendas del hogar (L15): opciones para corregir la cadena del ticket. */
   householdChains?: string[];
+  /**
+   * Nombres de ticket ya aprendidos, con la cadena donde se vieron (L17). De
+   * aquí sale el aviso de "en este supermercado ya lo llamabas de otra forma".
+   */
+  aliasSightings?: AliasSighting[];
 }) {
   const router = useRouter();
   const [storeName, setStoreName] = useState(receipt.storeName ?? "");
@@ -219,6 +259,8 @@ export function ReceiptReview({
         initialStatus: i.matchStatus,
         priceOnlyOverride: null,
         stockUnitOverride: null,
+        replaceAliasId: null,
+        keepAliasId: null,
       }))
       .sort(
         (a, b) =>
@@ -277,6 +319,13 @@ export function ReceiptReview({
       // inventario (que es justo lo que pasar a unidades desbloquea).
       const stockUnit = stockUnitOf(r);
       const redirected = stockUnit !== r.unit;
+      // Las decisiones sobre el nombre viejo (L17) solo se mandan si siguen
+      // apuntando al candidato ACTUAL: cambiar de producto o de cadena después de
+      // decidir invalida la decisión, y borrar el nombre de otro producto por un
+      // id obsoleto sería el peor fallo posible de esta función.
+      const renameCandidate = renameCandidates.get(r.itemId);
+      const stillValid = (id: string | null) =>
+        id !== null && renameCandidate?.id === id ? id : null;
       return {
         itemId: r.itemId,
         description: r.description.trim() || "Producto",
@@ -287,6 +336,8 @@ export function ReceiptReview({
         priceOnly: isPriceOnly(r),
         stockQuantity: redirected ? 1 : null,
         stockUnit: redirected ? stockUnit : null,
+        replaceAliasId: stillValid(r.replaceAliasId),
+        keepAliasId: stillValid(r.keepAliasId),
       };
     });
     try {
@@ -390,9 +441,18 @@ export function ReceiptReview({
     return map;
   }, [rows, products, suggestionByItem]);
 
+  // Rótulos viejos por línea (L17). Sin useMemo a propósito: el compilador de
+  // React ya memoiza el resultado y aquí no aceptaba la memoización manual.
+  const renameCandidates = buildRenameCandidates(
+    rows,
+    aliasSightings,
+    storeChain,
+  );
+
   function renderRow(row: Row) {
     const linked = row.productId !== null;
     const duplicate = duplicateCandidates.get(row.itemId) ?? null;
+    const rename = renameCandidates.get(row.itemId) ?? null;
     // Solo se ofrece la decisión "sumar o no" en las líneas donde hay algo que
     // decidir: las de un producto que ya entró al inventario desde la lista.
     const fromTrip = row.productId !== null && alreadyStocked.has(row.productId);
@@ -496,6 +556,72 @@ export function ReceiptReview({
                   Asociar
                 </Button>
               </div>
+            ) : null}
+            {/* Rótulo renombrado en la misma cadena (L17): la decisión se aplica
+                al confirmar, no ahora, porque el nombre nuevo todavía no existe. */}
+            {rename ? (
+              row.replaceAliasId === rename.id ? (
+                <div className="flex items-center gap-2 rounded-lg bg-muted p-2">
+                  <p className="flex-1 text-xs text-muted-foreground">
+                    Al confirmar, «{rename.alias}» dejará de estar asociado a este
+                    producto.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => update(row.itemId, { replaceAliasId: null })}
+                  >
+                    Deshacer
+                  </Button>
+                </div>
+              ) : row.keepAliasId === rename.id ? (
+                <div className="flex items-center gap-2 rounded-lg bg-muted p-2">
+                  <p className="flex-1 text-xs text-muted-foreground">
+                    Se guardarán los dos nombres y no volveremos a preguntar.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => update(row.itemId, { keepAliasId: null })}
+                  >
+                    Deshacer
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2 rounded-lg bg-warning/10 p-2">
+                  <p className="text-xs text-warning">
+                    En {chainLabel(storeChain)} ya lo llamabas «{rename.alias}»
+                    {rename.lastSeenAt
+                      ? ` (${relativeDaysLabel(rename.lastSeenAt.slice(0, 10))})`
+                      : ""}
+                    . ¿Han cambiado el nombre?
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        update(row.itemId, { replaceAliasId: rename.id })
+                      }
+                    >
+                      Sí, sustituir
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        update(row.itemId, { keepAliasId: rename.id })
+                      }
+                    >
+                      Son distintos
+                    </Button>
+                  </div>
+                </div>
+              )
             ) : null}
             {/* Sin sentido cuando la línea no va a sumar existencias. */}
             {packTotal !== null && !priceOnly ? (

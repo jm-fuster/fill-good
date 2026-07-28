@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Star, Store, TrendingDown, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -34,7 +34,8 @@ import {
   type ComboboxProduct,
 } from "@/components/product-combobox";
 import { cn } from "@/lib/utils";
-import { chainLabel, chainOptions } from "@/features/prices/chains";
+import { chainLabel, chainOptions, orderChains } from "@/features/prices/chains";
+import { relativeDaysLabel } from "@/lib/dates";
 import { formatQuantity, LOCATION_OPTIONS, UNIT_OPTIONS } from "@/lib/units";
 import type {
   InventoryEventKind,
@@ -158,6 +159,29 @@ export function EditItemDrawer({
     setConfirmDelete(false);
     handleDelete("consumed");
   }
+
+  /**
+   * Nombres agrupados por la tienda donde se vieron por última vez (L17). Que un
+   * producto tenga un nombre por cadena es lo normal; que una MISMA cadena tenga
+   * dos suele ser una etiqueta antigua que quedó viva, y agrupar es lo que hace
+   * ese caso visible de un vistazo. Los de origen desconocido (aprendidos antes
+   * de guardar la cadena, o creados al fusionar productos) van al final.
+   */
+  const aliasGroups = useMemo(() => {
+    const byChain = new Map<string | null, ProductAlias[]>();
+    for (const a of aliases) {
+      const list = byChain.get(a.storeChain);
+      if (list) list.push(a);
+      else byChain.set(a.storeChain, [a]);
+    }
+    const groups: { chain: string | null; aliases: ProductAlias[] }[] =
+      orderChains(
+        [...byChain.keys()].filter((k): k is string => k !== null),
+      ).map((chain) => ({ chain, aliases: byChain.get(chain) ?? [] }));
+    const unknown = byChain.get(null);
+    if (unknown) groups.push({ chain: null, aliases: unknown });
+    return groups;
+  }, [aliases]);
 
   function removeAlias(id: string) {
     const prev = aliases;
@@ -622,28 +646,58 @@ export function EditItemDrawer({
             <div className="flex flex-col gap-2">
               <span className="text-sm font-medium">Nombres en tickets</span>
               <p className="text-sm text-muted-foreground">
-                Cómo aparece en tus tickets. Bórralo si se asoció por error;
-                no afecta a tu historial de precios.
+                Cómo aparece en tus tickets, por tienda. Un nombre distinto en
+                cada tienda es normal; dos en la misma suelen ser una etiqueta
+                antigua. Bórralo si se asoció por error: no afecta a tu historial
+                de precios.
               </p>
-              <ul className="flex flex-col gap-1.5">
-                {aliases.map((a) => (
+              <ul className="flex flex-col gap-3">
+                {aliasGroups.map((group) => (
                   <li
-                    key={a.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border py-1 pr-1 pl-3"
+                    key={group.chain ?? "__sin_tienda__"}
+                    className="flex flex-col gap-1.5"
                   >
-                    <span className="min-w-0 flex-1 truncate text-sm">
-                      {a.alias}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Borrar el nombre «${a.alias}»`}
-                      onClick={() => removeAlias(a.id)}
-                      disabled={removingAlias}
-                    >
-                      <X aria-hidden />
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {group.chain
+                          ? chainLabel(group.chain)
+                          : "Sin tienda identificada"}
+                      </span>
+                      {/* Solo es sospechoso dentro de una MISMA cadena: el grupo
+                          sin identificar mezcla tiendas y no prueba nada. */}
+                      {group.chain && group.aliases.length > 1 ? (
+                        <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
+                          {group.aliases.length} nombres
+                        </span>
+                      ) : null}
+                    </div>
+                    <ul className="flex flex-col gap-1.5">
+                      {group.aliases.map((a) => (
+                        <li
+                          key={a.id}
+                          className="flex items-center justify-between gap-2 rounded-lg border py-1 pr-1 pl-3"
+                        >
+                          <span className="min-w-0 flex-1 truncate text-sm">
+                            {a.alias}
+                            {a.lastSeenAt ? (
+                              <span className="ml-1.5 text-xs text-muted-foreground">
+                                {relativeDaysLabel(a.lastSeenAt.slice(0, 10))}
+                              </span>
+                            ) : null}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`Borrar el nombre «${a.alias}»`}
+                            onClick={() => removeAlias(a.id)}
+                            disabled={removingAlias}
+                          >
+                            <X aria-hidden />
+                          </Button>
+                        </li>
+                      ))}
+                    </ul>
                   </li>
                 ))}
               </ul>

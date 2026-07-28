@@ -15,8 +15,11 @@ checkout, stepper) y, si se hacen ambas, F4 va primero (F5 registra cantidades y
 El bloque L15 (tiendas del hogar, 2026-07-28) cierra la línea de cadenas de supermercado:
 f4 (dónde compra el hogar) y f5 (cadenas regionales que la app no conocía), en ese orden
 porque f5 se apoya en la columna y la pantalla que crea f4.
+El bloque L17 (nombres de ticket por cadena, 2026-07-28) se apoya en L15: guarda de qué cadena
+vino cada nombre aprendido y avisa cuando una MISMA cadena acumula dos nombres del mismo
+artículo (rótulo renombrado).
 
-> **Ojo con el alcance de este documento:** cubre los bloques A–F y L15 f4/f5. El resto de
+> **Ojo con el alcance de este documento:** cubre los bloques A–F, L15 f4/f5 y L17. El resto de
 > lo que hay en `main` (gamificación, iconos de producto, responsive E11, señales de precio,
 > multi-hogar, Perfil…) se planificó y ejecutó desde el plan de fases
 > (`C:\Users\Jorge\.claude\plans\quiero-construir-una-aplicaci-n-fizzy-lollipop.md`), que es
@@ -65,6 +68,7 @@ porque f5 se apoya en la columna y la pantalla que crea f4.
 - [x] F5 — Historial de movimientos de stock (consumido / tirado / repuesto)
 - [x] L15 f4 — Supermercados habituales del hogar (elegidos o deducidos de los tickets)
 - [x] L15 f5 — Tiendas propias del hogar (cadenas regionales fuera de las ocho conocidas)
+- [x] L17 — Nombres de ticket por cadena + aviso de rótulo renombrado
 
 ---
 
@@ -2001,6 +2005,108 @@ ahorro. Para esos hogares toda la capa de tiendas era decorativa.
 
 ---
 
+## Bloque L17 — Nombres de ticket por cadena (2026-07-28)
+
+### L17 — Aviso de rótulo renombrado en la misma cadena
+
+**Pregunta de partida:** «si escaneo tickets de supermercados distintos, ¿se pueden asociar
+varios nombres al mismo artículo? ¿Y avisar si en un MISMO supermercado hay dos nombres del
+mismo, por si lo han renombrado?». La primera mitad ya funcionaba desde E7/E8; la segunda era
+imposible de responder porque faltaba el dato clave.
+
+**Contexto (antes)**
+- `product_aliases` ya permite N nombres → 1 producto, por hogar, con
+  `unique (household_id, alias_normalized)` para que un texto no apunte a dos productos.
+- Precedencia del matching intacta: alias exacto → nombre normalizado → nada. El fuzzy (E6) y
+  la sugerencia de Gemini (E7) solo PROPONEN; el usuario confirma con un toque.
+- Lo que faltaba: los aliases **no guardaban de dónde venían**. Sin cadena no se puede
+  distinguir el caso legítimo (dos supermercados, dos rótulos) del que ensucia el catálogo (la
+  misma cadena acumulando dos nombres del mismo artículo porque cambió su etiqueta).
+- El gestor de nombres de E8 era una lista plana: veías «GAZPACHO HACEND.» y «GAZPACHO
+  HACENDADO 1L» juntos sin ninguna pista de que uno estaba muerto.
+
+**Diseño**
+- Migración `20260728180000_alias_chain_and_rename.sql`: tres columnas en `product_aliases`,
+  ninguna tabla nueva. `store_chain` (cadena del **último** avistamiento), `last_seen_at`
+  (fecha de compra de ese ticket) y `rename_dismissed_at` (el usuario ya dijo que este nombre
+  es legítimo). Índice `(product_id, store_chain)`, que es exactamente la pregunta que hace la
+  detección.
+- **El descarte va en el alias VIEJO**, no en una tabla de pares: la unidad de silencio es
+  él («este nombre es legítimo, déjalo en paz»). Sin descarte persistente, decir "no" no
+  serviría de nada y el mismo aviso volvería en cada ticket, que es la clase de aviso que se
+  aprende a ignorar.
+- Heurística en `src/lib/alias-rename.ts`, sin IA (trigramas, como el resto del matching
+  difuso): mismo producto + misma cadena + similitud ≥ 0,5, excluyendo el propio nombre.
+  Umbral igual al del guardarraíl antiduplicados (E2) y por el mismo motivo: el aviso propone
+  BORRAR un nombre aprendido, así que preferimos no avisar a avisar mal.
+- **Sin contención de tokens** (sí la usa E2): aquí un sufijo de más suele cambiar el producto
+  de verdad ("LECHE ENTERA" vs "LECHE ENTERA SIN LACTOSA") y proponer borrar el nombre de otro
+  producto es peor que no avisar.
+- **Sin exigir inactividad** del nombre viejo: dos nombres del mismo artículo conviviendo en
+  la misma cadena ya son el problema, se hayan visto ayer o hace un año. La antigüedad se
+  MUESTRA ("hace 77 días") para que el usuario decida, no se usa como criterio automático.
+- Detección **en cliente**, no en servidor: depende de dos cosas que se corrigen en esa misma
+  pantalla (la cadena del ticket y el producto de cada línea), así que un snapshot del
+  servidor quedaría obsoleto al primer toque.
+- La decisión se aplica **al confirmar**, no al pulsar: hasta la confirmación el nombre nuevo
+  no existe, y abandonar la revisión a medias dejaría al producto sin ningún nombre que
+  reconocer.
+- **Fuera de alcance:** historial completo de avistamientos por cadena (exigiría una tabla y
+  no compra nada que se vaya a usar: un rótulo de ticket es propio de su cadena) y detección
+  entre cadenas distintas, que es precisamente el caso legítimo.
+
+**Pasos**
+- [x] Migración con las tres columnas, índice, comentarios y backfill desde `receipt_items`.
+- [x] `src/lib/supabase/types.ts` a mano (Row/Insert/Update de `product_aliases`).
+- [x] `findRenameCandidate` + `AliasSighting` en `src/lib/alias-rename.ts`.
+- [x] `getAliasSightings()` en `receipts/queries.ts` (solo con cadena y sin descartar).
+- [x] `replaceAliasId` / `keepAliasId` en `confirmItemDecisionSchema` (zod).
+- [x] `confirmReceiptAction`: escribe cadena y fecha, borra el rótulo viejo o lo silencia.
+- [x] Aviso de tres estados por línea en la revisión del ticket.
+- [x] Gestor de nombres (E8) agrupado por cadena, con badge en las cadenas con >1 nombre.
+- [x] `npx tsc --noEmit`, `npm run lint` y `npm run build:check` limpios.
+
+> **Nota de implementación (L17):** el upsert de aliases pasa de `ignoreDuplicates: true` a
+> upsert de verdad, porque `store_chain` y `last_seen_at` tienen que refrescarse en los
+> nombres que YA existían (si no, un nombre aprendido hace meses nunca sabría en qué cadena
+> sigue apareciendo). Efecto secundario deseable: reasociar a mano una línea cuyo nombre
+> apuntaba a otro producto ahora SÍ corrige el aprendizaje, en vez de que el siguiente ticket
+> vuelva a ignorar la decisión del usuario. Trampa evitada: un ticket **sin cadena
+> identificada** no debe borrar la cadena que el nombre ya tuviera, así que en ese caso se
+> **omite la columna** del objeto del upsert (PostgREST solo actualiza las que van en él) en
+> vez de escribir null. `seen_count` se descartó a propósito: PostgREST no puede hacer
+> `excluded.seen_count + 1` y ninguna decisión de la UI lo necesitaba. El borrado del rótulo
+> viejo exige `product_id` además del id: un id obsoleto o manipulado no puede llevarse por
+> delante el nombre de otro producto; y las decisiones solo se mandan si siguen apuntando al
+> candidato ACTUAL (cambiar de producto o de cadena tras decidir las invalida). El backfill
+> casa `alias` con `receipt_items.raw_text` por igualdad **literal**, no normalizada:
+> `normalizeName` vive en TS y reimplementarla en SQL abriría una divergencia silenciosa en la
+> unicidad de aliases; lo que no case se queda con `store_chain` NULL, que solo significa "no
+> participa en los avisos hasta que vuelva a aparecer en un ticket". Todo degrada en suave
+> mientras la migración no esté aplicada (la consulta falla → cero avisos y lista plana).
+> `renameCandidates` **no** usa `useMemo`: la regla `react-hooks/preserve-manual-memoization`
+> del compilador de React no aceptaba la memoización manual ahí, y el compilador ya memoiza el
+> cálculo. Verificación: 19 aserciones sobre el **código real** (bundle con `npx esbuild` +
+> `node`, no una reimplementación) cubriendo el caso central, cadenas distintas, ticket sin
+> cadena, cruce de productos, nombre idéntico salvo acentos/mayúsculas/espacios, leche vs
+> lechuga, contención de tokens, nombres cortos, elección del más parecido y tiendas propias
+> del hogar; todas en verde. Límites conocidos: la migración **no se ha aplicado** (el push lo
+> lanza el usuario) y la UI no se pudo pulsar (login de Clerk no verificable en headless), así
+> que el aviso está probado a nivel de heurística y de tipos, no clicado.
+
+**Criterios de aceptación**
+- El mismo producto puede tener «GAZPACHO HACEND.» (Mercadona) y «GAZPACHO FRESCO 1L»
+  (Carrefour) sin que la app se queje: es el caso normal.
+- Si un ticket de Mercadona trae un nombre nuevo muy parecido a otro que ese producto ya tenía
+  **en Mercadona**, la línea avisa y ofrece sustituirlo o mantener los dos.
+- "Son distintos" no vuelve a preguntar por ese nombre nunca más.
+- "Sí, sustituir" borra el nombre viejo solo después de aprender el nuevo, y no toca el
+  historial de precios ni el inventario.
+- El gestor de nombres del cajón de inventario agrupa por tienda y marca las tiendas con más
+  de un nombre.
+
+---
+
 > **Prompt para el siguiente agente:**
 >
 > ```
@@ -2009,7 +2115,7 @@ ahorro. Para esos hogares toda la capa de tiendas era decorativa.
 > overlays, PageContainer para anchos, UI en español) y las "Instrucciones para el agente"
 > al inicio de TODO.md.
 >
-> Todo lo que hay en este documento está TERMINADO (bloques A–F y L15 f4/f5). El roadmap
+> Todo lo que hay en este documento está TERMINADO (bloques A–F, L15 f4/f5 y L17). El roadmap
 > vivo es el plan de fases:
 > C:\Users\Jorge\.claude\plans\quiero-construir-una-aplicaci-n-fizzy-lollipop.md
 > Si te piden una tarea nueva, mírala ahí y, al acabarla, decide dónde documentarla (este
