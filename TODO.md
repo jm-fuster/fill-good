@@ -12,12 +12,21 @@ el activo central de la app); E6, E7 y E9 se apoyan en la UI de E1 y conviene ha
 El bloque F (feedback de usuarios del 2026-07-22) está ordenado por impacto/esfuerzo:
 F1–F3 son independientes entre sí; F4 y F5 tocan los mismos puntos de escritura (ticket,
 checkout, stepper) y, si se hacen ambas, F4 va primero (F5 registra cantidades ya convertidas).
+El bloque L15 (tiendas del hogar, 2026-07-28) cierra la línea de cadenas de supermercado:
+f4 (dónde compra el hogar) y f5 (cadenas regionales que la app no conocía), en ese orden
+porque f5 se apoya en la columna y la pantalla que crea f4.
+
+> **Ojo con el alcance de este documento:** cubre los bloques A–F y L15 f4/f5. El resto de
+> lo que hay en `main` (gamificación, iconos de producto, responsive E11, señales de precio,
+> multi-hogar, Perfil…) se planificó y ejecutó desde el plan de fases
+> (`C:\Users\Jorge\.claude\plans\quiero-construir-una-aplicaci-n-fizzy-lollipop.md`), que es
+> la fuente del roadmap completo. Si buscas una tarea y no está aquí, mira allí.
 
 ## Instrucciones para el agente (leer antes de cada tarea)
 
 - Leer `AGENTS.md` y respetar el sistema de diseño (`/styleguide`, tokens semánticos, touch targets ≥ 44px, drawers en móvil, UI en español).
 - **Next.js 16 tiene breaking changes**: leer la guía correspondiente en `node_modules/next/dist/docs/` antes de escribir código.
-- Migraciones con Supabase CLI (`supabase migration new <nombre>` + `supabase db push`) y **regenerar tipos** (`src/lib/supabase/types.ts`) tras cada migración.
+- Migraciones con Supabase CLI (`supabase migration new <nombre>` + `supabase db push`, que **requiere autorización del usuario**: en la práctica lo ejecuta él a mano). Los tipos de `src/lib/supabase/types.ts` se mantienen **A MANO**: regenerarlos con la CLI rompe los alias (`UnitType`, `LocationType`…) que importa medio repo. Mientras una migración no esté aplicada, el código que la usa debe **degradar en suave** (supabase-js no lanza: devuelve `{ data: null, error }`).
 - Lecturas en Server Components, escrituras en Server Actions (`src/features/<feature>/actions.ts`) + `revalidatePath`.
 - IA siempre vía `getModel('receipts' | 'menus')` (`src/lib/ai/models.ts`). Mantener Gemini free tier.
 - Al terminar una tarea: marcar sus checkboxes aquí, compilar (`npm run build` o dev server) y verificar los criterios de aceptación en el preview.
@@ -54,6 +63,8 @@ checkout, stepper) y, si se hacen ambas, F4 va primero (F5 registra cantidades y
 - [x] F3 — Ingredientes de receta vinculados al catálogo con stock visible
 - [x] F4 — Pack de compra: "1 caja = N unidades" al entrar al inventario
 - [x] F5 — Historial de movimientos de stock (consumido / tirado / repuesto)
+- [x] L15 f4 — Supermercados habituales del hogar (elegidos o deducidos de los tickets)
+- [x] L15 f5 — Tiendas propias del hogar (cadenas regionales fuera de las ocho conocidas)
 
 ---
 
@@ -1841,30 +1852,187 @@ gastando esta semana o reponiendo.
 
 ---
 
-> **Prompt para el siguiente agente (Bloque F):**
+## Bloque L15 — Tiendas del hogar (2026-07-28)
+
+Las fases f1–f3 de L15 ya estaban en `main` y no se documentan aquí: tienda preferida
+**por producto** a mano (`products.preferred_chain`), inferencia desde el histórico de
+tickets (`products.inferred_chain`: ≥3 compras con cadena real, dominancia ≥60% y sin
+empate) y aviso de ahorro por cadena (`products.savings_tip`). Faltaban las dos fases que
+cierran la línea, y son las de este bloque.
+
+### L15 f4 — Supermercados habituales del hogar
+
+**Pregunta de partida:** «¿cómo guardan hoy los usuarios las tiendas en las que suelen
+comprar?». La respuesta era que no pueden: solo existía la preferencia por producto (manual
+o inferida) y a nivel de hogar no había nada.
+
+**Contexto (antes)**
+- El vocabulario de cadenas era una lista cerrada de ocho en `src/features/prices/chains.ts`,
+  duplicada (ocho + `"otro"`) como `z.enum` en `src/lib/ai/receipt-schema.ts`.
+- El selector "Tienda preferida" del cajón de inventario ofrecía las ocho a todo el mundo,
+  compre donde compre.
+- El filtro por tienda del modo compra se derivaba de los ítems de la lista (estado local,
+  no persistía): no había nada configurable.
+- `/ajustes/orden-tienda` es un falso amigo: ordena **pasillos** (categorías), no tiendas.
+
+**Diseño**
+- Migración `20260728120000_household_store_chains.sql`: `households.preferred_chains text[]
+  not null default '{}'`, CHECK de cordura (≤20 elementos, sin NULLs) y —crítico— su propio
+  `grant update (preferred_chains) on public.households to authenticated`: el blindaje de
+  seguridad de julio revocó el UPDATE de tabla y concede columna a columna, así que sin ese
+  grant la RLS de fila permite el UPDATE pero PostgREST lo rechaza.
+- **Lista vacía NO significa "sin configurar" sino "dedúcelas de mis tickets"**: el mismo
+  patrón manual/inferido de `preferred_chain` vs `inferred_chain`. Así la ventaja llega sin
+  pedirle al usuario que configure nada, que era la condición para que la pantalla mereciera
+  la pena.
+- Consumidores: el selector de tienda preferida agrupa «Tus tiendas» / «Otras», y el prompt
+  del escaneo recibe las cadenas como PISTA para normalizar `store_chain`.
+- **Fuera de alcance:** preseleccionar el filtro del modo compra. Se deriva de los ítems de
+  la lista, y fijar una cadena esconde el resto tras una sección secundaria justo el día que
+  compras en otra tienda.
+
+**Pasos**
+- [x] Migración + tipos a mano + grant por columna.
+- [x] `getChainsSeenInReceipts` / `getConfiguredChains` / `getHouseholdChains` en `household/queries.ts`.
+- [x] `storeChainsSchema` + `updatePreferredChainsAction`.
+- [x] `/ajustes/tiendas` (página + `loading.tsx`) y fila en el índice de Ajustes.
+- [x] Selector de tienda preferida agrupado (inventario) y pista en el prompt de tickets.
+- [x] `npx tsc --noEmit`, `npm run lint` y `npm run build:check` limpios.
+
+> **Nota de implementación (L15 f4):** migración
+> `supabase/migrations/20260728120000_household_store_chains.sql`, **ya aplicada en remoto**
+> (autorizada por el usuario 2026-07-28 y verificada con `npx supabase migration list
+> --linked`: `local == remote`). El CHECK solo usa funciones IMMUTABLE (`cardinality`,
+> `array_position`): las que serializan el array (`array_to_string`) son STABLE y Postgres
+> las rechaza en un CHECK. Lecturas: `getChainsSeenInReceipts(householdId)` mira los 200
+> tickets más recientes con cadena (tabla `receipts`, no `receipt_items`) y devuelve las
+> cadenas por frecuencia ignorando `"otro"`; a diferencia de `infer-chain.ts` NO exige mínimo
+> de compras, porque aquí lo único en juego es el orden de un selector y una pista para la IA.
+> `getConfiguredChains(householdId)` se lee **aparte** de `getUserHouseholds` a propósito:
+> esa query está en la ruta caliente de todas las páginas y lanza en error, así que pedirle
+> una columna nueva rompería la app entera antes del push; aquí el error se traga y el hogar
+> queda "sin configurar". `getHouseholdChains()` compone ambas y devuelve
+> `{chains, source: 'manual' | 'receipts'}`. Escritura: `updatePreferredChainsAction` (UPDATE
+> directo, como el objetivo de gasto). UI: `store-chains-editor.tsx` guarda al toque (sin
+> botón de guardar) con las escrituras **serializadas en una cola** —cada toque manda la lista
+> completa, y dos toques cruzados dejarían ganar al primero—; en modo automático las deducidas
+> salen marcadas con el distintivo "En tus tickets". Consumidores: el selector del cajón de
+> inventario agrupa «Tus tiendas»/«Otras» (solo si la separación aporta) con
+> `householdChains` bajando por props desde `/inventario`, y `buildReceiptPrompt` recibe pares
+> `{key,label}` ya resueltos para que `lib/` no dependa de una feature. Comprobado contra la
+> BD real con los datos del usuario: Casa Molina deduce `mercadona×3`, y un hogar con dos
+> tickets `"otro"` deduce vacío (la exclusión funciona). El `grant` no se pudo probar como rol
+> `authenticated` (la service key salta los permisos de columna y montar un JWT de Clerk
+> implicaba crear sesiones en producción); queda respaldado por la atomicidad de la migración.
+
+**Criterios de aceptación**
+- Un hogar que nunca entra en `/ajustes/tiendas` ve igualmente sus cadenas primero en el
+  selector de tienda preferida, deducidas de sus tickets.
+- Marcar/desmarcar guarda al instante; quedarse sin ninguna vuelve al modo automático y lo
+  dice con un aviso, en vez de dejar la sensación de que se ha perdido el ajuste.
+- La fila del índice de Ajustes distingue "Según tus tickets" de "N tiendas" (elegidas) y de
+  "Sin definir" (ni configuradas ni deducibles).
+
+### L15 f5 — Tiendas propias del hogar (cadenas regionales)
+
+**Idea original:** el hueco que dejaba f4. Quien compra en Gadis, Ahorramás, HiperDino,
+BonÀrea o Froiz no podía expresar su tienda de ninguna forma: la IA lo normalizaba a `"otro"`,
+y `"otro"` queda fuera de la inferencia, de la comparativa por cadena y de los avisos de
+ahorro. Para esos hogares toda la capa de tiendas era decorativa.
+
+**Diseño**
+- **Sin migración**: `households.preferred_chains` (f4) pasa a ser el vocabulario del hogar y
+  guarda claves conocidas y tiendas propias mezcladas. Las columnas de cadena
+  (`receipts.store_chain`, `receipt_items.store_chain`, `products.preferred_chain`) ya eran
+  texto libre.
+- **En una tienda propia, el nombre que escribe el usuario ES la clave de la cadena.**
+  `chainLabel` ya caía en la clave cuando no la conocía, así que el nombre se muestra bien en
+  las diez pantallas que pintan cadenas sin arrastrar un mapa de etiquetas por medio repo —
+  que era el coste que hacía cara esta fase. El precio: el nombre es un identificador, se
+  canoniza al guardarlo y no se renombra (se quita y se añade).
+- El `z.enum` de `store_chain` se construye **por hogar**. Sigue siendo enum y no texto libre
+  a propósito: si no, el modelo inventaría una cadena por cada variante del rótulo impreso
+  ("MERCADONA S.A.", "Mercadona Alfafar") y partiría el historial de precios.
+- La revisión del ticket gana un campo "Cadena" para corregir a mano lo que la IA no acierte.
+  Sin él la fase era una promesa incumplible; de paso cierra el mismo hueco para las ocho
+  conocidas, que tampoco se podían corregir.
+- **Fuera de alcance:** renombrar una tienda (consecuencia directa de que el nombre sea la
+  clave) y un catálogo global de cadenas regionales compartido entre hogares.
+
+**Pasos**
+- [x] Vocabulario en `chains.ts`: `isBuiltInChain`/`isCustomChain`, `matchBuiltInChain`,
+      `canonicalizeChains`, `chainOptions`, `chainSlug`, topes `CHAIN_NAME_MAX`/`CHAINS_MAX`.
+- [x] `customChainSchema` + `addCustomChainAction` (validación con mensaje, no descarte mudo).
+- [x] Bloque "Tus tiendas" en el editor: filas con borrado + formulario de añadir.
+- [x] `buildReceiptSchema(customChains)` y prompt con las claves exactas.
+- [x] Campo "Cadena" en la revisión del ticket, validado en servidor contra lo ofrecido.
+- [x] Selector de tienda preferida con las tiendas propias.
+- [x] `npx tsc --noEmit`, `npm run lint` y `npm run build:check` limpios.
+
+> **Nota de implementación (L15 f5):** cero migraciones. `canonicalizeChains` colapsa
+> espacios, mapea a clave conocida lo que se escriba como tal (escribir "Mercadona" o "DÍA" NO
+> crea una tienda propia: se marca la casilla de la conocida, o el historial se partiría en
+> dos), deduplica comparando sin acentos ni mayúsculas (`normalizeName`, el mismo que usa la
+> unicidad de productos) y ordena: conocidas en orden canónico y propias alfabéticas.
+> `addCustomChainAction(name, base)` recibe la lista que el usuario tiene delante, así que
+> añadir una tienda en modo automático promociona las deducidas a elección manual, que es lo
+> que la pantalla promete. Los topes no son estéticos: 40 caracteres porque
+> `products.preferred_chain` tiene un CHECK de 1..40, y 20 tiendas por el CHECK de
+> `preferred_chains`. **Bug de raíz arreglado por el camino** en `price-chart.tsx`:
+> `ChartContainer` convierte las claves de serie en variables CSS (`--color-<clave>`) y
+> `--color-Bon Àrea` es CSS inválido, así que la línea de esa tienda se habría quedado sin
+> color; las series pasan a llamarse `s0`, `s1`… y el nombre legible viaja en el config, de
+> donde ya lo sacan leyenda y tooltip. Verificación: 22 aserciones sobre el **código real**
+> (bundle con `npx esbuild` + `node`, no una reimplementación) cubriendo canonización,
+> duplicados, orden, nombres reservados, slugs y el JSON Schema que se manda a Gemini, que
+> sale como `enum: [mercadona, …, aldi, Ahorramás, Bon Àrea, otro]`; todas en verde. Límites
+> conocidos: **no** se hizo ninguna llamada real a Gemini (la forma de la petición no cambia,
+> ya era enum) y el guardado desde la UI no se pudo pulsar (login de Clerk no verificable).
+
+**Criterios de aceptación**
+- Un hogar añade "Gadis" y, al escanear un ticket de Gadis, la cadena sale como Gadis y no
+  como "Otra tienda"; ese ticket cuenta ya para la comparativa y los avisos de ahorro.
+- "gadis", "Gadis" y "GADIS" son la misma tienda; escribir "Mercadona" no crea una tienda
+  propia duplicada.
+- Si la IA falla, la cadena se corrige en la revisión del ticket y queda guardada tanto en el
+  ticket como en sus líneas.
+- Una tienda con espacios o puntos ("Bon Àrea", "Coviran S.A.") se pinta con su color en el
+  gráfico de precios y su nombre en leyenda y tooltip.
+
+---
+
+> **Prompt para el siguiente agente:**
 >
 > ```
 > Continúa con el proyecto Fill Good (C:\Users\Jorge\Desktop\Food). Lee primero AGENTS.md
 > (sistema de diseño: solo tokens semánticos, touch targets ≥44px, ResponsiveModal para
-> overlays, UI en español) y las "Instrucciones para el agente" al inicio de TODO.md.
-> Los bloques A–E están terminados; implementa el Bloque F, tarea a tarea y con un commit
-> por tarea, en este orden: F1 → F2 → F3 → F4 → F5 (F1–F3 son independientes; F4 antes
-> que F5 porque el historial debe registrar cantidades ya convertidas por pack).
+> overlays, PageContainer para anchos, UI en español) y las "Instrucciones para el agente"
+> al inicio de TODO.md.
+>
+> Todo lo que hay en este documento está TERMINADO (bloques A–F y L15 f4/f5). El roadmap
+> vivo es el plan de fases:
+> C:\Users\Jorge\.claude\plans\quiero-construir-una-aplicaci-n-fizzy-lollipop.md
+> Si te piden una tarea nueva, mírala ahí y, al acabarla, decide dónde documentarla (este
+> TODO.md solo se usa ya para las tareas que nacieron aquí).
 >
 > Estado de la BD: proyecto Supabase enlazado por CLI (supabase/.temp/linked-project.json).
-> Verifica el estado con `npx supabase migration list --linked` (solo lectura). Las
-> migraciones nuevas (F4 y F5) requieren AUTORIZACIÓN del usuario antes de
-> `npx supabase db push`. Los tipos en src/lib/supabase/types.ts se mantienen a mano
-> (NO regenerar con la CLI).
+> Comprueba el estado con `npx supabase migration list --linked` (solo lectura) y qué
+> entraría con `npx supabase db push --dry-run`. El push REAL lo ejecuta el usuario a mano
+> (el clasificador de permisos lo bloquea, incluso con --yes): escribe la migración, deja el
+> código degradando en suave hasta que se aplique y pídele que la lance. Los tipos en
+> src/lib/supabase/types.ts se mantienen A MANO (NO regenerar con la CLI: rompe los alias).
 >
-> Cada tarea del Bloque F en TODO.md es autocontenida (contexto con rutas de archivo,
-> diseño propuesto, pasos y criterios de aceptación). No amplíes el alcance: lo descartado
-> está en "Notas de alcance" (en particular: chips de caducidad ADITIVOS en vez de más
-> presets; suficiencia de ingredientes solo dentro de la misma familia de unidades;
-> pack_size NO es conversión de unidades; folding de eventos del stepper, nunca un evento
-> por pulsación; historial append-only sin lotes). Al terminar cada tarea:
-> `npx tsc --noEmit` y `npx eslint .` limpios, verificar los criterios en el preview
-> cuando sea posible (límite conocido: login de Clerk no verificable en headless), marcar
-> sus checkboxes y el estado global, y dejar una "Nota de implementación" bajo la tarea
-> siguiendo el formato de las de A–E.
+> Dos trampas que ya han mordido a alguien:
+> - `households` tiene los permisos de UPDATE POR COLUMNA desde el blindaje de julio. Toda
+>   columna nueva que deba escribir un miembro necesita su `grant update (columna)`, o la
+>   escritura falla en silencio aunque la RLS de fila la permita.
+> - La RLS NO acota al hogar activo (solo comprueba membresía): toda query con household_id
+>   lleva su `.eq("household_id", …)` explícito.
+>
+> Al terminar cada tarea: `npx tsc --noEmit`, `npm run lint` y `npm run build:check`
+> limpios; verificar los criterios de aceptación en el preview cuando sea posible (límite
+> conocido: el login de Clerk no es verificable en headless, así que lo visual se comprueba
+> con un HTML de check en file:// dentro del repo, contra el CSS ya compilado, y se borra
+> después); marcar los checkboxes y el estado global, y dejar una "Nota de implementación"
+> bajo la tarea con el formato de las anteriores, incluyendo los LÍMITES de la verificación.
 > ```
