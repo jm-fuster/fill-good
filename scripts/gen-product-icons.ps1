@@ -167,7 +167,21 @@ $concepts = @(
   # La masa va en #F3EEF8 sobre #B4ACBC: en claro casi no se despega del fondo, asi
   # que quien salva el tema claro son las hojas verdes (#44911B, 3.95:1). Sin hojas
   # este icono no cumple la regla de color.
-  @{k='coliflor'; f='coliflor'; p='local'}
+  @{k='coliflor'; f='coliflor'; p='local'},
+  # --- Ampliacion L16f ----------------------------------------------------------
+  @{k='guantes'; f='gloves'}
+  # ESTE SET ES DE CONSUMIBLES DE LA COMPRA, no de bazar. Se probo a cerrar la cola
+  # larga con 11 glifos de Fluent (cubiertos, cuchillo, planta, flores, globos,
+  # cuaderno, boligrafo, enchufe, auriculares, ropa) y sobraban: son cosas
+  # duraderas que no entran en una compra habitual, y solo servian para engordar el
+  # selector y el bundle. De aquella tanda se queda unicamente 'guantes', que es
+  # drogueria y se gasta. Criterio para lo que venga: si no se consume y no lo
+  # compras a menudo, NO lleva icono -- que caiga en el de su categoria.
+  #
+  # Descartados ademas tras verlos renderizados: 'takeout-box' para fiambrera (es un
+  # carton chino de comida para llevar, no un tupper) y 'falafel' para croquetas
+  # (lleva perejil y se lee como albondiga).
+  #
   # NO intentes dibujar el mejillon (L16e). Se probaron 5 composiciones -- lente con
   # carne central, dos valvas finas en V, valvas abiertas, gota con la carne anidada
   # y un par de mejillones solapados -- y todas se leen como un OJO o como una

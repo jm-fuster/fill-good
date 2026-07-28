@@ -87,7 +87,7 @@ export const ICON_SECTIONS: IconSection[] = [
     title: "Limpieza e higiene",
     slugs: [
       "esponja", "jabon", "cubo", "papelera", "escoba", "desatascador",
-      "papel", "bote-spray", "burbujas", "wc", "bolsas", "cesta",
+      "papel", "bote-spray", "burbujas", "wc", "bolsas", "cesta", "guantes",
       "cepillo-dientes", "diente", "maquinilla", "tijeras", "pintalabios",
     ],
   },
@@ -164,6 +164,8 @@ export const ICON_LABELS: Record<string, string> = {
   jamon: "Jamón", tortilla: "Tortilla", calabacin: "Calabacín",
   coliflor: "Coliflor", boniato: "Boniato", paella: "Paella", pulpo: "Pulpo",
   surimi: "Surimi", empanadilla: "Empanadilla", cereales: "Cereales",
+  // Ampliación L16f
+  guantes: "Guantes",
 };
 
 /** Sinónimos de búsqueda por slug (además de la etiqueta). Normalizados aparte. */
@@ -246,6 +248,7 @@ export const ICON_KEYWORDS: Record<string, string> = {
   ostra: "ostras mejillones berberechos almejas navajas vieiras percebes concha bivalvo",
   champinon: "champinones setas seta portobello shiitake",
   vaso: "whisky ron ginebra vodka vermut licor copa",
+  guantes: "guante fregar latex vinilo",
 };
 
 /** ¿Existe un icono con este slug en el registro? Fuente de verdad para validar. */

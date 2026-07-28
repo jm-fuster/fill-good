@@ -58,6 +58,9 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   chalota: "cebolla",
   ajo: "ajo", puerro: "puerro", pimiento: "pimiento", guindilla: "guindilla",
   chile: "guindilla", brocoli: "brocoli", coliflor: "coliflor", col: "col",
+  // Genéricos: "verduras salteadas/congeladas", "menestra". Antes caían en `sal`
+  // porque la clave corta se colaba en "salteadas".
+  verdura: "brocoli", menestra: "brocoli",
   repollo: "col", lombarda: "col", maiz: "maiz",
   // Sin icono propio: no existe alcachofa a color en ninguna librería abierta y
   // dibujarla salía peor que no tenerla. Cae en la hoja verde, que es lo más
@@ -226,6 +229,11 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   mechero: "cerilla", llave: "llave", llaves: "llave",
   martillo: "martillo", herramienta: "martillo", clavo: "martillo",
   tornillo: "martillo", destornillador: "martillo", bricolaje: "martillo",
+  guante: "guantes",
+  // Sin icono nuevo: reaprovechan uno que ya existe. Nada de `botella` a secas:
+  // le ganaría a "vino" y una botella de vino saldría como agua.
+  "botella reutilizable": "agua", cantimplora: "agua",
+  turron: "chocolate", polvoron: "galleta", mazapan: "galleta",
 };
 
 /**
@@ -252,9 +260,22 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * última toleran el plural (`bolsa(s) congelacion`), y a todas se les quita la `s`
  * final: como el patrón no ancla el final, la última empareja por prefijo, que es
  * lo que ya hacía que "pepino" cubriera "pepinos".
+ *
+ * EXCEPCIÓN: las claves de una sola palabra CORTA sí anclan el final. Emparejar
+ * por prefijo con 3-4 letras mete el icono dentro de cualquier palabra que empiece
+ * igual: `col` se colaba en "lápices de COLores", y por el mismo motivo `sal`
+ * caería en "salmorejo", `te` en "tequila" y `gel` en "gelatina". Hasta ahora eso
+ * se tapaba a base de añadir la palabra larga (`salmon`, `salsa`, `gelatina`…),
+ * que es una lista infinita. Con el ancla basta permitir el plural español —`-s`
+ * tras vocal y `-es` tras consonante— para que "col"/"coles" sigan valiendo.
  */
+const SHORT_KEYWORD = 4;
+
 function keywordPattern(kw: string): RegExp {
   const words = kw.split(" ");
+  if (words.length === 1 && kw.length <= SHORT_KEYWORD) {
+    return new RegExp("(^|[^a-z])" + escapeRe(kw) + "(e?s)?(?![a-z])");
+  }
   const body = words
     .map((w, i) => {
       const stem = escapeRe(w.replace(/s$/, ""));
