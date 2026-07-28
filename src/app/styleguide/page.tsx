@@ -34,8 +34,10 @@ export const metadata: Metadata = { title: "Guía de estilo" };
  * a propósito: el color lo pone el icono, así que un tinte por categoría detrás
  * competiría con él. `manzana` y `manzana-verde` van juntas porque son el caso que
  * justifica el set a color: en monocromo eran el mismo dibujo. `ciruela` es un
- * donante recoloreado (el melocotón de Fluent en morado) y `col` un dibujo propio:
- * las dos cierran la fila para comprobar que no desentonan con el resto.
+ * donante recoloreado (el melocotón de Fluent en morado) y `col`, `jamon` y
+ * `coliflor` son dibujos propios: cierran la fila para comprobar que no desentonan
+ * con el resto. `coliflor` está aquí a propósito por ser el más pálido del set —
+ * su masa casi blanca solo se despega del fondo gracias a las hojas verdes.
  */
 const productIconSamples = [
   "manzana",
@@ -50,6 +52,8 @@ const productIconSamples = [
   "helado",
   "ciruela",
   "col",
+  "jamon",
+  "coliflor",
 ];
 
 const colorTokens = [

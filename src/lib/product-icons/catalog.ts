@@ -6,10 +6,10 @@ import { ICON_BODIES } from "./registry";
  * para el buscador. El registro (`ICON_BODIES`) es la fuente de verdad de qué
  * iconos existen; este archivo solo los ordena y nombra para la UI.
  *
- * Estilo propio: iconos a color plano de Fluent Emoji Flat (MIT) más seis dibujados
- * para la app en la misma gramática visual. Cada SVG trae sus propios rellenos, así
- * que el color no depende del tema: es lo que permite distinguir de un vistazo un
- * tomate de una manzana.
+ * Estilo propio: iconos a color plano de Fluent Emoji Flat (MIT) más catorce
+ * dibujados para la app en la misma gramática visual. Cada SVG trae sus propios
+ * rellenos, así que el color no depende del tema: es lo que permite distinguir de un
+ * vistazo un tomate de una manzana.
  */
 
 /** Icono genérico de reserva cuando no hay slug ni categoría reconocibles. */
@@ -29,23 +29,23 @@ export const ICON_SECTIONS: IconSection[] = [
   {
     title: "Verdura",
     slugs: [
-      "zanahoria", "tomate", "patata", "cebolla", "ajo", "puerro", "pimiento",
-      "guindilla", "brocoli", "col", "maiz", "guisantes",
-      "pepino", "calabaza", "lechuga", "esparragos", "berenjena", "remolacha",
+      "zanahoria", "tomate", "patata", "boniato", "cebolla", "ajo", "puerro", "pimiento",
+      "guindilla", "brocoli", "coliflor", "col", "maiz", "guisantes",
+      "pepino", "calabacin", "calabaza", "lechuga", "esparragos", "berenjena", "remolacha",
       "champinon", "aceituna", "jengibre",
     ],
   },
   {
     title: "Carne",
-    slugs: ["carne", "pollo", "costilla", "bacon", "perrito"],
+    slugs: ["carne", "pollo", "costilla", "bacon", "jamon", "perrito"],
   },
   {
     title: "Pescado y marisco",
-    slugs: ["pescado", "gamba", "cangrejo", "langosta", "calamar", "ostra"],
+    slugs: ["pescado", "gamba", "cangrejo", "langosta", "calamar", "pulpo", "ostra", "surimi"],
   },
   {
     title: "Lácteos y huevos",
-    slugs: ["leche", "queso", "huevo", "mantequilla", "helado", "helado-cucurucho"],
+    slugs: ["leche", "yogur", "queso", "huevo", "mantequilla", "helado", "helado-cucurucho"],
   },
   {
     title: "Panadería",
@@ -54,8 +54,8 @@ export const ICON_SECTIONS: IconSection[] = [
   {
     title: "Despensa",
     slugs: [
-      "arroz", "pasta", "conserva", "tarro", "miel", "sal", "sarten",
-      "hierbas", "cacahuetes", "castana", "alubias",
+      "arroz", "pasta", "cereales", "conserva", "tarro", "aceite", "miel", "sal", "sarten",
+      "hierbas", "harina", "cacahuetes", "castana", "alubias",
     ],
   },
   {
@@ -68,7 +68,7 @@ export const ICON_SECTIONS: IconSection[] = [
   {
     title: "Bebidas",
     slugs: [
-      "cafe", "tetera", "mate", "refresco", "brik", "te-burbujas", "vaso",
+      "agua", "cafe", "tetera", "mate", "refresco", "brik", "te-burbujas", "vaso",
       "vino", "cerveza", "copas", "coctel", "champan",
     ],
   },
@@ -77,6 +77,7 @@ export const ICON_SECTIONS: IconSection[] = [
     slugs: [
       "pizza", "hamburguesa", "patatas-fritas", "sandwich", "taco",
       "burrito", "sushi", "sopa", "fideos", "ensalada",
+      "paella", "tortilla", "empanadilla",
     ],
   },
   {
@@ -155,6 +156,11 @@ export const ICON_LABELS: Record<string, string> = {
   lima: "Lima", frambuesa: "Frambuesa", ciruela: "Ciruela", guisantes: "Guisantes",
   puerro: "Puerro", col: "Col", calabaza: "Calabaza",
   esparragos: "Espárragos", remolacha: "Remolacha",
+  // Ampliación L16d
+  yogur: "Yogur", agua: "Agua", aceite: "Aceite", harina: "Harina y azúcar",
+  jamon: "Jamón", tortilla: "Tortilla", calabacin: "Calabacín",
+  coliflor: "Coliflor", boniato: "Boniato", paella: "Paella", pulpo: "Pulpo",
+  surimi: "Surimi", empanadilla: "Empanadilla", cereales: "Cereales",
 };
 
 /** Sinónimos de búsqueda por slug (además de la etiqueta). Normalizados aparte. */
@@ -167,7 +173,7 @@ export const ICON_KEYWORDS: Record<string, string> = {
   carne: "filete ternera cerdo picada solomillo",
   pollo: "muslo ave pavo",
   costilla: "chuleta cordero",
-  leche: "yogur yogures nata lacteo batido",
+  leche: "nata lacteo batido",
   queso: "quesos lonchas rallado",
   pescado: "salmon merluza atun sardina lubina dorada",
   gamba: "gambas langostinos marisco",
@@ -177,7 +183,7 @@ export const ICON_KEYWORDS: Record<string, string> = {
   conserva: "lata bote atun tomate frito maiz",
   tarro: "bote mermelada salsa mayonesa",
   cafe: "te infusion cafe",
-  refresco: "cola agua zumo bebida vaso",
+  refresco: "cola bebida vaso",
   vino: "tinto blanco copa",
   cerveza: "birra cerveza",
   "patatas-fritas": "chips aperitivo",
@@ -220,6 +226,20 @@ export const ICON_KEYWORDS: Record<string, string> = {
   calabaza: "calabacin",
   esparragos: "esparrago trigueros",
   remolacha: "remolachas",
+  yogur: "yogures yogurt griego desnatado lacteo",
+  agua: "agua mineral botella garrafa",
+  aceite: "aceite oliva girasol virgen extra",
+  harina: "harina azucar reposteria levadura",
+  jamon: "jamon serrano iberico curado paleta",
+  tortilla: "tortilla patatas espanola",
+  calabacin: "calabacines",
+  coliflor: "coliflores",
+  boniato: "batata boniatos",
+  paella: "paellera guiso arroz",
+  pulpo: "pulpos",
+  surimi: "palitos cangrejo surimi",
+  empanadilla: "empanadillas empanada gyoza",
+  cereales: "cereal muesli avena granola desayuno bol",
 };
 
 /** ¿Existe un icono con este slug en el registro? Fuente de verdad para validar. */

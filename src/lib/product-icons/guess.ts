@@ -41,57 +41,72 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   platano: "platano", banana: "platano", naranja: "naranja",
   mandarina: "naranja", clementina: "naranja", limon: "limon", lima: "lima",
   fresa: "fresa", freson: "fresa", uva: "uvas", sandia: "sandia", pina: "pina",
-  pera: "pera", melocoton: "melocoton", nectarina: "melocoton", cereza: "cerezas",
+  pera: "pera", melocoton: "melocoton", nectarina: "melocoton",
+  albaricoque: "melocoton", cereza: "cerezas",
   ciruela: "ciruela", melon: "melon", kiwi: "kiwi", mango: "mango", coco: "coco",
   arandano: "arandanos", frambuesa: "frambuesa", mora: "frambuesa",
   aguacate: "aguacate", guacamole: "aguacate",
   // Verdura
   zanahoria: "zanahoria", tomate: "tomate", "tomate frito": "conserva",
-  patata: "patata", "patatas fritas": "patatas-fritas", cebolla: "cebolla",
+  patata: "patata", "patatas fritas": "patatas-fritas", boniato: "boniato",
+  batata: "boniato", cebolla: "cebolla",
   ajo: "ajo", puerro: "puerro", pimiento: "pimiento", guindilla: "guindilla",
-  chile: "guindilla", brocoli: "brocoli", coliflor: "brocoli", col: "col",
+  chile: "guindilla", brocoli: "brocoli", coliflor: "coliflor", col: "col",
   repollo: "col", lombarda: "col", maiz: "maiz",
   // Sin icono propio: no existe alcachofa a color en ninguna librería abierta y
   // dibujarla salía peor que no tenerla. Cae en la hoja verde, que es lo más
   // cercano de verdad. Si algún día aparece una, basta añadirla al registro.
   alcachofa: "lechuga",
   guisante: "guisantes", "judias verdes": "guisantes", pepino: "pepino",
-  calabacin: "calabaza", calabaza: "calabaza", lechuga: "lechuga",
+  pepinillo: "pepino",
+  calabacin: "calabacin", calabaza: "calabaza", lechuga: "lechuga",
+  canonigos: "lechuga", rucula: "lechuga",
   espinaca: "lechuga", acelga: "lechuga", esparrago: "esparragos",
   trigueros: "esparragos", berenjena: "berenjena", remolacha: "remolacha",
   champinon: "champinon", seta: "champinon", aceituna: "aceituna",
   jengibre: "jengibre",
   // Carne
   carne: "carne", ternera: "carne", cerdo: "carne", "carne picada": "carne",
-  filete: "carne", solomillo: "carne", lomo: "carne", pollo: "pollo",
+  filete: "carne", solomillo: "carne", lomo: "carne", conejo: "carne",
+  pollo: "pollo",
   pavo: "pollo", pechuga: "pollo", costilla: "costilla", chuleta: "costilla",
   cordero: "costilla", bacon: "bacon", panceta: "bacon", salchicha: "perrito",
-  chorizo: "perrito", embutido: "perrito", jamon: "bacon", fuet: "perrito",
+  chorizo: "perrito", embutido: "perrito", fuet: "perrito",
+  jamon: "jamon", paleta: "jamon", serrano: "jamon",
   // Pescado y marisco
   pescado: "pescado", salmon: "pescado", merluza: "pescado", atun: "pescado",
   sardina: "pescado", bacalao: "pescado", lubina: "pescado", dorada: "pescado",
   boqueron: "pescado", gamba: "gamba", langostino: "gamba", marisco: "gamba",
   cangrejo: "cangrejo", langosta: "langosta", calamar: "calamar",
-  sepia: "calamar", pulpo: "calamar", mejillon: "ostra", almeja: "ostra",
-  ostra: "ostra",
+  sepia: "calamar", pulpo: "pulpo", mejillon: "ostra", almeja: "ostra",
+  ostra: "ostra", surimi: "surimi", "palitos de cangrejo": "surimi",
   // Lácteos y huevos
-  leche: "leche", yogur: "leche", yogurt: "leche", nata: "leche",
+  leche: "leche", yogur: "yogur", yogurt: "yogur", nata: "leche",
   batido: "leche", queso: "queso", huevo: "huevo", mantequilla: "mantequilla",
   margarina: "mantequilla", helado: "helado",
   // Panadería y cereales
   pan: "pan", "pan de molde": "pan", "pan rallado": "conserva", hogaza: "pan",
+  // Sigue siendo pan: sin esta regla gana "cereales" (8) sobre "pan" (3).
+  "pan de cereales": "pan",
   baguette: "baguette", croissant: "croissant", bagel: "bagel",
   pretzel: "pretzel", tortita: "tortitas", gofre: "gofre", pita: "pan-plano",
+  // Las tortillas de trigo/maíz son pan plano, no la tortilla de patatas. Ganan
+  // por longitud a la regla "tortilla" de más abajo.
+  "tortilla de trigo": "pan-plano", "tortillas de trigo": "pan-plano",
+  "tortilla de maiz": "pan-plano", "tortillas de maiz": "pan-plano",
   arroz: "arroz", pasta: "pasta", macarron: "pasta", espagueti: "pasta",
-  fideo: "pasta", tallarin: "pasta", harina: "conserva", cereales: "conserva",
+  fideo: "pasta", tallarin: "pasta", harina: "harina",
+  cereales: "cereales", cereal: "cereales", muesli: "cereales",
+  granola: "cereales", avena: "cereales",
   // Despensa
   conserva: "conserva", lata: "conserva", garbanzo: "alubias", lenteja: "alubias",
   alubia: "alubias", judia: "alubias", legumbre: "alubias", tarro: "tarro",
   mermelada: "tarro", salsa: "tarro", mayonesa: "tarro", ketchup: "tarro",
-  miel: "miel", sal: "sal", azucar: "conserva", vinagre: "tarro",
-  aceite: "aceituna", cafe: "cafe", cacao: "chocolate", colacao: "chocolate",
+  miel: "miel", sal: "sal", azucar: "harina", vinagre: "tarro",
+  aceite: "aceite", cafe: "cafe", cacao: "chocolate", colacao: "chocolate",
   caldo: "sopa", "frutos secos": "cacahuetes", cacahuete: "cacahuetes",
-  nuez: "cacahuetes", almendra: "cacahuetes",
+  nuez: "cacahuetes", almendra: "cacahuetes", avellana: "cacahuetes",
+  pistacho: "cacahuetes",
   // Dulces
   chocolate: "chocolate", galleta: "galleta", caramelo: "caramelo",
   chuche: "caramelo", piruleta: "piruleta", donut: "donut", tarta: "tarta",
@@ -99,12 +114,24 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   flan: "flan", natilla: "flan", palomita: "palomitas",
   // Bebidas
   te: "tetera", infusion: "tetera", mate: "mate", refresco: "refresco",
-  cola: "refresco", zumo: "refresco", agua: "refresco", vino: "vino",
+  cola: "refresco", agua: "agua", vino: "vino",
+  // El brik (🧃) ES un zumo, así que lo que viene en cartón va aquí y no al vaso
+  // de refresco. Ojo: "zumo de naranja" cae antes en "naranja", que es más largo.
+  zumo: "brik", gazpacho: "brik", "bebida vegetal": "brik",
+  "bebida de avena": "brik", "bebida de soja": "brik",
+  "bebida de arroz": "brik", "bebida de almendra": "brik",
+  "leche de avena": "brik", "leche de soja": "brik",
   cerveza: "cerveza", birra: "cerveza", coctel: "coctel", champan: "champan",
   cava: "champan", sidra: "champan",
   // Platos preparados
   pizza: "pizza", hamburguesa: "hamburguesa", sandwich: "sandwich",
   taco: "taco", burrito: "burrito", sushi: "sushi", ensalada: "ensalada",
+  paella: "paella",
+  // "marisco" (7) le gana por longitud a "paella" (6), así que la variante más
+  // vendida necesita su propia regla o la paella sale con una gamba.
+  "paella de marisco": "paella", "paella de mariscos": "paella",
+  tortilla: "tortilla", empanadilla: "empanadilla",
+  empanada: "empanadilla", gyoza: "empanadilla",
   // Limpieza e higiene
   esponja: "esponja", estropajo: "esponja", detergente: "bote-spray",
   suavizante: "bote-spray", lavavajillas: "bote-spray", lejia: "bote-spray",

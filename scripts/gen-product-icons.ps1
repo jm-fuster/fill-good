@@ -2,10 +2,12 @@
 #
 # Fuentes (TODAS a color plano y con la misma gramatica visual):
 #   - Fluent Emoji Flat (MIT) por defecto, via la API de Iconify.
-#   - Dibujos propios en assets/product-icons/*.svg (p='local') para los 6 conceptos
+#   - Dibujos propios en assets/product-icons/*.svg (p='local') para los 14 conceptos
 #     que no existen a color en NINGUN set abierto: se revisaron las 41 colecciones
 #     de Iconify con palette=true. Son originales de esta app, sin licencia de
-#     terceros que atribuir.
+#     terceros que atribuir. Los 8 de L16d se comprobaron ademas contra el listado
+#     completo de fluent-emoji-flat (3145 nombres): no hay yogur, botella de agua,
+#     aceite, jamon, tortilla, bolsa de harina, coliflor ni calabacin.
 #   - Donantes recoloreados con el campo 's': una ciruela es el melocoton de Fluent
 #     en morado y una frambuesa es su racimo de arandanos en rojo. Reutilizar el
 #     artwork de Microsoft encaja mejor que redibujarlo, y son frutas que en la vida
@@ -136,7 +138,34 @@ $concepts = @(
   @{k='puerro'; f='puerro'; p='local'},
   # 'matchstick' no existe en Fluent Flat (ni en High Contrast). La caja de cerillas
   # se reconoce mejor como producto de compra que una cerilla suelta.
-  @{k='cerilla'; f='cerilla'; p='local'}
+  @{k='cerilla'; f='cerilla'; p='local'},
+  # --- Ampliacion L16d ---------------------------------------------------------
+  # Glifos de Fluent que ya existian y no estabamos usando. Antes estos productos
+  # caian en un icono prestado que enganaba: el boniato en 'patata', el pulpo en
+  # 'calamar', los cereales en 'conserva' (una lata).
+  @{k='boniato'; f='roasted-sweet-potato'}, @{k='paella'; f='shallow-pan-of-food'},
+  @{k='pulpo'; f='octopus'}, @{k='surimi'; f='fish-cake-with-swirl'},
+  @{k='cereales'; f='bowl-with-spoon'},
+  # La empanadilla es uno de los palidos de Fluent: sus tres tonos son crema y el
+  # mejor daba 1.92:1 sobre tarjeta blanca. El swap oscurece SOLO el borde, que es
+  # el que dibuja la silueta; el relleno se queda como esta. Lo verifica
+  # Test-IconContrast, que con el swap ya si se aplica a este icono.
+  @{k='empanadilla'; f='dumpling'; s=@{'#F3AD61'='#D3883E'}},
+  # Dibujos propios L16d. Los siete primeros son productos de peso en una compra
+  # espanola que no tienen glifo en ningun sitio; 'calabacin' se separa de 'calabaza'
+  # porque no se parecen ni en forma ni en color, y 'coliflor' de 'brocoli' porque
+  # solo se distinguen por el color de la masa.
+  @{k='yogur'; f='yogur'; p='local'},
+  @{k='agua'; f='agua'; p='local'},
+  @{k='aceite'; f='aceite'; p='local'},
+  @{k='jamon'; f='jamon'; p='local'},
+  @{k='tortilla'; f='tortilla'; p='local'},
+  @{k='harina'; f='harina'; p='local'},
+  @{k='calabacin'; f='calabacin'; p='local'},
+  # La masa va en #F3EEF8 sobre #B4ACBC: en claro casi no se despega del fondo, asi
+  # que quien salva el tema claro son las hojas verdes (#44911B, 3.95:1). Sin hojas
+  # este icono no cumple la regla de color.
+  @{k='coliflor'; f='coliflor'; p='local'}
 )
 
 # Extrae el interior del <svg> y lo deja en UNA linea. La minificacion no es
@@ -268,7 +297,7 @@ foreach ($c in $concepts) {
 
 $sb = [System.Text.StringBuilder]::new()
 [void]$sb.AppendLine("// GENERADO - no editar a mano. Iconos a color (cada SVG trae sus rellenos).")
-[void]$sb.AppendLine("// Fuentes: Fluent Emoji Flat (MIT) y 6 dibujos propios (assets/product-icons/).")
+[void]$sb.AppendLine("// Fuentes: Fluent Emoji Flat (MIT) y 14 dibujos propios (assets/product-icons/).")
 [void]$sb.AppendLine("// Cada entrada guarda su viewBox (vb) porque los sets no comparten lienzo.")
 [void]$sb.AppendLine("// Regenerar con scripts/gen-product-icons.ps1.")
 [void]$sb.AppendLine("")
