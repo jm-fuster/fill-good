@@ -9,6 +9,16 @@ import { scanReceiptAction } from "@/features/receipts/actions";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  // Un Route Handler no trae la protección CSRF de las Server Actions. El Web
+  // Share Target siempre navega desde el propio origen (Sec-Fetch-Site
+  // same-origin o none); rechazamos cualquier POST cross-site, que sería un
+  // envío forjado desde otro sitio. Si la cabecera no existe, se permite
+  // (navegadores antiguos) para no romper el share target legítimo.
+  const site = request.headers.get("sec-fetch-site");
+  if (site && site !== "same-origin" && site !== "none") {
+    return new NextResponse("Origen no permitido", { status: 403 });
+  }
+
   const { userId } = await auth();
   if (!userId) {
     // 303: cambia el POST a GET al redirigir.

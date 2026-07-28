@@ -28,7 +28,10 @@ import {
 import { normalizeName } from "@/lib/normalize";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, UnitType } from "@/lib/supabase/types";
+import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
 import { getCurrentHousehold } from "@/features/household/queries";
+import { getAiConsent } from "@/features/ai-consent/queries";
+import { AI_CONSENT_REQUIRED_ERROR } from "@/features/ai-consent/version";
 import { getInventory } from "@/features/inventory/queries";
 import { getInventoryStatus } from "@/features/inventory/status";
 import { getActiveList, getProductCatalog } from "@/features/shopping-list/queries";
@@ -63,7 +66,13 @@ import {
   type MenuRuleInput,
 } from "./schemas";
 
-export type MenuState = { error?: string; ok?: boolean; added?: number };
+export type MenuState = {
+  error?: string;
+  ok?: boolean;
+  added?: number;
+  /** true si falta el consentimiento de IA: la UI debe pedirlo antes de reintentar. */
+  needsAiConsent?: boolean;
+};
 
 async function ensureMenu(
   supabase: SupabaseClient<Database>,
@@ -182,7 +191,18 @@ export async function generateMenuAction(
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
   const { userId } = await auth();
+
+  // El contexto del hogar (inventario, recetario, preferencias) se envía a la IA
+  // de Google: sin consentimiento no generamos.
+  const consent = await getAiConsent();
+  if (!consent.consented) {
+    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
+  }
+
   const supabase = createServerSupabaseClient();
+
+  const rateError = await enforceAiRateLimit(supabase, "menu");
+  if (rateError) return { error: rateError };
 
   const menuId = await ensureMenu(supabase, household.id, weekStart);
   if (!menuId) return { error: "No se pudo crear el menú." };
@@ -821,7 +841,17 @@ export async function rerollMenuEntryAction(
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
   const { userId } = await auth();
+
+  // El reroll también pasa el contexto del hogar a la IA de Google: mismo gate.
+  const consent = await getAiConsent();
+  if (!consent.consented) {
+    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
+  }
+
   const supabase = createServerSupabaseClient();
+
+  const rateError = await enforceAiRateLimit(supabase, "menu");
+  if (rateError) return { error: rateError };
 
   const { data: entry } = await supabase
     .from("menu_entries")

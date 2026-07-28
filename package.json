@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && serwist build",
+    "build": "node scripts/check-legal-config.mjs && next build && serwist build",
     "start": "next start",
     "lint": "eslint --max-warnings 0",
+    "check:legal": "node scripts/check-legal-config.mjs --strict",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
-    "build:check": "next build && node scripts/check-bundle-budget.mjs",
+    "build:check": "node scripts/check-legal-config.mjs && next build && node scripts/check-bundle-budget.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

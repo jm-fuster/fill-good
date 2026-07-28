@@ -289,6 +289,37 @@ export async function renameHouseholdAction(
   return {};
 }
 
+export async function removeMemberAction(
+  userId: string,
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  if (household.role !== "owner") {
+    return { error: "Solo el propietario puede quitar miembros." };
+  }
+  if (!userId) return { error: "Miembro no válido." };
+
+  // La garantía vive en la BD: remove_household_member reimpone "solo owner",
+  // borra la membresía + push + pines del expulsado en este hogar y rota el
+  // código de invitación para que no pueda reentrar con el que conocía.
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase.rpc("remove_household_member", {
+    p_household_id: household.id,
+    p_user_id: userId,
+  });
+  if (error) {
+    const message = error.message?.includes("cannot_remove_self")
+      ? "No puedes quitarte a ti mismo; usa «Abandonar hogar»."
+      : error.message?.includes("not_owner")
+        ? "Solo el propietario puede quitar miembros."
+        : "No se pudo quitar al miembro. Inténtalo de nuevo.";
+    return { error: message };
+  }
+
+  revalidatePath("/ajustes/hogar");
+  return {};
+}
+
 export async function transferOwnershipAction(
   newOwnerUserId: string,
 ): Promise<ActionState> {

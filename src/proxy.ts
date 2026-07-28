@@ -19,6 +19,9 @@ const isPublicRoute = createRouteMatcher([
   // Mismo caso: el resumen mensual (G4) lo dispara Vercel Cron el día 1 con el
   // mismo Bearer, y valida el secreto por su cuenta.
   "/api/push/resumen",
+  // Endpoint de informes de violación de la CSP: el navegador lo llama sin
+  // sesión (report-uri / report-to), así que debe ser público.
+  "/api/csp-report",
 ]);
 
 // authorizedParties refuerza la validación del token de Clerk frente a reuso

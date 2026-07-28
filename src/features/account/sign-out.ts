@@ -2,6 +2,8 @@
 
 import type { useClerk } from "@clerk/nextjs";
 
+import { clearLocalAppData } from "./clear-local-data";
+
 type Clerk = ReturnType<typeof useClerk>;
 
 const SIGN_IN_URL = "/sign-in";
@@ -45,6 +47,13 @@ const SIGN_IN_URL = "/sign-in";
  * historial.
  */
 export async function signOutToSignIn(clerk: Clerk) {
+  // Purga la caché del SW y el estado del hogar en localStorage ANTES de salir,
+  // para que ningún dato del hogar sobreviva al logout en dispositivos
+  // compartidos (auditoría de privacidad jul-2026). Es best-effort y se hace
+  // antes del signOut a propósito: si el cierre fallara y el usuario siguiera
+  // dentro, lo único perdido es la caché offline, que se rehace online.
+  await clearLocalAppData();
+
   const unsubscribe = clerk.addListener(
     ({ session }) => {
       if (!session) window.location.replace(SIGN_IN_URL);

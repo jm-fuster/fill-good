@@ -55,6 +55,13 @@ const csp = [
   // cubre esa petición.
   `connect-src 'self' ${clerkFapiOrigin} https://*.clerk.accounts.dev https://clerk-telemetry.com https://img.clerk.com ${supabaseOrigin} ${supabaseWss}`.trim(),
   `frame-src 'self' https://challenges.cloudflare.com`,
+  // Informes de violación a un endpoint propio (funcionan en report-only y en
+  // enforce). `report-uri` está deprecado pero lo soportan todos los navegadores
+  // hoy; `report-to` es el estándar moderno (requiere la cabecera
+  // `Reporting-Endpoints`). Con esto, antes de activar el enforce se pueden ver
+  // en los logs de producción qué recursos se bloquearían.
+  `report-uri /api/csp-report`,
+  `report-to csp-endpoint`,
   // upgrade-insecure-requests se IGNORA en una política report-only, y el
   // navegador lo avisa con un error por cada directiva de la página: seis
   // entradas rojas en consola por carga, puro ruido que tapa errores reales.
@@ -86,6 +93,12 @@ const securityHeaders = [
     value: "camera=(self), microphone=(), geolocation=(), browsing-topics=()",
   },
   { key: "X-DNS-Prefetch-Control", value: "on" },
+  // Destino de los informes de la CSP para la directiva `report-to`. El grupo
+  // "csp-endpoint" apunta al route handler propio /api/csp-report.
+  {
+    key: "Reporting-Endpoints",
+    value: `csp-endpoint="/api/csp-report"`,
+  },
   // Report-Only mientras `cspEnforce` sea false: NO bloquea, solo reporta.
   {
     key: cspEnforce

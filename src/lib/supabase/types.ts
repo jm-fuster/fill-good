@@ -18,10 +18,13 @@ export type Database = {
           id: string;
           name: string;
           invite_code: string;
-          created_by: string;
+          // nullable desde 20260728150000: delete_account() anula el creador.
+          created_by: string | null;
           created_at: string;
           monthly_budget: number | null;
           preferred_chains: string[];
+          // desde 20260728170000: caducidad del código de invitación.
+          invite_code_expires_at: string;
         };
         Insert: {
           id?: string;
@@ -31,6 +34,7 @@ export type Database = {
           created_at?: string;
           monthly_budget?: number | null;
           preferred_chains?: string[];
+          invite_code_expires_at?: string;
         };
         Update: {
           id?: string;
@@ -40,6 +44,7 @@ export type Database = {
           created_at?: string;
           monthly_budget?: number | null;
           preferred_chains?: string[];
+          invite_code_expires_at?: string;
         };
         Relationships: [];
       };
@@ -983,6 +988,14 @@ export type Database = {
       };
       merge_products: {
         Args: { p_source: string; p_target: string };
+        Returns: undefined;
+      };
+      record_ai_usage: {
+        Args: { p_kind: string };
+        Returns: undefined;
+      };
+      remove_household_member: {
+        Args: { p_household_id: string; p_user_id: string };
         Returns: undefined;
       };
     };

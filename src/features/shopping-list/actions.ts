@@ -334,6 +334,8 @@ export async function updateListItemAction(
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
   }
   const d = parsed.data;
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
 
   const unit = d.unit ?? null;
@@ -347,7 +349,8 @@ export async function updateListItemAction(
       quantity: d.quantity ?? defaultListQuantity(unit),
       unit,
     })
-    .eq("id", d.itemId);
+    .eq("id", d.itemId)
+    .eq("household_id", household.id);
   if (error) return { error: "No se pudo guardar." };
 
   revalidatePath("/lista");
@@ -366,11 +369,14 @@ export async function setListItemQuantityAction(
   if (quantity !== null && (!Number.isFinite(quantity) || quantity < 0)) {
     return { error: "Cantidad no válida." };
   }
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
   const { error } = await supabase
     .from("shopping_list_items")
     .update({ quantity })
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .eq("household_id", household.id);
   if (error) return { error: "No se pudo actualizar." };
   return { ok: true };
 }
@@ -410,6 +416,8 @@ export async function toggleItemAction(
   isChecked: boolean,
 ): Promise<ActionState> {
   const { userId } = await auth();
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
   const { error } = await supabase
     .from("shopping_list_items")
@@ -418,7 +426,8 @@ export async function toggleItemAction(
       checked_by: isChecked ? userId : null,
       checked_at: isChecked ? new Date().toISOString() : null,
     })
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .eq("household_id", household.id);
   if (error) return { error: "No se pudo actualizar." };
   // Sin revalidatePath: optimista en cliente + Realtime para el resto.
   return { ok: true };
@@ -450,6 +459,8 @@ export type DeletedListItem = {
 export async function deleteListItemAction(
   itemId: string,
 ): Promise<ActionState & { deleted?: DeletedListItem }> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
   const { data: row } = await supabase
     .from("shopping_list_items")
@@ -457,12 +468,14 @@ export async function deleteListItemAction(
       "id, list_id, household_id, product_id, name, quantity, unit, is_checked, checked_by, checked_at, added_by, position, created_at",
     )
     .eq("id", itemId)
+    .eq("household_id", household.id)
     .maybeSingle();
 
   const { error } = await supabase
     .from("shopping_list_items")
     .delete()
-    .eq("id", itemId);
+    .eq("id", itemId)
+    .eq("household_id", household.id);
   if (error) return { error: "No se pudo eliminar." };
 
   revalidatePath("/lista");
@@ -488,7 +501,9 @@ export async function restoreListItemAction(
   const { error } = await supabase.from("shopping_list_items").insert({
     id: item.id,
     list_id: item.list_id,
-    household_id: item.household_id,
+    // Forzamos el hogar activo en lugar de fiarnos del payload del cliente: no se
+    // puede reinsertar la fila con un household_id fabricado.
+    household_id: household.id,
     product_id: item.product_id,
     name: item.name,
     quantity: item.quantity,

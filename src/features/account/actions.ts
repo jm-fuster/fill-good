@@ -1,10 +1,82 @@
 "use server";
 
-import { auth, clerkClient } from "@clerk/nextjs/server";
+import { auth, clerkClient, currentUser } from "@clerk/nextjs/server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { getCurrentHousehold } from "@/features/household/queries";
 
 export type DeleteAccountState = { error?: string; ok?: boolean };
+
+export type ExportDataState = { error?: string; data?: unknown };
+
+/**
+ * Portabilidad (art. 20 RGPD): devuelve en un objeto los datos de la cuenta y el
+ * contenido del hogar activo, en formato estructurado y de uso común (JSON). El
+ * cliente lo descarga como archivo. Se acota al hogar activo con .eq() (la RLS
+ * solo comprueba membresía) y de los miembros solo se incluye el nombre visible,
+ * no los identificadores de otras personas.
+ */
+export async function exportMyDataAction(): Promise<ExportDataState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+  if (!userId) return { error: "Debes iniciar sesión." };
+
+  const user = await currentUser();
+  const supabase = createServerSupabaseClient();
+  const hid = household.id;
+
+  const [
+    members,
+    products,
+    inventory,
+    listItems,
+    recipes,
+    menus,
+    menuEntries,
+    receipts,
+    receiptItems,
+    trips,
+  ] = await Promise.all([
+    supabase
+      .from("household_members")
+      .select("display_name, role, joined_at")
+      .eq("household_id", hid),
+    supabase.from("products").select("*").eq("household_id", hid),
+    supabase.from("inventory_items").select("*").eq("household_id", hid),
+    supabase.from("shopping_list_items").select("*").eq("household_id", hid),
+    supabase.from("recipes").select("*").eq("household_id", hid),
+    supabase.from("weekly_menus").select("*").eq("household_id", hid),
+    supabase.from("menu_entries").select("*").eq("household_id", hid),
+    supabase.from("receipts").select("*").eq("household_id", hid),
+    supabase.from("receipt_items").select("*").eq("household_id", hid),
+    supabase.from("shopping_trips").select("*").eq("household_id", hid),
+  ]);
+
+  const data = {
+    exportedAt: new Date().toISOString(),
+    account: {
+      email: user?.primaryEmailAddress?.emailAddress ?? null,
+      name: user?.fullName ?? null,
+    },
+    household: {
+      name: household.name,
+      monthlyBudget: household.monthlyBudget,
+      members: members.data ?? [],
+    },
+    products: products.data ?? [],
+    inventory: inventory.data ?? [],
+    shoppingListItems: listItems.data ?? [],
+    recipes: recipes.data ?? [],
+    weeklyMenus: menus.data ?? [],
+    menuEntries: menuEntries.data ?? [],
+    receipts: receipts.data ?? [],
+    receiptItems: receiptItems.data ?? [],
+    shoppingTrips: trips.data ?? [],
+  };
+
+  return { data };
+}
 
 /**
  * Borrado de cuenta (RGPD). Dos pasos, en este orden:

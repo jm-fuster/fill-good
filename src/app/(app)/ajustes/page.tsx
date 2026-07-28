@@ -7,7 +7,10 @@ import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { DeleteAccountRow } from "@/features/account/components/delete-account-row";
+import { ExportDataRow } from "@/features/account/components/export-data-row";
 import { LogoutRow } from "@/features/account/components/logout-row";
+import { AiConsentSettingRow } from "@/features/ai-consent/components/ai-consent-setting-row";
+import { getAiConsent } from "@/features/ai-consent/queries";
 import { BudgetRow } from "@/features/household/components/budget-row";
 import { PushStatusRow } from "@/features/push/components/push-status-row";
 import {
@@ -41,9 +44,10 @@ function storeChainsValue({ chains, source }: HouseholdChains): string {
  * que se resuelve de un toque (tema) o en un modal corto (objetivo de gasto).
  */
 export default async function AjustesPage() {
-  const [user, household] = await Promise.all([
+  const [user, household, aiConsent] = await Promise.all([
     currentUser(),
     getCurrentHousehold(),
+    getAiConsent(),
   ]);
   const email = user?.primaryEmailAddress?.emailAddress;
   const [members, storeChains] = household
@@ -112,6 +116,7 @@ export default async function AjustesPage() {
 
         <SettingsGroup title="Preferencias">
           <PushStatusRow />
+          <AiConsentSettingRow consented={aiConsent.consented} />
           <SettingsControlRow
             icon={Palette}
             label="Tema"
@@ -130,6 +135,7 @@ export default async function AjustesPage() {
         </SettingsGroup>
 
         <SettingsGroup title="Cuenta">
+          <ExportDataRow />
           <LogoutRow />
           <DeleteAccountRow />
         </SettingsGroup>

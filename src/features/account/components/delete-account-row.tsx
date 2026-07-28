@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SettingsButtonRow } from "@/features/settings/components/settings-list";
 import { deleteAccountAction } from "../actions";
+import { clearLocalAppData } from "../clear-local-data";
 
 const CONFIRM_WORD = "BORRAR";
 
@@ -43,8 +44,11 @@ export function DeleteAccountRow() {
         toast.error(result.error);
         return;
       }
-      // Cuenta y datos borrados: cerramos la sesión local y salimos. Mismo
-      // problema de navegación colgada que en LogoutRow, mismo remedio.
+      // Cuenta y datos borrados: purgamos la caché del SW y el localStorage del
+      // hogar antes de salir (que no quede rastro del hogar en el dispositivo),
+      // luego cerramos la sesión local. Mismo problema de navegación colgada que
+      // en LogoutRow, mismo remedio.
+      await clearLocalAppData();
       await signOut({ redirectUrl: "/sign-in" });
     });
   }

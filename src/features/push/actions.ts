@@ -98,7 +98,8 @@ export async function updatePushPrefsAction(
       pref_restock: prefs.restock,
       pref_wins: prefs.wins,
     })
-    .eq("endpoint", endpoint);
+    .eq("endpoint", endpoint)
+    .eq("user_id", userId);
   if (error) return { error: "No se pudieron guardar las preferencias." };
   return { ok: true };
 }
@@ -114,7 +115,8 @@ export async function deletePushSubscriptionAction(
   const { error } = await supabase
     .from("push_subscriptions")
     .delete()
-    .eq("endpoint", endpoint);
+    .eq("endpoint", endpoint)
+    .eq("user_id", userId);
   if (error) return { error: "No se pudo revocar la suscripción." };
   return { ok: true };
 }
@@ -123,11 +125,15 @@ export async function deletePushSubscriptionAction(
 export async function getMyPushPrefsAction(
   endpoint: string,
 ): Promise<PushPrefs | null> {
+  const { userId } = await auth();
+  if (!userId) return null;
+
   const supabase = createServerSupabaseClient();
   const { data } = await supabase
     .from("push_subscriptions")
     .select("pref_expiry, pref_price, pref_restock, pref_wins")
     .eq("endpoint", endpoint)
+    .eq("user_id", userId)
     .maybeSingle();
   if (!data) return null;
   return {

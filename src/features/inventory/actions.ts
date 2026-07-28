@@ -394,6 +394,17 @@ export async function togglePinAction(
   if (!userId) return { error: "No autenticado." };
   const supabase = createServerSupabaseClient();
 
+  // El productId llega del cliente: comprobamos que es del hogar activo antes de
+  // anclarlo (la RLS del pin solo mira user_id + membresía, no que el producto
+  // sea de ESTE hogar), para no crear pines inconsistentes entre hogares.
+  const { data: product } = await supabase
+    .from("products")
+    .select("id")
+    .eq("household_id", household.id)
+    .eq("id", productId)
+    .maybeSingle();
+  if (!product) return { error: "Producto no válido." };
+
   const { data: existing } = await supabase
     .from("user_pinned_products")
     .select("product_id")

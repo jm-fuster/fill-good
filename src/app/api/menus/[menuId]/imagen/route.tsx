@@ -39,18 +39,23 @@ export async function GET(
   const { menuId } = await params;
   const supabase = createServerSupabaseClient();
 
-  // RLS aísla por hogar: un menú de otro hogar no devuelve fila → 404.
+  // Acotamos al hogar ACTIVO, no solo a la membresía: un usuario multi-hogar no
+  // debe poder renderizar el menú de su hogar B con el rótulo del hogar A. La RLS
+  // aísla entre usuarios; el .eq("household_id") aísla entre hogares propios.
+  const household = await getCurrentHousehold();
+  if (!household) return new Response("No autorizado", { status: 401 });
+
   const { data: menu } = await supabase
     .from("weekly_menus")
     .select("week_start")
     .eq("id", menuId)
+    .eq("household_id", household.id)
     .maybeSingle();
   if (!menu) {
     return new Response("Menú no encontrado", { status: 404 });
   }
 
-  const [household, entries, prefs] = await Promise.all([
-    getCurrentHousehold(),
+  const [entries, prefs] = await Promise.all([
     getMenuEntries(menuId),
     getMenuPrefs(),
   ]);

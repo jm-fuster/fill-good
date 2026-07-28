@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Share2,
   TriangleAlert,
+  UserMinus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,7 +32,11 @@ import {
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
 import type { CurrentHousehold, HouseholdMember } from "../queries";
-import { leaveHouseholdAction, regenerateInviteCodeAction } from "../actions";
+import {
+  leaveHouseholdAction,
+  regenerateInviteCodeAction,
+  removeMemberAction,
+} from "../actions";
 import {
   HouseholdSwitcherButton,
   type SwitcherHousehold,
@@ -63,6 +68,8 @@ export function HouseholdSettings({
 }) {
   const [pending, startTransition] = useTransition();
   const [leaveOpen, setLeaveOpen] = useState(false);
+  const [removing, setRemoving] = useState<HouseholdMember | null>(null);
+  const [removingPending, startRemoving] = useTransition();
   const isOwner = household.role === "owner";
   const otherMembers = members.filter((m) => !m.isCurrentUser);
   const hasOtherMembers = otherMembers.length > 0;
@@ -116,6 +123,20 @@ export function HouseholdSettings({
     });
   }
 
+  function removeMember() {
+    if (!removing) return;
+    const userId = removing.userId;
+    startRemoving(async () => {
+      const result = await removeMemberAction(userId);
+      if (result?.error) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success("Miembro quitado del hogar");
+      setRemoving(null);
+    });
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <Card>
@@ -123,7 +144,8 @@ export function HouseholdSettings({
           <CardTitle>Invitar al hogar</CardTitle>
           <CardDescription>
             Comparte el enlace para que otros miembros se unan con un solo toque.
-            También puedes dictarles el código.
+            También puedes dictarles el código. Caduca a los 7 días; regenéralo
+            cuando quieras con el botón de la derecha.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -180,9 +202,21 @@ export function HouseholdSettings({
                     <span className="text-muted-foreground"> (tú)</span>
                   ) : null}
                 </span>
-                <Badge variant={m.role === "owner" ? "default" : "secondary"}>
-                  {m.role === "owner" ? "Propietario" : "Miembro"}
-                </Badge>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Badge variant={m.role === "owner" ? "default" : "secondary"}>
+                    {m.role === "owner" ? "Propietario" : "Miembro"}
+                  </Badge>
+                  {isOwner && !m.isCurrentUser ? (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Quitar a ${m.displayName ?? "este miembro"} del hogar`}
+                      onClick={() => setRemoving(m)}
+                    >
+                      <UserMinus aria-hidden />
+                    </Button>
+                  ) : null}
+                </div>
               </li>
             ))}
           </ul>
@@ -284,6 +318,42 @@ export function HouseholdSettings({
           )}
         </CardContent>
       </Card>
+
+      <ResponsiveModal
+        open={removing !== null}
+        onOpenChange={(o) => {
+          if (!o) setRemoving(null);
+        }}
+      >
+        <ResponsiveModalContent>
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle className="flex items-center gap-2">
+              <TriangleAlert className="size-5 text-destructive" aria-hidden />
+              ¿Quitar del hogar?
+            </ResponsiveModalTitle>
+            <ResponsiveModalDescription>
+              {removing?.displayName ?? "Este miembro"} dejará de tener acceso al
+              hogar y a sus datos. Se regenerará el código de invitación; podrás
+              volver a invitarle cuando quieras.
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
+          <ResponsiveModalFooter className="gap-2">
+            <Button
+              variant="destructive"
+              onClick={removeMember}
+              loading={removingPending}
+            >
+              <UserMinus aria-hidden />
+              {removingPending ? "Quitando…" : "Quitar del hogar"}
+            </Button>
+            <ResponsiveModalClose asChild>
+              <Button type="button" variant="ghost">
+                Cancelar
+              </Button>
+            </ResponsiveModalClose>
+          </ResponsiveModalFooter>
+        </ResponsiveModalContent>
+      </ResponsiveModal>
     </div>
   );
 }

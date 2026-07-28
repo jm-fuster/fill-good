@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AiConsentModal } from "@/features/ai-consent/components/ai-consent-modal";
 import {
   BookmarkPlus,
   Check,
@@ -142,6 +143,8 @@ export function MenuView({
   const hasPreservable = entries.some((e) => e.pinned || e.source === "manual");
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [copying, startCopy] = useTransition();
+  // Acción de IA a reintentar tras aceptar el consentimiento (null ⇒ modal cerrado).
+  const [aiConsentRetry, setAiConsentRetry] = useState<null | (() => void)>(null);
 
   function copyPrevious() {
     startCopy(async () => {
@@ -158,6 +161,13 @@ export function MenuView({
     setConfirmReplace(false);
     startGenerate(async () => {
       const r = await generateMenuAction(weekStart, mode);
+      if (r.needsAiConsent) {
+        // Sin consentimiento de IA: pedimos aceptar y reintentamos al aceptar.
+        // El botón de generar no vive dentro de otro modal, así que abrir este
+        // no anida ResponsiveModal.
+        setAiConsentRetry(() => () => generate(mode));
+        return;
+      }
       if (r.error) toast.error(r.error);
       else {
         toast.success(mode === "replace" ? "Menú rehecho" : "Menú generado");
@@ -518,6 +528,18 @@ export function MenuView({
         onDone={() => {
           setCookedDeductions(null);
           router.refresh();
+        }}
+      />
+
+      <AiConsentModal
+        open={aiConsentRetry !== null}
+        onOpenChange={(o) => {
+          if (!o) setAiConsentRetry(null);
+        }}
+        onAccepted={() => {
+          const retry = aiConsentRetry;
+          setAiConsentRetry(null);
+          retry?.();
         }}
       />
 

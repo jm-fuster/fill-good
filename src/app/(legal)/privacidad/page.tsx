@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function PrivacidadPage() {
   return (
-    <LegalPage title="Política de privacidad" updated="24 de julio de 2026">
+    <LegalPage title="Política de privacidad" updated="28 de julio de 2026">
       <p>
         Esta política explica qué datos personales tratamos cuando usas{" "}
         <strong>Fill Good</strong>, con qué finalidad, con qué base legal y qué
@@ -63,7 +63,7 @@ export default function PrivacidadPage() {
           <strong>Notificaciones push.</strong> Si las activas, guardamos la
           suscripción que genera tu navegador (dirección del servicio de
           notificaciones y claves de cifrado) junto con tus preferencias de
-          aviso. Se elimina al desactivarlas.
+          aviso. Se elimina al desactivarlas o al salir del hogar.
         </p>
         <p>
           <strong>Datos técnicos.</strong> Nuestra infraestructura registra
@@ -76,9 +76,14 @@ export default function PrivacidadPage() {
         <ul>
           <li>
             <strong>Prestar el servicio</strong> (gestionar tu cuenta y tu
-            hogar, sincronizar el contenido entre miembros, procesar tickets,
-            calcular tendencias de precios, generar menús): ejecución del
-            contrato — art. 6.1.b del RGPD.
+            hogar, sincronizar el contenido entre miembros, calcular tendencias
+            de precios): ejecución del contrato — art. 6.1.b del RGPD.
+          </li>
+          <li>
+            <strong>Leer tickets y generar menús con IA</strong>: tu
+            consentimiento — art. 6.1.a del RGPD. Te lo pedimos antes de usar
+            estas funciones por primera vez y puedes retirarlo cuando quieras en
+            Ajustes (ver sección 5).
           </li>
           <li>
             <strong>Enviarte notificaciones push</strong> (caducidades,
@@ -111,8 +116,9 @@ export default function PrivacidadPage() {
             sesión y gestión de cuentas.
           </li>
           <li>
-            <strong>Supabase</strong>: base de datos donde vive el contenido
-            de tu hogar.
+            <strong>Supabase</strong> (Supabase Inc., EE. UU.): base de datos
+            donde vive el contenido de tu hogar. Los datos se alojan en centros
+            de datos de la Unión Europea (Fráncfort).
           </li>
           <li>
             <strong>Vercel</strong> (Vercel Inc., EE. UU.): alojamiento de la
@@ -141,24 +147,38 @@ export default function PrivacidadPage() {
           del ticket junto con los nombres de productos de tu catálogo, para
           casar las líneas; para la segunda, la información de tu despensa y
           las preferencias que indiques. El archivo del ticket no se conserva
-          después del procesado.
+          después del procesado. Antes de que la imagen salga, eliminamos sus
+          metadatos técnicos (por ejemplo, la geolocalización que algunas
+          cámaras incrustan en la foto).
+        </p>
+        <p>
+          <strong>Te pedimos tu consentimiento</strong> antes de usar estas
+          funciones por primera vez, y puedes retirarlo cuando quieras desde
+          Ajustes; mientras no lo hagas, no enviamos nada a la IA.
         </p>
         <p>
           El servicio se presta actualmente a través del nivel gratuito de la
           API de Gemini. Conforme a los términos de ese nivel, Google puede
-          utilizar las entradas y salidas para mejorar sus productos y
-          modelos. Te recomendamos no incluir información personal que no sea
-          necesaria en los archivos que subas.
+          utilizar las entradas y salidas para mejorar sus productos y modelos,
+          y ese uso puede incluir la revisión del contenido por personas. En ese
+          nivel, Google no actúa como un mero proveedor por cuenta nuestra sino
+          para sus propios fines. Por eso te recomendamos no incluir información
+          personal que no sea necesaria: tapa la zona de la tarjeta del ticket
+          antes de escanearlo y no escribas datos de salud en las preferencias
+          del menú.
         </p>
       </LegalSection>
 
       <LegalSection title="6. Transferencias internacionales">
         <p>
-          Algunos de los proveedores anteriores están establecidos en Estados
-          Unidos. Las transferencias se amparan en el Marco de Privacidad de
-          Datos UE-EE. UU. (Data Privacy Framework) o en cláusulas
-          contractuales tipo aprobadas por la Comisión Europea, según el
-          proveedor.
+          Algunos proveedores están establecidos en Estados Unidos (Clerk,
+          Vercel, Google; Supabase, aunque estadounidense, aloja tus datos en la
+          Unión Europea). Esas transferencias se amparan en el Marco de
+          Privacidad de Datos UE-EE. UU. (Data Privacy Framework) cuando el
+          proveedor está adherido y, en su defecto, en las cláusulas
+          contractuales tipo aprobadas por la Comisión Europea. Puedes
+          solicitarnos más detalle sobre la garantía aplicable a cada proveedor
+          escribiendo a {LEGAL_OWNER.email}.
         </p>
       </LegalSection>
 
@@ -169,8 +189,19 @@ export default function PrivacidadPage() {
           acceso. El contenido aportado a un hogar con más miembros
           (inventario, tickets, recetas…) pertenece al hogar y se conserva
           para el resto de miembros; desaparece definitivamente cuando el
-          hogar se queda sin miembros. Los registros técnicos se conservan
-          durante periodos breves.
+          hogar se queda sin miembros.
+        </p>
+        <p>
+          Además, algunos datos se depuran solos antes incluso de que borres
+          nada: los tickets escaneados que no confirmas se eliminan a los 30
+          días, el historial de consumo y reposición a los 90 días, los
+          descartes a los 24 meses y los menús semanales pasadas 26 semanas. Los
+          registros técnicos se conservan durante periodos breves.
+        </p>
+        <p>
+          Cuando borras datos, pueden permanecer un tiempo limitado en las
+          copias de seguridad cifradas de nuestros proveedores hasta que estas
+          se renuevan, tras lo cual desaparecen definitivamente.
         </p>
       </LegalSection>
 
@@ -205,12 +236,30 @@ export default function PrivacidadPage() {
 
       <LegalSection title="10. Cookies y almacenamiento local">
         <p>
-          Solo usamos cookies técnicas imprescindibles para mantener tu
-          sesión iniciada (las gestiona Clerk) y almacenamiento local de tu
-          dispositivo para preferencias como el tema claro/oscuro y para que
-          la app funcione sin conexión (caché de la PWA). No hay cookies de
-          publicidad, de analítica ni de seguimiento; por eso no verás un
-          banner de cookies.
+          Solo usamos cookies técnicas imprescindibles, todas exentas de
+          consentimiento, por lo que no verás un banner de cookies:
+        </p>
+        <ul>
+          <li>
+            Las de <strong>sesión</strong>, que gestiona Clerk para mantenerte
+            conectado.
+          </li>
+          <li>
+            Una cookie propia, <strong>«active_household»</strong> (dura un año),
+            que recuerda qué hogar tienes activo si perteneces a varios.
+          </li>
+          <li>
+            Una cookie propia, <strong>«sidebar_state»</strong> (dura una
+            semana), que recuerda si el menú lateral está plegado en pantallas
+            grandes.
+          </li>
+        </ul>
+        <p>
+          También usamos el almacenamiento local del dispositivo para
+          preferencias (como el tema claro/oscuro) y para que la app funcione
+          sin conexión (caché de la PWA). Al cerrar sesión borramos esa caché y
+          el estado del hogar guardado en el dispositivo. No hay cookies de
+          publicidad, de analítica ni de seguimiento.
         </p>
       </LegalSection>
 

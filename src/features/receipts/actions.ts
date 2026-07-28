@@ -13,6 +13,8 @@ import { buildReceiptPrompt } from "@/lib/ai/receipt-prompt";
 import { loadHouseholdMatchData, matchLineExact } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
 import { formatQuantity, UNIT_LABELS } from "@/lib/units";
+import { sniffUploadType, stripImageMetadata } from "@/lib/image-metadata";
+import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import {
@@ -38,6 +40,8 @@ import {
   compareTripToReceipt,
   type TripComparison,
 } from "@/features/shopping-list/trip-comparison";
+import { getAiConsent } from "@/features/ai-consent/queries";
+import { AI_CONSENT_REQUIRED_ERROR } from "@/features/ai-consent/version";
 import { confirmPayloadSchema } from "./schemas";
 import type { ConfirmPayload } from "./schemas";
 
@@ -45,6 +49,8 @@ export type ScanState = {
   error?: string;
   receiptId?: string;
   warnings?: string[];
+  /** true si falta el consentimiento de IA: la UI debe pedirlo antes de reintentar. */
+  needsAiConsent?: boolean;
 };
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
@@ -86,6 +92,14 @@ export async function scanReceiptAction(
   if (!household) return { error: "No perteneces a ningún hogar." };
   const { userId } = await auth();
 
+  // El archivo del ticket se envía a la IA de Google: no procesamos nada sin el
+  // consentimiento explícito del usuario (barrera efectiva; cubre también el
+  // Web Share Target, que llama a esta acción sin pasar por el gate de /escanear).
+  const consent = await getAiConsent();
+  if (!consent.consented) {
+    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
+  }
+
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
     return { error: "No se recibió ningún archivo." };
@@ -98,7 +112,21 @@ export async function scanReceiptAction(
   }
 
   const bytes = new Uint8Array(await file.arrayBuffer());
+  // Comprobamos el tipo REAL por los magic bytes, no el que declara el cliente:
+  // un binario arbitrario etiquetado como image/jpeg no debe llegar a la IA.
+  const detectedType = sniffUploadType(bytes);
+  if (!detectedType) {
+    return { error: "El archivo no parece una imagen o un PDF válido." };
+  }
+  // Minimización: quita EXIF/GPS del JPEG antes de que la imagen salga hacia
+  // Google (no afecta a la lectura; ver lib/image-metadata).
+  const safeBytes = stripImageMetadata(bytes, detectedType);
   const supabase = createServerSupabaseClient();
+
+  // Rate-limit: protege la cuota free-tier de Gemini frente al abuso de una sola
+  // cuenta (una lectura de visión por escaneo).
+  const rateError = await enforceAiRateLimit(supabase, "receipt");
+  if (rateError) return { error: rateError };
 
   // Catálogo del hogar para la sugerencia de la IA (E7, coste cero: va en la
   // misma llamada). Los más habituales primero, capado para no inflar el prompt.
@@ -143,7 +171,7 @@ export async function scanReceiptAction(
               type: "text",
               text: buildReceiptPrompt(promptCatalog, promptChains),
             },
-            { type: "file", data: bytes, mediaType: file.type },
+            { type: "file", data: safeBytes, mediaType: detectedType },
           ],
         },
       ],
@@ -663,7 +691,8 @@ export async function confirmReceiptAction(
         purchased_at: purchasedAt,
         store_chain: storeChain,
       })
-      .eq("id", r.itemId),
+      .eq("id", r.itemId)
+      .eq("receipt_id", payload.receiptId),
   );
   if (itemUpdateResults.some((res) => res.error)) {
     console.error(
@@ -680,7 +709,8 @@ export async function confirmReceiptAction(
     await supabase
       .from("receipt_items")
       .update({ match_status: "skipped" })
-      .in("id", skippedIds);
+      .in("id", skippedIds)
+      .eq("receipt_id", payload.receiptId);
   }
 
   // 2.4 Inventario: simular en memoria (misma política E3/pack F4 que antes) y
