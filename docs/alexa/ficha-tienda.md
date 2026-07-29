@@ -118,7 +118,7 @@ El texto va en inglés porque lo lee el equipo de certificación, con las frases
 español tal cual hay que decirlas:
 
 ```text
-This skill manages the pantry inventory and shopping list of a household kept in the Fill Good web app (a PWA). It does NOT use Alexa account linking: the speaker is paired by dictating a 6-digit code generated inside the app, so there is no OAuth login involved.
+This skill manages the pantry inventory and shopping list of a household kept in the Fill Good web app (a PWA). It does NOT use Alexa account linking and does NOT use App-to-App Account Linking: the speaker is paired by dictating a 6-digit code generated inside the app, so there is no OAuth login involved.
 
 How to test:
 
@@ -136,7 +136,14 @@ Notes for the reviewer:
 - Before pairing, any command answers "Este altavoz todavía no está vinculado a ningún hogar..." and sends a card with the pairing steps. That is the expected unlinked behaviour, not an error.
 - The test account already has products in its inventory (milk, yogurt, rice). This is required: the skill never creates new catalogue products by voice, on purpose, so that a bad transcription cannot pollute the price history.
 - Only one pairing code is alive per user: generating a new one invalidates the previous.
+- No special permissions or hardware are requested. Any Echo device in es-ES is enough.
+- Trademarks: "Fill Good" is the developer's own app and brand. The skill does not use any third-party trademark in its name, icon or responses.
 ```
+
+Las tres últimas notas y el «does NOT use App-to-App» responden a lo que pide esa
+pantalla: la viñeta de *trademarks* (decir que la marca es tuya evita que lo
+pregunten), la de permisos y hardware, y el aviso de que si usas App-to-App la app
+tiene que estar en Google Play o la App Store — que no es el caso.
 
 > Ojo si dos revisores prueban a la vez con la misma cuenta: solo hay **un código
 > vivo por usuario**, así que el segundo en generarlo invalida el del primero. Por
