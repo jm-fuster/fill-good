@@ -307,10 +307,22 @@ Para la **beta** hacen falta: **Build** completo, todos los campos de
 **Distribution → Skill Preview** y de **Distribution → Privacy & Compliance**, y
 pasar **Certification → Validation**. Los textos, las respuestas del cuestionario,
 los iconos y el email de invitación están listos para copiar en
-[`ficha-tienda.md`](./ficha-tienda.md). Dos avisos: Amazon **ya no manda los emails**
-(el enlace de invitación lo repartes tú), el email invitado tiene que ser el de la
-cuenta de Amazon del Echo, y **la beta caduca a los 90 días y no se prorroga** —
-se crea otra.
+[`ficha-tienda.md`](./ficha-tienda.md). La beta se arranca en **Distribution →
+Availability → Beta Test → Start Test**, y **no envía nada a revisión**: la skill
+se sigue editando hasta que tú decides someterla.
+
+Tres avisos:
+
+- **Amazon no manda los emails**; el enlace lo reparte el desarrollador. Hay **dos
+  modos**: *enlace público* (cualquiera con el enlace se apunta, sin dar su email)
+  o *lista de emails*, y solo en ese segundo caso el email invitado tiene que ser
+  el de la cuenta de Amazon del tester. Para unos pocos testers, el enlace público
+  es mucho más cómodo.
+- **La beta caduca a los 90 días y no se prorroga** — se crea otra.
+- En esa misma pantalla, **«Opt in to automated locale distribution» se deja
+  desmarcado**: publicaría la skill en todos los locales de español (es-MX,
+  es-US…), y según la propia letra pequeña, un locale ya publicado solo se quita
+  retirando la skill entera. El modelo es es-ES, con productos y giros de España.
 
 La **política de privacidad ya cubre la voz** (29-jul-2026): `/privacidad` describe
 qué se guarda del vínculo, que no recibimos grabaciones —solo la transcripción que

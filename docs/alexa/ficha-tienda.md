@@ -172,5 +172,7 @@ Ya puedes decir cosas como «Alexa, dile a mi despensa que reste dos yogures» o
 Cuéntame qué se te ocurre decirle y no entienda: es justo lo que quiero saber.
 ```
 
-Ojo: la cuenta de Amazon del tester tiene que ser la del email invitado, y la
-beta **caduca a los 90 días** sin posibilidad de prórroga.
+Con el modo de **enlace público** no hace falta el email de nadie: se reparte el
+enlace y se apuntan. Solo si gestionas la beta por **lista de emails** tiene que
+coincidir el email invitado con el de la cuenta de Amazon del tester. En los dos
+casos la beta **caduca a los 90 días** sin posibilidad de prórroga.
