@@ -58,6 +58,19 @@ export const alexaEnvelopeSchema = z.object({
       sessionId: z.string().optional(),
       application: applicationSchema.optional(),
       user: userSchema.optional(),
+      // Lo que devolvimos como `sessionAttributes` en el turno anterior. Viene
+      // del dispositivo, así que se valida como cualquier otra entrada.
+      attributes: z
+        .object({
+          pendiente: z
+            .object({
+              productId: z.string(),
+              name: z.string(),
+              normalized: z.string(),
+            })
+            .optional(),
+        })
+        .optional(),
     })
     .optional(),
   context: z
@@ -98,6 +111,13 @@ export function getAmazonUserId(envelope: AlexaEnvelope): string | null {
     envelope.context?.System?.user?.userId ??
     null
   );
+}
+
+/** Producto agotado en el turno anterior que espera un sí para ir a la lista. */
+export function getPendingProduct(
+  envelope: AlexaEnvelope,
+): { productId: string; name: string; normalized: string } | null {
+  return envelope.session?.attributes?.pendiente ?? null;
 }
 
 /** Valor dicho de un slot, tal cual (sin normalizar). */

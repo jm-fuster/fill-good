@@ -8,8 +8,23 @@ import { formatQuantityValue } from "@/lib/units";
  * volcado de base de datos.
  */
 
+/**
+ * Estado que se lleva de un turno al siguiente. Va en el envelope, no en el
+ * servidor: Alexa devuelve tal cual lo que le mandemos aquí mientras la sesión
+ * siga abierta, así que se puede hacer una pregunta de sí/no sin guardar
+ * conversaciones a medias en ningún sitio (ni caducarlas).
+ *
+ * Solo se conserva si la respuesta lo vuelve a incluir: cualquier otra orden
+ * limpia lo pendiente por sí sola, que es justo lo que se quiere.
+ */
+export type SessionState = {
+  /** Producto que se acaba de agotar, a la espera de un sí para apuntarlo. */
+  pendiente?: { productId: string; name: string; normalized: string };
+};
+
 export type AlexaResponse = {
   version: "1.0";
+  sessionAttributes?: SessionState;
   response: {
     outputSpeech?: { type: "PlainText"; text: string };
     reprompt?: { outputSpeech: { type: "PlainText"; text: string } };
@@ -24,10 +39,15 @@ export type AlexaResponse = {
  */
 export function speak(
   text: string,
-  { endSession = true, reprompt }: { endSession?: boolean; reprompt?: string } = {},
+  {
+    endSession = true,
+    reprompt,
+    state,
+  }: { endSession?: boolean; reprompt?: string; state?: SessionState } = {},
 ): AlexaResponse {
   return {
     version: "1.0",
+    ...(state ? { sessionAttributes: state } : {}),
     response: {
       outputSpeech: { type: "PlainText", text },
       ...(reprompt
@@ -183,4 +203,12 @@ export const SPEECH = {
   stockAllExpired: " Ojo, ya está caducado.",
   stockSomeExpired: " Ojo, parte de eso ya está caducado.",
   stockExpiringSoon: (cuando: string) => ` Ojo, lo primero caduca ${cuando}.`,
+  emptiedAsk: (name: string) =>
+    `Vale, ya no queda ${name}. ¿Lo apunto en la lista de la compra?`,
+  emptiedAskReprompt: "¿Lo apunto en la lista?",
+  emptiedAlready: (name: string) =>
+    `Ya no te quedaba ${name}. ¿Lo apunto en la lista de la compra?`,
+  emptiedNo: "Vale, lo dejo así.",
+  // «Sí» sin nada pendiente: la sesión ya se había cerrado o venía de otra orden.
+  nothingPending: `No sé a qué te refieres. Prueba a decir: ${EXAMPLE}.`,
 } as const;

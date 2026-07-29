@@ -8,6 +8,8 @@
         { "name": "AMAZON.StopIntent", "samples": [] },
         { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
         { "name": "AMAZON.FallbackIntent", "samples": [] },
+        { "name": "AMAZON.YesIntent", "samples": [] },
+        { "name": "AMAZON.NoIntent", "samples": [] },
         {
           "name": "VincularIntent",
           "slots": [{ "name": "codigo", "type": "AMAZON.NUMBER" }],
@@ -154,6 +156,33 @@
             "nos queda {producto}",
             "cómo va el {producto}",
             "mira el {producto}"
+          ]
+        },
+        {
+          "name": "AgotarStockIntent",
+          "slots": [{ "name": "producto", "type": "TipoProducto" }],
+          "samples": [
+            "se ha acabado el {producto}",
+            "se ha acabado la {producto}",
+            "se han acabado los {producto}",
+            "se han acabado las {producto}",
+            "se ha acabado {producto}",
+            "se acabó el {producto}",
+            "se acabó {producto}",
+            "se ha terminado el {producto}",
+            "se ha terminado {producto}",
+            "ya no queda {producto}",
+            "ya no quedan {producto}",
+            "ya no hay {producto}",
+            "no queda nada de {producto}",
+            "no me queda {producto}",
+            "no nos queda {producto}",
+            "hemos gastado todo el {producto}",
+            "he gastado todo el {producto}",
+            "vacía el {producto}",
+            "vacía {producto}",
+            "pon el {producto} a cero",
+            "pon {producto} a cero"
           ]
         }
       ],
@@ -348,6 +377,20 @@
           ]
         },
         {
+          "name": "AgotarStockIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "producto",
+              "type": "TipoProducto",
+              "confirmationRequired": false,
+              "elicitationRequired": true,
+              "prompts": { "elicitation": "Elicit.Slot.productoAgotado" }
+            }
+          ]
+        },
+        {
           "name": "VincularIntent",
           "confirmationRequired": false,
           "prompts": {},
@@ -390,6 +433,13 @@
         "variations": [
           { "type": "PlainText", "value": "¿De qué producto?" },
           { "type": "PlainText", "value": "Dime de qué quieres saber." }
+        ]
+      },
+      {
+        "id": "Elicit.Slot.productoAgotado",
+        "variations": [
+          { "type": "PlainText", "value": "¿Qué se ha acabado?" },
+          { "type": "PlainText", "value": "Dime qué producto se ha terminado." }
         ]
       },
       {

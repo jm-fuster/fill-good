@@ -17,6 +17,7 @@ privacidad de la skill y account linking OAuth).
 | Sumar stock por voz | Dictar la caducidad |
 | Apuntar en la lista de la compra | Marcar artículos como comprados |
 | Consultar cuánto queda | Leer la lista entera en voz alta |
+| Vaciar lo que se ha acabado | |
 | Vincular el altavoz con un código | |
 | Preguntar cuando el producto es ambiguo | |
 
@@ -101,6 +102,7 @@ Frases que entiende, por verbo:
 | Sumar al inventario | añade · suma · mete · he comprado · he traído |
 | Apuntar en la lista | apunta · necesito · me falta · hay que comprar · compra · pon en la lista |
 | Consultar | cuánto queda · cuánto tengo · cuánto hay · queda · hay |
+| Vaciar (poner a 0) | se ha acabado · se acabó · se ha terminado · ya no queda · vacía · pon a cero |
 
 ```text
 Alexa, dile a mi despensa que reste dos yogures
@@ -111,6 +113,9 @@ Alexa, dile a mi despensa que apunte pan
 Alexa, dile a mi despensa que necesito papel de cocina
 Alexa, pregunta a mi despensa cuánta leche queda
 Alexa, pregunta a mi despensa si queda arroz
+Alexa, dile a mi despensa que se ha acabado el pan
+   → «Vale, ya no queda Pan de molde. ¿Lo apunto en la lista de la compra?»
+   → tú: «sí»  (sin repetir «Alexa»: la sesión se queda abierta)
 Alexa, abre mi despensa            → bienvenida y se queda escuchando
 ```
 
@@ -232,6 +237,21 @@ existencias agrupando por unidad («te quedan 2 kilos y 300 gramos») y añade l
 caducidad más próxima **solo si urge** —caducado, hoy, o dentro de los 3 días de
 la ventana de aviso, la misma que usa el resumen diario—; recitar «caduca en 40
 días» en cada pregunta sería ruido.
+
+**Al vaciar («se ha acabado el pan»):**
+
+1. Pone a 0 **todos** los lotes del producto, no solo uno, y los conserva como
+   agotados igual que el resto de la app.
+2. Registra un `consumed` por lo que quedaba: si había dos panes y se acabaron,
+   dos panes se consumieron y el historial debe decirlo.
+3. **Ofrece apuntarlo en la lista** y deja la sesión abierta, así que se contesta
+   «sí» sin repetir «Alexa». Un «no» cancela solo la lista: el stock ya está a 0
+   y eso no se deshace.
+4. El estado entre los dos turnos viaja en los **`sessionAttributes`** del propio
+   envelope (ver `SessionState` en `respond.ts`), no en el servidor: no hay
+   conversaciones a medias que guardar ni caducar, y cualquier otra orden borra
+   lo pendiente por sí sola. Un «sí» sin nada pendiente se contesta con un
+   «no sé a qué te refieres».
 
 ## Limitaciones conocidas
 

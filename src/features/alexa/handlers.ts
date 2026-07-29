@@ -33,6 +33,7 @@ import {
 } from "./respond";
 import {
   getAmazonUserId,
+  getPendingProduct,
   getSlotNumber,
   getSlotResolutionId,
   getSlotValue,
@@ -572,9 +573,6 @@ async function handleApuntarLista(
     }
   }
 
-  const listId = await ensureActiveListId(admin, link.householdId);
-  if (!listId) return speak(SPEECH.error);
-
   const unit = saidUnit ?? defaultUnit;
   const quantity = saidQuantity ?? defaultListQuantity(unit);
 
@@ -596,38 +594,175 @@ async function handleApuntarLista(
     }
   }
 
-  const normalized = normalizeName(spoken);
+  const resultado = await apuntarEnLista(admin, link, {
+    productId,
+    name,
+    normalized: normalizeName(spoken),
+    quantity,
+    unit,
+  });
+  if (!resultado.ok) return speak(SPEECH.error);
+  return speak(resultado.speech + warning);
+}
+
+type ApuntarResultado = { ok: false } | { ok: true; speech: string };
+
+/**
+ * Mete un artículo en la lista activa (creándola si hace falta) aplicando la
+ * deduplicación L3, y devuelve ya lo que hay que decir. Lo comparten el intent
+ * de apuntar y el «sí» con el que se confirma un producto agotado.
+ */
+async function apuntarEnLista(
+  admin: Admin,
+  link: AlexaLink,
+  item: {
+    productId: string | null;
+    name: string;
+    normalized: string;
+    quantity: number | null;
+    unit: UnitType | null;
+  },
+): Promise<ApuntarResultado> {
+  const listId = await ensureActiveListId(admin, link.householdId);
+  if (!listId) return { ok: false };
+
   const merged = await mergeIntoExisting(
     admin,
     listId,
-    { productId, normalized },
-    { quantity, unit },
+    { productId: item.productId, normalized: item.normalized },
+    { quantity: item.quantity, unit: item.unit },
   );
   if (merged) {
-    return speak(
-      SPEECH.listMerged(
+    return {
+      ok: true,
+      speech: SPEECH.listMerged(
         merged.name,
         speakListQuantity(merged.quantity, merged.unit),
-      ) + warning,
-    );
+      ),
+    };
   }
 
   const position = await nextListPosition(admin, listId);
   const { error } = await admin.from("shopping_list_items").insert({
     list_id: listId,
     household_id: link.householdId,
-    product_id: productId,
-    name,
-    quantity,
-    unit,
+    product_id: item.productId,
+    name: item.name,
+    quantity: item.quantity,
+    unit: item.unit,
     added_by: link.userId,
     position,
   });
-  if (error) return speak(SPEECH.error);
+  if (error) return { ok: false };
 
-  return speak(
-    SPEECH.listAdded(name, speakListQuantity(quantity, unit)) + warning,
+  return {
+    ok: true,
+    speech: SPEECH.listAdded(
+      item.name,
+      speakListQuantity(item.quantity, item.unit),
+    ),
+  };
+}
+
+/**
+ * «Se ha acabado el pan»: vacía TODO lo que quede del producto y ofrece
+ * apuntarlo en la lista, porque es lo que uno querría a continuación. La
+ * pregunta se resuelve con `sessionAttributes` (ver `SessionState`), así que el
+ * servidor sigue sin recordar nada entre peticiones.
+ *
+ * Se registra como `consumed` por la cantidad que quedaba: si había dos panes y
+ * se acabaron, dos panes se consumieron, y el historial debe decirlo. Las filas
+ * se conservan a 0 (agotado), igual que en el resto de la app.
+ */
+async function handleAgotarStock(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<AlexaResponse> {
+  const prepared = await prepareVoiceTarget(admin, envelope, intent);
+  if (!prepared.ok) {
+    return "notFound" in prepared
+      ? speak(SPEECH.productUnknown(prepared.spoken))
+      : prepared.response;
+  }
+  const { link, productId, product, lots } = prepared.target;
+  const conStock = lots.filter((lot) => lot.quantity > 0);
+
+  const pendiente = {
+    productId,
+    name: product.name,
+    normalized: normalizeName(product.name),
+  };
+
+  if (conStock.length === 0) {
+    // Ya estaba a cero: no hay nada que vaciar, pero la oferta sigue teniendo
+    // sentido (si lo dices en voz alta es porque hace falta comprarlo).
+    return speak(SPEECH.emptiedAlready(product.name), {
+      endSession: false,
+      reprompt: SPEECH.emptiedAskReprompt,
+      state: { pendiente },
+    });
+  }
+
+  for (const lot of conStock) {
+    const { error } = await admin
+      .from("inventory_items")
+      .update({ quantity: 0, updated_by: link.userId })
+      .eq("household_id", link.householdId)
+      .eq("id", lot.id);
+    if (error) return speak(SPEECH.error);
+  }
+  await recordSteps(
+    admin,
+    link,
+    productId,
+    conStock.map((lot) => ({
+      lotId: lot.id,
+      newQuantity: 0,
+      taken: lot.quantity,
+      unit: lot.unit,
+    })),
   );
+
+  return speak(SPEECH.emptiedAsk(product.name), {
+    endSession: false,
+    reprompt: SPEECH.emptiedAskReprompt,
+    state: { pendiente },
+  });
+}
+
+/** «Sí» a la pregunta de apuntar lo que se acaba de agotar. */
+async function handleSi(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+): Promise<AlexaResponse> {
+  const pendiente = getPendingProduct(envelope);
+  if (!pendiente) {
+    return speak(SPEECH.nothingPending, {
+      endSession: false,
+      reprompt: SPEECH.fallbackReprompt,
+    });
+  }
+  const amazonUserId = getAmazonUserId(envelope);
+  if (!amazonUserId) return speak(SPEECH.notLinked);
+  const link = await findLink(admin, amazonUserId);
+  if (!link) return speak(SPEECH.notLinked);
+
+  // La unidad de la lista sale del catálogo: el producto se acaba de agotar, así
+  // que no queda ningún lote del que deducirla.
+  const products = await loadProducts(admin, link.householdId, [
+    pendiente.productId,
+  ]);
+  const unit = products.get(pendiente.productId)?.defaultUnit ?? null;
+
+  const resultado = await apuntarEnLista(admin, link, {
+    productId: pendiente.productId,
+    name: pendiente.name,
+    normalized: pendiente.normalized,
+    quantity: defaultListQuantity(unit),
+    unit,
+  });
+  return speak(resultado.ok ? resultado.speech : SPEECH.error);
 }
 
 async function handleVincular(
@@ -710,6 +845,15 @@ async function handleIntent(
       return handleApuntarLista(admin, envelope, intent);
     case "ConsultarStockIntent":
       return handleConsultarStock(admin, envelope, intent);
+    case "AgotarStockIntent":
+      return handleAgotarStock(admin, envelope, intent);
+    case "AMAZON.YesIntent":
+      return handleSi(admin, envelope);
+    case "AMAZON.NoIntent":
+      // Un «no» sin nada pendiente es tan inofensivo como un «vale»: se cierra.
+      return speak(
+        getPendingProduct(envelope) ? SPEECH.emptiedNo : SPEECH.stop,
+      );
     case "VincularIntent":
       return handleVincular(admin, envelope, intent);
     case "AMAZON.HelpIntent":
