@@ -13,10 +13,11 @@ privacidad de la skill y account linking OAuth).
 
 | Sí | No (todavía) |
 | --- | --- |
-| Restar stock por voz | Añadir a la lista de la compra |
-| Sumar stock por voz | Consultar cuánto queda |
-| Vincular el altavoz con un código | Crear productos nuevos por voz |
-| Preguntar cuando el producto es ambiguo | Dictar la caducidad |
+| Restar stock por voz | Consultar cuánto queda |
+| Sumar stock por voz | Crear productos del catálogo por voz |
+| Apuntar en la lista de la compra | Dictar la caducidad |
+| Vincular el altavoz con un código | Marcar artículos como comprados |
+| Preguntar cuando el producto es ambiguo | |
 
 ## Piezas en el repo
 
@@ -26,6 +27,7 @@ privacidad de la skill y account linking OAuth).
 | Verificación de la firma de Amazon | `src/features/alexa/verify.ts` |
 | Lógica por intent | `src/features/alexa/handlers.ts` |
 | Resolución de producto y planes de resta/suma (puro) | `src/features/alexa/resolve.ts` |
+| Deduplicación de la lista (L3), compartida con la app | `src/features/shopping-list/items.ts` |
 | Textos hablados | `src/features/alexa/respond.ts` |
 | Card de vinculación en /perfil | `src/features/alexa/components/alexa-card.tsx` |
 | Modelo de interacción | [`interaction-model-es-ES.json`](./interaction-model-es-ES.json) |
@@ -90,18 +92,28 @@ Escribe `abre mi despensa` o `dile a mi despensa que reste dos yogures`.
 Amazon. No hace falta habilitar nada: en modo desarrollo la skill ya está
 disponible para tu cuenta.
 
-Frases que entiende. Para restar valen «resta», «quita», «descuenta», «he
-gastado», «he usado»; para sumar, «añade», «suma», «mete», «he comprado», «he
-traído»:
+Frases que entiende, por verbo:
+
+| Acción | Verbos |
+| --- | --- |
+| Restar del inventario | resta · quita · descuenta · he gastado · he usado · he cogido |
+| Sumar al inventario | añade · suma · mete · he comprado · he traído |
+| Apuntar en la lista | apunta · necesito · me falta · hay que comprar · compra · pon en la lista |
 
 ```text
 Alexa, dile a mi despensa que reste dos yogures
 Alexa, dile a mi despensa que quite medio kilo de arroz
-Alexa, dile a mi despensa que descuente 200 gramos de queso
 Alexa, dile a mi despensa que añada tres leches
 Alexa, dile a mi despensa que he comprado dos kilos de arroz
+Alexa, dile a mi despensa que apunte pan
+Alexa, dile a mi despensa que necesito papel de cocina
 Alexa, abre mi despensa            → bienvenida y se queda escuchando
 ```
+
+Ojo con «añade»: a secas va al **inventario** («añade tres leches» = ya las
+tienes en casa). Para la lista hay que decirlo explícito («añade pan **a la
+lista**») o usar otro verbo («apunta pan»). Es la única pareja que se solapa, y
+se resuelve así porque lo que más se dicta es el ajuste de existencias.
 
 ## 5. Desarrollo local (sin Amazon)
 
@@ -187,6 +199,26 @@ completo** para que un error se note al instante.
    hace nada: por voz no hay pantalla donde revisar el nombre antes de guardarlo,
    y una transcripción torcida ensuciaría el catálogo, que es lo que sostiene el
    emparejado de tickets y el histórico de precios.
+
+**Al apuntar en la lista:**
+
+1. **Sí acepta nombres libres**, al contrario que el inventario: la lista admite
+   texto sin producto de catálogo detrás (`product_id` es nullable), igual que
+   escribiéndolo en la app. Un artículo apuntado es efímero y se ve en el móvil
+   antes de comprar, así que una transcripción torcida se borra de un toque —
+   nada que ver con ensuciar el catálogo. Si el nombre sí se reconoce, se enlaza
+   con el producto, que es lo que hace funcionar el checkout y los avisos.
+2. **No duplica**: si ya está en la lista sin marcar, suma la cantidad sobre el
+   artículo existente (la regla L3 de `shopping-list/items.ts`, la misma que usa
+   la app). Los artículos ya marcados no cuentan como duplicado.
+3. **Avisa si te queda en casa**: «Por si acaso: en el inventario todavía te
+   quedan 3 unidades». Es el sentido de la app — comprar lo justo.
+4. **Sin cantidad no asume una**: en la lista, «apunta arroz» significa «ya veré
+   cuánto cojo». Los contables nacen en 1 y lo que va a granel, sin cantidad
+   (`defaultListQuantity`).
+5. **Crea la lista activa si no hay ninguna**, replicando `ensure_active_list`;
+   no se puede invocar esa RPC porque su guarda usa `clerk_user_id()`, que con el
+   service-role es null.
 
 ## Limitaciones conocidas
 

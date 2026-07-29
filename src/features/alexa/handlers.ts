@@ -3,9 +3,14 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { recordStockEvent } from "@/features/inventory/events";
+import {
+  mergeIntoExisting,
+  nextListPosition,
+} from "@/features/shopping-list/items";
 import { loadHouseholdMatchData } from "@/lib/matching";
+import { normalizeName } from "@/lib/normalize";
 import type { Database, LocationType, UnitType } from "@/lib/supabase/types";
-import { roundQuantity } from "@/lib/units";
+import { defaultListQuantity, roundQuantity } from "@/lib/units";
 
 import {
   planAddition,
@@ -18,6 +23,7 @@ import {
   emptyResponse,
   speak,
   speakList,
+  speakListQuantity,
   speakQuantity,
   speakUnit,
   SPEECH,
@@ -399,6 +405,173 @@ async function handleSumarStock(
   }
 }
 
+/**
+ * Id de la lista activa del hogar, creándola si no hay. Replica
+ * `ensure_active_list` (20260719131524) en vez de invocarla: esa RPC es SECURITY
+ * DEFINER y su guarda usa `clerk_user_id()`, que con el service-role es null y
+ * haría saltar `not_a_member`. La pertenencia aquí la garantiza el vínculo.
+ */
+async function ensureActiveListId(
+  admin: Admin,
+  householdId: string,
+): Promise<string | null> {
+  const buscar = async () => {
+    const { data } = await admin
+      .from("shopping_lists")
+      .select("id")
+      .eq("household_id", householdId)
+      .eq("status", "active")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    return data?.id ?? null;
+  };
+  const existente = await buscar();
+  if (existente) return existente;
+
+  const { data: creada } = await admin
+    .from("shopping_lists")
+    .insert({
+      household_id: householdId,
+      name: "Lista de la compra",
+      status: "active",
+    })
+    .select("id")
+    .single();
+  // Si dos órdenes seguidas la crean a la vez, la segunda relee en vez de fallar.
+  return creada?.id ?? (await buscar());
+}
+
+/** Primera letra en mayúscula: Alexa transcribe en minúscula y en la lista
+ *  conviviría con nombres del catálogo escritos a mano. */
+function capitalizar(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+async function handleApuntarLista(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<AlexaResponse> {
+  const amazonUserId = getAmazonUserId(envelope);
+  if (!amazonUserId) return speak(SPEECH.notLinked);
+  const link = await findLink(admin, amazonUserId);
+  if (!link) return speak(SPEECH.notLinked);
+
+  const spoken = getSlotValue(intent, "producto");
+  if (!spoken) {
+    return speak(SPEECH.listMissing, {
+      endSession: false,
+      reprompt: SPEECH.fallbackReprompt,
+    });
+  }
+  // Aquí la cantidad se queda en null si no la dicen: para la lista eso no es
+  // «uno», es «ya veré cuánto cojo», y lo decide `defaultListQuantity` según la
+  // unidad (los contables nacen en 1, lo que va a granel sin cantidad).
+  const saidQuantity = getSlotNumber(intent, "cantidad");
+  const saidUnit = asUnitType(getSlotResolutionId(intent, "unidad"));
+
+  const [matchData] = await Promise.all([
+    loadHouseholdMatchData(admin, link.householdId),
+    admin
+      .from("alexa_links")
+      .update({ last_used_at: new Date().toISOString() })
+      .eq("id", link.id),
+  ]);
+
+  // A diferencia del inventario, aquí NO hace falta que el producto exista: la
+  // lista admite texto libre (`product_id` es nullable), igual que al escribirlo
+  // en la app. Enlazarlo cuando se reconoce sirve para el checkout y los avisos.
+  const resolution = resolveProduct(spoken, matchData);
+  let productId: string | null = null;
+  let name = capitalizar(spoken);
+  let defaultUnit: UnitType | null = null;
+
+  if (resolution.kind === "ambiguous") {
+    const products = await loadProducts(
+      admin,
+      link.householdId,
+      resolution.productIds,
+    );
+    const spokenNames = resolution.productIds
+      .map((id) => products.get(id)?.name)
+      .filter((n): n is string => Boolean(n));
+    if (spokenNames.length > 0) {
+      return speak(SPEECH.ambiguous(spoken, spokenNames), {
+        endSession: false,
+        reprompt: SPEECH.ambiguousReprompt,
+      });
+    }
+  } else if (resolution.kind === "match") {
+    const products = await loadProducts(admin, link.householdId, [
+      resolution.productId,
+    ]);
+    const product = products.get(resolution.productId);
+    if (product) {
+      productId = resolution.productId;
+      name = product.name;
+      defaultUnit = product.defaultUnit;
+    }
+  }
+
+  const listId = await ensureActiveListId(admin, link.householdId);
+  if (!listId) return speak(SPEECH.error);
+
+  const unit = saidUnit ?? defaultUnit;
+  const quantity = saidQuantity ?? defaultListQuantity(unit);
+
+  // Aviso de existencias: el sentido de la app es comprar lo justo, así que si
+  // aún queda en casa merece decirlo en voz alta antes de que se compre doble.
+  let warning = "";
+  if (productId) {
+    const { data: inv } = await admin
+      .from("inventory_items")
+      .select("quantity, unit")
+      .eq("household_id", link.householdId)
+      .eq("product_id", productId)
+      .gt("quantity", 0);
+    const total = (inv ?? []).reduce((sum, row) => sum + Number(row.quantity), 0);
+    if (total > 0 && inv?.[0]) {
+      warning = SPEECH.listStockWarning(
+        speakQuantity(roundQuantity(total), inv[0].unit),
+      );
+    }
+  }
+
+  const normalized = normalizeName(spoken);
+  const merged = await mergeIntoExisting(
+    admin,
+    listId,
+    { productId, normalized },
+    { quantity, unit },
+  );
+  if (merged) {
+    return speak(
+      SPEECH.listMerged(
+        merged.name,
+        speakListQuantity(merged.quantity, merged.unit),
+      ) + warning,
+    );
+  }
+
+  const position = await nextListPosition(admin, listId);
+  const { error } = await admin.from("shopping_list_items").insert({
+    list_id: listId,
+    household_id: link.householdId,
+    product_id: productId,
+    name,
+    quantity,
+    unit,
+    added_by: link.userId,
+    position,
+  });
+  if (error) return speak(SPEECH.error);
+
+  return speak(
+    SPEECH.listAdded(name, speakListQuantity(quantity, unit)) + warning,
+  );
+}
+
 async function handleVincular(
   admin: Admin,
   envelope: AlexaEnvelope,
@@ -475,6 +648,8 @@ async function handleIntent(
       return handleRestarStock(admin, envelope, intent);
     case "SumarStockIntent":
       return handleSumarStock(admin, envelope, intent);
+    case "ApuntarListaIntent":
+      return handleApuntarLista(admin, envelope, intent);
     case "VincularIntent":
       return handleVincular(admin, envelope, intent);
     case "AMAZON.HelpIntent":

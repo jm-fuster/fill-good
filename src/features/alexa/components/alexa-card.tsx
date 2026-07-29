@@ -89,8 +89,9 @@ export function AlexaCard({
           Alexa
         </CardTitle>
         <CardDescription>
-          Ajusta el inventario sin tocar el móvil: «Alexa, dile a mi despensa que
-          reste dos yogures», o que añada tres leches.
+          Ajusta el inventario y la lista sin tocar el móvil: «Alexa, dile a mi
+          despensa que reste dos yogures», que añada tres leches o que apunte
+          pan.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">

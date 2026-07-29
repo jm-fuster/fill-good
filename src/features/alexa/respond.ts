@@ -72,6 +72,22 @@ export function speakUnit(unit: UnitType): string {
   return SPOKEN_UNITS[unit].many;
 }
 
+/**
+ * Cantidad de un artículo de la lista, o null cuando no aporta nada: al apuntar
+ * algo, «una unidad» es lo que se sobreentiende («apuntado: pan» se lee mucho
+ * mejor que «apuntado: 1 unidad de pan»). La falta de unidad cuenta como piezas,
+ * el mismo criterio que `defaultListQuantity`.
+ */
+export function speakListQuantity(
+  quantity: number | null,
+  unit: UnitType | null,
+): string | null {
+  if (quantity === null) return null;
+  const effective = unit ?? "ud";
+  if (quantity === 1 && effective === "ud") return null;
+  return speakQuantity(quantity, effective);
+}
+
 /** Enumeración natural en español: «A, B y C». */
 export function speakList(items: string[]): string {
   if (items.length === 0) return "";
@@ -85,10 +101,10 @@ export const SPEECH = {
   welcome: `Hola. Dime qué gastas o qué traes y lo apunto en el inventario. Por ejemplo: ${EXAMPLE}.`,
   welcomeReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
   help:
-    "Puedo restar lo que gastes y sumar lo que traigas. Di, por ejemplo: quita " +
-    "dos yogures, descuenta medio kilo de arroz, o añade tres leches. Si este " +
-    "altavoz todavía no está vinculado, genera un código en el perfil de Fill " +
-    "Good y dime: vincula con código, y los seis dígitos.",
+    "Puedo restar lo que gastes, sumar lo que traigas y apuntar en la lista de " +
+    "la compra. Di, por ejemplo: quita dos yogures, añade tres leches, o apunta " +
+    "pan. Si este altavoz todavía no está vinculado, genera un código en el " +
+    "perfil de Fill Good y dime: vincula con código, y los seis dígitos.",
   helpReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
   stop: "Hasta luego.",
   fallback: `No te he entendido. Prueba a decir: ${EXAMPLE}.`,
@@ -144,4 +160,18 @@ export const SPEECH = {
   addAskUnit: (name: string) =>
     `${name} va a granel, así que dime la unidad, por ejemplo: añade medio kilo.`,
   addAskUnitReprompt: "¿Cuánto añado, y en qué unidad?",
+  listMissing: "No he entendido qué apunto en la lista.",
+  // En la lista sí vale un nombre libre: un artículo apuntado es efímero y se ve
+  // en el móvil antes de comprar, así que una transcripción torcida se corrige de
+  // un toque. No es como el catálogo, que sostiene tickets y precios.
+  listAdded: (name: string, quantity: string | null) =>
+    quantity === null
+      ? `Apuntado en la lista: ${name}.`
+      : `Apuntado en la lista: ${quantity} de ${name}.`,
+  listMerged: (name: string, quantity: string | null) =>
+    quantity === null
+      ? `Ya lo tenías apuntado, así que lo dejo como estaba: ${name}.`
+      : `Ya lo tenías apuntado, así que ahora pone ${quantity} de ${name}.`,
+  listStockWarning: (stock: string) =>
+    ` Por si acaso: en el inventario todavía te quedan ${stock}.`,
 } as const;

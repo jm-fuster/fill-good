@@ -55,8 +55,7 @@
             "hemos gastado {cantidad} {producto}",
             "he usado {cantidad} {producto}",
             "he usado {cantidad} {unidad} de {producto}",
-            "he cogido {cantidad} {producto}",
-            "apunta que he gastado {cantidad} {producto}"
+            "he cogido {cantidad} {producto}"
           ]
         },
         {
@@ -90,6 +89,41 @@
             "he traído {cantidad} {unidad} de {producto}",
             "tengo {cantidad} {producto} más",
             "quedan {cantidad} {producto} más"
+          ]
+        },
+        {
+          "name": "ApuntarListaIntent",
+          "slots": [
+            { "name": "cantidad", "type": "AMAZON.NUMBER" },
+            { "name": "unidad", "type": "TipoUnidad" },
+            { "name": "producto", "type": "TipoProducto" }
+          ],
+          "samples": [
+            "apunta {producto}",
+            "apunte {producto}",
+            "apunta {cantidad} {producto}",
+            "apunte {cantidad} {producto}",
+            "apunta {cantidad} {unidad} de {producto}",
+            "apunta {producto} en la lista",
+            "apunte {producto} en la lista",
+            "apunta {cantidad} {producto} en la lista",
+            "añade {producto} a la lista",
+            "añada {producto} a la lista",
+            "añade {cantidad} {producto} a la lista",
+            "añade {producto} en la lista",
+            "pon {producto} en la lista",
+            "ponme {producto} en la lista",
+            "necesito {producto}",
+            "necesito {cantidad} {producto}",
+            "necesitamos {producto}",
+            "me falta {producto}",
+            "me faltan {cantidad} {producto}",
+            "nos falta {producto}",
+            "hay que comprar {producto}",
+            "hay que comprar {cantidad} {producto}",
+            "tenemos que comprar {producto}",
+            "compra {producto}",
+            "compra {cantidad} {producto}"
           ]
         }
       ],
@@ -242,6 +276,34 @@
           ]
         },
         {
+          "name": "ApuntarListaIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "producto",
+              "type": "TipoProducto",
+              "confirmationRequired": false,
+              "elicitationRequired": true,
+              "prompts": { "elicitation": "Elicit.Slot.productoLista" }
+            },
+            {
+              "name": "cantidad",
+              "type": "AMAZON.NUMBER",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            },
+            {
+              "name": "unidad",
+              "type": "TipoUnidad",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            }
+          ]
+        },
+        {
           "name": "VincularIntent",
           "confirmationRequired": false,
           "prompts": {},
@@ -270,6 +332,13 @@
         "variations": [
           { "type": "PlainText", "value": "¿Qué producto añado?" },
           { "type": "PlainText", "value": "Dime qué añado." }
+        ]
+      },
+      {
+        "id": "Elicit.Slot.productoLista",
+        "variations": [
+          { "type": "PlainText", "value": "¿Qué apunto en la lista?" },
+          { "type": "PlainText", "value": "Dime qué hay que comprar." }
         ]
       },
       {

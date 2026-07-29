@@ -10,6 +10,7 @@ import { getCurrentHousehold } from "@/features/household/queries";
 import { recordStockEvent } from "@/features/inventory/events";
 import type { UnitType } from "@/lib/supabase/types";
 import { getActiveList } from "./queries";
+import { mergeIntoExisting, nextListPosition } from "./items";
 import { addListItemSchema, updateListItemSchema } from "./schemas";
 
 export type ActionState = {
@@ -21,92 +22,6 @@ export type ActionState = {
   /** Presente cuando el alta se fusionó con un ítem existente (L3). */
   merged?: { name: string; quantity: number | null; unit: UnitType | null };
 };
-
-/** Siguiente `position` al final de la lista (max + 1); 1 si está vacía. */
-async function nextListPosition(
-  supabase: ReturnType<typeof createServerSupabaseClient>,
-  listId: string,
-): Promise<number> {
-  const { data: last } = await supabase
-    .from("shopping_list_items")
-    .select("position")
-    .eq("list_id", listId)
-    .order("position", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (last?.position ?? 0) + 1;
-}
-
-type MergeResult = {
-  itemId: string;
-  name: string;
-  quantity: number | null;
-  unit: UnitType | null;
-};
-
-/**
- * L3 — No duplicar. Busca un ítem SIN MARCAR de la lista que sea el mismo
- * producto (por `product_id` o por nombre normalizado) y fusiona el alta en él:
- * suma la cantidad si ambas existen y la unidad es compatible, o conserva la
- * existente si el alta nueva no trae cantidad. Devuelve null cuando no hay
- * fusión posible (unidades distintas o sin candidato) → insertar fila nueva.
- * Los ítems marcados (en el carro) nunca cuentan como duplicado.
- */
-async function mergeIntoExisting(
-  supabase: ReturnType<typeof createServerSupabaseClient>,
-  listId: string,
-  match: { productId: string | null; normalized: string },
-  incoming: { quantity: number | null; unit: UnitType | null },
-): Promise<MergeResult | null> {
-  const { data: rows } = await supabase
-    .from("shopping_list_items")
-    .select("id, name, quantity, unit, product_id")
-    .eq("list_id", listId)
-    .eq("is_checked", false);
-
-  const candidate = (rows ?? []).find(
-    (r) =>
-      (match.productId !== null && r.product_id === match.productId) ||
-      normalizeName(r.name) === match.normalized,
-  );
-  if (!candidate) return null;
-
-  const existingQty =
-    candidate.quantity === null ? null : Number(candidate.quantity);
-  const existingUnit = candidate.unit as UnitType | null;
-
-  // Sin cantidad nueva: dejar la existente tal cual, solo informar de la fusión.
-  if (incoming.quantity == null) {
-    return {
-      itemId: candidate.id,
-      name: candidate.name,
-      quantity: existingQty,
-      unit: existingUnit,
-    };
-  }
-
-  // Unidades incompatibles (ambas definidas y distintas) → no fusionar.
-  const unitsCompatible =
-    existingUnit === incoming.unit ||
-    existingUnit === null ||
-    incoming.unit === null;
-  if (!unitsCompatible) return null;
-
-  const summedQty = (existingQty ?? 0) + incoming.quantity;
-  const resultUnit = existingUnit ?? incoming.unit;
-  const { error } = await supabase
-    .from("shopping_list_items")
-    .update({ quantity: summedQty, unit: resultUnit })
-    .eq("id", candidate.id);
-  if (error) return null; // Fallback silencioso: insertar fila nueva.
-
-  return {
-    itemId: candidate.id,
-    name: candidate.name,
-    quantity: summedQty,
-    unit: resultUnit,
-  };
-}
 
 export async function addListItemAction(
   _prev: ActionState,
