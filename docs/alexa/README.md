@@ -13,9 +13,10 @@ privacidad de la skill y account linking OAuth).
 
 | Sí | No (todavía) |
 | --- | --- |
-| Restar stock por voz | Sumar stock |
-| Vincular el altavoz con un código | Añadir a la lista de la compra |
-| Preguntar cuando el producto es ambiguo | Consultar cuánto queda |
+| Restar stock por voz | Añadir a la lista de la compra |
+| Sumar stock por voz | Consultar cuánto queda |
+| Vincular el altavoz con un código | Crear productos nuevos por voz |
+| Preguntar cuando el producto es ambiguo | Dictar la caducidad |
 
 ## Piezas en el repo
 
@@ -24,7 +25,7 @@ privacidad de la skill y account linking OAuth).
 | Webhook | [`src/app/api/alexa/route.ts`](../../src/app/api/alexa/route.ts) |
 | Verificación de la firma de Amazon | `src/features/alexa/verify.ts` |
 | Lógica por intent | `src/features/alexa/handlers.ts` |
-| Resolución de producto y plan de descuento (puro) | `src/features/alexa/resolve.ts` |
+| Resolución de producto y planes de resta/suma (puro) | `src/features/alexa/resolve.ts` |
 | Textos hablados | `src/features/alexa/respond.ts` |
 | Card de vinculación en /perfil | `src/features/alexa/components/alexa-card.tsx` |
 | Modelo de interacción | [`interaction-model-es-ES.json`](./interaction-model-es-ES.json) |
@@ -89,12 +90,16 @@ Escribe `abre mi despensa` o `dile a mi despensa que reste dos yogures`.
 Amazon. No hace falta habilitar nada: en modo desarrollo la skill ya está
 disponible para tu cuenta.
 
-Frases que entiende (todas admiten «resta», «quita», «descuenta», «he gastado»):
+Frases que entiende. Para restar valen «resta», «quita», «descuenta», «he
+gastado», «he usado»; para sumar, «añade», «suma», «mete», «he comprado», «he
+traído»:
 
 ```text
 Alexa, dile a mi despensa que reste dos yogures
 Alexa, dile a mi despensa que quite medio kilo de arroz
 Alexa, dile a mi despensa que descuente 200 gramos de queso
+Alexa, dile a mi despensa que añada tres leches
+Alexa, dile a mi despensa que he comprado dos kilos de arroz
 Alexa, abre mi despensa            → bienvenida y se queda escuchando
 ```
 
@@ -139,21 +144,49 @@ curl -s -X POST http://localhost:3000/api/alexa -H "Content-Type: application/js
 curl -s -X POST http://localhost:3000/api/alexa -H "Content-Type: application/json" -d '{"version":"1.0","session":{"new":true,"sessionId":"s1","application":{"applicationId":"amzn1.ask.skill.tu-skill-id"},"user":{"userId":"amzn1.ask.account.PRUEBA"}},"request":{"type":"IntentRequest","requestId":"r4","timestamp":"2026-07-29T10:00:00Z","locale":"es-ES","intent":{"name":"RestarStockIntent","slots":{"cantidad":{"name":"cantidad","value":"500"},"producto":{"name":"producto","value":"arroz"},"unidad":{"name":"unidad","value":"gramos","resolutions":{"resolutionsPerAuthority":[{"status":{"code":"ER_SUCCESS_MATCH"},"values":[{"value":{"name":"gramos","id":"g"}}]}]}}}}}}'
 ```
 
+**Sumar stock**
+
+```bash
+curl -s -X POST http://localhost:3000/api/alexa -H "Content-Type: application/json" -d '{"version":"1.0","session":{"new":true,"sessionId":"s1","application":{"applicationId":"amzn1.ask.skill.tu-skill-id"},"user":{"userId":"amzn1.ask.account.PRUEBA"}},"request":{"type":"IntentRequest","requestId":"r5","timestamp":"2026-07-29T10:00:00Z","locale":"es-ES","intent":{"name":"SumarStockIntent","slots":{"cantidad":{"name":"cantidad","value":"3"},"producto":{"name":"producto","value":"yogures"}}}}}'
+```
+
 La respuesta trae el texto en `response.outputSpeech.text`.
 
-## Cómo decide de dónde restar
+## Cómo decide qué toca
 
-1. **Producto**: nombre exacto o alias aprendido → singular/plural → el nombre
-   dicho como palabra completa dentro de uno del catálogo («yogur» → «yogur
-   natural») → parecido por trigramas. Si encaja más de uno, pregunta en vez de
-   adivinar, y cuando acierta **repite el nombre completo** para que un error se
-   note al instante.
-2. **Unidad**: si la dices, se usa esa (g↔kg y ml↔l se convierten; `ud` y peso
+**El producto** se resuelve igual para restar y para sumar: nombre exacto o alias
+aprendido → singular/plural → el nombre dicho como palabra completa dentro de uno
+del catálogo («yogur» → «yogur natural») → parecido por trigramas. Si encaja más
+de uno, pregunta en vez de adivinar, y cuando acierta **repite el nombre
+completo** para que un error se note al instante.
+
+**Al restar:**
+
+1. **Unidad**: si la dices, se usa esa (g↔kg y ml↔l se convierten; `ud` y peso
    jamás). Si no la dices, se resta de las unidades contables; si el producto
    solo está a granel, pregunta.
-3. **Lote**: FIFO por caducidad (primero el que caduca antes), en cascada si un
+2. **Lote**: FIFO por caducidad (primero el que caduca antes), en cascada si un
    lote no llega. Nunca deja stock negativo y el lote a cero se conserva como
    agotado — las mismas reglas que el descuento de recetas cocinadas.
+
+**Al sumar:**
+
+1. **Unidad**: la que digas, o la del catálogo (`default_unit`). Si el producto va
+   a granel y no dices unidad, pregunta: «añade dos» no significa nada en kilos.
+2. **Lote**: se suma a uno que ya exista, nunca se crea una fila de más — se
+   prefiere un lote **sin caducidad**, luego el de la ubicación del catálogo, y
+   por último el que caduca más tarde. Si el producto no tiene ninguna fila, se
+   crea en su `default_location` sin caducidad.
+3. **La caducidad no se toca nunca.** Por voz no se puede dictar, así que ni se
+   inventa ni se pisa la que ya hubiera. Por eso se prefiere el lote sin fecha:
+   engordar uno que caduca mañana haría que la app avisara de unidades que en
+   realidad acaban de entrar.
+4. **`pack_size` no se aplica**: ese multiplicador es de la compra (ticket,
+   checkout), no del alta manual. «Añade una leche» es una, no un pack.
+5. **No crea productos.** Si lo que dices no está en el catálogo, lo dice y no
+   hace nada: por voz no hay pantalla donde revisar el nombre antes de guardarlo,
+   y una transcripción torcida ensuciaría el catálogo, que es lo que sostiene el
+   emparejado de tickets y el histórico de precios.
 
 ## Limitaciones conocidas
 

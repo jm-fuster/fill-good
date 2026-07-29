@@ -89,8 +89,8 @@ export function AlexaCard({
           Alexa
         </CardTitle>
         <CardDescription>
-          Resta lo que gastes sin tocar el móvil: «Alexa, dile a mi despensa que
-          reste dos yogures».
+          Ajusta el inventario sin tocar el móvil: «Alexa, dile a mi despensa que
+          reste dos yogures», o que añada tres leches.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">

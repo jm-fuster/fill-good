@@ -4,10 +4,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { recordStockEvent } from "@/features/inventory/events";
 import { loadHouseholdMatchData } from "@/lib/matching";
-import type { Database, UnitType } from "@/lib/supabase/types";
+import type { Database, LocationType, UnitType } from "@/lib/supabase/types";
 import { roundQuantity } from "@/lib/units";
 
 import {
+  planAddition,
   planDeduction,
   resolveProduct,
   type DeductionStep,
@@ -59,6 +60,25 @@ function asUnitType(value: string | null): UnitType | null {
 
 type AlexaLink = { id: string; householdId: string; userId: string };
 
+type ProductInfo = {
+  name: string;
+  defaultUnit: UnitType;
+  defaultLocation: LocationType;
+};
+
+/** Todo lo que necesitan por igual «resta…» y «añade…» antes de decidir nada. */
+type VoiceTarget = {
+  link: AlexaLink;
+  productId: string;
+  product: ProductInfo;
+  /** Lo que hay que restar o sumar. */
+  quantity: number;
+  /** Unidad dicha, o null si no la dijo. */
+  unit: UnitType | null;
+  /** TODOS los lotes del producto, del que antes caduca al que después. */
+  lots: StockLot[];
+};
+
 async function findLink(
   admin: Admin,
   amazonUserId: string,
@@ -73,20 +93,26 @@ async function findLink(
 }
 
 /** Nombres de catálogo para poder decirlos en voz alta, en el orden pedido. */
-async function loadProductNames(
+async function loadProducts(
   admin: Admin,
   householdId: string,
   productIds: string[],
-): Promise<Map<string, string>> {
-  const names = new Map<string, string>();
-  if (productIds.length === 0) return names;
+): Promise<Map<string, ProductInfo>> {
+  const products = new Map<string, ProductInfo>();
+  if (productIds.length === 0) return products;
   const { data } = await admin
     .from("products")
-    .select("id, name")
+    .select("id, name, default_unit, default_location")
     .eq("household_id", householdId)
     .in("id", productIds);
-  for (const row of data ?? []) names.set(row.id, row.name);
-  return names;
+  for (const row of data ?? []) {
+    products.set(row.id, {
+      name: row.name,
+      defaultUnit: row.default_unit,
+      defaultLocation: row.default_location,
+    });
+  }
+  return products;
 }
 
 /** Aplica el plan lote a lote. Devuelve false si alguna escritura falla. */
@@ -135,22 +161,39 @@ async function recordSteps(
   }
 }
 
-async function handleRestarStock(
+/**
+ * Resuelve el vínculo, los slots, el producto y sus lotes: el trabajo idéntico
+ * que hacen «resta dos yogures» y «añade dos yogures» antes de separarse. Cuando
+ * algo falta devuelve ya la respuesta hablada, y quien llama solo tiene que
+ * propagarla.
+ *
+ * `notFound` deja que cada intent redacte su propio «no lo encuentro»: al restar
+ * se sugiere añadirlo, y al sumar hay que explicar que por voz no se crean
+ * productos.
+ */
+async function prepareVoiceTarget(
   admin: Admin,
   envelope: AlexaEnvelope,
   intent: AlexaIntent,
-): Promise<AlexaResponse> {
+): Promise<
+  | { ok: true; target: VoiceTarget }
+  | { ok: false; response: AlexaResponse }
+  | { ok: false; notFound: true; spoken: string }
+> {
   const amazonUserId = getAmazonUserId(envelope);
-  if (!amazonUserId) return speak(SPEECH.notLinked);
+  if (!amazonUserId) return { ok: false, response: speak(SPEECH.notLinked) };
   const link = await findLink(admin, amazonUserId);
-  if (!link) return speak(SPEECH.notLinked);
+  if (!link) return { ok: false, response: speak(SPEECH.notLinked) };
 
   const spoken = getSlotValue(intent, "producto");
   if (!spoken) {
-    return speak(SPEECH.productMissing, {
-      endSession: false,
-      reprompt: SPEECH.fallbackReprompt,
-    });
+    return {
+      ok: false,
+      response: speak(SPEECH.productMissing, {
+        endSession: false,
+        reprompt: SPEECH.fallbackReprompt,
+      }),
+    };
   }
   // Sin cantidad, «quita yogur» es una unidad. La unidad solo se acepta si Alexa
   // la ha resuelto a uno de nuestros ids canónicos.
@@ -167,43 +210,67 @@ async function handleRestarStock(
   ]);
 
   const resolution = resolveProduct(spoken, matchData);
-  if (resolution.kind === "none") {
-    return speak(SPEECH.productUnknown(spoken));
-  }
+  if (resolution.kind === "none") return { ok: false, notFound: true, spoken };
   if (resolution.kind === "ambiguous") {
-    const names = await loadProductNames(
+    const products = await loadProducts(
       admin,
       link.householdId,
       resolution.productIds,
     );
     const spokenNames = resolution.productIds
-      .map((id) => names.get(id))
+      .map((id) => products.get(id)?.name)
       .filter((name): name is string => Boolean(name));
     // Sin nombres que ofrecer no hay pregunta que hacer (no debería pasar: los
     // candidatos salen del catálogo de este mismo hogar).
-    if (spokenNames.length === 0) return speak(SPEECH.productUnknown(spoken));
-    return speak(SPEECH.ambiguous(spoken, spokenNames), {
-      endSession: false,
-      reprompt: SPEECH.ambiguousReprompt,
-    });
+    if (spokenNames.length === 0) return { ok: false, notFound: true, spoken };
+    return {
+      ok: false,
+      response: speak(SPEECH.ambiguous(spoken, spokenNames), {
+        endSession: false,
+        reprompt: SPEECH.ambiguousReprompt,
+      }),
+    };
   }
 
   const productId = resolution.productId;
-  const names = await loadProductNames(admin, link.householdId, [productId]);
-  const name = names.get(productId) ?? spoken;
+  const products = await loadProducts(admin, link.householdId, [productId]);
+  const product = products.get(productId);
+  if (!product) return { ok: false, notFound: true, spoken };
 
+  // Se cargan TODOS los lotes, también los agotados: una fila a 0 se conserva
+  // como «agotado», y al sumar hay que reutilizarla en vez de intentar crear
+  // otra en la misma ubicación (la clave (hogar, producto, ubicación) es única).
+  // `planDeduction` ya descarta por su cuenta los que están a 0.
   const { data: rows } = await admin
     .from("inventory_items")
-    .select("id, quantity, unit")
+    .select("id, quantity, unit, location, expiry_date")
     .eq("household_id", link.householdId)
     .eq("product_id", productId)
-    .gt("quantity", 0)
     .order("expiry_date", { ascending: true, nullsFirst: false });
   const lots: StockLot[] = (rows ?? []).map((row) => ({
     id: row.id,
     quantity: Number(row.quantity),
     unit: row.unit,
+    location: row.location,
+    expiryDate: row.expiry_date,
   }));
+
+  return { ok: true, target: { link, productId, product, quantity, unit, lots } };
+}
+
+async function handleRestarStock(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<AlexaResponse> {
+  const prepared = await prepareVoiceTarget(admin, envelope, intent);
+  if (!prepared.ok) {
+    return "notFound" in prepared
+      ? speak(SPEECH.productUnknown(prepared.spoken))
+      : prepared.response;
+  }
+  const { link, productId, product, quantity, unit, lots } = prepared.target;
+  const name = product.name;
 
   const plan = planDeduction({ quantity, unit, lots });
   switch (plan.kind) {
@@ -243,6 +310,89 @@ async function handleRestarStock(
           taken,
           name,
           plan.remaining > 0 ? speakQuantity(plan.remaining, plan.unit) : null,
+        ),
+      );
+    }
+  }
+}
+
+async function handleSumarStock(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<AlexaResponse> {
+  const prepared = await prepareVoiceTarget(admin, envelope, intent);
+  if (!prepared.ok) {
+    return "notFound" in prepared
+      ? speak(SPEECH.addProductUnknown(prepared.spoken))
+      : prepared.response;
+  }
+  const { link, productId, product, quantity, unit, lots } = prepared.target;
+  const name = product.name;
+
+  const plan = planAddition({
+    quantity,
+    unit,
+    lots,
+    defaultUnit: product.defaultUnit,
+    defaultLocation: product.defaultLocation,
+  });
+  switch (plan.kind) {
+    case "invalid_quantity":
+      return speak(SPEECH.quantityInvalid, {
+        endSession: false,
+        reprompt: SPEECH.fallbackReprompt,
+      });
+    case "unit_mismatch":
+      return speak(
+        SPEECH.addUnitMismatch(
+          name,
+          speakUnit(plan.available),
+          speakUnit(plan.asked),
+        ),
+      );
+    case "ask_unit":
+      return speak(SPEECH.addAskUnit(name), {
+        endSession: false,
+        reprompt: SPEECH.addAskUnitReprompt,
+      });
+    case "add": {
+      // La caducidad no se toca a propósito: por voz no se puede dictar, así que
+      // ni se inventa en las filas nuevas ni se pisa la de las existentes.
+      const { error } = plan.lotId
+        ? await admin
+            .from("inventory_items")
+            .update({ quantity: plan.newQuantity, updated_by: link.userId })
+            .eq("household_id", link.householdId)
+            .eq("id", plan.lotId)
+        : await admin.from("inventory_items").insert({
+            household_id: link.householdId,
+            product_id: productId,
+            location: plan.location,
+            quantity: plan.newQuantity,
+            unit: plan.unit,
+            updated_by: link.userId,
+          });
+      if (error) return speak(SPEECH.error);
+
+      await recordStockEvent(admin, {
+        householdId: link.householdId,
+        productId,
+        quantity: plan.added,
+        unit: plan.unit,
+        kind: "restocked",
+        userId: link.userId,
+        fold: true,
+      });
+      // El eco repite lo que dijo el usuario («500 gramos»), no su equivalente en
+      // la unidad del lote («0,5 kilos»): así se nota al instante si Alexa
+      // entendió otra cantidad. El total sí va en la unidad del lote, que es la
+      // que se lee bien («2,5 kilos» mejor que «2500 gramos»).
+      return speak(
+        SPEECH.added(
+          unit ? speakQuantity(quantity, unit) : speakQuantity(plan.added, plan.unit),
+          name,
+          speakQuantity(plan.total, plan.unit),
         ),
       );
     }
@@ -323,6 +473,8 @@ async function handleIntent(
   switch (intent.name) {
     case "RestarStockIntent":
       return handleRestarStock(admin, envelope, intent);
+    case "SumarStockIntent":
+      return handleSumarStock(admin, envelope, intent);
     case "VincularIntent":
       return handleVincular(admin, envelope, intent);
     case "AMAZON.HelpIntent":

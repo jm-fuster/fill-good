@@ -58,6 +58,39 @@
             "he cogido {cantidad} {producto}",
             "apunta que he gastado {cantidad} {producto}"
           ]
+        },
+        {
+          "name": "SumarStockIntent",
+          "slots": [
+            { "name": "cantidad", "type": "AMAZON.NUMBER" },
+            { "name": "unidad", "type": "TipoUnidad" },
+            { "name": "producto", "type": "TipoProducto" }
+          ],
+          "samples": [
+            "añade {cantidad} {producto}",
+            "añada {cantidad} {producto}",
+            "añade {cantidad} {unidad} de {producto}",
+            "añada {cantidad} {unidad} de {producto}",
+            "añade {producto}",
+            "añada {producto}",
+            "añade un {producto}",
+            "añade una {producto}",
+            "suma {cantidad} {producto}",
+            "sume {cantidad} {producto}",
+            "suma {cantidad} {unidad} de {producto}",
+            "sume {cantidad} {unidad} de {producto}",
+            "suma {producto}",
+            "mete {cantidad} {producto}",
+            "meta {cantidad} {producto}",
+            "mete {cantidad} {unidad} de {producto}",
+            "he comprado {cantidad} {producto}",
+            "he comprado {cantidad} {unidad} de {producto}",
+            "hemos comprado {cantidad} {producto}",
+            "he traído {cantidad} {producto}",
+            "he traído {cantidad} {unidad} de {producto}",
+            "tengo {cantidad} {producto} más",
+            "quedan {cantidad} {producto} más"
+          ]
         }
       ],
       "types": [
@@ -181,6 +214,34 @@
           ]
         },
         {
+          "name": "SumarStockIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "producto",
+              "type": "TipoProducto",
+              "confirmationRequired": false,
+              "elicitationRequired": true,
+              "prompts": { "elicitation": "Elicit.Slot.productoSuma" }
+            },
+            {
+              "name": "cantidad",
+              "type": "AMAZON.NUMBER",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            },
+            {
+              "name": "unidad",
+              "type": "TipoUnidad",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            }
+          ]
+        },
+        {
           "name": "VincularIntent",
           "confirmationRequired": false,
           "prompts": {},
@@ -202,6 +263,13 @@
         "variations": [
           { "type": "PlainText", "value": "¿Qué producto quito?" },
           { "type": "PlainText", "value": "Dime qué quito." }
+        ]
+      },
+      {
+        "id": "Elicit.Slot.productoSuma",
+        "variations": [
+          { "type": "PlainText", "value": "¿Qué producto añado?" },
+          { "type": "PlainText", "value": "Dime qué añado." }
         ]
       },
       {

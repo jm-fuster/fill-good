@@ -4,7 +4,7 @@ import {
   type HouseholdMatchData,
 } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
-import type { UnitType } from "@/lib/supabase/types";
+import type { LocationType, UnitType } from "@/lib/supabase/types";
 import {
   convertQuantity,
   isCountable,
@@ -144,6 +144,8 @@ export type StockLot = {
   id: string;
   quantity: number;
   unit: UnitType;
+  location: LocationType;
+  expiryDate: string | null;
 };
 
 export type DeductionStep = {
@@ -263,5 +265,109 @@ export function planDeduction({
     taken: roundQuantity(quantity - Math.max(0, pending)),
     remaining: Math.max(0, roundQuantity(stockLeft)),
     covered: pending <= EPSILON,
+  };
+}
+
+export type AdditionPlan =
+  | {
+      kind: "add";
+      /** Lote al que se suma, o null si hay que crear la fila. */
+      lotId: string | null;
+      /** Ubicación de la fila que se toca (la del lote, o la del catálogo). */
+      location: LocationType;
+      /** Unidad de la fila resultante, en la que se habla el total. */
+      unit: UnitType;
+      /** Lo que se suma, ya en `unit`. */
+      added: number;
+      /** Cantidad final de ESA fila. */
+      newQuantity: number;
+      /** Stock total del producto tras sumar, en `unit`. */
+      total: number;
+    }
+  | { kind: "ask_unit"; defaultUnit: UnitType }
+  | { kind: "unit_mismatch"; asked: UnitType; available: UnitType }
+  | { kind: "invalid_quantity" };
+
+/**
+ * Plan para AÑADIR stock. Sigue el mismo criterio que el alta desde la app
+ * (`addInventoryAction`): sumar sobre la fila que ya existe para ese producto y
+ * ubicación, o crearla. Dos diferencias que impone la voz:
+ *
+ *   · **Nunca toca la caducidad.** Por voz no hay forma de dictarla, así que
+ *     entre varios lotes se prefiere uno SIN fecha: inflar un lote que caduca
+ *     mañana haría que la app avisara de que caducan unidades que en realidad
+ *     acaban de entrar. Los lotes nuevos nacen sin caducidad.
+ *   · **Nunca aplica `pack_size`.** Ese multiplicador es de la compra (ticket,
+ *     checkout), no del alta manual: «añade una leche» es una, no un pack.
+ *
+ * Si existe algún lote compatible siempre se suma a uno de ellos, nunca se crea
+ * una fila más: repartir el mismo producto en una ubicación nueva por hablarle
+ * al altavoz sería un efecto sorpresa desagradable.
+ */
+export function planAddition({
+  quantity,
+  unit: askedUnit,
+  lots,
+  defaultUnit,
+  defaultLocation,
+}: {
+  quantity: number;
+  unit: UnitType | null;
+  lots: StockLot[];
+  defaultUnit: UnitType;
+  defaultLocation: LocationType;
+}): AdditionPlan {
+  if (!Number.isFinite(quantity) || quantity <= 0 || quantity > MAX_VOICE_QUANTITY) {
+    return { kind: "invalid_quantity" };
+  }
+
+  // Sin unidad dicha, la del catálogo. Pero si el producto va a granel, «añade
+  // dos» no significa nada (¿dos kilos, dos paquetes?): se pregunta, igual que
+  // al restar. Solo los contables tienen un «dos» evidente.
+  if (!askedUnit && !isCountable(defaultUnit)) {
+    return { kind: "ask_unit", defaultUnit };
+  }
+  const targetUnit = askedUnit ?? defaultUnit;
+
+  const candidates = lots.filter(
+    (lot) => unitFamily(lot.unit) === unitFamily(targetUnit),
+  );
+  if (lots.length > 0 && candidates.length === 0) {
+    return { kind: "unit_mismatch", asked: targetUnit, available: lots[0].unit };
+  }
+
+  const lot =
+    candidates.find((l) => l.expiryDate === null) ??
+    candidates.find((l) => l.location === defaultLocation) ??
+    [...candidates].sort((a, b) =>
+      (b.expiryDate ?? "").localeCompare(a.expiryDate ?? ""),
+    )[0];
+
+  if (!lot) {
+    return {
+      kind: "add",
+      lotId: null,
+      location: defaultLocation,
+      unit: targetUnit,
+      added: roundQuantity(quantity),
+      newQuantity: roundQuantity(quantity),
+      total: roundQuantity(quantity),
+    };
+  }
+
+  // Dentro de la familia la conversión siempre existe (el `?? 0` es para el tipo).
+  const addedInLot = convertQuantity(quantity, targetUnit, lot.unit) ?? 0;
+  const totalPrevio = candidates.reduce(
+    (acc, l) => acc + (convertQuantity(l.quantity, l.unit, lot.unit) ?? 0),
+    0,
+  );
+  return {
+    kind: "add",
+    lotId: lot.id,
+    location: lot.location,
+    unit: lot.unit,
+    added: roundQuantity(addedInLot),
+    newQuantity: roundQuantity(lot.quantity + addedInLot),
+    total: roundQuantity(totalPrevio + addedInLot),
   };
 }

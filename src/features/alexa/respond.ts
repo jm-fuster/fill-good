@@ -82,17 +82,17 @@ export function speakList(items: string[]): string {
 const EXAMPLE = "resta dos yogures";
 
 export const SPEECH = {
-  welcome: `Hola. Dime qué gastas y lo quito del inventario. Por ejemplo: ${EXAMPLE}.`,
-  welcomeReprompt: `¿Qué quito? Por ejemplo: ${EXAMPLE}.`,
+  welcome: `Hola. Dime qué gastas o qué traes y lo apunto en el inventario. Por ejemplo: ${EXAMPLE}.`,
+  welcomeReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
   help:
-    "Puedo restar lo que gastes del inventario. Di, por ejemplo: quita dos " +
-    "yogures, o descuenta medio kilo de arroz. Si este altavoz todavía no está " +
-    "vinculado, genera un código en el perfil de Fill Good y dime: vincula con " +
-    "código, y los seis dígitos.",
-  helpReprompt: `¿Qué quito? Por ejemplo: ${EXAMPLE}.`,
+    "Puedo restar lo que gastes y sumar lo que traigas. Di, por ejemplo: quita " +
+    "dos yogures, descuenta medio kilo de arroz, o añade tres leches. Si este " +
+    "altavoz todavía no está vinculado, genera un código en el perfil de Fill " +
+    "Good y dime: vincula con código, y los seis dígitos.",
+  helpReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
   stop: "Hasta luego.",
   fallback: `No te he entendido. Prueba a decir: ${EXAMPLE}.`,
-  fallbackReprompt: `¿Qué quito? Por ejemplo: ${EXAMPLE}.`,
+  fallbackReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
   error: "Ha habido un problema con tu despensa. Inténtalo otra vez en un momento.",
   notLinked:
     "Este altavoz todavía no está vinculado a ningún hogar. Abre Fill Good, " +
@@ -132,4 +132,16 @@ export const SPEECH = {
       : `Vale, he quitado ${taken} de ${name}. Ahora hay ${left}.`,
   deductedPartial: (taken: string, name: string) =>
     `Solo había ${taken} de ${name}, así que lo he quitado todo. Ya no queda nada.`,
+  added: (added: string, name: string, total: string) =>
+    `Hecho, he añadido ${added} de ${name}. Ahora hay ${total}.`,
+  // Al sumar NO se crea el producto: por voz no hay forma de revisar el nombre
+  // antes de guardarlo, y una transcripción torcida ensuciaría el catálogo, que
+  // es lo que sostiene el emparejado de tickets y el histórico de precios.
+  addProductUnknown: (spoken: string) =>
+    `No tengo ${spoken} en tu catálogo. Créalo primero en Fill Good y luego ya puedo sumarlo.`,
+  addUnitMismatch: (name: string, available: string, asked: string) =>
+    `Tengo ${name} en ${available}, no en ${asked}. Dime cuánto añado en ${available}.`,
+  addAskUnit: (name: string) =>
+    `${name} va a granel, así que dime la unidad, por ejemplo: añade medio kilo.`,
+  addAskUnitReprompt: "¿Cuánto añado, y en qué unidad?",
 } as const;
