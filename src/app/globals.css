@@ -210,6 +210,16 @@
 @utility pb-safe-4 {
   padding-bottom: calc(env(safe-area-inset-bottom) + --spacing(4));
 }
+/* Bottom sheet apoyado en el borde inferior: aparta el contenido de la barra de
+   gestos. Se resta `--fg-kb-inset` (lo que sube el sheet cuando hay teclado, ver
+   src/hooks/use-keyboard-inset.ts) porque ahí ya no hay barra que esquivar y el
+   hueco solo robaría alto justo cuando menos hay. */
+@utility pb-safe-sheet {
+  padding-bottom: max(
+    0px,
+    calc(env(safe-area-inset-bottom) - var(--fg-kb-inset, 0px))
+  );
+}
 /* FAB flotante: 1rem por encima de la bottom nav (4rem) respetando el safe-area */
 @utility bottom-fab {
   bottom: calc(env(safe-area-inset-bottom) + 4rem + --spacing(4));

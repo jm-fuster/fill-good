@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { useKeyboardInset } from "@/hooks/use-keyboard-inset";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import {
   Dialog,
@@ -140,7 +141,13 @@ function ResponsiveModal({
 
   return (
     <ResponsiveModalContext.Provider value={false}>
-      <Drawer {...props}>{children}</Drawer>
+      {/* `repositionInputs={false}`: la colocación con el teclado abierto la
+          llevamos nosotros con CSS vars (ver useKeyboardInset, donde está el
+          por qué). La de vaul escribía alto y posición en línea sobre el sheet
+          y lo dejaba cortado o subido fuera de la pantalla. */}
+      <Drawer repositionInputs={false} {...props}>
+        {children}
+      </Drawer>
     </ResponsiveModalContext.Provider>
   );
 }
@@ -157,6 +164,18 @@ function ResponsiveModalClose(props: React.ComponentProps<typeof DrawerClose>) {
   const isDesktop = useIsDesktopModal();
   const Comp = isDesktop ? DialogClose : DrawerClose;
   return <Comp {...props} />;
+}
+
+/**
+ * Mide el teclado mientras el sheet está en pantalla. Va DENTRO del contenido y
+ * no en `ResponsiveModalContent` a propósito: ese componente se renderiza esté
+ * el modal abierto o cerrado (una pantalla de inventario monta uno por tarjeta),
+ * mientras que su contenido solo existe en el portal cuando está abierto. Así se
+ * escucha el visual viewport en un único sitio y solo cuando hace falta.
+ */
+function KeyboardInsetTracker() {
+  useKeyboardInset();
+  return null;
 }
 
 function ResponsiveModalContent({
@@ -210,9 +229,16 @@ function ResponsiveModalContent({
       overlayClassName={overlayClassName}
       onOpenAutoFocus={onOpenAutoFocus}
     >
+      <KeyboardInsetTracker />
+      {/* El scroll interno se estira hasta el alto del sheet y NO se pone un
+          alto propio: con uno mayor que el del sheet (que es lo que había, 85 vs
+          80 del viewport) el final del contenido —los botones del formulario—
+          se dibujaba por debajo del borde inferior, fuera de la pantalla y sin
+          forma de llegar a él. `overscroll-contain` evita que al llegar al final
+          el gesto se propague a la página de detrás. */}
       <div
         data-vaul-no-drag={noDrag ? "" : undefined}
-        className="mx-auto flex max-h-[85vh] w-full max-w-md flex-col overflow-y-auto"
+        className="mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col overflow-y-auto overscroll-contain"
       >
         {children}
       </div>
