@@ -229,7 +229,8 @@ export const SPEECH = {
     "compra y decirte cuánto queda. Di, por ejemplo: quita dos yogures, añade " +
     "tres leches, apunta pan, o cuánta leche queda. También puedo leerte la " +
     "lista, decirte qué caduca pronto y qué toca hoy de menú, apuntar lo que " +
-    "tires y tachar de la lista lo que ya hayas comprado. Si este altavoz " +
+    "tires, tachar lo que ya hayas comprado y borrar de la lista lo que ya no " +
+    "haga falta. Si este altavoz " +
     "todavía no está vinculado, genera un código en Fill Good, en Ajustes, " +
     "Alexa, y dime: vincula con código, y los seis dígitos.",
   helpReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
@@ -329,9 +330,18 @@ export const SPEECH = {
     ` Por si acaso: en el inventario todavía te quedan ${stock}.`,
   // Marcar comprado NO suma existencias, igual que tachar en la app: el stock
   // entra al finalizar la compra, y adelantarlo aquí lo contaría dos veces.
-  listChecked: (name: string) => `Hecho, ${name} queda tachado de la lista.`,
+  //
+  // Todas estas frases evitan concordar en género con el nombre del producto,
+  // que lo escribe el usuario y no conocemos: se dice «he tachado X» (participio
+  // invariable) y nunca «X queda tachado», que canta con «Leche».
+  listChecked: (name: string) => `Hecho, he tachado ${name} de la lista.`,
   listCheckedLast: (name: string) =>
-    `Hecho, ${name} queda tachado. Ya no queda nada por comprar.`,
+    `Hecho, he tachado ${name}. Ya no queda nada por comprar.`,
+  listAlreadyChecked: (name: string) =>
+    `Ya habías tachado ${name} de la lista.`,
+  // Borrar NO es tachar: lo tachado acaba en el inventario al finalizar la
+  // compra, y esto es justo lo que ya no quieres.
+  listDeleted: (name: string) => `Hecho, he borrado ${name} de la lista.`,
   listItemUnknown: (spoken: string) =>
     `No encuentro ${spoken} entre lo que queda por comprar.`,
   listItemAmbiguous: (names: string[]) =>

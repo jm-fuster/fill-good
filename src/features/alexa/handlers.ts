@@ -1218,33 +1218,26 @@ async function handleRespuesta(
   );
 }
 
+type ListItem = { id: string; name: string; isChecked: boolean };
+
 /**
- * «Ya he comprado el pan»: tacha el artículo de la lista, sin tocar existencias.
- * Es lo mismo que pulsarlo en la app — el stock entra al finalizar la compra, y
- * sumarlo aquí lo contaría dos veces.
+ * Localiza en la lista activa el artículo del que habla el usuario, o devuelve
+ * ya la respuesta hablada cuando no hay nada que hacer. Lo comparten tachar y
+ * borrar, que solo se diferencian en lo que hacen DESPUÉS.
  *
  * El emparejado se hace contra LA LISTA y no contra el catálogo, y es lo
  * correcto aunque parezca un atajo: la lista admite texto libre sin producto
  * detrás, así que un artículo puede no estar en el catálogo y aun así estar ahí
  * esperando. Se casa por nombre con las mismas reglas que al elegir candidatos.
  */
-async function handleMarcarComprado(
+async function findListItem(
   admin: Admin,
-  envelope: AlexaEnvelope,
-  intent: AlexaIntent,
-): Promise<AlexaResponse> {
-  const linked = await requireLink(admin, envelope);
-  if (!linked.ok) return linked.response;
-  const link = linked.link;
-
-  const spoken = getSlotValue(intent, "producto");
-  if (!spoken) {
-    return speak(SPEECH.listMissing, {
-      endSession: false,
-      reprompt: SPEECH.fallbackReprompt,
-    });
-  }
-
+  link: AlexaLink,
+  spoken: string,
+): Promise<
+  | { ok: true; item: ListItem; items: ListItem[] }
+  | { ok: false; response: AlexaResponse }
+> {
   const [{ data: list }] = await Promise.all([
     admin
       .from("shopping_lists")
@@ -1256,39 +1249,89 @@ async function handleMarcarComprado(
       .maybeSingle(),
     touchLink(admin, link),
   ]);
-  if (!list) return speak(SPEECH.listItemUnknown(spoken));
+  const noEncontrado = {
+    ok: false as const,
+    response: speak(SPEECH.listItemUnknown(spoken)),
+  };
+  if (!list) return noEncontrado;
 
   const { data: rows } = await admin
     .from("shopping_list_items")
-    .select("id, name, product:products(name)")
+    .select("id, name, is_checked, product:products(name)")
     .eq("household_id", link.householdId)
-    .eq("list_id", list.id)
-    .eq("is_checked", false);
+    .eq("list_id", list.id);
 
   // El doble `as unknown as` es la costumbre del repo con este embed: los tipos
   // de Supabase están escritos a mano y no declaran la relación, aunque en la
   // base exista (la misma consulta la hace `getListItems`).
-  const pendientes = (rows ?? []).map((row) => ({
+  const items: ListItem[] = (rows ?? []).map((row) => ({
     id: row.id,
-    name:
-      (row.product as unknown as { name: string } | null)?.name ?? row.name,
+    name: (row.product as unknown as { name: string } | null)?.name ?? row.name,
+    isChecked: row.is_checked,
   }));
-  if (pendientes.length === 0) return speak(SPEECH.listItemUnknown(spoken));
+  if (items.length === 0) return noEncontrado;
 
-  const elegido = pickCandidate(spoken, pendientes);
-  if (!elegido) {
-    // Se distingue «no está» de «hay varios parecidos»: con lo segundo, repetir
-    // con el nombre completo sí sirve de algo, y soltar «no lo encuentro» sobre
-    // algo que SÍ está apuntado es lo que hace desconfiar de la skill.
-    const parecidos = pendientes.filter(
-      (item) => pickCandidate(spoken, [item]) !== null,
-    );
-    return speak(
-      parecidos.length > 1
-        ? SPEECH.listItemAmbiguous(parecidos.map((item) => item.name))
-        : SPEECH.listItemUnknown(spoken),
-    );
+  const elegido = pickCandidate(spoken, items);
+  if (elegido) return { ok: true, item: elegido, items };
+
+  // Se distingue «no está» de «hay varios parecidos»: con lo segundo, repetir
+  // con el nombre completo sí sirve de algo, y soltar «no lo encuentro» sobre
+  // algo que SÍ está apuntado es lo que hace desconfiar de la skill.
+  const parecidos = items.filter(
+    (item) => pickCandidate(spoken, [item]) !== null,
+  );
+  if (parecidos.length <= 1) return noEncontrado;
+  return {
+    ok: false,
+    response: speak(
+      SPEECH.listItemAmbiguous(parecidos.map((item) => item.name)),
+    ),
+  };
+}
+
+/** El artículo dicho, o la respuesta de por qué no se puede seguir. */
+async function prepareListItem(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<
+  | { ok: true; link: AlexaLink; item: ListItem; items: ListItem[] }
+  | { ok: false; response: AlexaResponse }
+> {
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked;
+
+  const spoken = getSlotValue(intent, "producto");
+  if (!spoken) {
+    return {
+      ok: false,
+      response: speak(SPEECH.listMissing, {
+        endSession: false,
+        reprompt: SPEECH.fallbackReprompt,
+      }),
+    };
   }
+
+  const found = await findListItem(admin, linked.link, spoken);
+  if (!found.ok) return found;
+  return { ok: true, link: linked.link, item: found.item, items: found.items };
+}
+
+/**
+ * «Ya he comprado el pan»: tacha el artículo, sin tocar existencias. Es lo mismo
+ * que pulsarlo en la app — el stock entra al finalizar la compra, y sumarlo aquí
+ * lo contaría dos veces.
+ */
+async function handleMarcarComprado(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<AlexaResponse> {
+  const prepared = await prepareListItem(admin, envelope, intent);
+  if (!prepared.ok) return prepared.response;
+  const { link, item, items } = prepared;
+
+  if (item.isChecked) return speak(SPEECH.listAlreadyChecked(item.name));
 
   const { error } = await admin
     .from("shopping_list_items")
@@ -1298,14 +1341,46 @@ async function handleMarcarComprado(
       checked_at: new Date().toISOString(),
     })
     .eq("household_id", link.householdId)
-    .eq("id", elegido.id);
+    .eq("id", item.id);
   if (error) return speak(SPEECH.error);
 
+  const quedaban = items.filter((i) => !i.isChecked).length;
   return speak(
-    pendientes.length === 1
-      ? SPEECH.listCheckedLast(elegido.name)
-      : SPEECH.listChecked(elegido.name),
+    quedaban === 1
+      ? SPEECH.listCheckedLast(item.name)
+      : SPEECH.listChecked(item.name),
   );
+}
+
+/**
+ * «Quita el pan de la lista»: lo BORRA, que no es lo mismo que tacharlo.
+ *
+ * La diferencia importa de verdad y no es cosmética: al finalizar la compra,
+ * todo lo tachado se da de alta en el inventario. Tachar lo que en realidad ya
+ * no quieres te metería en casa un pan que nunca compraste, y ese stock fantasma
+ * se arrastra luego al histórico de precios y a los avisos.
+ *
+ * Se borra sin pedir confirmación, igual que en la app, pero aquí no hay
+ * deshacer: la red es repetir el nombre completo en la respuesta —para que un
+ * error se oiga al instante— y no borrar nada cuando hay varios parecidos.
+ */
+async function handleBorrarDeLista(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<AlexaResponse> {
+  const prepared = await prepareListItem(admin, envelope, intent);
+  if (!prepared.ok) return prepared.response;
+  const { link, item } = prepared;
+
+  const { error } = await admin
+    .from("shopping_list_items")
+    .delete()
+    .eq("household_id", link.householdId)
+    .eq("id", item.id);
+  if (error) return speak(SPEECH.error);
+
+  return speak(SPEECH.listDeleted(item.name));
 }
 
 /**
@@ -1583,6 +1658,8 @@ async function routeIntent(
       return handleApuntarLista(admin, envelope, intent);
     case "MarcarCompradoIntent":
       return handleMarcarComprado(admin, envelope, intent);
+    case "BorrarDeListaIntent":
+      return handleBorrarDeLista(admin, envelope, intent);
     case "ConsultarStockIntent":
       return handleConsultarStock(admin, envelope, intent);
     case "AgotarStockIntent":
@@ -1635,6 +1712,7 @@ const MUTATING_INTENTS = new Set([
   "SumarStockIntent",
   "ApuntarListaIntent",
   "MarcarCompradoIntent",
+  "BorrarDeListaIntent",
   "AgotarStockIntent",
   "EstropearStockIntent",
   "AMAZON.YesIntent",

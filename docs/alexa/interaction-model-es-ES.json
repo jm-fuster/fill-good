@@ -264,17 +264,40 @@
             "ya he comprado el {producto}",
             "ya he comprado la {producto}",
             "ya he cogido {producto}",
+            "ya he cogido el {producto}",
             "ya tengo {producto} en el carro",
+            "ya tengo el {producto} en el carro",
             "marca {producto} como comprado",
             "marca {producto} como comprada",
+            "marca el {producto} como comprado",
             "tacha {producto}",
+            "tacha el {producto}",
+            "tacha la {producto}",
             "tacha {producto} de la lista",
             "tacha el {producto} de la lista",
+            "coge {producto} de la lista"
+          ]
+        },
+        {
+          "name": "BorrarDeListaIntent",
+          "slots": [{ "name": "producto", "type": "TipoProducto" }],
+          "samples": [
             "quita {producto} de la lista",
             "quita el {producto} de la lista",
             "quita la {producto} de la lista",
+            "quita los {producto} de la lista",
             "borra {producto} de la lista",
-            "coge {producto} de la lista"
+            "borra el {producto} de la lista",
+            "borra la {producto} de la lista",
+            "elimina {producto} de la lista",
+            "elimina el {producto} de la lista",
+            "saca {producto} de la lista",
+            "saca el {producto} de la lista",
+            "quita {producto} de la compra",
+            "ya no hace falta {producto}",
+            "ya no hace falta el {producto}",
+            "ya no necesito {producto}",
+            "ya no necesitamos {producto}"
           ]
         },
         {
@@ -682,6 +705,20 @@
           ]
         },
         {
+          "name": "BorrarDeListaIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "producto",
+              "type": "TipoProducto",
+              "confirmationRequired": false,
+              "elicitationRequired": true,
+              "prompts": { "elicitation": "Elicit.Slot.productoBorrado" }
+            }
+          ]
+        },
+        {
           "name": "VincularIntent",
           "confirmationRequired": false,
           "prompts": {},
@@ -752,6 +789,13 @@
         "variations": [
           { "type": "PlainText", "value": "¿Qué tacho de la lista?" },
           { "type": "PlainText", "value": "Dime qué has comprado." }
+        ]
+      },
+      {
+        "id": "Elicit.Slot.productoBorrado",
+        "variations": [
+          { "type": "PlainText", "value": "¿Qué borro de la lista?" },
+          { "type": "PlainText", "value": "Dime qué quito de la lista." }
         ]
       },
       {

@@ -112,9 +112,9 @@ function fakeAdmin(tables: Record<string, TableData>): SupabaseClient<Database> 
               return chain;
             };
           }
-          if (prop === "insert" || prop === "update") {
-            return (datos: Record<string, unknown>) => {
-              escrituras.push({ tabla: table, op: prop, datos });
+          if (prop === "insert" || prop === "update" || prop === "delete") {
+            return (datos?: Record<string, unknown>) => {
+              escrituras.push({ tabla: table, op: prop, datos: datos ?? {} });
               return chain;
             };
           }
@@ -926,6 +926,85 @@ async function main() {
     check(
       "al tachar el último se dice que ya está todo",
       text(r) === SPEECH.listCheckedLast("Pan"),
+      text(r),
+    );
+  }
+  {
+    limpiarEscrituras(CON_AVISOS);
+    const r = await run(
+      intentRequest("MarcarCompradoIntent", { producto: slot("producto", "arroz") }),
+      undefined,
+      CON_AVISOS,
+    );
+    check(
+      "lo que ya estaba tachado se dice, no se vuelve a tachar",
+      text(r) === SPEECH.listAlreadyChecked("Arroz"),
+      text(r),
+    );
+    check(
+      "y no se escribe nada",
+      tomarEscrituras(CON_AVISOS, "shopping_list_items").length === 0,
+    );
+  }
+
+  console.log("\n12. Borrar de la lista NO es tacharlo");
+  {
+    limpiarEscrituras(CON_AVISOS);
+    const r = await run(
+      intentRequest("BorrarDeListaIntent", { producto: slot("producto", "el pan") }),
+      undefined,
+      CON_AVISOS,
+    );
+    check("se borra y se dice", text(r) === SPEECH.listDeleted("Pan"), text(r));
+    const escrituras = tomarEscrituras(CON_AVISOS, "shopping_list_items");
+    check(
+      "con un borrado de verdad",
+      escrituras.length === 1 && escrituras[0].op === "delete",
+      escrituras,
+    );
+    // La razón de ser de este intent: lo tachado entra al inventario al
+    // finalizar la compra, así que tachar lo que ya no quieres metería en casa
+    // un producto que nunca se compró.
+    check(
+      "y sin marcarlo como comprado por el camino",
+      !escrituras.some((e) => e.datos.is_checked === true),
+      escrituras,
+    );
+  }
+  {
+    limpiarEscrituras(CON_AVISOS);
+    const r = await run(
+      intentRequest("BorrarDeListaIntent", { producto: slot("producto", "atún") }),
+      undefined,
+      CON_AVISOS,
+    );
+    check(
+      "borrar algo que no está tampoco inventa nada",
+      text(r) === SPEECH.listItemUnknown("atún") &&
+        tomarEscrituras(CON_AVISOS, "shopping_list_items").length === 0,
+      text(r),
+    );
+  }
+  {
+    const dosLeches = fakeAdmin({
+      alexa_links: LINK,
+      shopping_lists: LISTA,
+      shopping_list_items: {
+        list: [
+          { id: "a", name: "Leche entera", is_checked: false, product: null },
+          { id: "b", name: "Leche desnatada", is_checked: false, product: null },
+        ],
+      },
+    });
+    const r = await run(
+      intentRequest("BorrarDeListaIntent", { producto: slot("producto", "leche") }),
+      undefined,
+      dosLeches,
+    );
+    check(
+      "y con dos parecidos NO se borra a boleo",
+      text(r) === SPEECH.listItemAmbiguous(["Leche entera", "Leche desnatada"]) &&
+        tomarEscrituras(dosLeches, "shopping_list_items").length === 0,
       text(r),
     );
   }

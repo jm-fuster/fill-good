@@ -22,6 +22,7 @@ solo cambiar de fase en la consola de Amazon (ver
 | Vaciar lo que se ha acabado | Decir qué se puede cocinar con lo que hay |
 | **Distinguir lo tirado de lo gastado** | |
 | **Tachar de la lista lo ya comprado** | |
+| **Borrar de la lista lo que ya no hace falta** | |
 | Leer la lista de la compra | |
 | Decir qué caduca pronto | |
 | Decir qué toca hoy de menú | |
@@ -141,7 +142,8 @@ Frases que entiende, por verbo:
 | Tirar (a la basura) | he tirado · hemos tirado · he tenido que tirar · tira |
 | Estropearse (tirar TODO) | se ha estropeado · se ha puesto malo · se ha echado a perder · he tirado todo el |
 | Apuntar en la lista | apunta · apúntame · necesito · me falta · hay que comprar · compra · pon en la lista · mete en la lista · tráete |
-| Tachar de la lista | ya he comprado · tacha · quita … de la lista · borra … de la lista |
+| Tachar de la lista (comprado) | ya he comprado · ya he cogido · tacha · marca como comprado |
+| Borrar de la lista (ya no hace falta) | quita … de la lista · borra … de la lista · saca … de la lista · ya no necesito |
 | Consultar | cuánto queda · cuánto tengo · cuánto hay · queda · hay |
 | Vaciar (poner a 0) | se ha acabado · se acabó · se ha terminado · ya no queda · me he quedado sin · vacía · pon a cero |
 | Leer la lista | qué hay en la lista · qué tengo que comprar · léeme la lista · cómo va la lista |
@@ -169,7 +171,11 @@ Alexa, dile a mi despensa que he tirado dos yogures
 Alexa, dile a mi despensa que se ha estropeado el pan
    → «Vaya. He tirado lo que quedaba de Pan de molde. ¿Lo apunto en la lista?»
 Alexa, dile a mi despensa que ya he comprado el pan
-   → «Hecho, Pan de molde queda tachado de la lista.»
+   → «Hecho, he tachado Pan de molde de la lista.»   (lo tachado entra al
+      inventario al finalizar la compra)
+Alexa, dile a mi despensa que quite el pan de la lista
+   → «Hecho, he borrado Pan de molde de la lista.»   (ya no lo quieres: no
+      entra en el inventario)
 Alexa, pregunta a mi despensa qué hay en la lista
    → «En la lista tienes Pan, Leche entera y Papel de cocina.»
 Alexa, pregunta a mi despensa qué caduca
@@ -364,20 +370,32 @@ distinción es la única que puede sostener una historia de ahorro creíble. Igu
 que con «se ha acabado», hay dos verbos porque hay dos cantidades: «he tirado dos
 yogures» descuenta dos, y «se ha estropeado el pan» vacía lo que hubiera.
 
-**Al tachar de la lista («ya he comprado el pan»):** marca el artículo como
-comprado y **no toca las existencias**, exactamente igual que pulsarlo en la app
-— el stock entra al finalizar la compra, y sumarlo aquí lo contaría dos veces. El
-emparejado se hace **contra la lista y no contra el catálogo**: la lista admite
+**Tachar y borrar de la lista NO son lo mismo**, y confundirlos tiene
+consecuencias: al finalizar la compra, **todo lo tachado se da de alta en el
+inventario**. Tachar lo que en realidad ya no quieres te metería en casa un
+producto que nunca compraste, y ese stock fantasma se arrastra después al
+histórico de precios y a los avisos. Por eso son dos órdenes:
+
+| Dices | Qué pasa |
+| --- | --- |
+| «ya he comprado el pan», «tacha el pan» | se marca como comprado → entra al inventario al finalizar la compra |
+| «quita el pan **de la lista**», «borra el pan» | se **borra** el artículo → no entra en ningún sitio |
+
+Las dos emparejan **contra la lista y no contra el catálogo**: la lista admite
 texto libre sin producto detrás, así que un artículo puede no existir en el
-catálogo y aun así estar ahí esperando. Si hay varios parecidos no se tacha
+catálogo y aun así estar ahí esperando. Si hay varios parecidos no se toca
 ninguno y se pide el nombre completo; se distingue eso de «no está en la lista»
 porque decir «no lo encuentro» sobre algo que sí está apuntado es lo que hace
-desconfiar de la skill.
+desconfiar de la skill. Tachar algo ya tachado no repite la escritura, lo dice.
+
+Borrar no pide confirmación —igual que en la app—, pero por voz **no hay
+deshacer**: la red es repetir el nombre completo en la respuesta, para que un
+error se oiga al instante, y no borrar nada cuando hay dudas.
 
 Ojo con la colisión: «quita el pan» resta del **inventario**, y «quita el pan **de
-la lista**» tacha. Todas las muestras de tachar exigen decir «de la lista» o un
-verbo inequívoco («tacha», «ya he comprado»), la misma política con la que se
-resolvió el solape de «añade».
+la lista**» borra de la lista. Todas las muestras de la lista exigen decir «de la
+lista» o un verbo inequívoco («tacha», «ya he comprado»), la misma política con
+la que se resolvió el solape de «añade».
 
 **Al preguntar por la lista, las caducidades o el menú:** son las tres únicas
 órdenes que **no escriben nada** (más allá de marcar el vínculo como usado), y
