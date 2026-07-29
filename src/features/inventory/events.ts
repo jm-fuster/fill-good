@@ -37,15 +37,21 @@ export type StockEventInput = {
  * tipo, autor) en los últimos {@link EVENT_FOLD_WINDOW_MS} ms tiene la misma
  * unidad, suma sobre él (requiere la política de UPDATE de F5) en vez de insertar
  * otra fila.
+ *
+ * Devuelve el id de la fila afectada —la que se creó o aquella sobre la que se
+ * agrupó— o null si no se pudo anotar. Casi todos los llamantes lo ignoran; lo
+ * necesita el deshacer de la skill de Alexa, que para revertir una orden tiene
+ * que descontar de ESE evento exactamente lo que la orden le sumó (y no borrarlo
+ * entero, que con el agrupado se llevaría por delante movimientos anteriores).
  */
 export async function recordStockEvent(
   supabase: Supabase,
   input: StockEventInput,
-): Promise<void> {
+): Promise<string | null> {
   try {
     const { householdId, productId, quantity, unit, kind, userId, fold } =
       input;
-    if (!(quantity > 0)) return;
+    if (!(quantity > 0)) return null;
 
     if (fold) {
       const since = new Date(Date.now() - EVENT_FOLD_WINDOW_MS).toISOString();
@@ -69,19 +75,25 @@ export async function recordStockEvent(
             created_at: new Date().toISOString(),
           })
           .eq("id", last.id);
-        return;
+        return last.id;
       }
     }
 
-    await supabase.from("inventory_events").insert({
-      household_id: householdId,
-      product_id: productId,
-      quantity,
-      unit,
-      kind,
-      created_by: userId,
-    });
+    const { data: created } = await supabase
+      .from("inventory_events")
+      .insert({
+        household_id: householdId,
+        product_id: productId,
+        quantity,
+        unit,
+        kind,
+        created_by: userId,
+      })
+      .select("id")
+      .single();
+    return created?.id ?? null;
   } catch {
     // Best-effort: el historial no debe tumbar la operación principal.
+    return null;
   }
 }

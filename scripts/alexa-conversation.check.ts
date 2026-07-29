@@ -155,6 +155,8 @@ const YOGURES = fakeAdmin({
   products: { list: [YOGUR_NATURAL] },
   inventory_items: SEIS_YOGURES,
   shopping_lists: LISTA,
+  // El id que devuelve el insert del historial: es lo que anota el deshacer.
+  inventory_events: { single: { id: "ev-nuevo" } },
 });
 
 /** Dos productos que se parecen: el caso que obliga a preguntar. */
@@ -1005,6 +1007,164 @@ async function main() {
       "y con dos parecidos NO se borra a boleo",
       text(r) === SPEECH.listItemAmbiguous(["Leche entera", "Leche desnatada"]) &&
         tomarEscrituras(dosLeches, "shopping_list_items").length === 0,
+      text(r),
+    );
+  }
+
+  console.log("\n13. Deshacer la última orden");
+  {
+    limpiarEscrituras(YOGURES);
+    await run(
+      intentRequest("RestarStockIntent", {
+        producto: slot("producto", "yogures"),
+        cantidad: slot("cantidad", "2"),
+      }),
+      undefined,
+      YOGURES,
+    );
+    const anotado = tomarEscrituras(YOGURES, "alexa_requests").find(
+      (e) => e.datos.undo !== undefined,
+    );
+    const plan = anotado?.datos.undo as
+      | { lots: { id: string; quantity: number | null }[]; events: unknown[] }
+      | undefined;
+    check(
+      "restar anota cómo deshacerse, con la cantidad PREVIA del lote",
+      plan?.lots.length === 1 &&
+        plan.lots[0].id === "i1" &&
+        plan.lots[0].quantity === 6,
+      plan,
+    );
+    check(
+      "y el evento de historial que creó",
+      Array.isArray(plan?.events) && plan.events.length === 1,
+      plan?.events,
+    );
+    check(
+      "junto al altavoz que la dictó",
+      anotado?.datos.link_id === "l1",
+      anotado?.datos.link_id,
+    );
+  }
+  {
+    const conDeshacer = fakeAdmin({
+      alexa_links: LINK,
+      alexa_requests: {
+        single: {
+          request_id: "r-anterior",
+          undo: {
+            productId: "p1",
+            name: "Yogur natural",
+            lots: [{ id: "i1", quantity: 6 }],
+            events: [{ id: "ev1", quantity: 2 }],
+          },
+          undone_at: null,
+        },
+      },
+      // El evento llevaba 5: la orden le sumó 2, así que deben quedar 3.
+      inventory_events: { single: { quantity: 5 } },
+    });
+    const r = await run(intentRequest("DeshacerIntent"), undefined, conDeshacer);
+    check("deshace y lo dice", text(r) === SPEECH.undone("Yogur natural"), text(r));
+
+    const lotes = escriturasDe(conDeshacer).filter(
+      (e) => e.tabla === "inventory_items",
+    );
+    check(
+      "devolviendo el lote a la cantidad que tenía",
+      lotes.length === 1 && lotes[0].op === "update" && lotes[0].datos.quantity === 6,
+      lotes,
+    );
+    const eventos = escriturasDe(conDeshacer).filter(
+      (e) => e.tabla === "inventory_events",
+    );
+    check(
+      "y descontando del historial solo lo suyo, sin borrar el evento entero",
+      eventos.length === 1 && eventos[0].op === "update" && eventos[0].datos.quantity === 3,
+      eventos,
+    );
+    check(
+      "la orden queda marcada como deshecha",
+      escriturasDe(conDeshacer).some(
+        (e) => e.tabla === "alexa_requests" && e.datos.undone_at !== undefined,
+      ),
+    );
+  }
+  {
+    // Lote que creó la propia orden: deshacerlo es que no exista, no dejarlo a 0.
+    const conAlta = fakeAdmin({
+      alexa_links: LINK,
+      alexa_requests: {
+        single: {
+          request_id: "r-alta",
+          undo: {
+            productId: "p1",
+            name: "Arroz",
+            lots: [{ id: "nuevo", quantity: null }],
+            events: [],
+          },
+          undone_at: null,
+        },
+      },
+    });
+    const r = await run(intentRequest("DeshacerIntent"), undefined, conAlta);
+    const lotes = escriturasDe(conAlta).filter((e) => e.tabla === "inventory_items");
+    check(
+      "una fila que no existía antes se borra, no se deja en cero",
+      text(r) === SPEECH.undone("Arroz") &&
+        lotes.length === 1 &&
+        lotes[0].op === "delete",
+      lotes,
+    );
+  }
+  {
+    const r = await run(intentRequest("DeshacerIntent"), undefined, VACIO);
+    check(
+      "sin nada reciente que deshacer se dice",
+      text(r) === SPEECH.nothingToUndo,
+      text(r),
+    );
+  }
+  {
+    const yaDeshecho = fakeAdmin({
+      alexa_links: LINK,
+      alexa_requests: {
+        single: {
+          request_id: "r-ya",
+          undo: { productId: "p1", name: "Pan", lots: [], events: [] },
+          undone_at: "2026-07-29T10:00:00Z",
+        },
+      },
+    });
+    const r = await run(intentRequest("DeshacerIntent"), undefined, yaDeshecho);
+    check(
+      "y no se deshace dos veces",
+      text(r) === SPEECH.alreadyUndone,
+      text(r),
+    );
+    check(
+      "sin tocar el inventario",
+      escriturasDe(yaDeshecho).filter((e) => e.tabla === "inventory_items")
+        .length === 0,
+    );
+  }
+  {
+    const corrupto = fakeAdmin({
+      alexa_links: LINK,
+      alexa_requests: {
+        single: {
+          request_id: "r-raro",
+          undo: { productId: "p1", lots: "esto no es una lista" },
+          undone_at: null,
+        },
+      },
+    });
+    const r = await run(intentRequest("DeshacerIntent"), undefined, corrupto);
+    check(
+      "un plan con una forma que no reconocemos no se aplica a medias",
+      text(r) === SPEECH.nothingToUndo &&
+        escriturasDe(corrupto).filter((e) => e.tabla === "inventory_items")
+          .length === 0,
       text(r),
     );
   }

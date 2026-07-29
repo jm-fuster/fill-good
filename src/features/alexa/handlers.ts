@@ -130,6 +130,12 @@ type VoiceTarget = {
   unit: UnitType | null;
   /** TODOS los lotes del producto, del que antes caduca al que después. */
   lots: StockLot[];
+  /**
+   * La petición de Amazon que dio esta orden. Viaja hasta aquí para poder
+   * anotar en su propia fila cómo deshacerla: es la misma fila que ya sirve de
+   * cerrojo contra los reintentos, así que no hace falta inventar otra clave.
+   */
+  requestId: string | null;
 };
 
 async function findLink(
@@ -305,22 +311,84 @@ async function recordSteps(
   productId: string,
   steps: DeductionStep[],
   kind: InventoryEventKind,
-): Promise<void> {
+): Promise<UndoEvent[]> {
   const takenByUnit = new Map<UnitType, number>();
   for (const step of steps) {
     takenByUnit.set(step.unit, (takenByUnit.get(step.unit) ?? 0) + step.taken);
   }
+  const events: UndoEvent[] = [];
   for (const [unit, quantity] of takenByUnit) {
-    await recordStockEvent(admin, {
+    const rounded = roundQuantity(quantity);
+    const id = await recordStockEvent(admin, {
       householdId: link.householdId,
       productId,
-      quantity: roundQuantity(quantity),
+      quantity: rounded,
       unit,
       kind,
       userId: link.userId,
       fold: true,
     });
+    if (id) events.push({ id, quantity: rounded });
   }
+  return events;
+}
+
+/** Cantidad que ESTA orden le sumó a un evento del historial (ver `fold`). */
+type UndoEvent = { id: string; quantity: number };
+
+/**
+ * Cómo se deshace una orden. Se guarda el ESTADO PREVIO y no el movimiento: un
+ * descuento repartido entre varios lotes no se revierte sumando lo mismo de
+ * vuelta —el reparto podría salir distinto—, sino devolviendo cada lote a la
+ * cantidad que tenía.
+ */
+type UndoPlan = {
+  productId: string;
+  name: string;
+  /** Cantidad previa de cada lote tocado; null = la fila no existía. */
+  lots: { id: string; quantity: number | null }[];
+  events: UndoEvent[];
+};
+
+/**
+ * Estrecha lo guardado en `alexa_requests.undo`. Viene de la base como jsonb, o
+ * sea que se comprueba como cualquier otra entrada: ante una forma que no
+ * reconocemos se contesta que no hay nada que deshacer, que es mucho mejor que
+ * aplicar a medias un plan que no entendemos.
+ */
+function storedUndo(value: unknown): UndoPlan | null {
+  if (typeof value !== "object" || value === null) return null;
+  const plan = value as Partial<UndoPlan>;
+  if (typeof plan.productId !== "string" || typeof plan.name !== "string") {
+    return null;
+  }
+  if (!Array.isArray(plan.lots) || !Array.isArray(plan.events)) return null;
+  const lotesOk = plan.lots.every(
+    (lot) =>
+      typeof lot?.id === "string" &&
+      (lot.quantity === null || typeof lot.quantity === "number"),
+  );
+  const eventosOk = plan.events.every(
+    (event) => typeof event?.id === "string" && typeof event.quantity === "number",
+  );
+  return lotesOk && eventosOk ? (value as UndoPlan) : null;
+}
+
+/**
+ * Anota cómo deshacer la orden recién aplicada, en la misma fila que ya sirve de
+ * cerrojo contra los reintentos. Best-effort: si falla, «deshaz» no encontrará
+ * nada, que es exactamente donde estábamos antes de que esto existiera.
+ */
+async function recordUndo(
+  admin: Admin,
+  target: VoiceTarget,
+  plan: UndoPlan,
+): Promise<void> {
+  if (!target.requestId) return;
+  await admin
+    .from("alexa_requests")
+    .update({ link_id: target.link.id, undo: plan })
+    .eq("request_id", target.requestId);
 }
 
 /**
@@ -386,7 +454,13 @@ async function prepareVoiceTarget(
     return { ok: false, response: askWhich(spoken, candidatos, accion, said) };
   }
 
-  const target = await loadTarget(admin, link, resolution.productId, said);
+  const target = await loadTarget(
+    admin,
+    link,
+    resolution.productId,
+    said,
+    envelope.request.requestId ?? null,
+  );
   if (!target) return { ok: false, notFound: true, spoken };
   return { ok: true, target };
 }
@@ -402,6 +476,7 @@ async function loadTarget(
   link: AlexaLink,
   productId: string,
   said: { quantity: number | null; unit: UnitType | null },
+  requestId: string | null,
 ): Promise<VoiceTarget | null> {
   const products = await loadProducts(admin, link.householdId, [productId]);
   const product = products.get(productId);
@@ -433,6 +508,7 @@ async function loadTarget(
     quantity: said.quantity ?? 1,
     unit: said.unit,
     lots,
+    requestId,
   };
 }
 
@@ -535,9 +611,27 @@ async function runRestar(
       if (plan.steps.length === 0) {
         return offerToList(SPEECH.noStock(name), productId, name);
       }
+      // Las cantidades previas se leen ANTES de tocar nada: `lots` es el estado
+      // del inventario tal como estaba al empezar la orden.
+      const previas = plan.steps.map((step) => ({
+        id: step.lotId,
+        quantity: lots.find((lot) => lot.id === step.lotId)?.quantity ?? null,
+      }));
       const applied = await applySteps(admin, link, plan.steps);
       if (!applied) return speak(SPEECH.error);
-      await recordSteps(admin, link, productId, plan.steps, flavor.kind);
+      const events = await recordSteps(
+        admin,
+        link,
+        productId,
+        plan.steps,
+        flavor.kind,
+      );
+      await recordUndo(admin, target, {
+        productId,
+        name,
+        lots: previas,
+        events,
+      });
 
       // Quedarse a cero no es el final de la conversación, es el principio de la
       // siguiente: se ofrece apuntarlo, igual que al decir «se ha acabado».
@@ -609,23 +703,38 @@ async function runSumar(
     case "add": {
       // La caducidad no se toca a propósito: por voz no se puede dictar, así que
       // ni se inventa en las filas nuevas ni se pisa la de las existentes.
-      const { error } = plan.lotId
-        ? await admin
-            .from("inventory_items")
-            .update({ quantity: plan.newQuantity, updated_by: link.userId })
-            .eq("household_id", link.householdId)
-            .eq("id", plan.lotId)
-        : await admin.from("inventory_items").insert({
+      //
+      // `previa` es lo que hay que restaurar al deshacer: la cantidad anterior
+      // del lote, o null cuando la fila la crea esta misma orden (y entonces
+      // deshacer no es bajarla a cero, es que no exista).
+      let lotId = plan.lotId;
+      let previa: number | null = null;
+      if (plan.lotId) {
+        previa = lots.find((lot) => lot.id === plan.lotId)?.quantity ?? null;
+        const { error } = await admin
+          .from("inventory_items")
+          .update({ quantity: plan.newQuantity, updated_by: link.userId })
+          .eq("household_id", link.householdId)
+          .eq("id", plan.lotId);
+        if (error) return speak(SPEECH.error);
+      } else {
+        const { data: creado, error } = await admin
+          .from("inventory_items")
+          .insert({
             household_id: link.householdId,
             product_id: productId,
             location: plan.location,
             quantity: plan.newQuantity,
             unit: plan.unit,
             updated_by: link.userId,
-          });
-      if (error) return speak(SPEECH.error);
+          })
+          .select("id")
+          .single();
+        if (error) return speak(SPEECH.error);
+        lotId = creado?.id ?? null;
+      }
 
-      await recordStockEvent(admin, {
+      const eventId = await recordStockEvent(admin, {
         householdId: link.householdId,
         productId,
         quantity: plan.added,
@@ -633,6 +742,12 @@ async function runSumar(
         kind: "restocked",
         userId: link.userId,
         fold: true,
+      });
+      await recordUndo(admin, target, {
+        productId,
+        name,
+        lots: lotId ? [{ id: lotId, quantity: previa }] : [],
+        events: eventId ? [{ id: eventId, quantity: plan.added }] : [],
       });
       // El eco repite lo que dijo el usuario («500 gramos»), no su equivalente en
       // la unidad del lote («0,5 kilos»): así se nota al instante si Alexa
@@ -998,7 +1113,7 @@ async function runAgotar(
       .eq("id", lot.id);
     if (error) return speak(SPEECH.error);
   }
-  await recordSteps(
+  const events = await recordSteps(
     admin,
     link,
     productId,
@@ -1010,6 +1125,12 @@ async function runAgotar(
     })),
     kind,
   );
+  await recordUndo(admin, target, {
+    productId,
+    name: product.name,
+    lots: conStock.map((lot) => ({ id: lot.id, quantity: lot.quantity })),
+    events,
+  });
 
   return speak(
     kind === "discarded"
@@ -1128,6 +1249,7 @@ async function resume(
   accion: VoiceAction,
   producto: { id: string; name: string },
   said: { quantity: number | null; unit: UnitType | null },
+  requestId: string | null,
 ): Promise<AlexaResponse> {
   // La lista no necesita lotes ni existencias: va por otro camino desde el
   // principio (admite texto libre, no descuenta nada).
@@ -1148,7 +1270,7 @@ async function resume(
     );
   }
 
-  const target = await loadTarget(admin, link, producto.id, said);
+  const target = await loadTarget(admin, link, producto.id, said, requestId);
   if (!target) return speak(SPEECH.productUnknown(producto.name));
   switch (accion) {
     case "restar":
@@ -1195,13 +1317,18 @@ async function handleRespuesta(
   if (!linked.ok) return linked.response;
   const link = linked.link;
 
+  const requestId = envelope.request.requestId ?? null;
   if (pendiente.tipo === "elegir") {
     const elegido = chooseCandidate(intent, pendiente.candidatos);
     if (!elegido) return askAgain(pendiente);
-    return resume(admin, link, pendiente.accion, elegido, {
-      quantity: pendiente.cantidad,
-      unit: pendiente.unidad,
-    });
+    return resume(
+      admin,
+      link,
+      pendiente.accion,
+      elegido,
+      { quantity: pendiente.cantidad, unit: pendiente.unidad },
+      requestId,
+    );
   }
 
   // Faltaba saber cuánto, y en qué. Sin las dos cosas no se puede seguir: la
@@ -1215,7 +1342,113 @@ async function handleRespuesta(
     pendiente.accion,
     { id: pendiente.productId, name: pendiente.name },
     { quantity, unit },
+    requestId,
   );
+}
+
+/**
+ * Cuánto hacia atrás se puede deshacer. Corto a propósito: «deshaz» dicho media
+ * hora después casi nunca se refiere a lo que el servidor cree, y revertir por
+ * sorpresa un movimiento que ya diste por bueno es peor que no deshacer nada.
+ */
+const UNDO_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * Descuenta del historial lo que la orden le sumó. No se borra el evento sin
+ * más: con el agrupado (`fold`), esa misma fila puede llevar movimientos
+ * anteriores que nadie ha pedido deshacer. Solo desaparece si se queda a cero.
+ */
+async function revertEvents(
+  admin: Admin,
+  link: AlexaLink,
+  events: UndoEvent[],
+): Promise<void> {
+  for (const event of events) {
+    const { data } = await admin
+      .from("inventory_events")
+      .select("quantity")
+      .eq("household_id", link.householdId)
+      .eq("id", event.id)
+      .maybeSingle();
+    if (!data) continue;
+    const resto = roundQuantity(Number(data.quantity) - event.quantity);
+    if (resto > 0) {
+      await admin
+        .from("inventory_events")
+        .update({ quantity: resto })
+        .eq("household_id", link.householdId)
+        .eq("id", event.id);
+    } else {
+      await admin
+        .from("inventory_events")
+        .delete()
+        .eq("household_id", link.householdId)
+        .eq("id", event.id);
+    }
+  }
+}
+
+/**
+ * «Deshaz lo último»: devuelve el inventario a como estaba antes de la última
+ * orden dictada por ESTE altavoz. Es la red de seguridad que faltaba — si Alexa
+ * entiende «doce» en vez de «dos», hasta ahora la única salida era abrir el
+ * móvil.
+ *
+ * Solo se deshace **la última** orden y **una sola vez**. Encadenar deshaceres
+ * por voz, sin una pantalla que enseñe por dónde vas, es la forma más rápida de
+ * dejar el inventario peor que al empezar.
+ */
+async function handleDeshacer(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+): Promise<AlexaResponse> {
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked.response;
+  const link = linked.link;
+
+  const [{ data: row }] = await Promise.all([
+    admin
+      .from("alexa_requests")
+      .select("request_id, undo, undone_at")
+      .eq("link_id", link.id)
+      .not("undo", "is", null)
+      .gte("created_at", new Date(Date.now() - UNDO_WINDOW_MS).toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    touchLink(admin, link),
+  ]);
+  if (!row) return speak(SPEECH.nothingToUndo);
+  if (row.undone_at) return speak(SPEECH.alreadyUndone);
+
+  const plan = storedUndo(row.undo);
+  if (!plan) return speak(SPEECH.nothingToUndo);
+
+  for (const lot of plan.lots) {
+    // Sin cantidad previa, la fila la creó la propia orden: deshacerla no es
+    // dejarla a cero (eso sería un «agotado» que nunca existió), es borrarla.
+    const { error } =
+      lot.quantity === null
+        ? await admin
+            .from("inventory_items")
+            .delete()
+            .eq("household_id", link.householdId)
+            .eq("id", lot.id)
+        : await admin
+            .from("inventory_items")
+            .update({ quantity: lot.quantity, updated_by: link.userId })
+            .eq("household_id", link.householdId)
+            .eq("id", lot.id);
+    if (error) return speak(SPEECH.error);
+  }
+  await revertEvents(admin, link, plan.events);
+
+  await admin
+    .from("alexa_requests")
+    .update({ undone_at: new Date().toISOString() })
+    .eq("request_id", row.request_id);
+
+  return speak(SPEECH.undone(plan.name));
 }
 
 type ListItem = { id: string; name: string; isChecked: boolean };
@@ -1660,6 +1893,8 @@ async function routeIntent(
       return handleMarcarComprado(admin, envelope, intent);
     case "BorrarDeListaIntent":
       return handleBorrarDeLista(admin, envelope, intent);
+    case "DeshacerIntent":
+      return handleDeshacer(admin, envelope);
     case "ConsultarStockIntent":
       return handleConsultarStock(admin, envelope, intent);
     case "AgotarStockIntent":
@@ -1715,6 +1950,9 @@ const MUTATING_INTENTS = new Set([
   "BorrarDeListaIntent",
   "AgotarStockIntent",
   "EstropearStockIntent",
+  // Deshacer escribe tanto como lo que deshace. Su propia fila queda con `undo`
+  // a null, así que nunca se encuentra a sí misma como «lo último deshacible».
+  "DeshacerIntent",
   "AMAZON.YesIntent",
   "VincularIntent",
   // Retoma una orden interrumpida, así que hereda lo que escribiera aquella: un

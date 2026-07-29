@@ -17,9 +17,10 @@ solo cambiar de fase en la consola de Amazon (ver
 | --- | --- |
 | Restar stock por voz | Crear productos del catálogo por voz |
 | Sumar stock por voz | Dictar la caducidad |
-| Apuntar en la lista de la compra | **Deshacer la última orden** |
-| Consultar cuánto queda | Marcar una receta como cocinada |
-| Vaciar lo que se ha acabado | Decir qué se puede cocinar con lo que hay |
+| Apuntar en la lista de la compra | Marcar una receta como cocinada |
+| Consultar cuánto queda | Decir qué se puede cocinar con lo que hay |
+| Vaciar lo que se ha acabado | Deshacer cambios de la LISTA (solo inventario) |
+| **Deshacer la última orden del inventario** | |
 | **Distinguir lo tirado de lo gastado** | |
 | **Tachar de la lista lo ya comprado** | |
 | **Borrar de la lista lo que ya no hace falta** | |
@@ -46,7 +47,7 @@ solo cambiar de fase en la consola de Amazon (ver
 | Vinculación (subpágina de Ajustes) | `src/features/alexa/components/alexa-setup.tsx` |
 | Aviso en vivo del canje (Realtime) | `src/features/alexa/use-realtime-links.ts` |
 | Modelo de interacción | [`interaction-model-es-ES.json`](./interaction-model-es-ES.json) |
-| Tablas | `supabase/migrations/20260729120000_alexa_links.sql` · `20260729160000_alexa_multiusuario.sql` |
+| Tablas | `supabase/migrations/20260729120000_alexa_links.sql` · `20260729160000_alexa_multiusuario.sql` · `20260729180000_alexa_deshacer.sql` |
 
 ## 1. Crear la skill
 
@@ -144,6 +145,7 @@ Frases que entiende, por verbo:
 | Apuntar en la lista | apunta · apúntame · necesito · me falta · hay que comprar · compra · pon en la lista · mete en la lista · tráete |
 | Tachar de la lista (comprado) | ya he comprado · ya he cogido · tacha · marca como comprado |
 | Borrar de la lista (ya no hace falta) | quita … de la lista · borra … de la lista · saca … de la lista · ya no necesito |
+| Deshacer | deshaz · deshaz lo último · me he equivocado · no era eso · vuelve atrás |
 | Consultar | cuánto queda · cuánto tengo · cuánto hay · queda · hay |
 | Vaciar (poner a 0) | se ha acabado · se acabó · se ha terminado · ya no queda · me he quedado sin · vacía · pon a cero |
 | Leer la lista | qué hay en la lista · qué tengo que comprar · léeme la lista · cómo va la lista |
@@ -176,6 +178,8 @@ Alexa, dile a mi despensa que ya he comprado el pan
 Alexa, dile a mi despensa que quite el pan de la lista
    → «Hecho, he borrado Pan de molde de la lista.»   (ya no lo quieres: no
       entra en el inventario)
+Alexa, dile a mi despensa que deshaga lo último
+   → «Hecho, lo he deshecho. Yogur natural vuelve a estar como estaba.»
 Alexa, pregunta a mi despensa qué hay en la lista
    → «En la lista tienes Pan, Leche entera y Papel de cocina.»
 Alexa, pregunta a mi despensa qué caduca
@@ -369,6 +373,36 @@ Merece intents propios porque gastar y desperdiciar no son lo mismo, y esa
 distinción es la única que puede sostener una historia de ahorro creíble. Igual
 que con «se ha acabado», hay dos verbos porque hay dos cantidades: «he tirado dos
 yogures» descuenta dos, y «se ha estropeado el pan» vacía lo que hubiera.
+
+**Al deshacer («deshaz lo último», «me he equivocado»):** devuelve el inventario
+a como estaba justo antes de la última orden dictada por **ese** altavoz, dentro
+de una ventana de **10 minutos**. Es la red que faltaba: si Alexa entiende «doce»
+en vez de «dos», hasta ahora la única salida era abrir el móvil.
+
+Cómo, y por qué así:
+
+1. **Se guarda el estado previo, no el movimiento.** Cada orden que escribe anota
+   en su propia fila de `alexa_requests` —la misma que ya hace de cerrojo contra
+   los reintentos— qué cantidad tenía cada lote antes de tocarlo. Revertir
+   sumando lo mismo de vuelta no valdría: un descuento repartido entre varios
+   lotes podría re-repartirse distinto.
+2. **Una fila que creó la propia orden se borra**, no se deja a cero: un
+   «agotado» que nunca existió es basura en el inventario.
+3. **El historial se descuenta, no se borra.** Con el agrupado (`fold`), un
+   evento puede llevar también movimientos anteriores que nadie pidió deshacer;
+   solo desaparece si se queda a cero.
+4. **Solo la última orden, y una sola vez.** Encadenar deshaceres por voz, sin
+   una pantalla que enseñe por dónde vas, es la forma más rápida de dejar el
+   inventario peor que al empezar. Un segundo «deshaz» contesta que ya está.
+5. **No cubre la lista de la compra**, a propósito: lo que se apunta o se tacha
+   ya se arregla hablando («borra el pan de la lista»), y el daño de una
+   equivocación ahí es un toque en el móvil. En el inventario no había salida.
+
+Por qué hizo falta migración y no bastaba con `inventory_events`: esos eventos se
+agrupan dentro de una ventana de 15 minutos, así que dos órdenes seguidas del
+mismo producto quedan **soldadas en una sola fila** y «deshaz lo último» desharía
+las dos. Desactivar el agrupado por voz llenaría el historial de líneas de una
+unidad, que es justo lo que ese agrupado vino a evitar.
 
 **Tachar y borrar de la lista NO son lo mismo**, y confundirlos tiene
 consecuencias: al finalizar la compra, **todo lo tachado se da de alta en el

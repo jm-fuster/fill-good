@@ -230,7 +230,7 @@ export const SPEECH = {
     "tres leches, apunta pan, o cuánta leche queda. También puedo leerte la " +
     "lista, decirte qué caduca pronto y qué toca hoy de menú, apuntar lo que " +
     "tires, tachar lo que ya hayas comprado y borrar de la lista lo que ya no " +
-    "haga falta. Si este altavoz " +
+    "haga falta. Si me equivoco, dime: deshaz lo último. Si este altavoz " +
     "todavía no está vinculado, genera un código en Fill Good, en Ajustes, " +
     "Alexa, y dime: vincula con código, y los seis dígitos.",
   helpReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
@@ -342,6 +342,14 @@ export const SPEECH = {
   // Borrar NO es tachar: lo tachado acaba en el inventario al finalizar la
   // compra, y esto es justo lo que ya no quieres.
   listDeleted: (name: string) => `Hecho, he borrado ${name} de la lista.`,
+
+  // Deshacer. La respuesta nombra el producto para que se oiga si se ha
+  // deshecho otra cosa distinta de la que el usuario tenía en la cabeza.
+  undone: (name: string) =>
+    `Hecho, lo he deshecho. ${name} vuelve a estar como estaba.`,
+  nothingToUndo:
+    "No tengo nada reciente que deshacer. Si hace un rato de eso, míralo en Fill Good.",
+  alreadyUndone: "Eso ya lo había deshecho.",
   listItemUnknown: (spoken: string) =>
     `No encuentro ${spoken} entre lo que queda por comprar.`,
   listItemAmbiguous: (names: string[]) =>

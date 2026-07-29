@@ -1070,16 +1070,31 @@ export type Database = {
           // features/alexa/handlers.ts).
           response: unknown;
           created_at: string;
+          // Qué altavoz dictó la orden, para poder buscar «lo último que hizo
+          // este Echo». Null en las peticiones que no llegaron a resolver el
+          // vínculo (sin vincular, o error antes de llegar ahí).
+          link_id: string | null;
+          // jsonb: cómo se deshace esta orden (cantidades previas de los lotes
+          // tocados y eventos de historial creados). Se tipa `unknown` por el
+          // mismo motivo que `response`: hay que estrecharlo al leerlo.
+          undo: unknown;
+          undone_at: string | null;
         };
         Insert: {
           request_id: string;
           response?: unknown;
           created_at?: string;
+          link_id?: string | null;
+          undo?: unknown;
+          undone_at?: string | null;
         };
         Update: {
           request_id?: string;
           response?: unknown;
           created_at?: string;
+          link_id?: string | null;
+          undo?: unknown;
+          undone_at?: string | null;
         };
         Relationships: [];
       };

@@ -301,6 +301,24 @@
           ]
         },
         {
+          "name": "DeshacerIntent",
+          "slots": [],
+          "samples": [
+            "deshaz",
+            "deshazlo",
+            "deshaz lo último",
+            "deshacer",
+            "deshaz eso",
+            "anula lo último",
+            "anula eso",
+            "me he equivocado",
+            "no era eso",
+            "eso está mal",
+            "vuelve atrás",
+            "échalo para atrás"
+          ]
+        },
+        {
           "name": "LeerListaIntent",
           "slots": [],
           "samples": [
