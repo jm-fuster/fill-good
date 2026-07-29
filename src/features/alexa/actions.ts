@@ -79,6 +79,9 @@ export async function unlinkAlexaAction(
     .eq("id", linkId);
   if (error) return { error: "No se pudo desvincular el altavoz." };
 
-  revalidatePath("/perfil");
+  // La subpágina muestra la lista de altavoces; el índice de Ajustes muestra el
+  // contador en su fila («1 altavoz»), así que los dos se quedan obsoletos.
+  revalidatePath("/ajustes/alexa");
+  revalidatePath("/ajustes");
   return { ok: true };
 }

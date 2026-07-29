@@ -33,7 +33,7 @@ solo cambiar de fase en la consola de Amazon (ver
 | Resolución de producto y planes de resta/suma (puro) | `src/features/alexa/resolve.ts` |
 | Deduplicación de la lista (L3), compartida con la app | `src/features/shopping-list/items.ts` |
 | Textos hablados y tarjetas | `src/features/alexa/respond.ts` |
-| Card de vinculación en /perfil | `src/features/alexa/components/alexa-card.tsx` |
+| Vinculación (subpágina de Ajustes) | `src/features/alexa/components/alexa-setup.tsx` |
 | Aviso en vivo del canje (Realtime) | `src/features/alexa/use-realtime-links.ts` |
 | Modelo de interacción | [`interaction-model-es-ES.json`](./interaction-model-es-ES.json) |
 | Tablas | `supabase/migrations/20260729120000_alexa_links.sql` · `20260729160000_alexa_multiusuario.sql` |
@@ -75,7 +75,7 @@ igual que el cron con `CRON_SECRET`). Después de definirla en Vercel hay que
 
 ## 3. Vincular el altavoz
 
-La card de **Perfil → Alexa** lo guía en tres pasos, en este orden porque el
+La pantalla de **Ajustes → Alexa** lo guía en tres pasos, en este orden porque el
 primero no ocurre en esta app y es donde se atasca quien estrena la skill:
 
 1. **Habilitar la skill** en la cuenta de Amazon (en modo desarrollo ya lo está
@@ -94,11 +94,11 @@ primero no ocurre en esta app y es donde se atasca quien estrena la skill:
 
 El vínculo guarda **qué hogar** y **qué usuario**: los movimientos dictados por
 voz se firman con esa persona en el historial del inventario. Cualquier miembro
-del hogar puede revocarlo desde la misma card.
+del hogar puede revocarlo desde la misma pantalla.
 
 Si el Echo recibe una orden **sin estar vinculado**, además de decirlo deja una
 **tarjeta** en la app de Alexa (Actividad) con los tres pasos y el enlace a
-`/perfil` — una frase hablada se olvida, y lo que hace falta está en el móvil. El
+`/ajustes/alexa` — una frase hablada se olvida, y lo que hace falta está en el móvil. El
 enlace sale de `VERCEL_PROJECT_PRODUCTION_URL`, que Vercel define solo.
 
 ## 4. Probar
@@ -167,7 +167,7 @@ Con `npm run dev` en marcha:
 curl -s -X POST http://localhost:3000/api/alexa -H "Content-Type: application/json" -d '{"version":"1.0","session":{"new":true,"sessionId":"s1","application":{"applicationId":"amzn1.ask.skill.tu-skill-id"},"user":{"userId":"amzn1.ask.account.PRUEBA"}},"request":{"type":"LaunchRequest","requestId":"r1","timestamp":"2026-07-29T10:00:00Z","locale":"es-ES"}}'
 ```
 
-**Vincular** (cambia `428391` por un código recién generado en /perfil)
+**Vincular** (cambia `428391` por un código recién generado en Ajustes → Alexa)
 
 ```bash
 curl -s -X POST http://localhost:3000/api/alexa -H "Content-Type: application/json" -d '{"version":"1.0","session":{"new":true,"sessionId":"s1","application":{"applicationId":"amzn1.ask.skill.tu-skill-id"},"user":{"userId":"amzn1.ask.account.PRUEBA"}},"request":{"type":"IntentRequest","requestId":"r2","timestamp":"2026-07-29T10:00:00Z","locale":"es-ES","intent":{"name":"VincularIntent","slots":{"codigo":{"name":"codigo","value":"428391"}}}}}'
@@ -375,7 +375,7 @@ iOS/Android, y esto es una PWA.
 ## Limitaciones conocidas
 
 - **`amazon_user_id` cambia** si deshabilitas y vuelves a habilitar la skill en
-  la app de Alexa: el vínculo antiguo queda huérfano en /perfil (revócalo) y hay
+  la app de Alexa: el vínculo antiguo queda huérfano en Ajustes → Alexa (revócalo) y hay
   que vincular otra vez.
 - **Un Echo apunta a un solo hogar**: `amazon_user_id` es único en `alexa_links`.
   Con varios hogares hay que activar el que toque **antes** de generar el código,

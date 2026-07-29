@@ -3,9 +3,11 @@ import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
 import { Home, Info, ListOrdered, Palette, Store } from "lucide-react";
 
+import { AlexaIcon } from "@/components/icons/alexa-icon";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { getAlexaLinks } from "@/features/alexa/queries";
 import { DeleteAccountRow } from "@/features/account/components/delete-account-row";
 import { ExportDataRow } from "@/features/account/components/export-data-row";
 import { LogoutRow } from "@/features/account/components/logout-row";
@@ -39,6 +41,15 @@ function storeChainsValue({ chains, source }: HouseholdChains): string {
 }
 
 /**
+ * Estado de la vinculación con Alexa. «Sin vincular» y no «0 altavoces»: la fila
+ * la lee alguien que quizá no sabe todavía que esto se puede vincular.
+ */
+function alexaValue(count: number): string {
+  if (count === 0) return "Sin vincular";
+  return count === 1 ? "1 altavoz" : `${count} altavoces`;
+}
+
+/**
  * Índice de Ajustes: lista escaneable de grupos, con lo denso en subpáginas
  * (/hogar, /notificaciones, /orden-tienda, /acerca-de). Solo se queda inline lo
  * que se resuelve de un toque (tema) o en un modal corto (objetivo de gasto).
@@ -50,12 +61,14 @@ export default async function AjustesPage() {
     getAiConsent(),
   ]);
   const email = user?.primaryEmailAddress?.emailAddress;
-  const [members, storeChains] = household
+  const [members, storeChains, alexaLinks] = household
     ? await Promise.all([
         getHouseholdMembers(household.id),
         getHouseholdChains(),
+        getAlexaLinks(household.id),
       ])
-    : [[], { chains: [], source: "manual" as const }];
+    : [[], { chains: [], source: "manual" as const }, []];
+  const alexaLinkCount = alexaLinks.length;
   // Mismo orden de preferencia que /perfil (el nombre del hogar manda): son la
   // misma persona y verse con dos nombres según la pantalla resulta inquietante.
   const displayName =
@@ -116,6 +129,15 @@ export default async function AjustesPage() {
 
         <SettingsGroup title="Preferencias">
           <PushStatusRow />
+          {household ? (
+            <SettingsLinkRow
+              href="/ajustes/alexa"
+              icon={AlexaIcon}
+              label="Alexa"
+              hint="Maneja el inventario y la lista por voz"
+              value={alexaValue(alexaLinkCount)}
+            />
+          ) : null}
           <AiConsentSettingRow consented={aiConsent.consented} />
           <SettingsControlRow
             icon={Palette}

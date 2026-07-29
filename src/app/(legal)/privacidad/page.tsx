@@ -108,7 +108,7 @@ export default function PrivacidadPage() {
             altavoz): ejecución del contrato — art. 6.1.b del RGPD. La
             vinculación es voluntaria y solo existe si generas un código y lo
             dictas al altavoz; puedes deshacerla en cualquier momento desde
-            Perfil.
+            Ajustes.
           </li>
           <li>
             <strong>Leer tickets y generar menús con IA</strong>: tu
@@ -243,7 +243,7 @@ export default function PrivacidadPage() {
           En cuanto a Alexa: los códigos de vinculación caducan a los diez
           minutos, y el identificador y la respuesta de cada orden de voz se
           borran al día siguiente. El vínculo con un altavoz dura mientras lo
-          quieras: desaparece cuando lo revocas desde Perfil, cuando cualquier
+          quieras: desaparece cuando lo revocas desde Ajustes, cuando cualquier
           miembro del hogar lo retira y cuando borras tu cuenta.
         </p>
         <p>

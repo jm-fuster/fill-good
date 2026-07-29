@@ -77,7 +77,7 @@ export function speak(
 
 /**
  * Tarjeta con los pasos para vincular: el punto exacto en el que se atasca quien
- * estrena la skill, porque oye «genera un código en Perfil» y no tiene dónde
+ * estrena la skill, porque oye «genera un código en Ajustes» y no tiene dónde
  * pinchar.
  *
  * El enlace sale de `VERCEL_PROJECT_PRODUCTION_URL`, que Vercel define en cada
@@ -90,10 +90,10 @@ export function linkCard(): SimpleCard {
     type: "Simple",
     title: "Vincula este altavoz con Fill Good",
     content:
-      "1. Abre Fill Good y entra en Perfil.\n" +
-      "2. En la tarjeta de Alexa, pulsa «Vincular un altavoz».\n" +
+      "1. Abre Fill Good y entra en Ajustes, y luego en Alexa.\n" +
+      "2. Pulsa «Generar el código»: son seis dígitos.\n" +
       "3. Dime: «Alexa, dile a mi despensa que vincule con código», y los seis dígitos.\n" +
-      (host ? `\nhttps://${host}/perfil` : ""),
+      (host ? `\nhttps://${host}/ajustes/alexa` : ""),
   };
 }
 
@@ -163,8 +163,8 @@ export const SPEECH = {
     "Puedo restar lo que gastes, sumar lo que traigas, apuntar en la lista de la " +
     "compra y decirte cuánto queda. Di, por ejemplo: quita dos yogures, añade " +
     "tres leches, apunta pan, o cuánta leche queda. Si este altavoz todavía no " +
-    "está vinculado, genera un código en el perfil de Fill Good y dime: vincula " +
-    "con código, y los seis dígitos.",
+    "está vinculado, genera un código en Fill Good, en Ajustes, Alexa, y dime: " +
+    "vincula con código, y los seis dígitos.",
   helpReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
   stop: "Hasta luego.",
   fallback: `No te he entendido. Prueba a decir: ${EXAMPLE}.`,
@@ -177,13 +177,13 @@ export const SPEECH = {
     "Voy con retraso, pero lo estoy apuntando. Míralo en Fill Good dentro de un momento.",
   notLinked:
     "Este altavoz todavía no está vinculado a ningún hogar. Abre Fill Good, " +
-    "entra en Perfil, genera un código de Alexa y dime: vincula con código, " +
-    "seguido de los seis dígitos.",
+    "entra en Ajustes y luego en Alexa, genera un código y dime: vincula con " +
+    "código, seguido de los seis dígitos.",
   linkCodeMissing:
-    "Dime el código de seis dígitos que te da Fill Good en la pantalla de Perfil.",
+    "Dime el código de seis dígitos que te da Fill Good en Ajustes, Alexa.",
   linkCodeInvalid:
-    "Ese código no vale o ya ha caducado. Genera uno nuevo en el perfil de Fill " +
-    "Good y vuelve a decírmelo.",
+    "Ese código no vale o ya ha caducado. Genera uno nuevo en Fill Good, en " +
+    "Ajustes, Alexa, y vuelve a decírmelo.",
   linkRateLimited:
     "Has probado demasiados códigos seguidos. Espera unos minutos y vuelve a " +
     "intentarlo.",

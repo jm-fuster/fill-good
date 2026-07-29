@@ -42,8 +42,8 @@ CÓMO SE PONE EN MARCHA
 
 Necesitas una cuenta gratuita de Fill Good y vincular el altavoz una sola vez:
 
-1. Entra en Fill Good, en Perfil, y busca la tarjeta de Alexa.
-2. Pulsa «Vincular un altavoz»: te da un código de seis dígitos.
+1. Entra en Fill Good, abre Ajustes y entra en Alexa.
+2. Pulsa «Generar el código»: son seis dígitos.
 3. Di: «Alexa, dile a mi despensa que vincule con código», y los seis dígitos.
 
 El vínculo es de todo el hogar y puedes deshacerlo cuando quieras desde esa misma pantalla.
@@ -123,7 +123,7 @@ This skill manages the pantry inventory and shopping list of a household kept in
 How to test:
 
 1. Open https://fillgood.jorgemolinafuster.com and sign in with the test account above.
-2. Go to "Perfil" and find the "Alexa" card. Press "Vincular un altavoz". A 6-digit code appears, valid for 10 minutes and single use.
+2. Go to "Ajustes" (Settings) and open "Alexa". Press "Generar el código". A 6-digit code appears, valid for 10 minutes and single use.
 3. Say: "Alexa, dile a mi despensa que vincule con código" followed by the six digits. The skill replies "Listo, este altavoz ya está vinculado con ...".
 4. Then try:
    - "Alexa, dile a mi despensa que reste dos yogures"  (subtract 2 yogurts from the inventory)
@@ -162,7 +162,7 @@ inventario y la lista de la compra hablándole a un Echo, sin sacar el móvil.
 
 1. Acepta la invitación aquí (con la MISMA cuenta de Amazon que usa tu Echo):
    ENLACE_DE_LA_BETA
-2. Entra en Fill Good → Perfil → Alexa y pulsa «Vincular un altavoz».
+2. Entra en Fill Good → Ajustes → Alexa y pulsa «Generar el código».
 3. Dile al Echo: «Alexa, dile a mi despensa que vincule con código», y los seis
    dígitos que te salgan.
 

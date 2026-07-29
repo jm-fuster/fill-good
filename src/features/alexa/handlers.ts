@@ -224,7 +224,7 @@ async function prepareVoiceTarget(
 
   const [matchData] = await Promise.all([
     loadHouseholdMatchData(admin, link.householdId),
-    // Delata en /perfil los vínculos que ya no se usan. Best-effort.
+    // Delata en Ajustes los vínculos que ya no se usan. Best-effort.
     admin
       .from("alexa_links")
       .update({ last_used_at: new Date().toISOString() })

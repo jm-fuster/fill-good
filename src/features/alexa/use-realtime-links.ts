@@ -7,13 +7,13 @@ import { useSession } from "@clerk/nextjs";
 import { useSupabaseBrowser } from "@/lib/supabase/client";
 
 /**
- * Refresca /perfil en el instante en que un Echo canjea el código. Quien vincula
+ * Refresca /ajustes/alexa en el instante en que un Echo canjea el código. Quien vincula
  * está mirando la pantalla con el código puesto y hablándole al altavoz desde
  * otra habitación: sin esto no sabe si ha funcionado hasta que recarga a mano, y
  * es justo el momento en el que se abandona la configuración.
  *
  * Solo se escucha el INSERT (el momento «vinculado»). Las revocaciones salen de
- * la propia app, que ya revalida /perfil por su cuenta.
+ * la propia app, que ya revalida /ajustes/alexa por su cuenta.
  *
  * Mismo patrón que `useRealtimeList`: los tokens de Clerk caducan ~60 s, así que
  * hay que refrescar el auth de Realtime mientras la suscripción siga viva.

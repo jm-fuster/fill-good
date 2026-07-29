@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -47,7 +46,12 @@ export function SettingsGroup({
 }
 
 type RowContent = {
-  icon?: LucideIcon;
+  /**
+   * Los iconos son de lucide salvo alguna marca de terceros (`AlexaIcon`), que
+   * no está en la librería: de ahí el tipo estructural en vez de `LucideIcon`.
+   * Cualquier componente que acepte `className` y `aria-hidden` encaja.
+   */
+  icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
   label: string;
   /** Segunda línea explicativa; opcional para no engordar las filas obvias. */
   hint?: string;

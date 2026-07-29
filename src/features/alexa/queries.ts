@@ -11,7 +11,7 @@ export type AlexaLinkView = {
 };
 
 /**
- * Altavoces vinculados al hogar (para la card de /perfil). El filtro por
+ * Altavoces vinculados al hogar (para la pantalla /ajustes/alexa). El filtro por
  * `household_id` es obligatorio aunque la RLS ya limite a los hogares de los que
  * eres miembro: con varios hogares, sin él saldrían mezclados los de todos.
  *
