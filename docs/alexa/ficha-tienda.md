@@ -98,19 +98,49 @@ Terms of Use URL:   https://TU-DOMINIO/terminos
 
 ## Privacy & Compliance
 
-| Pregunta | Respuesta | Por qué |
-| --- | --- | --- |
-| ¿Recoge información personal de los usuarios? | **Sí** | Guarda el identificador opaco de Alexa y actúa sobre el contenido del hogar. Está descrito en `/privacidad` (§2, §3, §4 y §7) |
-| ¿Está dirigida a menores? | **No** | La app no se dirige a menores de 14 años (§9 de la política) |
-| ¿Contiene publicidad? | **No** | No hay publicidad ni analítica de terceros |
-| ¿Usa compras dentro de la skill? | **No** | — |
-| ¿Cumple las leyes de exportación de EE. UU.? | **Sí** | Marcar la casilla |
-| ¿Contiene contenido para adultos, apuestas o alcohol? | **No** | — |
+Los campos son literalmente estos cuatro más las instrucciones de prueba:
 
-**Testing instructions** (solo para certificación, no para la beta): el revisor
-necesita una cuenta de Fill Good para generar el código, así que hay que darle
-credenciales de una cuenta de prueba con productos ya en el inventario, y los
-tres pasos de la vinculación.
+| Pregunta del formulario | Respuesta | Por qué |
+| --- | --- | --- |
+| *Does this Alexa skill collect users' personal information?* | **Yes** | El `amazon_user_id` es opaco, pero se guarda asociado a una cuenta de Fill Good identificada, y la skill actúa sobre el contenido del hogar. Está descrito en `/privacidad` (§2, §3, §4 y §7), que es la URL que pide al marcar «Yes» |
+| *Is this skill directed to … children under the age of 13?* | **No** | Pregunta si va *dirigida* a menores, no si un menor podría usarla. La app no se dirige a menores de 14 (§9 de la política) |
+| *Does this skill contain advertising?* | **No** | No hay publicidad ni analítica de terceros |
+| *Export Compliance* | **Marcar** | Autocertificación estándar: no hay criptografía propia más allá de TLS |
+
+**Testing Instructions.** El asterisco está en el campo de texto, **no** en las
+casillas de Username/Password: para la **beta** basta con el texto y las
+credenciales pueden quedar vacías, porque no hay revisor. Para **certificar** hay
+que crear una **cuenta de prueba dedicada** (email aparte, con productos ya en el
+inventario) y poner sus credenciales ahí — nunca la cuenta personal, que esas
+credenciales las lee el equipo de certificación de Amazon.
+
+El texto va en inglés porque lo lee el equipo de certificación, con las frases en
+español tal cual hay que decirlas:
+
+```text
+This skill manages the pantry inventory and shopping list of a household kept in the Fill Good web app (a PWA). It does NOT use Alexa account linking: the speaker is paired by dictating a 6-digit code generated inside the app, so there is no OAuth login involved.
+
+How to test:
+
+1. Open https://TU-DOMINIO and sign in with the test account above.
+2. Go to "Perfil" and find the "Alexa" card. Press "Vincular un altavoz". A 6-digit code appears, valid for 10 minutes and single use.
+3. Say: "Alexa, dile a mi despensa que vincule con código" followed by the six digits. The skill replies "Listo, este altavoz ya está vinculado con ...".
+4. Then try:
+   - "Alexa, dile a mi despensa que reste dos yogures"  (subtract 2 yogurts from the inventory)
+   - "Alexa, pregunta a mi despensa cuánta leche queda"  (ask how much milk is left)
+   - "Alexa, dile a mi despensa que apunte pan"  (add bread to the shopping list)
+   Every change is visible immediately in the app, under "Inventario" and "Lista".
+
+Notes for the reviewer:
+
+- Before pairing, any command answers "Este altavoz todavía no está vinculado a ningún hogar..." and sends a card with the pairing steps. That is the expected unlinked behaviour, not an error.
+- The test account already has products in its inventory (milk, yogurt, rice). This is required: the skill never creates new catalogue products by voice, on purpose, so that a bad transcription cannot pollute the price history.
+- Only one pairing code is alive per user: generating a new one invalidates the previous.
+```
+
+> Ojo si dos revisores prueban a la vez con la misma cuenta: solo hay **un código
+> vivo por usuario**, así que el segundo en generarlo invalida el del primero. Por
+> eso se avisa en las notas.
 
 ## Texto de invitación a la beta
 
