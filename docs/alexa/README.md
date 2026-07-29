@@ -1,8 +1,8 @@
-# Skill de Alexa «la despensa»
+# Skill de Alexa «mi despensa»
 
 Restar stock del inventario hablándole a un Echo de la cocina:
 
-> «Alexa, dile a la despensa que reste dos yogures»
+> «Alexa, dile a mi despensa que reste dos yogures»
 
 La skill vive **en modo desarrollo**: funciona indefinidamente en los dispositivos
 de tu propia cuenta de Amazon, sin certificación, sin ficha en la tienda y sin
@@ -36,10 +36,18 @@ privacidad de la skill y account linking OAuth).
    de Amazon que usa el Echo** (si no, el altavoz no verá la skill).
 2. **Create Skill** → nombre: `Fill Good` → idioma **Español (ES)** →
    modelo **Custom** → hosting **Provision your own**.
-3. En **Invocation** comprueba que el nombre de invocación es `la despensa`.
+3. En **Invocation** comprueba que el nombre de invocación es `mi despensa`.
+   > **No lo cambies a «la despensa»**, aunque suene mejor: Amazon rechaza los
+   > nombres de DOS palabras que contengan artículos o preposiciones (`la`, `el`,
+   > `un`, `de`, `en`…). «mi» es posesivo, así que pasa. Y una sola palabra
+   > (`despensa`) tampoco vale: solo se permite si es una marca y demuestras que
+   > es tuya.
 4. **Build → Interaction Model → JSON Editor**: pega el contenido de
-   [`interaction-model-es-ES.json`](./interaction-model-es-ES.json) y pulsa
-   **Save Model** y luego **Build Model** (tarda un par de minutos).
+   [`interaction-model-es-ES.json`](./interaction-model-es-ES.json), pulsa
+   **Save Model** y después **Build Model** (tarda un par de minutos).
+   > *Save* guarda, pero el modelo que atiende al altavoz no cambia hasta que
+   > termina el *Build*. Si el Echo sigue respondiendo con la invocación de la
+   > plantilla («hola mundo»), es que falta este paso.
 
 ## 2. Apuntar la skill a tu endpoint
 
@@ -63,7 +71,7 @@ igual que el cron con `CRON_SECRET`). Después de definirla en Vercel hay que
 2. Sale un código de 6 dígitos válido **10 minutos** y de **un solo uso**.
 3. Dile al Echo:
 
-   > «Alexa, dile a la despensa que vincule con código 428391»
+   > «Alexa, dile a mi despensa que vincule con código 428391»
 
 4. Debe contestar «Listo, este altavoz ya está vinculado con \<tu hogar>».
 
@@ -75,7 +83,7 @@ del hogar puede revocarlo desde la misma card.
 
 **Simulador** (Build → **Test**, con el modo en *Development*): manda peticiones
 **firmadas de verdad**, así que ejercita toda la verificación de `verify.ts`.
-Escribe `abre la despensa` o `dile a la despensa que reste dos yogures`.
+Escribe `abre mi despensa` o `dile a mi despensa que reste dos yogures`.
 
 **Echo físico**: el dispositivo debe estar en **es-ES** y en la misma cuenta de
 Amazon. No hace falta habilitar nada: en modo desarrollo la skill ya está
@@ -84,10 +92,10 @@ disponible para tu cuenta.
 Frases que entiende (todas admiten «resta», «quita», «descuenta», «he gastado»):
 
 ```text
-Alexa, dile a la despensa que reste dos yogures
-Alexa, dile a la despensa que quite medio kilo de arroz
-Alexa, dile a la despensa que descuente 200 gramos de queso
-Alexa, abre la despensa            → bienvenida y se queda escuchando
+Alexa, dile a mi despensa que reste dos yogures
+Alexa, dile a mi despensa que quite medio kilo de arroz
+Alexa, dile a mi despensa que descuente 200 gramos de queso
+Alexa, abre mi despensa            → bienvenida y se queda escuchando
 ```
 
 ## 5. Desarrollo local (sin Amazon)

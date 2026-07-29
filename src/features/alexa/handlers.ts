@@ -32,7 +32,7 @@ import {
 } from "./schemas";
 
 /**
- * Lógica de la skill «la despensa». Corre con el cliente service-role, así que
+ * Lógica de la skill «mi despensa». Corre con el cliente service-role, así que
  * NO HAY RLS: el aislamiento por hogar depende de que cada consulta lleve el
  * `household_id` del vínculo ya verificado. Ese id no sale nunca del payload de
  * Amazon, solo de la fila de `alexa_links` que se buscó por `amazon_user_id`.

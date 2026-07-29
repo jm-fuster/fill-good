@@ -1,8 +1,8 @@
 -- ============================================================================
--- Vinculación con Alexa: skill doméstica «la despensa» (restar stock por voz)
+-- Vinculación con Alexa: skill doméstica «mi despensa» (restar stock por voz)
 -- ============================================================================
 -- Con un Echo en la cocina se puede ajustar el inventario con las manos
--- ocupadas: «Alexa, dile a la despensa que reste dos yogures». La skill vive en
+-- ocupadas: «Alexa, dile a mi despensa que reste dos yogures». La skill vive en
 -- modo desarrollo (uso doméstico, sin certificación ni publicación), así que el
 -- webhook /api/alexa recibe peticiones de Amazon SIN sesión de Clerk: se
 -- autentica con la firma de Amazon y opera con la service-role key, que salta

@@ -42,7 +42,7 @@ function expiryTime(expiresAt: string): string {
  *
  * El código se enseña en grande y se acompaña de la frase LITERAL que hay que
  * decir: la parte difícil de una skill no es el código, es acordarse de que la
- * orden empieza por «Alexa, dile a la despensa…».
+ * orden empieza por «Alexa, dile a mi despensa…».
  */
 export function AlexaCard({
   householdName,
@@ -89,7 +89,7 @@ export function AlexaCard({
           Alexa
         </CardTitle>
         <CardDescription>
-          Resta lo que gastes sin tocar el móvil: «Alexa, dile a la despensa que
+          Resta lo que gastes sin tocar el móvil: «Alexa, dile a mi despensa que
           reste dos yogures».
         </CardDescription>
       </CardHeader>
@@ -135,7 +135,7 @@ export function AlexaCard({
                 {live.code}
               </p>
               <p className="text-center text-sm">
-                Di: «Alexa, dile a la despensa que vincule con código{" "}
+                Di: «Alexa, dile a mi despensa que vincule con código{" "}
                 {live.code}».
               </p>
               <p className="text-center text-xs text-muted-foreground">

@@ -19,7 +19,7 @@ export type AlexaResponse = {
 
 /**
  * Respuesta hablada. `endSession: false` deja el micrófono abierto para que el
- * usuario conteste sin repetir «Alexa, dile a la despensa…»; en ese caso Amazon
+ * usuario conteste sin repetir «Alexa, dile a mi despensa…»; en ese caso Amazon
  * exige un reprompt (si el usuario calla, lo repite y cierra).
  */
 export function speak(
@@ -93,7 +93,7 @@ export const SPEECH = {
   stop: "Hasta luego.",
   fallback: `No te he entendido. Prueba a decir: ${EXAMPLE}.`,
   fallbackReprompt: `¿Qué quito? Por ejemplo: ${EXAMPLE}.`,
-  error: "Ha habido un problema con la despensa. Inténtalo otra vez en un momento.",
+  error: "Ha habido un problema con tu despensa. Inténtalo otra vez en un momento.",
   notLinked:
     "Este altavoz todavía no está vinculado a ningún hogar. Abre Fill Good, " +
     "entra en Perfil, genera un código de Alexa y dime: vincula con código, " +

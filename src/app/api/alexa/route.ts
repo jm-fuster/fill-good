@@ -4,7 +4,7 @@ import { alexaEnvelopeSchema, getApplicationId } from "@/features/alexa/schemas"
 import { safeEqual, verifyAlexaRequest } from "@/features/alexa/verify";
 
 /**
- * Webhook de la skill de Alexa «la despensa»: permite restar stock del
+ * Webhook de la skill de Alexa «mi despensa»: permite restar stock del
  * inventario hablándole a un Echo de la cocina. Guía de configuración de la
  * skill (developer console, modelo de interacción y pruebas) en
  * `docs/alexa/README.md`.
