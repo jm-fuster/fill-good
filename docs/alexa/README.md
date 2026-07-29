@@ -330,13 +330,35 @@ invocación genérico y puede chocar con otra skill ya publicada, y habrá que d
 credenciales de una cuenta de prueba en las instrucciones de certificación, porque
 el revisor necesita un código de la app para poder probar la skill.
 
-Si la vinculación por código llegara a estorbar, la alternativa es **account
-linking OAuth**: dos rutas (`authorize` + `token`), una tabla de tokens y una
-pantalla de consentimiento, con el handler leyendo `session.user.accessToken` y
-cayéndose al `amazon_user_id` actual para no romper los vínculos existentes. El
-*app-to-app account linking* (habilitar y vincular con un botón desde la propia
-app) **no** sirve aquí: Amazon solo lo soporta en apps nativas iOS/Android, y esto
-es una PWA.
+### Por qué seguimos dictando un código (decisión del 29-jul-2026)
+
+Lo estándar es **account linking OAuth** —lo que hacen Spotify, Hue o Bring!—:
+habilitas la skill, pulsas «Vincular cuenta», se abre tu login dentro de la app de
+Alexa y listo, sin dictar nada. Es más cómodo y es lo que espera la certificación.
+Se evaluó y **se aplazó a propósito**: para una beta de dos o tres personas de
+confianza, el código se explica en un mensaje, y montar un servidor OAuth antes de
+tener un solo dato de uso real es construir a ciegas. La beta ES la prueba: si los
+testers se atascan al vincular, ya hay motivo; si no, no había problema que
+resolver.
+
+Lo que haría falta el día que se haga: dos rutas (`authorize` + `token`), una tabla
+de tokens, una pantalla de consentimiento —que además arregla una verruga: dejaría
+**elegir el hogar explícitamente** en vez de heredar el de la cookie—, el handler
+leyendo `session.user.accessToken` (hoy el esquema zod solo se queda con `userId`:
+hay que añadirlo, porque descarta las claves desconocidas) con respaldo en el
+`amazon_user_id` para no romper los vínculos vivos, y la tarjeta `LinkAccount`, que
+Amazon **exige** en la respuesta a un usuario sin vincular.
+
+**Antes de prometer plazos, comprobar esto**: Alexa abre la página de autorización
+en un **webview embebido**. Google bloquea su login en webviews embebidos por
+política, así que si la cuenta de Fill Good es de las de «Continuar con Google»,
+puede que no se pueda iniciar sesión ahí. Con email y contraseña de Clerk no hay
+problema. Ese detalle es lo que separa un día de trabajo de una semana peleándose,
+y no se sabe sin probarlo.
+
+El *app-to-app account linking* (habilitar y vincular con un botón desde la propia
+app) **no** sirve aquí en ningún caso: Amazon solo lo soporta en apps nativas
+iOS/Android, y esto es una PWA.
 
 ## Limitaciones conocidas
 
