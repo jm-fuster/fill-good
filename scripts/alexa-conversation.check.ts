@@ -57,15 +57,17 @@ function escriturasDe(admin: SupabaseClient<Database>): Escritura[] {
   return (admin as unknown as { escrituras: Escritura[] }).escrituras;
 }
 
-/** Las escrituras de una tabla, vaciando el registro para el caso siguiente. */
-function tomarEscrituras(
+/**
+ * Las escrituras de una tabla. NO vacía el registro a propósito: un mismo caso
+ * suele mirar varias tablas, y una versión que limpiaba al leer dejaba la
+ * segunda consulta vacía —y por tanto la aserción, aprobando sola—. Cada caso
+ * que mire escrituras empieza con `limpiarEscrituras`.
+ */
+function escriturasEn(
   admin: SupabaseClient<Database>,
   tabla: string,
 ): Escritura[] {
-  const todas = escriturasDe(admin);
-  const propias = todas.filter((e) => e.tabla === tabla);
-  todas.length = 0;
-  return propias;
+  return escriturasDe(admin).filter((e) => e.tabla === tabla);
 }
 
 /**
@@ -247,6 +249,55 @@ const CON_MENU = fakeAdmin({
       },
     ],
   },
+});
+
+/** Hogar con la cena de hoy planificada y su receta detrás. */
+const CON_RECETA = fakeAdmin({
+  alexa_links: LINK,
+  weekly_menus: { single: { id: "m1" } },
+  menu_entries: {
+    list: [
+      {
+        id: "e1",
+        meal_slot: "dinner",
+        free_text: null,
+        cooked_at: null,
+        recipe_id: "r1",
+        recipe: { name: "Lasaña de verduras" },
+      },
+    ],
+  },
+  recipe_ingredients: {
+    list: [
+      { name: "Tomate", quantity: 2, unit: "ud", product_id: "p-tomate" },
+      // Sin producto en el catálogo: se queda fuera del descuento.
+      { name: "Bechamel", quantity: 1, unit: "ud", product_id: null },
+    ],
+  },
+  products: {
+    list: [
+      {
+        id: "p-tomate",
+        name: "Tomate frito",
+        normalized_name: "tomate frito",
+        default_unit: "ud",
+        default_location: "pantry",
+      },
+    ],
+  },
+  inventory_items: {
+    list: [
+      {
+        id: "lot-tomate",
+        product_id: "p-tomate",
+        quantity: 5,
+        unit: "ud",
+        location: "pantry",
+        expiry_date: null,
+      },
+    ],
+  },
+  inventory_events: { single: { id: "ev-cocina" } },
 });
 
 function envelope(request: unknown, attributes?: SessionState) {
@@ -782,7 +833,7 @@ async function main() {
       text(r) === "Vale, he tirado 2 unidades de Yogur natural. Ahora hay 4 unidades.",
       text(r),
     );
-    const eventos = tomarEscrituras(YOGURES, "inventory_events");
+    const eventos = escriturasEn(YOGURES, "inventory_events");
     check(
       "y en el historial queda como desperdicio, no como consumo",
       eventos.length === 1 && eventos[0].datos.kind === "discarded",
@@ -790,6 +841,7 @@ async function main() {
     );
   }
   {
+    limpiarEscrituras(YOGURES);
     const r = await run(
       intentRequest("RestarStockIntent", {
         producto: slot("producto", "yogures"),
@@ -801,7 +853,7 @@ async function main() {
     check(
       "gastar sigue registrándose como consumo",
       text(r).startsWith("Vale, he quitado") &&
-        tomarEscrituras(YOGURES, "inventory_events")[0]?.datos.kind === "consumed",
+        escriturasEn(YOGURES, "inventory_events")[0]?.datos.kind === "consumed",
       text(r),
     );
   }
@@ -822,7 +874,6 @@ async function main() {
       pendiente?.tipo === "unidad" && pendiente.accion === "tirar",
       pendiente,
     );
-    tomarEscrituras(ARROZ, "inventory_events");
   }
   {
     limpiarEscrituras(ARROZ);
@@ -841,7 +892,7 @@ async function main() {
       r.sessionAttributes?.pendiente?.tipo === "apuntar" &&
         r.response.shouldEndSession === false,
     );
-    const eventos = tomarEscrituras(ARROZ, "inventory_events");
+    const eventos = escriturasEn(ARROZ, "inventory_events");
     check(
       "y lo tirado se registra entero como desperdicio",
       eventos.length === 1 &&
@@ -860,7 +911,7 @@ async function main() {
       CON_AVISOS,
     );
     check("tacha lo comprado", text(r) === SPEECH.listChecked("Pan"), text(r));
-    const escrituras = tomarEscrituras(CON_AVISOS, "shopping_list_items");
+    const escrituras = escriturasEn(CON_AVISOS, "shopping_list_items");
     check(
       "marcándolo como comprado, sin tocar existencias",
       escrituras.length === 1 &&
@@ -870,10 +921,11 @@ async function main() {
     );
     check(
       "no se registra ningún movimiento de inventario",
-      tomarEscrituras(CON_AVISOS, "inventory_events").length === 0,
+      escriturasEn(CON_AVISOS, "inventory_events").length === 0,
     );
   }
   {
+    limpiarEscrituras(CON_AVISOS);
     const r = await run(
       intentRequest("MarcarCompradoIntent", { producto: slot("producto", "atún") }),
       undefined,
@@ -884,7 +936,10 @@ async function main() {
       text(r) === SPEECH.listItemUnknown("atún"),
       text(r),
     );
-    tomarEscrituras(CON_AVISOS, "shopping_list_items");
+    check(
+      "y no se escribe nada al no encontrarlo",
+      escriturasEn(CON_AVISOS, "shopping_list_items").length === 0,
+    );
   }
   {
     const dosLeches = fakeAdmin({
@@ -909,7 +964,7 @@ async function main() {
     );
     check(
       "y no se escribe nada",
-      tomarEscrituras(dosLeches, "shopping_list_items").length === 0,
+      escriturasEn(dosLeches, "shopping_list_items").length === 0,
     );
   }
   {
@@ -945,7 +1000,7 @@ async function main() {
     );
     check(
       "y no se escribe nada",
-      tomarEscrituras(CON_AVISOS, "shopping_list_items").length === 0,
+      escriturasEn(CON_AVISOS, "shopping_list_items").length === 0,
     );
   }
 
@@ -958,7 +1013,7 @@ async function main() {
       CON_AVISOS,
     );
     check("se borra y se dice", text(r) === SPEECH.listDeleted("Pan"), text(r));
-    const escrituras = tomarEscrituras(CON_AVISOS, "shopping_list_items");
+    const escrituras = escriturasEn(CON_AVISOS, "shopping_list_items");
     check(
       "con un borrado de verdad",
       escrituras.length === 1 && escrituras[0].op === "delete",
@@ -983,7 +1038,7 @@ async function main() {
     check(
       "borrar algo que no está tampoco inventa nada",
       text(r) === SPEECH.listItemUnknown("atún") &&
-        tomarEscrituras(CON_AVISOS, "shopping_list_items").length === 0,
+        escriturasEn(CON_AVISOS, "shopping_list_items").length === 0,
       text(r),
     );
   }
@@ -1006,7 +1061,7 @@ async function main() {
     check(
       "y con dos parecidos NO se borra a boleo",
       text(r) === SPEECH.listItemAmbiguous(["Leche entera", "Leche desnatada"]) &&
-        tomarEscrituras(dosLeches, "shopping_list_items").length === 0,
+        escriturasEn(dosLeches, "shopping_list_items").length === 0,
       text(r),
     );
   }
@@ -1022,7 +1077,7 @@ async function main() {
       undefined,
       YOGURES,
     );
-    const anotado = tomarEscrituras(YOGURES, "alexa_requests").find(
+    const anotado = escriturasEn(YOGURES, "alexa_requests").find(
       (e) => e.datos.undo !== undefined,
     );
     const plan = anotado?.datos.undo as
@@ -1165,6 +1220,232 @@ async function main() {
       text(r) === SPEECH.nothingToUndo &&
         escriturasDe(corrupto).filter((e) => e.tabla === "inventory_items")
           .length === 0,
+      text(r),
+    );
+  }
+
+  console.log("\n14. «Hemos cenado la lasaña»");
+  {
+    limpiarEscrituras(CON_RECETA);
+    const r = await run(
+      intentRequest("CocinadoIntent", { plato: slot("plato", "lasaña") }),
+      undefined,
+      CON_RECETA,
+    );
+    check(
+      "marca el plato y PREGUNTA antes de descontar",
+      text(r) === SPEECH.cookedAsk("Lasaña de verduras", 2, 1),
+      text(r),
+    );
+    check("dejando la sesión abierta", r.response.shouldEndSession === false);
+    const entradas = escriturasEn(CON_RECETA, "menu_entries");
+    check(
+      "el cocinado se escribe ya, y limpia el «no se hizo»",
+      entradas.length === 1 &&
+        entradas[0].datos.cooked_at !== undefined &&
+        entradas[0].datos.skipped_at === null,
+      entradas,
+    );
+    check(
+      "sin tocar todavía el inventario",
+      escriturasEn(CON_RECETA, "inventory_items").length === 0,
+    );
+
+    // El «sí» del turno siguiente, con el estado tal como lo devuelve Alexa.
+    const pendiente = siguienteTurno(r);
+    check(
+      "las líneas viajan ya resueltas en la sesión",
+      pendiente.pendiente?.tipo === "descontar" &&
+        pendiente.pendiente.lines.length === 1 &&
+        pendiente.pendiente.lines[0].productId === "p-tomate" &&
+        pendiente.pendiente.lines[0].quantity === 2,
+      pendiente.pendiente,
+    );
+
+    limpiarEscrituras(CON_RECETA);
+    const r2 = await run(
+      intentRequest("AMAZON.YesIntent"),
+      pendiente,
+      CON_RECETA,
+    );
+    check(
+      "el «sí» descuenta y lo cuenta",
+      text(r2) === SPEECH.cookedDeducted(1),
+      text(r2),
+    );
+    const lotes = escriturasEn(CON_RECETA, "inventory_items");
+    check(
+      "bajando el lote de 5 a 3",
+      lotes.length === 1 && lotes[0].datos.quantity === 3,
+      lotes,
+    );
+    const eventos = escriturasEn(CON_RECETA, "inventory_events");
+    check(
+      "y dejando rastro en el historial, que la app no deja",
+      eventos.some((e) => e.datos.kind === "consumed" && e.datos.quantity === 2),
+      eventos.map((e) => e.datos),
+    );
+    const undo = escriturasEn(CON_RECETA, "alexa_requests").find(
+      (e) => e.datos.undo !== undefined,
+    );
+    const plan = undo?.datos.undo as { name: string; lots: unknown[] } | undefined;
+    check(
+      "con un solo plan de deshacer para toda la receta",
+      plan?.name === "Lasaña de verduras" && plan.lots.length === 1,
+      plan,
+    );
+  }
+  {
+    limpiarEscrituras(CON_RECETA);
+    const r = await run(
+      intentRequest("AMAZON.NoIntent"),
+      {
+        pendiente: {
+          tipo: "descontar",
+          recipeName: "Lasaña de verduras",
+          lines: [
+            {
+              productId: "p-tomate",
+              productName: "Tomate frito",
+              unit: "ud",
+              quantity: 2,
+            },
+          ],
+        },
+      },
+      CON_RECETA,
+    );
+    check("un «no» deja el inventario en paz", text(r) === SPEECH.cookedKept, text(r));
+    check(
+      "sin escribir nada",
+      escriturasEn(CON_RECETA, "inventory_items").length === 0,
+    );
+  }
+  {
+    // «Hemos cenado» a secas: el hueco sale del participio, vía TipoComida.
+    limpiarEscrituras(CON_RECETA);
+    const r = await run(
+      intentRequest("CocinadoIntent", {
+        comida: slot("comida", "cenado", "dinner"),
+      }),
+      undefined,
+      CON_RECETA,
+    );
+    check(
+      "«hemos cenado» resuelve la cena de hoy sin nombrar el plato",
+      text(r) === SPEECH.cookedAsk("Lasaña de verduras", 2, 1),
+      text(r),
+    );
+  }
+  {
+    const yaCocinado = fakeAdmin({
+      alexa_links: LINK,
+      weekly_menus: { single: { id: "m1" } },
+      menu_entries: {
+        list: [
+          {
+            id: "e1",
+            meal_slot: "dinner",
+            free_text: null,
+            cooked_at: "2026-07-29",
+            recipe_id: "r1",
+            recipe: { name: "Lasaña de verduras" },
+          },
+        ],
+      },
+    });
+    const r = await run(
+      intentRequest("CocinadoIntent", { plato: slot("plato", "lasaña") }),
+      undefined,
+      yaCocinado,
+    );
+    check(
+      "lo ya cocinado no se vuelve a descontar",
+      text(r) === SPEECH.cookedAlready("Lasaña de verduras"),
+      text(r),
+    );
+    check(
+      "y no se escribe nada",
+      escriturasDe(yaCocinado).filter((e) => e.tabla === "menu_entries").length ===
+        0,
+    );
+  }
+  {
+    const textoLibre = fakeAdmin({
+      alexa_links: LINK,
+      weekly_menus: { single: { id: "m1" } },
+      menu_entries: {
+        list: [
+          {
+            id: "e2",
+            meal_slot: "dinner",
+            free_text: "Sobras",
+            cooked_at: null,
+            recipe_id: null,
+            recipe: null,
+          },
+        ],
+      },
+    });
+    const r = await run(
+      intentRequest("CocinadoIntent", {
+        comida: slot("comida", "cenado", "dinner"),
+      }),
+      undefined,
+      textoLibre,
+    );
+    check(
+      "un plato sin receta se marca, y se dice que no hay qué descontar",
+      text(r) === SPEECH.cookedNoRecipe("Sobras"),
+      text(r),
+    );
+  }
+  {
+    const dosPlatos = fakeAdmin({
+      alexa_links: LINK,
+      weekly_menus: { single: { id: "m1" } },
+      menu_entries: {
+        list: [
+          {
+            id: "a",
+            meal_slot: "lunch",
+            free_text: "Lentejas",
+            cooked_at: null,
+            recipe_id: null,
+            recipe: null,
+          },
+          {
+            id: "b",
+            meal_slot: "dinner",
+            free_text: "Tortilla",
+            cooked_at: null,
+            recipe_id: null,
+            recipe: null,
+          },
+        ],
+      },
+    });
+    const r = await run(intentRequest("CocinadoIntent"), undefined, dosPlatos);
+    check(
+      "sin nombre y con dos platos hoy, pregunta en vez de elegir",
+      text(r) === SPEECH.cookedWhich(["Lentejas", "Tortilla"]),
+      text(r),
+    );
+    check(
+      "y no marca ninguno",
+      escriturasDe(dosPlatos).filter((e) => e.tabla === "menu_entries").length ===
+        0,
+    );
+  }
+  {
+    const r = await run(
+      intentRequest("CocinadoIntent", { plato: slot("plato", "paella") }),
+      undefined,
+      CON_RECETA,
+    );
+    check(
+      "un plato que hoy no está en el menú se dice",
+      text(r) === SPEECH.cookedNoDish,
       text(r),
     );
   }

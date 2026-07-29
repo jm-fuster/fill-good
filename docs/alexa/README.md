@@ -17,10 +17,11 @@ solo cambiar de fase en la consola de Amazon (ver
 | --- | --- |
 | Restar stock por voz | Crear productos del catálogo por voz |
 | Sumar stock por voz | Dictar la caducidad |
-| Apuntar en la lista de la compra | Marcar una receta como cocinada |
-| Consultar cuánto queda | Decir qué se puede cocinar con lo que hay |
-| Vaciar lo que se ha acabado | Deshacer cambios de la LISTA (solo inventario) |
-| **Deshacer la última orden del inventario** | |
+| Apuntar en la lista de la compra | Decir qué se puede cocinar con lo que hay |
+| Consultar cuánto queda | Deshacer cambios de la LISTA (solo inventario) |
+| Vaciar lo que se ha acabado | Dar por cocinado algo que no estaba en el menú |
+| Deshacer la última orden del inventario | |
+| **Marcar un plato cocinado y descontar sus ingredientes** | |
 | **Distinguir lo tirado de lo gastado** | |
 | **Tachar de la lista lo ya comprado** | |
 | **Borrar de la lista lo que ya no hace falta** | |
@@ -146,6 +147,7 @@ Frases que entiende, por verbo:
 | Tachar de la lista (comprado) | ya he comprado · ya he cogido · tacha · marca como comprado |
 | Borrar de la lista (ya no hace falta) | quita … de la lista · borra … de la lista · saca … de la lista · ya no necesito |
 | Deshacer | deshaz · deshaz lo último · me he equivocado · no era eso · vuelve atrás |
+| Marcar cocinado | hemos cenado … · hemos cocinado … · hemos hecho … · hemos cenado (a secas) |
 | Consultar | cuánto queda · cuánto tengo · cuánto hay · queda · hay |
 | Vaciar (poner a 0) | se ha acabado · se acabó · se ha terminado · ya no queda · me he quedado sin · vacía · pon a cero |
 | Leer la lista | qué hay en la lista · qué tengo que comprar · léeme la lista · cómo va la lista |
@@ -180,6 +182,11 @@ Alexa, dile a mi despensa que quite el pan de la lista
       entra en el inventario)
 Alexa, dile a mi despensa que deshaga lo último
    → «Hecho, lo he deshecho. Yogur natural vuelve a estar como estaba.»
+Alexa, dile a mi despensa que hemos cenado la lasaña
+   → «Vale, apunto que has cocinado Lasaña de verduras. Puedo descontar 4 de
+      sus 6 ingredientes. El resto no cuadra y lo dejo como está.
+      ¿Los descuento?»
+   → tú: «sí» → «Hecho, he descontado 4 ingredientes.»
 Alexa, pregunta a mi despensa qué hay en la lista
    → «En la lista tienes Pan, Leche entera y Papel de cocina.»
 Alexa, pregunta a mi despensa qué caduca
@@ -373,6 +380,33 @@ Merece intents propios porque gastar y desperdiciar no son lo mismo, y esa
 distinción es la única que puede sostener una historia de ahorro creíble. Igual
 que con «se ha acabado», hay dos verbos porque hay dos cantidades: «he tirado dos
 yogures» descuenta dos, y «se ha estropeado el pan» vacía lo que hubiera.
+
+**Al marcar cocinado («hemos cenado la lasaña»):** son dos cosas, y van
+separadas igual que en la app —donde el descuento vive detrás de un modal de
+revisión—:
+
+1. **Marcar el plato se hace ya**, sin preguntar: es reversible desde la app y no
+   toca existencias. Se limpia `skipped_at`, porque las dos marcas se excluyen.
+2. **Descontar los ingredientes espera un sí.** Es lo más destructivo que hace la
+   skill —toca varios productos de golpe— y por voz no hay tabla que revisar.
+
+Se busca solo entre **los platos de hoy**, no en todo el recetario: si lo dices es
+casi siempre el día que lo tenías planificado, y limitarlo así evita el problema
+distinto de haber cocinado algo fuera del menú, que exigiría crear entradas por
+voz. Sin nombre de plato, «hemos cenado» resuelve la cena de hoy **solo si no hay
+ambigüedad**; con dos platos sin cocinar pregunta cuál, porque dar por cocinado el
+equivocado descuenta los ingredientes de otra receta.
+
+El cálculo de qué se puede descontar es **el mismo** que usa el modal de la app
+(`computeCookedDeductions`), así que la voz no puede inventarse una regla propia
+sobre unidades o emparejados. Lo que la voz hace distinto es **resumir**: por
+altavoz se dice cuántos entran y cuántos se quedan fuera, no el motivo de cada
+descarte —«no está en tu catálogo», «está en otra unidad»—, que es información de
+pantalla. Y el descuento **sí registra el consumo en el historial**, algo que hoy
+la app no hace al cocinar (queda anotado como tarea aparte).
+
+Todo el descuento queda bajo **un único plan de deshacer**: «deshaz» revierte los
+ingredientes de la receta de golpe, que es como se cocinaron.
 
 **Al deshacer («deshaz lo último», «me he equivocado»):** devuelve el inventario
 a como estaba justo antes de la última orden dictada por **ese** altavoz, dentro

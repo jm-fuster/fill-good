@@ -88,6 +88,20 @@ const pendingSchema = z.discriminatedUnion("tipo", [
     productId: z.string(),
     name: z.string(),
   }),
+  z.object({
+    tipo: z.literal("descontar"),
+    recipeName: z.string(),
+    lines: z
+      .array(
+        z.object({
+          productId: z.string(),
+          productName: z.string(),
+          unit: unitSchema,
+          quantity: z.number().positive(),
+        }),
+      )
+      .min(1),
+  }),
 ]);
 
 export const alexaEnvelopeSchema = z.object({

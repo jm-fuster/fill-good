@@ -8,7 +8,7 @@ import {
   mergeIntoExisting,
   nextListPosition,
 } from "@/features/shopping-list/items";
-import { getExpiryStatus } from "@/lib/dates";
+import { getExpiryStatus, todayLocalISO } from "@/lib/dates";
 import { loadHouseholdMatchData } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
 import type {
@@ -30,8 +30,10 @@ import {
   type StockLot,
 } from "./resolve";
 import {
+  planCooked,
   readExpiring,
   readShoppingList,
+  readTodayDishes,
   readTodayMenu,
 } from "./reports";
 import {
@@ -343,7 +345,9 @@ type UndoEvent = { id: string; quantity: number };
  * cantidad que tenía.
  */
 type UndoPlan = {
-  productId: string;
+  /** Solo para poder rastrear el origen; deshacer no lo necesita. Ausente
+   *  cuando la orden tocó varios productos (una receta cocinada). */
+  productId?: string;
   name: string;
   /** Cantidad previa de cada lote tocado; null = la fila no existía. */
   lots: { id: string; quantity: number | null }[];
@@ -359,9 +363,7 @@ type UndoPlan = {
 function storedUndo(value: unknown): UndoPlan | null {
   if (typeof value !== "object" || value === null) return null;
   const plan = value as Partial<UndoPlan>;
-  if (typeof plan.productId !== "string" || typeof plan.name !== "string") {
-    return null;
-  }
+  if (typeof plan.name !== "string") return null;
   if (!Array.isArray(plan.lots) || !Array.isArray(plan.events)) return null;
   const lotesOk = plan.lots.every(
     (lot) =>
@@ -1159,6 +1161,12 @@ function askAgain(pendiente: PendingState): AlexaResponse {
         reprompt: SPEECH.emptiedAskReprompt,
         state,
       });
+    case "descontar":
+      return speak(SPEECH.cookedAskReprompt, {
+        endSession: false,
+        reprompt: SPEECH.cookedAskReprompt,
+        state,
+      });
     case "elegir":
       return speak(
         SPEECH.ambiguousRetry(
@@ -1191,11 +1199,26 @@ async function handleSi(
   }
   // Un «sí» solo confirma preguntas de sí o no: con un «¿cuál de ellas?» abierto
   // no hay nada que confirmar, así que se vuelve a preguntar.
-  if (pendiente.tipo !== "apuntar") return askAgain(pendiente);
+  if (pendiente.tipo === "elegir" || pendiente.tipo === "unidad") {
+    return askAgain(pendiente);
+  }
 
   const linked = await requireLink(admin, envelope);
   if (!linked.ok) return linked.response;
   const link = linked.link;
+
+  if (pendiente.tipo === "descontar") {
+    const descontados = await applyCookedDeductions(
+      admin,
+      link,
+      pendiente.lines,
+      pendiente.recipeName,
+      envelope.request.requestId ?? null,
+    );
+    return speak(
+      descontados > 0 ? SPEECH.cookedDeducted(descontados) : SPEECH.error,
+    );
+  }
 
   // La unidad de la lista sale del catálogo: el producto se acaba de agotar, así
   // que no queda ningún lote del que deducirla.
@@ -1311,7 +1334,9 @@ async function handleRespuesta(
     });
   }
   // Una pregunta de sí o no no se contesta con un nombre ni con una cantidad.
-  if (pendiente.tipo === "apuntar") return askAgain(pendiente);
+  if (pendiente.tipo === "apuntar" || pendiente.tipo === "descontar") {
+    return askAgain(pendiente);
+  }
 
   const linked = await requireLink(admin, envelope);
   if (!linked.ok) return linked.response;
@@ -1344,6 +1369,165 @@ async function handleRespuesta(
     { quantity, unit },
     requestId,
   );
+}
+
+/**
+ * «Hemos cenado la lasaña»: marca el plato de hoy como cocinado y, si tiene
+ * receta, ofrece descontar sus ingredientes.
+ *
+ * Se busca solo entre los platos de HOY, no en todo el recetario: si lo dices es
+ * casi siempre el día que lo tenías planificado, y limitarlo así evita el
+ * problema distinto de haber cocinado algo que no estaba en el menú (que
+ * exigiría crear entradas por voz). Sin plato dicho, «hemos cenado» resuelve la
+ * cena de hoy si hay una sola.
+ */
+async function handleCocinado(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<AlexaResponse> {
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked.response;
+  const link = linked.link;
+
+  const hueco = asMealSlot(getSlotResolutionId(intent, "comida"));
+  const [platos] = await Promise.all([
+    readTodayDishes(admin, link.householdId, hueco),
+    touchLink(admin, link),
+  ]);
+  if (platos.length === 0) return speak(SPEECH.cookedNoDish);
+
+  const dicho = getSlotValue(intent, "plato");
+  // Sin nombre, solo se resuelve si no hay ambigüedad posible: dar por cocinado
+  // el plato equivocado descuenta ingredientes de una receta que no era.
+  const plato = dicho
+    ? pickCandidate(dicho, platos)
+    : platos.length === 1
+      ? platos[0]
+      : null;
+  if (!plato) {
+    return speak(
+      dicho
+        ? SPEECH.cookedNoDish
+        : SPEECH.cookedWhich(platos.map((p) => p.name)),
+      { endSession: false, reprompt: SPEECH.fallbackReprompt },
+    );
+  }
+  if (plato.cookedAt) return speak(SPEECH.cookedAlready(plato.name));
+
+  // Marcar cocinado va primero y sin preguntar: es reversible desde la app y no
+  // toca existencias. `skipped_at` se limpia porque las dos marcas se excluyen.
+  const { error } = await admin
+    .from("menu_entries")
+    .update({ cooked_at: todayLocalISO(), skipped_at: null })
+    .eq("household_id", link.householdId)
+    .eq("id", plato.entryId);
+  if (error) return speak(SPEECH.error);
+
+  if (!plato.recipeId) return speak(SPEECH.cookedNoRecipe(plato.name));
+
+  const plan = await planCooked(admin, link.householdId, plato.recipeId);
+  if (plan.lines.length === 0) return speak(SPEECH.cookedNothing(plato.name));
+
+  return speak(
+    SPEECH.cookedAsk(
+      plato.name,
+      plan.lines.length + plan.skipped,
+      plan.lines.length,
+    ),
+    {
+      endSession: false,
+      reprompt: SPEECH.cookedAskReprompt,
+      state: {
+        pendiente: {
+          tipo: "descontar",
+          recipeName: plato.name,
+          lines: plan.lines,
+        },
+      },
+    },
+  );
+}
+
+/**
+ * Descuenta los ingredientes confirmados, producto a producto y con el mismo
+ * FIFO por caducidad que el resto de la skill (`planDeduction`), en vez de
+ * repetir esa lógica aquí. Devuelve cuántos se descontaron de verdad y deja la
+ * orden lista para deshacerse de una sola vez.
+ */
+async function applyCookedDeductions(
+  admin: Admin,
+  link: AlexaLink,
+  lines: {
+    productId: string;
+    productName: string;
+    unit: UnitType;
+    quantity: number;
+  }[],
+  recipeName: string,
+  requestId: string | null,
+): Promise<number> {
+  const undoLots: UndoPlan["lots"] = [];
+  const undoEvents: UndoEvent[] = [];
+  let descontados = 0;
+
+  for (const line of lines) {
+    const { data: rows } = await admin
+      .from("inventory_items")
+      .select("id, quantity, unit, location, expiry_date")
+      .eq("household_id", link.householdId)
+      .eq("product_id", line.productId)
+      .order("expiry_date", { ascending: true, nullsFirst: false });
+    const lots: StockLot[] = (rows ?? []).map((row) => ({
+      id: row.id,
+      quantity: Number(row.quantity),
+      unit: row.unit,
+      location: row.location,
+      expiryDate: row.expiry_date,
+    }));
+
+    const plan = planDeduction({
+      quantity: line.quantity,
+      unit: line.unit,
+      lots,
+    });
+    if (plan.kind !== "deduct" || plan.steps.length === 0) continue;
+
+    for (const step of plan.steps) {
+      undoLots.push({
+        id: step.lotId,
+        quantity: lots.find((lot) => lot.id === step.lotId)?.quantity ?? null,
+      });
+    }
+    if (!(await applySteps(admin, link, plan.steps))) continue;
+    undoEvents.push(
+      ...(await recordSteps(
+        admin,
+        link,
+        line.productId,
+        plan.steps,
+        "consumed",
+      )),
+    );
+    descontados += 1;
+  }
+
+  // Un solo plan para toda la receta: «deshaz» revierte los ingredientes de
+  // golpe, que es como se cocinaron.
+  if (undoLots.length > 0 && requestId) {
+    await admin
+      .from("alexa_requests")
+      .update({
+        link_id: link.id,
+        undo: {
+          name: recipeName,
+          lots: undoLots,
+          events: undoEvents,
+        } satisfies UndoPlan,
+      })
+      .eq("request_id", requestId);
+  }
+  return descontados;
 }
 
 /**
@@ -1907,13 +2091,20 @@ async function routeIntent(
       return handleCaducidades(admin, envelope);
     case "MenuHoyIntent":
       return handleMenuHoy(admin, envelope, intent);
+    case "CocinadoIntent":
+      return handleCocinado(admin, envelope, intent);
     case "AMAZON.YesIntent":
       return handleSi(admin, envelope);
-    case "AMAZON.NoIntent":
+    case "AMAZON.NoIntent": {
       // Un «no» cancela lo que hubiera pendiente (no se devuelve el estado, así
       // que la pregunta muere aquí). Sin nada pendiente es tan inofensivo como
       // un «vale»: se cierra.
-      return speak(getPending(envelope) ? SPEECH.emptiedNo : SPEECH.stop);
+      const pendiente = getPending(envelope);
+      if (!pendiente) return speak(SPEECH.stop);
+      return speak(
+        pendiente.tipo === "descontar" ? SPEECH.cookedKept : SPEECH.emptiedNo,
+      );
+    }
     case "RespuestaIntent":
       return handleRespuesta(admin, envelope, intent);
     case "VincularIntent":
@@ -1950,6 +2141,9 @@ const MUTATING_INTENTS = new Set([
   "BorrarDeListaIntent",
   "AgotarStockIntent",
   "EstropearStockIntent",
+  // Marca la entrada del menú como cocinada; el descuento viene después, con el
+  // «sí», que también está protegido.
+  "CocinadoIntent",
   // Deshacer escribe tanto como lo que deshace. Su propia fila queda con `undo`
   // a null, así que nunca se encuentra a sí misma como «lo último deshacible».
   "DeshacerIntent",

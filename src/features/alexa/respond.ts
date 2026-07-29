@@ -59,7 +59,23 @@ export type PendingState =
       unidad: UnitType | null;
     }
   /** Producto a granel del que falta la unidad: «¿medio kilo o dos kilos?». */
-  | { tipo: "unidad"; accion: VoiceAction; productId: string; name: string };
+  | { tipo: "unidad"; accion: VoiceAction; productId: string; name: string }
+  /**
+   * Receta ya marcada como cocinada, esperando un sí para descontar sus
+   * ingredientes. Las líneas viajan ya resueltas: el cálculo se hizo con el
+   * inventario del turno anterior y no se vuelve a rehacer, así que lo que se
+   * confirma es exactamente lo que se anunció.
+   */
+  | {
+      tipo: "descontar";
+      recipeName: string;
+      lines: {
+        productId: string;
+        productName: string;
+        unit: UnitType;
+        quantity: number;
+      }[];
+    };
 
 export type SessionState = {
   pendiente?: PendingState;
@@ -230,7 +246,9 @@ export const SPEECH = {
     "tres leches, apunta pan, o cuánta leche queda. También puedo leerte la " +
     "lista, decirte qué caduca pronto y qué toca hoy de menú, apuntar lo que " +
     "tires, tachar lo que ya hayas comprado y borrar de la lista lo que ya no " +
-    "haga falta. Si me equivoco, dime: deshaz lo último. Si este altavoz " +
+    "haga falta. Y si me dices que habéis cenado algo del menú, lo apunto y te " +
+    "ofrezco descontar sus ingredientes. Si me equivoco, dime: deshaz lo " +
+    "último. Si este altavoz " +
     "todavía no está vinculado, genera un código en Fill Good, en Ajustes, " +
     "Alexa, y dime: vincula con código, y los seis dígitos.",
   helpReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
@@ -342,6 +360,35 @@ export const SPEECH = {
   // Borrar NO es tachar: lo tachado acaba en el inventario al finalizar la
   // compra, y esto es justo lo que ya no quieres.
   listDeleted: (name: string) => `Hecho, he borrado ${name} de la lista.`,
+
+  // Cocinado. Marcar el plato y descontar sus ingredientes son dos cosas: la
+  // primera es inofensiva y se hace ya, la segunda toca varios productos de
+  // golpe y espera un sí. Es la misma separación que hace la app, donde el
+  // descuento vive detrás de un modal de revisión.
+  cookedNoDish: "Hoy no tengo eso en el menú.",
+  cookedWhich: (names: string[]) =>
+    `Hoy tienes ${speakList(names)}. Dime cuál has hecho.`,
+  cookedAlready: (name: string) =>
+    `Ya tenía apuntado que habías cocinado ${name}.`,
+  cookedNoRecipe: (name: string) =>
+    `Vale, apunto que has cocinado ${name}. No tiene receta detrás, así que no hay ingredientes que descontar.`,
+  cookedNothing: (name: string) =>
+    `Vale, apunto que has cocinado ${name}. De sus ingredientes no puedo descontar ninguno, así que el inventario se queda como está.`,
+  cookedAsk: (name: string, total: number, listos: number) => {
+    const cuantos =
+      listos === total
+        ? `sus ${total} ingredientes`
+        : `${listos} de sus ${total} ingredientes`;
+    const resto =
+      listos === total ? "" : " El resto no cuadra y lo dejo como está.";
+    return `Vale, apunto que has cocinado ${name}. Puedo descontar ${cuantos}.${resto} ¿Los descuento?`;
+  },
+  cookedAskReprompt: "¿Descuento los ingredientes del inventario?",
+  cookedDeducted: (listos: number) =>
+    listos === 1
+      ? "Hecho, he descontado un ingrediente."
+      : `Hecho, he descontado ${listos} ingredientes.`,
+  cookedKept: "Vale, dejo el inventario como está.",
 
   // Deshacer. La respuesta nombra el producto para que se oiga si se ha
   // deshecho otra cosa distinta de la que el usuario tenía en la cabeza.

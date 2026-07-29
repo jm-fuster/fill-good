@@ -301,6 +301,33 @@
           ]
         },
         {
+          "name": "CocinadoIntent",
+          "slots": [
+            { "name": "plato", "type": "TipoPlato" },
+            { "name": "comida", "type": "TipoComida" }
+          ],
+          "samples": [
+            "hemos cenado {plato}",
+            "hemos cenado el {plato}",
+            "hemos cenado la {plato}",
+            "he cenado {plato}",
+            "hemos cocinado {plato}",
+            "hemos cocinado el {plato}",
+            "hemos cocinado la {plato}",
+            "he cocinado {plato}",
+            "hemos hecho {plato}",
+            "hemos hecho el {plato}",
+            "hemos hecho la {plato}",
+            "he hecho {plato}",
+            "marca {plato} como cocinado",
+            "marca {plato} como cocinada",
+            "hemos {comida}",
+            "ya hemos {comida}",
+            "he {comida}",
+            "ya he {comida}"
+          ]
+        },
+        {
           "name": "DeshacerIntent",
           "slots": [],
           "samples": [
@@ -448,19 +475,42 @@
           "values": [
             {
               "id": "breakfast",
-              "name": { "value": "desayuno", "synonyms": ["desayunar"] }
+              "name": {
+                "value": "desayuno",
+                "synonyms": ["desayunar", "desayunado"]
+              }
             },
             {
               "id": "lunch",
               "name": {
                 "value": "comida",
-                "synonyms": ["comer", "almuerzo", "almorzar"]
+                "synonyms": ["comer", "comido", "almuerzo", "almorzar"]
               }
             },
             {
               "id": "dinner",
-              "name": { "value": "cena", "synonyms": ["cenar"] }
+              "name": { "value": "cena", "synonyms": ["cenar", "cenado"] }
             }
+          ]
+        },
+        {
+          "name": "TipoPlato",
+          "values": [
+            { "name": { "value": "lasaña" } },
+            { "name": { "value": "tortilla", "synonyms": ["tortilla de patatas"] } },
+            { "name": { "value": "lentejas" } },
+            { "name": { "value": "paella" } },
+            { "name": { "value": "macarrones" } },
+            { "name": { "value": "ensalada" } },
+            { "name": { "value": "pollo al horno" } },
+            { "name": { "value": "sopa" } },
+            { "name": { "value": "puré" } },
+            { "name": { "value": "pescado al horno" } },
+            { "name": { "value": "arroz con verduras" } },
+            { "name": { "value": "crema de calabacín" } },
+            { "name": { "value": "garbanzos" } },
+            { "name": { "value": "revuelto" } },
+            { "name": { "value": "pizza" } }
           ]
         },
         {
@@ -733,6 +783,27 @@
               "confirmationRequired": false,
               "elicitationRequired": true,
               "prompts": { "elicitation": "Elicit.Slot.productoBorrado" }
+            }
+          ]
+        },
+        {
+          "name": "CocinadoIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "plato",
+              "type": "TipoPlato",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            },
+            {
+              "name": "comida",
+              "type": "TipoComida",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
             }
           ]
         },
