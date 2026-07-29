@@ -50,7 +50,34 @@ const APP = "amzn1.ask.skill.test";
  * conversación.
  */
 type TableData = { single?: unknown; list?: unknown[] };
+type Escritura = { tabla: string; op: string; datos: Record<string, unknown> };
+
+/** Las escrituras que ha intentado el código, para poder mirarlas después. */
+function escriturasDe(admin: SupabaseClient<Database>): Escritura[] {
+  return (admin as unknown as { escrituras: Escritura[] }).escrituras;
+}
+
+/** Las escrituras de una tabla, vaciando el registro para el caso siguiente. */
+function tomarEscrituras(
+  admin: SupabaseClient<Database>,
+  tabla: string,
+): Escritura[] {
+  const todas = escriturasDe(admin);
+  const propias = todas.filter((e) => e.tabla === tabla);
+  todas.length = 0;
+  return propias;
+}
+
+/**
+ * Olvida lo escrito hasta ahora. Los clientes falsos se comparten entre casos,
+ * así que sin esto un caso que mira escrituras vería también las del anterior.
+ */
+function limpiarEscrituras(admin: SupabaseClient<Database>): void {
+  escriturasDe(admin).length = 0;
+}
+
 function fakeAdmin(tables: Record<string, TableData>): SupabaseClient<Database> {
+  const escrituras: Escritura[] = [];
   const from = (table: string): unknown => {
     const filtros: [string, unknown][] = [];
     const rows = () =>
@@ -85,13 +112,19 @@ function fakeAdmin(tables: Record<string, TableData>): SupabaseClient<Database> 
               return chain;
             };
           }
+          if (prop === "insert" || prop === "update") {
+            return (datos: Record<string, unknown>) => {
+              escrituras.push({ tabla: table, op: prop, datos });
+              return chain;
+            };
+          }
           return () => chain;
         },
       },
     );
     return chain;
   };
-  return { from } as unknown as SupabaseClient<Database>;
+  return { from, escrituras } as unknown as SupabaseClient<Database>;
 }
 
 const LINK = { single: { id: "l1", household_id: "h1", user_id: "u1" } };
@@ -167,11 +200,16 @@ const CON_AVISOS = fakeAdmin({
   shopping_lists: LISTA,
   shopping_list_items: {
     list: [
-      { name: "Pan", is_checked: false, product: null },
+      { id: "sli-1", name: "Pan", is_checked: false, product: null },
       // El rótulo quedó desfasado tras renombrar el producto: manda el producto.
-      { name: "Leche", is_checked: false, product: { name: "Leche entera" } },
-      // Ya en el carro: no se lee.
-      { name: "Arroz", is_checked: true, product: null },
+      {
+        id: "sli-2",
+        name: "Leche",
+        is_checked: false,
+        product: { name: "Leche entera" },
+      },
+      // Ya en el carro: no se lee ni se puede volver a tachar.
+      { id: "sli-3", name: "Arroz", is_checked: true, product: null },
     ],
   },
   inventory_items: {
@@ -450,8 +488,8 @@ async function main() {
       ARROZ,
     );
     check(
-      "una respuesta sin unidad vuelve a preguntar la unidad",
-      text(r) === SPEECH.addAskUnitReprompt,
+      "una respuesta sin unidad vuelve a preguntar la unidad, con SU verbo",
+      text(r) === SPEECH.askUnitReprompt("añado"),
       text(r),
     );
     check("conservando el pendiente", r.sessionAttributes?.pendiente?.tipo === "unidad");
@@ -724,6 +762,172 @@ async function main() {
       text(r),
     );
     check("con la tarjeta para el móvil", r.response.card !== undefined);
+  }
+
+  console.log("\n10. Tirar: lo desperdiciado no es lo gastado");
+  {
+    limpiarEscrituras(YOGURES);
+    const r = await run(
+      intentRequest("TirarStockIntent", {
+        producto: slot("producto", "yogures"),
+        cantidad: slot("cantidad", "2"),
+      }),
+      undefined,
+      YOGURES,
+    );
+    check(
+      "se dice con el verbo que usó el usuario",
+      text(r) === "Vale, he tirado 2 unidades de Yogur natural. Ahora hay 4 unidades.",
+      text(r),
+    );
+    const eventos = tomarEscrituras(YOGURES, "inventory_events");
+    check(
+      "y en el historial queda como desperdicio, no como consumo",
+      eventos.length === 1 && eventos[0].datos.kind === "discarded",
+      eventos.map((e) => e.datos.kind),
+    );
+  }
+  {
+    const r = await run(
+      intentRequest("RestarStockIntent", {
+        producto: slot("producto", "yogures"),
+        cantidad: slot("cantidad", "2"),
+      }),
+      undefined,
+      YOGURES,
+    );
+    check(
+      "gastar sigue registrándose como consumo",
+      text(r).startsWith("Vale, he quitado") &&
+        tomarEscrituras(YOGURES, "inventory_events")[0]?.datos.kind === "consumed",
+      text(r),
+    );
+  }
+  {
+    const r = await run(
+      intentRequest("TirarStockIntent", { producto: slot("producto", "arroz") }),
+      undefined,
+      ARROZ,
+    );
+    check(
+      "al preguntar la unidad se usa «tiro», no «quito»",
+      text(r) === "Tienes 2 kilos de Arroz. ¿Cuánto tiro? Por ejemplo: medio kilo.",
+      text(r),
+    );
+    const pendiente = r.sessionAttributes?.pendiente;
+    check(
+      "y la orden guardada recuerda que era tirar",
+      pendiente?.tipo === "unidad" && pendiente.accion === "tirar",
+      pendiente,
+    );
+    tomarEscrituras(ARROZ, "inventory_events");
+  }
+  {
+    limpiarEscrituras(ARROZ);
+    const r = await run(
+      intentRequest("EstropearStockIntent", { producto: slot("producto", "arroz") }),
+      undefined,
+      ARROZ,
+    );
+    check(
+      "«se ha estropeado» vacía y lo lamenta",
+      text(r) === SPEECH.spoiledAsk("Arroz"),
+      text(r),
+    );
+    check(
+      "ofreciendo apuntarlo",
+      r.sessionAttributes?.pendiente?.tipo === "apuntar" &&
+        r.response.shouldEndSession === false,
+    );
+    const eventos = tomarEscrituras(ARROZ, "inventory_events");
+    check(
+      "y lo tirado se registra entero como desperdicio",
+      eventos.length === 1 &&
+        eventos[0].datos.kind === "discarded" &&
+        eventos[0].datos.quantity === 2,
+      eventos.map((e) => e.datos),
+    );
+  }
+
+  console.log("\n11. Tachar de la lista");
+  {
+    limpiarEscrituras(CON_AVISOS);
+    const r = await run(
+      intentRequest("MarcarCompradoIntent", { producto: slot("producto", "el pan") }),
+      undefined,
+      CON_AVISOS,
+    );
+    check("tacha lo comprado", text(r) === SPEECH.listChecked("Pan"), text(r));
+    const escrituras = tomarEscrituras(CON_AVISOS, "shopping_list_items");
+    check(
+      "marcándolo como comprado, sin tocar existencias",
+      escrituras.length === 1 &&
+        escrituras[0].op === "update" &&
+        escrituras[0].datos.is_checked === true,
+      escrituras,
+    );
+    check(
+      "no se registra ningún movimiento de inventario",
+      tomarEscrituras(CON_AVISOS, "inventory_events").length === 0,
+    );
+  }
+  {
+    const r = await run(
+      intentRequest("MarcarCompradoIntent", { producto: slot("producto", "atún") }),
+      undefined,
+      CON_AVISOS,
+    );
+    check(
+      "lo que no está en la lista se dice claro",
+      text(r) === SPEECH.listItemUnknown("atún"),
+      text(r),
+    );
+    tomarEscrituras(CON_AVISOS, "shopping_list_items");
+  }
+  {
+    const dosLeches = fakeAdmin({
+      alexa_links: LINK,
+      shopping_lists: LISTA,
+      shopping_list_items: {
+        list: [
+          { id: "a", name: "Leche entera", is_checked: false, product: null },
+          { id: "b", name: "Leche desnatada", is_checked: false, product: null },
+        ],
+      },
+    });
+    const r = await run(
+      intentRequest("MarcarCompradoIntent", { producto: slot("producto", "leche") }),
+      undefined,
+      dosLeches,
+    );
+    check(
+      "con dos parecidos NO se tacha a boleo",
+      text(r) === SPEECH.listItemAmbiguous(["Leche entera", "Leche desnatada"]),
+      text(r),
+    );
+    check(
+      "y no se escribe nada",
+      tomarEscrituras(dosLeches, "shopping_list_items").length === 0,
+    );
+  }
+  {
+    const ultimo = fakeAdmin({
+      alexa_links: LINK,
+      shopping_lists: LISTA,
+      shopping_list_items: {
+        list: [{ id: "z", name: "Pan", is_checked: false, product: null }],
+      },
+    });
+    const r = await run(
+      intentRequest("MarcarCompradoIntent", { producto: slot("producto", "pan") }),
+      undefined,
+      ultimo,
+    );
+    check(
+      "al tachar el último se dice que ya está todo",
+      text(r) === SPEECH.listCheckedLast("Pan"),
+      text(r),
+    );
   }
 
   if (fallos > 0) {

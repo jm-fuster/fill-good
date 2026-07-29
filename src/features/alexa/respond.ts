@@ -17,8 +17,23 @@ import { formatQuantityValue } from "@/lib/units";
  * Solo se conserva si la respuesta lo vuelve a incluir: cualquier otra orden
  * limpia lo pendiente por sí sola, que es justo lo que se quiere.
  */
-/** Orden de voz a la que se vuelve cuando el usuario contesta una pregunta. */
-export type VoiceAction = "restar" | "sumar" | "agotar" | "consultar" | "apuntar";
+/**
+ * Orden de voz a la que se vuelve cuando el usuario contesta una pregunta.
+ *
+ * «tirar» y «estropear» son las mismas operaciones que «restar» y «agotar» sobre
+ * el inventario; lo que cambia es lo que queda escrito en el historial
+ * (`discarded` en vez de `consumed`) y el verbo con el que se contesta. Merece
+ * la pena distinguirlas porque gastar y desperdiciar no son lo mismo, y es lo
+ * único que puede sostener una historia de ahorro creíble.
+ */
+export type VoiceAction =
+  | "restar"
+  | "tirar"
+  | "sumar"
+  | "agotar"
+  | "estropear"
+  | "consultar"
+  | "apuntar";
 
 /**
  * La pregunta que quedó abierta en el turno anterior. Es una unión discriminada
@@ -213,7 +228,8 @@ export const SPEECH = {
     "Puedo restar lo que gastes, sumar lo que traigas, apuntar en la lista de la " +
     "compra y decirte cuánto queda. Di, por ejemplo: quita dos yogures, añade " +
     "tres leches, apunta pan, o cuánta leche queda. También puedo leerte la " +
-    "lista, decirte qué caduca pronto y qué toca hoy de menú. Si este altavoz " +
+    "lista, decirte qué caduca pronto y qué toca hoy de menú, apuntar lo que " +
+    "tires y tachar de la lista lo que ya hayas comprado. Si este altavoz " +
     "todavía no está vinculado, genera un código en Fill Good, en Ajustes, " +
     "Alexa, y dime: vincula con código, y los seis dígitos.",
   helpReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
@@ -263,10 +279,12 @@ export const SPEECH = {
     `Tengo ${name} en ${available}, no en ${asked}. Dime cuánto quito en ${available}.`,
   // El ejemplo va DESNUDO («medio kilo», no «quita medio kilo»): la sesión se
   // queda abierta y RespuestaIntent recoge la cantidad suelta, así que pedir la
-  // orden entera sería mandar trabajo de más.
-  askUnit: (name: string, stock: string) =>
-    `Tienes ${stock} de ${name}. ¿Cuánto quito? Por ejemplo: medio kilo.`,
-  askUnitReprompt: "¿Cuánto quito, y en qué unidad?",
+  // orden entera sería mandar trabajo de más. El verbo lo pone quien pregunta
+  // («quito», «tiro», «añado»): preguntar «¿cuánto quito?» a quien acaba de
+  // decir que ha tirado algo delata que no se le ha escuchado.
+  askUnit: (name: string, stock: string, verbo: string) =>
+    `Tienes ${stock} de ${name}. ¿Cuánto ${verbo}? Por ejemplo: medio kilo.`,
+  askUnitReprompt: (verbo: string) => `¿Cuánto ${verbo}, y en qué unidad?`,
   // Ojo con la concordancia: «te quedan 1 unidad» y «solo quedaba 4 unidades»
   // suenan a robot. Se usa el impersonal («hay», «había»), que en español no
   // cambia con el número, así que vale igual para 1 que para 4.
@@ -276,6 +294,14 @@ export const SPEECH = {
       : `Vale, he quitado ${taken} de ${name}. Ahora hay ${left}.`,
   deductedPartial: (taken: string, name: string) =>
     `Solo había ${taken} de ${name}, así que lo he quitado todo. Ya no queda nada.`,
+  // Tirar se dice distinto que gastar aunque el descuento sea idéntico: si el
+  // usuario se molesta en distinguirlo, la respuesta también debe hacerlo.
+  discarded: (taken: string, name: string, left: string | null) =>
+    left === null
+      ? `Vale, he tirado ${taken} de ${name}. Ya no queda nada.`
+      : `Vale, he tirado ${taken} de ${name}. Ahora hay ${left}.`,
+  discardedPartial: (taken: string, name: string) =>
+    `Solo había ${taken} de ${name}, así que lo he tirado todo. Ya no queda nada.`,
   added: (added: string, name: string, total: string) =>
     `Hecho, he añadido ${added} de ${name}. Ahora hay ${total}.`,
   // Al sumar NO se crea el producto: por voz no hay forma de revisar el nombre
@@ -287,7 +313,6 @@ export const SPEECH = {
     `Tengo ${name} en ${available}, no en ${asked}. Dime cuánto añado en ${available}.`,
   addAskUnit: (name: string) =>
     `${name} va a granel, así que dime cuánto. Por ejemplo: medio kilo.`,
-  addAskUnitReprompt: "¿Cuánto añado, y en qué unidad?",
   listMissing: "No he entendido qué apunto en la lista.",
   // En la lista sí vale un nombre libre: un artículo apuntado es efímero y se ve
   // en el móvil antes de comprar, así que una transcripción torcida se corrige de
@@ -302,6 +327,16 @@ export const SPEECH = {
       : `Ya lo tenías apuntado, así que ahora pone ${quantity} de ${name}.`,
   listStockWarning: (stock: string) =>
     ` Por si acaso: en el inventario todavía te quedan ${stock}.`,
+  // Marcar comprado NO suma existencias, igual que tachar en la app: el stock
+  // entra al finalizar la compra, y adelantarlo aquí lo contaría dos veces.
+  listChecked: (name: string) => `Hecho, ${name} queda tachado de la lista.`,
+  listCheckedLast: (name: string) =>
+    `Hecho, ${name} queda tachado. Ya no queda nada por comprar.`,
+  listItemUnknown: (spoken: string) =>
+    `No encuentro ${spoken} entre lo que queda por comprar.`,
+  listItemAmbiguous: (names: string[]) =>
+    `Tengo varias cosas parecidas en la lista: ${speakList(names)}. ` +
+    "Dímelo con el nombre completo.",
   stockEmpty: (name: string) => `No te queda ${name}.`,
   stockReport: (name: string, stock: string) => `Te quedan ${stock} de ${name}.`,
   // La caducidad, solo si es inminente: en la cocina es justo el dato por el que
@@ -317,6 +352,11 @@ export const SPEECH = {
   offerList: " ¿Lo apunto en la lista de la compra?",
   emptiedAsk: (name: string) =>
     `Vale, ya no queda ${name}. ¿Lo apunto en la lista de la compra?`,
+  // Se dice «lo que quedaba de X» y no «todo el X» a propósito: el nombre del
+  // producto lo escribe el usuario y no sabemos su género, y «todo el Leche»
+  // delata a la máquina en la primera frase.
+  spoiledAsk: (name: string) =>
+    `Vaya. He tirado lo que quedaba de ${name}. ¿Lo apunto en la lista de la compra?`,
   emptiedAskReprompt: "¿Lo apunto en la lista?",
   emptiedAlready: (name: string) =>
     `Ya no te quedaba ${name}. ¿Lo apunto en la lista de la compra?`,

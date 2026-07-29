@@ -11,7 +11,12 @@ import {
 import { getExpiryStatus } from "@/lib/dates";
 import { loadHouseholdMatchData } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
-import type { Database, LocationType, UnitType } from "@/lib/supabase/types";
+import type {
+  Database,
+  InventoryEventKind,
+  LocationType,
+  UnitType,
+} from "@/lib/supabase/types";
 import { defaultListQuantity, roundQuantity } from "@/lib/units";
 
 import {
@@ -231,6 +236,23 @@ function askWhich(
   );
 }
 
+/**
+ * El verbo con el que se pregunta y se contesta cada acción. Va aparte para que
+ * el eco use el mismo que dijo el usuario: preguntarle «¿cuánto quito?» a quien
+ * acaba de decir que ha TIRADO algo delata que no se le ha escuchado.
+ */
+function verboDe(accion: VoiceAction): string {
+  switch (accion) {
+    case "tirar":
+    case "estropear":
+      return "tiro";
+    case "sumar":
+      return "añado";
+    default:
+      return "quito";
+  }
+}
+
 /** Lo que espera un «sí» para acabar en la lista de la compra. */
 function pendingApuntar(productId: string, name: string): PendingState {
   return { tipo: "apuntar", productId, name, normalized: normalizeName(name) };
@@ -282,6 +304,7 @@ async function recordSteps(
   link: AlexaLink,
   productId: string,
   steps: DeductionStep[],
+  kind: InventoryEventKind,
 ): Promise<void> {
   const takenByUnit = new Map<UnitType, number>();
   for (const step of steps) {
@@ -293,7 +316,7 @@ async function recordSteps(
       productId,
       quantity: roundQuantity(quantity),
       unit,
-      kind: "consumed",
+      kind,
       userId: link.userId,
       fold: true,
     });
@@ -413,18 +436,49 @@ async function loadTarget(
   };
 }
 
+/**
+ * Lo que cambia entre gastar y tirar: el descuento del inventario es idéntico,
+ * pero el historial y la frase no. Se pasa junto para que el cuerpo de
+ * `runRestar` no tenga que preguntarse cuál de las dos era en cada rama.
+ */
+type RestarFlavor = {
+  kind: InventoryEventKind;
+  verbo: string;
+  done: (taken: string, name: string, left: string | null) => string;
+  partial: (taken: string, name: string) => string;
+};
+
+const GASTADO: RestarFlavor = {
+  kind: "consumed",
+  verbo: "quito",
+  done: SPEECH.deducted,
+  partial: SPEECH.deductedPartial,
+};
+const TIRADO: RestarFlavor = {
+  kind: "discarded",
+  verbo: "tiro",
+  done: SPEECH.discarded,
+  partial: SPEECH.discardedPartial,
+};
+
 async function handleRestarStock(
   admin: Admin,
   envelope: AlexaEnvelope,
   intent: AlexaIntent,
+  flavor: RestarFlavor,
 ): Promise<AlexaResponse> {
-  const prepared = await prepareVoiceTarget(admin, envelope, intent, "restar");
+  const prepared = await prepareVoiceTarget(
+    admin,
+    envelope,
+    intent,
+    flavor.kind === "discarded" ? "tirar" : "restar",
+  );
   if (!prepared.ok) {
     return "notFound" in prepared
       ? speak(SPEECH.productUnknown(prepared.spoken))
       : prepared.response;
   }
-  return runRestar(admin, prepared.target);
+  return runRestar(admin, prepared.target, flavor);
 }
 
 /**
@@ -435,6 +489,7 @@ async function handleRestarStock(
 async function runRestar(
   admin: Admin,
   target: VoiceTarget,
+  flavor: RestarFlavor,
 ): Promise<AlexaResponse> {
   const { link, productId, product, quantity, unit, lots } = target;
   const name = product.name;
@@ -461,12 +516,18 @@ async function runRestar(
         SPEECH.askUnit(
           name,
           speakList(plan.stock.map((s) => speakQuantity(s.quantity, s.unit))),
+          flavor.verbo,
         ),
         {
           endSession: false,
-          reprompt: SPEECH.askUnitReprompt,
+          reprompt: SPEECH.askUnitReprompt(flavor.verbo),
           state: {
-            pendiente: { tipo: "unidad", accion: "restar", productId, name },
+            pendiente: {
+              tipo: "unidad",
+              accion: flavor.kind === "discarded" ? "tirar" : "restar",
+              productId,
+              name,
+            },
           },
         },
       );
@@ -476,20 +537,20 @@ async function runRestar(
       }
       const applied = await applySteps(admin, link, plan.steps);
       if (!applied) return speak(SPEECH.error);
-      await recordSteps(admin, link, productId, plan.steps);
+      await recordSteps(admin, link, productId, plan.steps, flavor.kind);
 
       // Quedarse a cero no es el final de la conversación, es el principio de la
       // siguiente: se ofrece apuntarlo, igual que al decir «se ha acabado».
       const taken = speakQuantity(plan.taken, plan.unit);
       if (!plan.covered) {
-        return offerToList(SPEECH.deductedPartial(taken, name), productId, name);
+        return offerToList(flavor.partial(taken, name), productId, name);
       }
       if (plan.remaining > 0) {
         return speak(
-          SPEECH.deducted(taken, name, speakQuantity(plan.remaining, plan.unit)),
+          flavor.done(taken, name, speakQuantity(plan.remaining, plan.unit)),
         );
       }
-      return offerToList(SPEECH.deducted(taken, name, null), productId, name);
+      return offerToList(flavor.done(taken, name, null), productId, name);
     }
   }
 }
@@ -540,7 +601,7 @@ async function runSumar(
     case "ask_unit":
       return speak(SPEECH.addAskUnit(name), {
         endSession: false,
-        reprompt: SPEECH.addAskUnitReprompt,
+        reprompt: SPEECH.askUnitReprompt(verboDe("sumar")),
         state: {
           pendiente: { tipo: "unidad", accion: "sumar", productId, name },
         },
@@ -882,28 +943,37 @@ async function apuntarEnLista(
  * pregunta se resuelve con `sessionAttributes` (ver `SessionState`), así que el
  * servidor sigue sin recordar nada entre peticiones.
  *
- * Se registra como `consumed` por la cantidad que quedaba: si había dos panes y
- * se acabaron, dos panes se consumieron, y el historial debe decirlo. Las filas
- * se conservan a 0 (agotado), igual que en el resto de la app.
+ * Se registra por la cantidad que quedaba: si había dos panes y se acabaron, dos
+ * panes se movieron, y el historial debe decirlo. Con `consumed` si se gastó y
+ * con `discarded` si se estropeó («se ha puesto malo el pan»), que es la misma
+ * operación contada de otra manera. Las filas se conservan a 0 (agotado), igual
+ * que en el resto de la app.
  */
 async function handleAgotarStock(
   admin: Admin,
   envelope: AlexaEnvelope,
   intent: AlexaIntent,
+  kind: InventoryEventKind,
 ): Promise<AlexaResponse> {
-  const prepared = await prepareVoiceTarget(admin, envelope, intent, "agotar");
+  const prepared = await prepareVoiceTarget(
+    admin,
+    envelope,
+    intent,
+    kind === "discarded" ? "estropear" : "agotar",
+  );
   if (!prepared.ok) {
     return "notFound" in prepared
       ? speak(SPEECH.productUnknown(prepared.spoken))
       : prepared.response;
   }
-  return runAgotar(admin, prepared.target);
+  return runAgotar(admin, prepared.target, kind);
 }
 
 /** El vaciado en sí, ya con el producto decidido (ver {@link runRestar}). */
 async function runAgotar(
   admin: Admin,
   target: VoiceTarget,
+  kind: InventoryEventKind,
 ): Promise<AlexaResponse> {
   const { link, productId, product, lots } = target;
   const conStock = lots.filter((lot) => lot.quantity > 0);
@@ -938,13 +1008,19 @@ async function runAgotar(
       taken: lot.quantity,
       unit: lot.unit,
     })),
+    kind,
   );
 
-  return speak(SPEECH.emptiedAsk(product.name), {
-    endSession: false,
-    reprompt: SPEECH.emptiedAskReprompt,
-    state: { pendiente },
-  });
+  return speak(
+    kind === "discarded"
+      ? SPEECH.spoiledAsk(product.name)
+      : SPEECH.emptiedAsk(product.name),
+    {
+      endSession: false,
+      reprompt: SPEECH.emptiedAskReprompt,
+      state: { pendiente },
+    },
+  );
 }
 
 /**
@@ -970,10 +1046,7 @@ function askAgain(pendiente: PendingState): AlexaResponse {
         { endSession: false, reprompt: SPEECH.ambiguousReprompt, state },
       );
     case "unidad": {
-      const pregunta =
-        pendiente.accion === "sumar"
-          ? SPEECH.addAskUnitReprompt
-          : SPEECH.askUnitReprompt;
+      const pregunta = SPEECH.askUnitReprompt(verboDe(pendiente.accion));
       return speak(pregunta, {
         endSession: false,
         reprompt: pregunta,
@@ -1079,11 +1152,15 @@ async function resume(
   if (!target) return speak(SPEECH.productUnknown(producto.name));
   switch (accion) {
     case "restar":
-      return runRestar(admin, target);
+      return runRestar(admin, target, GASTADO);
+    case "tirar":
+      return runRestar(admin, target, TIRADO);
     case "sumar":
       return runSumar(admin, target);
     case "agotar":
-      return runAgotar(admin, target);
+      return runAgotar(admin, target, "consumed");
+    case "estropear":
+      return runAgotar(admin, target, "discarded");
     case "consultar":
       return runConsultar(target);
   }
@@ -1138,6 +1215,96 @@ async function handleRespuesta(
     pendiente.accion,
     { id: pendiente.productId, name: pendiente.name },
     { quantity, unit },
+  );
+}
+
+/**
+ * «Ya he comprado el pan»: tacha el artículo de la lista, sin tocar existencias.
+ * Es lo mismo que pulsarlo en la app — el stock entra al finalizar la compra, y
+ * sumarlo aquí lo contaría dos veces.
+ *
+ * El emparejado se hace contra LA LISTA y no contra el catálogo, y es lo
+ * correcto aunque parezca un atajo: la lista admite texto libre sin producto
+ * detrás, así que un artículo puede no estar en el catálogo y aun así estar ahí
+ * esperando. Se casa por nombre con las mismas reglas que al elegir candidatos.
+ */
+async function handleMarcarComprado(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<AlexaResponse> {
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked.response;
+  const link = linked.link;
+
+  const spoken = getSlotValue(intent, "producto");
+  if (!spoken) {
+    return speak(SPEECH.listMissing, {
+      endSession: false,
+      reprompt: SPEECH.fallbackReprompt,
+    });
+  }
+
+  const [{ data: list }] = await Promise.all([
+    admin
+      .from("shopping_lists")
+      .select("id")
+      .eq("household_id", link.householdId)
+      .eq("status", "active")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    touchLink(admin, link),
+  ]);
+  if (!list) return speak(SPEECH.listItemUnknown(spoken));
+
+  const { data: rows } = await admin
+    .from("shopping_list_items")
+    .select("id, name, product:products(name)")
+    .eq("household_id", link.householdId)
+    .eq("list_id", list.id)
+    .eq("is_checked", false);
+
+  // El doble `as unknown as` es la costumbre del repo con este embed: los tipos
+  // de Supabase están escritos a mano y no declaran la relación, aunque en la
+  // base exista (la misma consulta la hace `getListItems`).
+  const pendientes = (rows ?? []).map((row) => ({
+    id: row.id,
+    name:
+      (row.product as unknown as { name: string } | null)?.name ?? row.name,
+  }));
+  if (pendientes.length === 0) return speak(SPEECH.listItemUnknown(spoken));
+
+  const elegido = pickCandidate(spoken, pendientes);
+  if (!elegido) {
+    // Se distingue «no está» de «hay varios parecidos»: con lo segundo, repetir
+    // con el nombre completo sí sirve de algo, y soltar «no lo encuentro» sobre
+    // algo que SÍ está apuntado es lo que hace desconfiar de la skill.
+    const parecidos = pendientes.filter(
+      (item) => pickCandidate(spoken, [item]) !== null,
+    );
+    return speak(
+      parecidos.length > 1
+        ? SPEECH.listItemAmbiguous(parecidos.map((item) => item.name))
+        : SPEECH.listItemUnknown(spoken),
+    );
+  }
+
+  const { error } = await admin
+    .from("shopping_list_items")
+    .update({
+      is_checked: true,
+      checked_by: link.userId,
+      checked_at: new Date().toISOString(),
+    })
+    .eq("household_id", link.householdId)
+    .eq("id", elegido.id);
+  if (error) return speak(SPEECH.error);
+
+  return speak(
+    pendientes.length === 1
+      ? SPEECH.listCheckedLast(elegido.name)
+      : SPEECH.listChecked(elegido.name),
   );
 }
 
@@ -1407,15 +1574,21 @@ async function routeIntent(
   }
   switch (intent.name) {
     case "RestarStockIntent":
-      return handleRestarStock(admin, envelope, intent);
+      return handleRestarStock(admin, envelope, intent, GASTADO);
+    case "TirarStockIntent":
+      return handleRestarStock(admin, envelope, intent, TIRADO);
     case "SumarStockIntent":
       return handleSumarStock(admin, envelope, intent);
     case "ApuntarListaIntent":
       return handleApuntarLista(admin, envelope, intent);
+    case "MarcarCompradoIntent":
+      return handleMarcarComprado(admin, envelope, intent);
     case "ConsultarStockIntent":
       return handleConsultarStock(admin, envelope, intent);
     case "AgotarStockIntent":
-      return handleAgotarStock(admin, envelope, intent);
+      return handleAgotarStock(admin, envelope, intent, "consumed");
+    case "EstropearStockIntent":
+      return handleAgotarStock(admin, envelope, intent, "discarded");
     case "LeerListaIntent":
       return handleLeerLista(admin, envelope);
     case "CaducidadesIntent":
@@ -1458,9 +1631,12 @@ async function routeIntent(
  */
 const MUTATING_INTENTS = new Set([
   "RestarStockIntent",
+  "TirarStockIntent",
   "SumarStockIntent",
   "ApuntarListaIntent",
+  "MarcarCompradoIntent",
   "AgotarStockIntent",
+  "EstropearStockIntent",
   "AMAZON.YesIntent",
   "VincularIntent",
   // Retoma una orden interrumpida, así que hereda lo que escribiera aquella: un

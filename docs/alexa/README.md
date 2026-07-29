@@ -17,12 +17,14 @@ solo cambiar de fase en la consola de Amazon (ver
 | --- | --- |
 | Restar stock por voz | Crear productos del catálogo por voz |
 | Sumar stock por voz | Dictar la caducidad |
-| Apuntar en la lista de la compra | Marcar artículos como comprados |
-| Consultar cuánto queda | Deshacer la última orden |
-| Vaciar lo que se ha acabado | Distinguir lo tirado de lo gastado |
-| **Leer la lista de la compra** | Decir qué se puede cocinar con lo que hay |
-| **Decir qué caduca pronto** | |
-| **Decir qué toca hoy de menú** | |
+| Apuntar en la lista de la compra | **Deshacer la última orden** |
+| Consultar cuánto queda | Marcar una receta como cocinada |
+| Vaciar lo que se ha acabado | Decir qué se puede cocinar con lo que hay |
+| **Distinguir lo tirado de lo gastado** | |
+| **Tachar de la lista lo ya comprado** | |
+| Leer la lista de la compra | |
+| Decir qué caduca pronto | |
+| Decir qué toca hoy de menú | |
 | Vincular el altavoz con un código | |
 | Preguntar cuál era, y **retomar la orden** con la respuesta suelta | |
 | Encadenar órdenes sin repetir «Alexa» tras abrir la skill | |
@@ -136,7 +138,10 @@ Frases que entiende, por verbo:
 | --- | --- |
 | Restar del inventario | resta · quita · descuenta · he gastado · he usado · he cogido · me he comido · nos hemos comido · nos hemos bebido |
 | Sumar al inventario | añade · suma · mete · he comprado · he traído |
+| Tirar (a la basura) | he tirado · hemos tirado · he tenido que tirar · tira |
+| Estropearse (tirar TODO) | se ha estropeado · se ha puesto malo · se ha echado a perder · he tirado todo el |
 | Apuntar en la lista | apunta · apúntame · necesito · me falta · hay que comprar · compra · pon en la lista · mete en la lista · tráete |
+| Tachar de la lista | ya he comprado · tacha · quita … de la lista · borra … de la lista |
 | Consultar | cuánto queda · cuánto tengo · cuánto hay · queda · hay |
 | Vaciar (poner a 0) | se ha acabado · se acabó · se ha terminado · ya no queda · me he quedado sin · vacía · pon a cero |
 | Leer la lista | qué hay en la lista · qué tengo que comprar · léeme la lista · cómo va la lista |
@@ -158,6 +163,13 @@ Alexa, pregunta a mi despensa si queda arroz
 Alexa, dile a mi despensa que se ha acabado el pan
    → «Vale, ya no queda Pan de molde. ¿Lo apunto en la lista de la compra?»
    → tú: «sí»  (sin repetir «Alexa»: la sesión se queda abierta)
+Alexa, dile a mi despensa que he tirado dos yogures
+   → «Vale, he tirado 2 unidades de Yogur natural. Ahora hay 4 unidades.»
+     (en el historial queda como desperdicio, no como consumo)
+Alexa, dile a mi despensa que se ha estropeado el pan
+   → «Vaya. He tirado lo que quedaba de Pan de molde. ¿Lo apunto en la lista?»
+Alexa, dile a mi despensa que ya he comprado el pan
+   → «Hecho, Pan de molde queda tachado de la lista.»
 Alexa, pregunta a mi despensa qué hay en la lista
    → «En la lista tienes Pan, Leche entera y Papel de cocina.»
 Alexa, pregunta a mi despensa qué caduca
@@ -342,6 +354,30 @@ días» en cada pregunta sería ruido.
    conversaciones a medias que guardar ni caducar, y cualquier otra orden borra
    lo pendiente por sí sola. Un «sí» sin nada pendiente se contesta con un
    «no sé a qué te refieres».
+
+**Al tirar («he tirado dos yogures», «se ha estropeado el pan»):** el descuento
+del inventario es **idéntico** al de gastar —mismo FIFO por caducidad, mismas
+reglas de unidades—; lo único que cambia es que el historial guarda `discarded`
+en vez de `consumed`, y que la respuesta usa el mismo verbo que dijo el usuario.
+Merece intents propios porque gastar y desperdiciar no son lo mismo, y esa
+distinción es la única que puede sostener una historia de ahorro creíble. Igual
+que con «se ha acabado», hay dos verbos porque hay dos cantidades: «he tirado dos
+yogures» descuenta dos, y «se ha estropeado el pan» vacía lo que hubiera.
+
+**Al tachar de la lista («ya he comprado el pan»):** marca el artículo como
+comprado y **no toca las existencias**, exactamente igual que pulsarlo en la app
+— el stock entra al finalizar la compra, y sumarlo aquí lo contaría dos veces. El
+emparejado se hace **contra la lista y no contra el catálogo**: la lista admite
+texto libre sin producto detrás, así que un artículo puede no existir en el
+catálogo y aun así estar ahí esperando. Si hay varios parecidos no se tacha
+ninguno y se pide el nombre completo; se distingue eso de «no está en la lista»
+porque decir «no lo encuentro» sobre algo que sí está apuntado es lo que hace
+desconfiar de la skill.
+
+Ojo con la colisión: «quita el pan» resta del **inventario**, y «quita el pan **de
+la lista**» tacha. Todas las muestras de tachar exigen decir «de la lista» o un
+verbo inequívoco («tacha», «ya he comprado»), la misma política con la que se
+resolvió el solape de «añade».
 
 **Al preguntar por la lista, las caducidades o el menú:** son las tres únicas
 órdenes que **no escriben nada** (más allá de marcar el vínculo como usado), y

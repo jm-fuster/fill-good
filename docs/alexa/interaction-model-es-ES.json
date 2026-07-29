@@ -217,6 +217,67 @@
           ]
         },
         {
+          "name": "TirarStockIntent",
+          "slots": [
+            { "name": "cantidad", "type": "AMAZON.NUMBER" },
+            { "name": "fraccion", "type": "TipoFraccion" },
+            { "name": "unidad", "type": "TipoUnidad" },
+            { "name": "producto", "type": "TipoProducto" }
+          ],
+          "samples": [
+            "he tirado {cantidad} {producto}",
+            "he tirado {producto}",
+            "he tirado {cantidad} {unidad} de {producto}",
+            "he tirado {fraccion} {unidad} de {producto}",
+            "hemos tirado {cantidad} {producto}",
+            "he tenido que tirar {cantidad} {producto}",
+            "he tirado a la basura {cantidad} {producto}",
+            "tira {cantidad} {producto}",
+            "tira {cantidad} {unidad} de {producto}"
+          ]
+        },
+        {
+          "name": "EstropearStockIntent",
+          "slots": [{ "name": "producto", "type": "TipoProducto" }],
+          "samples": [
+            "se ha estropeado el {producto}",
+            "se ha estropeado la {producto}",
+            "se ha estropeado {producto}",
+            "se han estropeado los {producto}",
+            "se ha puesto malo el {producto}",
+            "se ha puesto mala la {producto}",
+            "se ha echado a perder el {producto}",
+            "se ha echado a perder {producto}",
+            "he tirado todo el {producto}",
+            "he tirado toda la {producto}",
+            "he tirado todo {producto}",
+            "tira todo el {producto}",
+            "el {producto} estaba malo",
+            "la {producto} estaba mala"
+          ]
+        },
+        {
+          "name": "MarcarCompradoIntent",
+          "slots": [{ "name": "producto", "type": "TipoProducto" }],
+          "samples": [
+            "ya he comprado {producto}",
+            "ya he comprado el {producto}",
+            "ya he comprado la {producto}",
+            "ya he cogido {producto}",
+            "ya tengo {producto} en el carro",
+            "marca {producto} como comprado",
+            "marca {producto} como comprada",
+            "tacha {producto}",
+            "tacha {producto} de la lista",
+            "tacha el {producto} de la lista",
+            "quita {producto} de la lista",
+            "quita el {producto} de la lista",
+            "quita la {producto} de la lista",
+            "borra {producto} de la lista",
+            "coge {producto} de la lista"
+          ]
+        },
+        {
           "name": "LeerListaIntent",
           "slots": [],
           "samples": [
@@ -558,6 +619,69 @@
           ]
         },
         {
+          "name": "TirarStockIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "producto",
+              "type": "TipoProducto",
+              "confirmationRequired": false,
+              "elicitationRequired": true,
+              "prompts": { "elicitation": "Elicit.Slot.productoTirado" }
+            },
+            {
+              "name": "cantidad",
+              "type": "AMAZON.NUMBER",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            },
+            {
+              "name": "fraccion",
+              "type": "TipoFraccion",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            },
+            {
+              "name": "unidad",
+              "type": "TipoUnidad",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            }
+          ]
+        },
+        {
+          "name": "EstropearStockIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "producto",
+              "type": "TipoProducto",
+              "confirmationRequired": false,
+              "elicitationRequired": true,
+              "prompts": { "elicitation": "Elicit.Slot.productoEstropeado" }
+            }
+          ]
+        },
+        {
+          "name": "MarcarCompradoIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "producto",
+              "type": "TipoProducto",
+              "confirmationRequired": false,
+              "elicitationRequired": true,
+              "prompts": { "elicitation": "Elicit.Slot.productoComprado" }
+            }
+          ]
+        },
+        {
           "name": "VincularIntent",
           "confirmationRequired": false,
           "prompts": {},
@@ -607,6 +731,27 @@
         "variations": [
           { "type": "PlainText", "value": "¿Qué se ha acabado?" },
           { "type": "PlainText", "value": "Dime qué producto se ha terminado." }
+        ]
+      },
+      {
+        "id": "Elicit.Slot.productoTirado",
+        "variations": [
+          { "type": "PlainText", "value": "¿Qué has tirado?" },
+          { "type": "PlainText", "value": "Dime qué has tirado." }
+        ]
+      },
+      {
+        "id": "Elicit.Slot.productoEstropeado",
+        "variations": [
+          { "type": "PlainText", "value": "¿Qué se ha estropeado?" },
+          { "type": "PlainText", "value": "Dime qué se ha puesto malo." }
+        ]
+      },
+      {
+        "id": "Elicit.Slot.productoComprado",
+        "variations": [
+          { "type": "PlainText", "value": "¿Qué tacho de la lista?" },
+          { "type": "PlainText", "value": "Dime qué has comprado." }
         ]
       },
       {

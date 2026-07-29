@@ -53,8 +53,10 @@ const userSchema = z.object({ userId: z.string() });
 const unitSchema = z.enum(["ud", "g", "kg", "ml", "l"]);
 const voiceActionSchema = z.enum([
   "restar",
+  "tirar",
   "sumar",
   "agotar",
+  "estropear",
   "consultar",
   "apuntar",
 ]);
