@@ -101,10 +101,11 @@ export const SPEECH = {
   welcome: `Hola. Dime qué gastas o qué traes y lo apunto en el inventario. Por ejemplo: ${EXAMPLE}.`,
   welcomeReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
   help:
-    "Puedo restar lo que gastes, sumar lo que traigas y apuntar en la lista de " +
-    "la compra. Di, por ejemplo: quita dos yogures, añade tres leches, o apunta " +
-    "pan. Si este altavoz todavía no está vinculado, genera un código en el " +
-    "perfil de Fill Good y dime: vincula con código, y los seis dígitos.",
+    "Puedo restar lo que gastes, sumar lo que traigas, apuntar en la lista de la " +
+    "compra y decirte cuánto queda. Di, por ejemplo: quita dos yogures, añade " +
+    "tres leches, apunta pan, o cuánta leche queda. Si este altavoz todavía no " +
+    "está vinculado, genera un código en el perfil de Fill Good y dime: vincula " +
+    "con código, y los seis dígitos.",
   helpReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
   stop: "Hasta luego.",
   fallback: `No te he entendido. Prueba a decir: ${EXAMPLE}.`,
@@ -174,4 +175,12 @@ export const SPEECH = {
       : `Ya lo tenías apuntado, así que ahora pone ${quantity} de ${name}.`,
   listStockWarning: (stock: string) =>
     ` Por si acaso: en el inventario todavía te quedan ${stock}.`,
+  stockEmpty: (name: string) => `No te queda ${name}.`,
+  stockReport: (name: string, stock: string) => `Te quedan ${stock} de ${name}.`,
+  // La caducidad, solo si es inminente: en la cocina es justo el dato por el que
+  // preguntas, y callarlo sería peor que alargar la frase. Se distingue si está
+  // caducado TODO o solo una parte, porque la decisión que tomas es distinta.
+  stockAllExpired: " Ojo, ya está caducado.",
+  stockSomeExpired: " Ojo, parte de eso ya está caducado.",
+  stockExpiringSoon: (cuando: string) => ` Ojo, lo primero caduca ${cuando}.`,
 } as const;

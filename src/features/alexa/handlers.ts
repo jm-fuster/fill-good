@@ -7,6 +7,7 @@ import {
   mergeIntoExisting,
   nextListPosition,
 } from "@/features/shopping-list/items";
+import { getExpiryStatus } from "@/lib/dates";
 import { loadHouseholdMatchData } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
 import type { Database, LocationType, UnitType } from "@/lib/supabase/types";
@@ -16,6 +17,7 @@ import {
   planAddition,
   planDeduction,
   resolveProduct,
+  summarizeStock,
   type DeductionStep,
   type StockLot,
 } from "./resolve";
@@ -57,6 +59,9 @@ const LINK_ATTEMPT_WINDOW_MS = 10 * 60 * 1000;
 const MAX_LINK_ATTEMPTS = 5;
 
 const UNIT_VALUES: readonly UnitType[] = ["ud", "g", "kg", "ml", "l"];
+
+/** Misma ventana de «caduca pronto» que el resumen diario de caducidades. */
+const EXPIRY_WARN_DAYS = 3;
 
 function asUnitType(value: string | null): UnitType | null {
   return value !== null && (UNIT_VALUES as readonly string[]).includes(value)
@@ -406,6 +411,59 @@ async function handleSumarStock(
 }
 
 /**
+ * Coletilla de caducidad para la consulta, o cadena vacía si no urge nada. Solo
+ * se menciona lo caducado o lo que caduca dentro de la ventana de aviso: recitar
+ * «caduca en 40 días» en cada pregunta sería ruido.
+ */
+function expiryHint(lots: StockLot[]): string {
+  const conStock = lots.filter((lot) => lot.quantity > 0);
+  const proxima = conStock
+    .map((lot) => lot.expiryDate)
+    .filter((date): date is string => date !== null)
+    .sort()[0];
+  if (!proxima) return "";
+
+  const status = getExpiryStatus(proxima, EXPIRY_WARN_DAYS);
+  if (!status || status.status === "ok") return "";
+  if (status.days < 0) {
+    // Que esté caducado todo o solo un lote cambia lo que harás con ello.
+    const todo = conStock.every((lot) => {
+      const propio = getExpiryStatus(lot.expiryDate, EXPIRY_WARN_DAYS);
+      return propio !== null && propio.days < 0;
+    });
+    return todo ? SPEECH.stockAllExpired : SPEECH.stockSomeExpired;
+  }
+  const cuando =
+    status.days === 0 ? "hoy" : status.days === 1 ? "mañana" : `en ${status.days} días`;
+  return SPEECH.stockExpiringSoon(cuando);
+}
+
+async function handleConsultarStock(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<AlexaResponse> {
+  const prepared = await prepareVoiceTarget(admin, envelope, intent);
+  if (!prepared.ok) {
+    return "notFound" in prepared
+      ? speak(SPEECH.productUnknown(prepared.spoken))
+      : prepared.response;
+  }
+  const { product, lots } = prepared.target;
+
+  // Solo lectura: este intent no escribe nada en el inventario.
+  const stock = summarizeStock(lots.filter((lot) => lot.quantity > 0));
+  if (stock.length === 0) return speak(SPEECH.stockEmpty(product.name));
+
+  return speak(
+    SPEECH.stockReport(
+      product.name,
+      speakList(stock.map((s) => speakQuantity(s.quantity, s.unit))),
+    ) + expiryHint(lots),
+  );
+}
+
+/**
  * Id de la lista activa del hogar, creándola si no hay. Replica
  * `ensure_active_list` (20260719131524) en vez de invocarla: esa RPC es SECURITY
  * DEFINER y su guarda usa `clerk_user_id()`, que con el service-role es null y
@@ -650,6 +708,8 @@ async function handleIntent(
       return handleSumarStock(admin, envelope, intent);
     case "ApuntarListaIntent":
       return handleApuntarLista(admin, envelope, intent);
+    case "ConsultarStockIntent":
+      return handleConsultarStock(admin, envelope, intent);
     case "VincularIntent":
       return handleVincular(admin, envelope, intent);
     case "AMAZON.HelpIntent":

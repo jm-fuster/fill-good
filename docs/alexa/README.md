@@ -13,10 +13,11 @@ privacidad de la skill y account linking OAuth).
 
 | Sí | No (todavía) |
 | --- | --- |
-| Restar stock por voz | Consultar cuánto queda |
-| Sumar stock por voz | Crear productos del catálogo por voz |
-| Apuntar en la lista de la compra | Dictar la caducidad |
-| Vincular el altavoz con un código | Marcar artículos como comprados |
+| Restar stock por voz | Crear productos del catálogo por voz |
+| Sumar stock por voz | Dictar la caducidad |
+| Apuntar en la lista de la compra | Marcar artículos como comprados |
+| Consultar cuánto queda | Leer la lista entera en voz alta |
+| Vincular el altavoz con un código | |
 | Preguntar cuando el producto es ambiguo | |
 
 ## Piezas en el repo
@@ -99,6 +100,7 @@ Frases que entiende, por verbo:
 | Restar del inventario | resta · quita · descuenta · he gastado · he usado · he cogido |
 | Sumar al inventario | añade · suma · mete · he comprado · he traído |
 | Apuntar en la lista | apunta · necesito · me falta · hay que comprar · compra · pon en la lista |
+| Consultar | cuánto queda · cuánto tengo · cuánto hay · queda · hay |
 
 ```text
 Alexa, dile a mi despensa que reste dos yogures
@@ -107,8 +109,13 @@ Alexa, dile a mi despensa que añada tres leches
 Alexa, dile a mi despensa que he comprado dos kilos de arroz
 Alexa, dile a mi despensa que apunte pan
 Alexa, dile a mi despensa que necesito papel de cocina
+Alexa, pregunta a mi despensa cuánta leche queda
+Alexa, pregunta a mi despensa si queda arroz
 Alexa, abre mi despensa            → bienvenida y se queda escuchando
 ```
+
+Para preguntar, «pregunta a mi despensa…» suena mejor que «dile a…», pero las
+dos formas valen: Alexa reparte igual el resto de la frase.
 
 Ojo con «añade»: a secas va al **inventario** («añade tres leches» = ya las
 tienes en casa). Para la lista hay que decirlo explícito («añade pan **a la
@@ -219,6 +226,12 @@ completo** para que un error se note al instante.
 5. **Crea la lista activa si no hay ninguna**, replicando `ensure_active_list`;
    no se puede invocar esa RPC porque su guarda usa `clerk_user_id()`, que con el
    service-role es null.
+
+**Al consultar:** es el único intent que **no escribe nada**. Suma los lotes con
+existencias agrupando por unidad («te quedan 2 kilos y 300 gramos») y añade la
+caducidad más próxima **solo si urge** —caducado, hoy, o dentro de los 3 días de
+la ventana de aviso, la misma que usa el resumen diario—; recitar «caduca en 40
+días» en cada pregunta sería ruido.
 
 ## Limitaciones conocidas
 

@@ -178,7 +178,7 @@ export type DeductionPlan =
   | { kind: "invalid_quantity" };
 
 /** Agrupa el stock por unidad para poder decirlo en voz alta. */
-function summarize(lots: StockLot[]): StockSummary[] {
+export function summarizeStock(lots: StockLot[]): StockSummary[] {
   const byUnit = new Map<UnitType, number>();
   for (const lot of lots) {
     byUnit.set(lot.unit, (byUnit.get(lot.unit) ?? 0) + lot.quantity);
@@ -227,7 +227,7 @@ export function planDeduction({
   } else {
     candidates = withStock.filter((lot) => isCountable(lot.unit));
     if (candidates.length === 0) {
-      return { kind: "ask_unit", stock: summarize(withStock) };
+      return { kind: "ask_unit", stock: summarizeStock(withStock) };
     }
     unit = "ud";
   }
