@@ -1,0 +1,218 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "la despensa",
+      "intents": [
+        { "name": "AMAZON.CancelIntent", "samples": [] },
+        { "name": "AMAZON.HelpIntent", "samples": [] },
+        { "name": "AMAZON.StopIntent", "samples": [] },
+        { "name": "AMAZON.NavigateHomeIntent", "samples": [] },
+        { "name": "AMAZON.FallbackIntent", "samples": [] },
+        {
+          "name": "VincularIntent",
+          "slots": [{ "name": "codigo", "type": "AMAZON.NUMBER" }],
+          "samples": [
+            "vincula con código {codigo}",
+            "vincule con código {codigo}",
+            "vincula con el código {codigo}",
+            "vincule con el código {codigo}",
+            "vincular con código {codigo}",
+            "vincula la cuenta con el código {codigo}",
+            "conecta con el código {codigo}",
+            "conecte con el código {codigo}",
+            "el código es {codigo}",
+            "código {codigo}"
+          ]
+        },
+        {
+          "name": "RestarStockIntent",
+          "slots": [
+            { "name": "cantidad", "type": "AMAZON.NUMBER" },
+            { "name": "unidad", "type": "TipoUnidad" },
+            { "name": "producto", "type": "TipoProducto" }
+          ],
+          "samples": [
+            "resta {cantidad} {producto}",
+            "reste {cantidad} {producto}",
+            "resta {cantidad} {unidad} de {producto}",
+            "reste {cantidad} {unidad} de {producto}",
+            "resta {producto}",
+            "reste {producto}",
+            "quita {cantidad} {producto}",
+            "quite {cantidad} {producto}",
+            "quita {cantidad} {unidad} de {producto}",
+            "quite {cantidad} {unidad} de {producto}",
+            "quita {producto}",
+            "quite {producto}",
+            "quita un {producto}",
+            "quita una {producto}",
+            "descuenta {cantidad} {producto}",
+            "descuente {cantidad} {producto}",
+            "descuenta {cantidad} {unidad} de {producto}",
+            "descuente {cantidad} {unidad} de {producto}",
+            "he gastado {cantidad} {producto}",
+            "he gastado {cantidad} {unidad} de {producto}",
+            "hemos gastado {cantidad} {producto}",
+            "he usado {cantidad} {producto}",
+            "he usado {cantidad} {unidad} de {producto}",
+            "he cogido {cantidad} {producto}",
+            "apunta que he gastado {cantidad} {producto}"
+          ]
+        }
+      ],
+      "types": [
+        {
+          "name": "TipoUnidad",
+          "values": [
+            {
+              "id": "ud",
+              "name": {
+                "value": "unidades",
+                "synonyms": [
+                  "unidad",
+                  "pieza",
+                  "piezas",
+                  "bote",
+                  "botes",
+                  "lata",
+                  "latas",
+                  "paquete",
+                  "paquetes",
+                  "brick",
+                  "bricks",
+                  "botella",
+                  "botellas"
+                ]
+              }
+            },
+            {
+              "id": "g",
+              "name": { "value": "gramos", "synonyms": ["gramo", "gr"] }
+            },
+            {
+              "id": "kg",
+              "name": {
+                "value": "kilos",
+                "synonyms": ["kilo", "kilogramo", "kilogramos"]
+              }
+            },
+            {
+              "id": "ml",
+              "name": { "value": "mililitros", "synonyms": ["mililitro"] }
+            },
+            {
+              "id": "l",
+              "name": { "value": "litros", "synonyms": ["litro"] }
+            }
+          ]
+        },
+        {
+          "name": "TipoProducto",
+          "values": [
+            { "name": { "value": "leche" } },
+            { "name": { "value": "huevos", "synonyms": ["huevo"] } },
+            { "name": { "value": "yogur", "synonyms": ["yogures", "yogurt", "yogurts"] } },
+            { "name": { "value": "pan", "synonyms": ["barra de pan"] } },
+            { "name": { "value": "arroz" } },
+            { "name": { "value": "pasta" } },
+            { "name": { "value": "macarrones" } },
+            { "name": { "value": "espaguetis", "synonyms": ["spaghetti"] } },
+            { "name": { "value": "tomates", "synonyms": ["tomate"] } },
+            { "name": { "value": "patatas", "synonyms": ["patata"] } },
+            { "name": { "value": "cebollas", "synonyms": ["cebolla"] } },
+            { "name": { "value": "ajos", "synonyms": ["ajo"] } },
+            { "name": { "value": "plátanos", "synonyms": ["plátano"] } },
+            { "name": { "value": "manzanas", "synonyms": ["manzana"] } },
+            { "name": { "value": "naranjas", "synonyms": ["naranja"] } },
+            { "name": { "value": "limones", "synonyms": ["limón"] } },
+            { "name": { "value": "lechuga" } },
+            { "name": { "value": "pollo", "synonyms": ["pechuga de pollo"] } },
+            { "name": { "value": "carne picada" } },
+            { "name": { "value": "atún" } },
+            { "name": { "value": "aceite", "synonyms": ["aceite de oliva"] } },
+            { "name": { "value": "azúcar" } },
+            { "name": { "value": "sal" } },
+            { "name": { "value": "harina" } },
+            { "name": { "value": "mantequilla" } },
+            { "name": { "value": "queso" } },
+            { "name": { "value": "jamón", "synonyms": ["jamón serrano", "jamón york"] } },
+            { "name": { "value": "zumo", "synonyms": ["zumo de naranja"] } },
+            { "name": { "value": "agua", "synonyms": ["agua mineral"] } },
+            { "name": { "value": "café" } },
+            { "name": { "value": "galletas", "synonyms": ["galleta"] } },
+            { "name": { "value": "garbanzos" } },
+            { "name": { "value": "lentejas" } },
+            { "name": { "value": "cerveza", "synonyms": ["cervezas"] } },
+            { "name": { "value": "papel de cocina" } },
+            { "name": { "value": "papel higiénico" } }
+          ]
+        }
+      ]
+    },
+    "dialog": {
+      "delegationStrategy": "ALWAYS",
+      "intents": [
+        {
+          "name": "RestarStockIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "producto",
+              "type": "TipoProducto",
+              "confirmationRequired": false,
+              "elicitationRequired": true,
+              "prompts": { "elicitation": "Elicit.Slot.producto" }
+            },
+            {
+              "name": "cantidad",
+              "type": "AMAZON.NUMBER",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            },
+            {
+              "name": "unidad",
+              "type": "TipoUnidad",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            }
+          ]
+        },
+        {
+          "name": "VincularIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "codigo",
+              "type": "AMAZON.NUMBER",
+              "confirmationRequired": false,
+              "elicitationRequired": true,
+              "prompts": { "elicitation": "Elicit.Slot.codigo" }
+            }
+          ]
+        }
+      ]
+    },
+    "prompts": [
+      {
+        "id": "Elicit.Slot.producto",
+        "variations": [
+          { "type": "PlainText", "value": "¿Qué producto quito?" },
+          { "type": "PlainText", "value": "Dime qué quito." }
+        ]
+      },
+      {
+        "id": "Elicit.Slot.codigo",
+        "variations": [
+          {
+            "type": "PlainText",
+            "value": "Dime el código de seis dígitos que te da Fill Good."
+          }
+        ]
+      }
+    ]
+  }
+}

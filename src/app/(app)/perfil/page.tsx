@@ -6,6 +6,8 @@ import { Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
+import { AlexaCard } from "@/features/alexa/components/alexa-card";
+import { getAlexaLinks } from "@/features/alexa/queries";
 import { InstallCard } from "@/features/push/components/install-card";
 import { ProfileDashboard } from "@/features/profile/components/profile-dashboard";
 import { ProfileEditor } from "@/features/profile/components/profile-editor";
@@ -40,7 +42,12 @@ export default async function PerfilPage() {
     getUserHouseholds(),
     getProfileOverview(),
   ]);
-  const members = household ? await getHouseholdMembers(household.id) : [];
+  const [members, alexaLinks] = household
+    ? await Promise.all([
+        getHouseholdMembers(household.id),
+        getAlexaLinks(household.id),
+      ])
+    : [[], []];
 
   // El nombre del hogar manda sobre el de Clerk: es el que ven tus convivientes
   // (firma los movimientos del inventario) y el único que se puede editar aquí,
@@ -97,6 +104,11 @@ export default async function PerfilPage() {
             la web, y esta pantalla se visita mucho más. */}
         <InstallCard />
         {overview ? <ProfileDashboard data={overview} /> : null}
+        {/* La vinculación con Alexa es configuración ocasional, así que va
+            debajo del marcador: se toca una vez y se olvida. */}
+        {household && householdLabel ? (
+          <AlexaCard householdName={householdLabel} links={alexaLinks} />
+        ) : null}
       </div>
     </PageContainer>
   );

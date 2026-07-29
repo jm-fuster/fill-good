@@ -992,6 +992,75 @@ export type Database = {
           },
         ];
       };
+      alexa_link_codes: {
+        Row: {
+          code: string;
+          household_id: string;
+          user_id: string;
+          created_at: string;
+          expires_at: string;
+        };
+        Insert: {
+          code: string;
+          household_id: string;
+          user_id: string;
+          created_at?: string;
+          expires_at?: string;
+        };
+        Update: {
+          code?: string;
+          household_id?: string;
+          user_id?: string;
+          created_at?: string;
+          expires_at?: string;
+        };
+        Relationships: [];
+      };
+      alexa_links: {
+        Row: {
+          id: string;
+          amazon_user_id: string;
+          household_id: string;
+          user_id: string;
+          created_at: string;
+          last_used_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          amazon_user_id: string;
+          household_id: string;
+          user_id: string;
+          created_at?: string;
+          last_used_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          amazon_user_id?: string;
+          household_id?: string;
+          user_id?: string;
+          created_at?: string;
+          last_used_at?: string | null;
+        };
+        Relationships: [];
+      };
+      alexa_link_attempts: {
+        Row: {
+          id: number;
+          amazon_user_id: string;
+          attempted_at: string;
+        };
+        Insert: {
+          id?: number;
+          amazon_user_id: string;
+          attempted_at?: string;
+        };
+        Update: {
+          id?: number;
+          amazon_user_id?: string;
+          attempted_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<never, never>;
     Functions: {

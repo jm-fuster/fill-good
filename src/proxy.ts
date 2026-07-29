@@ -22,6 +22,11 @@ const isPublicRoute = createRouteMatcher([
   // Endpoint de informes de violación de la CSP: el navegador lo llama sin
   // sesión (report-uri / report-to), así que debe ser público.
   "/api/csp-report",
+  // Webhook de la skill de Alexa: lo llama Amazon desde AWS, sin sesión de
+  // Clerk. Se autentica por su cuenta con la firma de la petición (cadena de
+  // certificados de echo-api.amazon.com) y el applicationId de la skill; sin
+  // esta entrada, auth.protect() lo bloquearía antes de poder comprobarlo.
+  "/api/alexa",
 ]);
 
 // authorizedParties refuerza la validación del token de Clerk frente a reuso
