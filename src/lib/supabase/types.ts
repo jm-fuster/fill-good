@@ -1061,6 +1061,28 @@ export type Database = {
         };
         Relationships: [];
       };
+      alexa_requests: {
+        Row: {
+          request_id: string;
+          // jsonb: el envelope de respuesta que devolvimos, para poder repetirlo
+          // tal cual si Amazon reenvía la petición. Se tipa `unknown` a propósito
+          // (lo que sale de la base hay que estrecharlo, ver `storedResponse` en
+          // features/alexa/handlers.ts).
+          response: unknown;
+          created_at: string;
+        };
+        Insert: {
+          request_id: string;
+          response?: unknown;
+          created_at?: string;
+        };
+        Update: {
+          request_id?: string;
+          response?: unknown;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<never, never>;
     Functions: {

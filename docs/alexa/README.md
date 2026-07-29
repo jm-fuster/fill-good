@@ -6,8 +6,10 @@ Restar stock del inventario hablándole a un Echo de la cocina:
 
 La skill vive **en modo desarrollo**: funciona indefinidamente en los dispositivos
 de tu propia cuenta de Amazon, sin certificación, sin ficha en la tienda y sin
-coste. No está pensada para publicarse (eso exigiría certificación, política de
-privacidad de la skill y account linking OAuth).
+coste. El código, en cambio, **ya no es doméstico**: la vinculación no depende de
+ninguna cuenta concreta y el webhook es idempotente, así que abrirla a terceros es
+solo cambiar de fase en la consola de Amazon (ver
+[Abrirla a otros usuarios](#abrirla-a-otros-usuarios)).
 
 ## Qué hace y qué no
 
@@ -30,10 +32,11 @@ privacidad de la skill y account linking OAuth).
 | Lógica por intent | `src/features/alexa/handlers.ts` |
 | Resolución de producto y planes de resta/suma (puro) | `src/features/alexa/resolve.ts` |
 | Deduplicación de la lista (L3), compartida con la app | `src/features/shopping-list/items.ts` |
-| Textos hablados | `src/features/alexa/respond.ts` |
+| Textos hablados y tarjetas | `src/features/alexa/respond.ts` |
 | Card de vinculación en /perfil | `src/features/alexa/components/alexa-card.tsx` |
+| Aviso en vivo del canje (Realtime) | `src/features/alexa/use-realtime-links.ts` |
 | Modelo de interacción | [`interaction-model-es-ES.json`](./interaction-model-es-ES.json) |
-| Tablas | `supabase/migrations/20260729120000_alexa_links.sql` |
+| Tablas | `supabase/migrations/20260729120000_alexa_links.sql` · `20260729160000_alexa_multiusuario.sql` |
 
 ## 1. Crear la skill
 
@@ -72,17 +75,31 @@ igual que el cron con `CRON_SECRET`). Después de definirla en Vercel hay que
 
 ## 3. Vincular el altavoz
 
-1. En Fill Good, entra en **Perfil** → card **Alexa** → **Vincular un altavoz**.
-2. Sale un código de 6 dígitos válido **10 minutos** y de **un solo uso**.
-3. Dile al Echo:
+La card de **Perfil → Alexa** lo guía en tres pasos, en este orden porque el
+primero no ocurre en esta app y es donde se atasca quien estrena la skill:
+
+1. **Habilitar la skill** en la cuenta de Amazon (en modo desarrollo ya lo está
+   para la tuya). Se vincula la **cuenta**, no el aparato: todos los Echo de esa
+   cuenta quedan listos de una vez.
+2. **Generar el código**: 6 dígitos, válido **10 minutos** y de **un solo uso**,
+   con cuenta atrás en pantalla — un código muerto sin avisar hace que el usuario
+   repita la frase y culpe a la skill de no entenderle.
+3. **Dictarlo** al Echo:
 
    > «Alexa, dile a mi despensa que vincule con código 428391»
 
-4. Debe contestar «Listo, este altavoz ya está vinculado con \<tu hogar>».
+   Contesta «Listo, este altavoz ya está vinculado con \<tu hogar>» y **la
+   pantalla se actualiza sola**: `alexa_links` está en la publicación de Realtime,
+   así que el código desaparece y el altavoz aparece en la lista sin recargar.
 
 El vínculo guarda **qué hogar** y **qué usuario**: los movimientos dictados por
 voz se firman con esa persona en el historial del inventario. Cualquier miembro
 del hogar puede revocarlo desde la misma card.
+
+Si el Echo recibe una orden **sin estar vinculado**, además de decirlo deja una
+**tarjeta** en la app de Alexa (Actividad) con los tres pasos y el enlace a
+`/perfil` — una frase hablada se olvida, y lo que hace falta está en el móvil. El
+enlace sale de `VERCEL_PROJECT_PRODUCTION_URL`, que Vercel define solo.
 
 ## 4. Probar
 
@@ -253,15 +270,81 @@ días» en cada pregunta sería ruido.
    lo pendiente por sí sola. Un «sí» sin nada pendiente se contesta con un
    «no sé a qué te refieres».
 
+## Reintentos de Amazon: por qué no se duplica
+
+Si el endpoint tarda más de ~8 s (cold start), Amazon **reenvía la misma petición**
+con el mismo `requestId`. Sin protección, «resta dos yogures» descontaba cuatro y
+nadie sabía por qué.
+
+Toda petición que **escribe** (restar, sumar, apuntar, vaciar, el «sí» y vincular)
+se **reclama** antes de tocar nada insertando su `requestId` en `alexa_requests`;
+la clave primaria hace de cerrojo, así que de dos copias simultáneas solo una
+escribe. La otra devuelve **la respuesta ya calculada** —guardada en esa misma
+fila— porque el reintento es lo que el usuario acaba oyendo: contestarle en
+silencio sería peor que el duplicado que venimos a evitar. Si la primera copia
+sigue en vuelo y la respuesta no está lista, dice «voy con retraso, míralo en Fill
+Good» y **no** invita a repetir la orden, que es justo lo que duplicaría el
+movimiento.
+
+Las consultas y la ayuda no se protegen a propósito: no dejan rastro, y cobrarles
+dos escrituras las haría más lentas — y la lentitud es lo que provoca los
+reintentos.
+
+## Abrirla a otros usuarios
+
+El repo ya no es el límite: el `amazon_user_id` es un id opaco por usuario-de-skill
+y el hogar sale siempre de `alexa_links`, así que cualquiera con su propia cuenta
+de Amazon puede vincularse. Lo que decide quién puede usarla es **la fase de la
+skill** en la consola de Amazon:
+
+| Fase | Quién puede usarla | Qué exige |
+| --- | --- | --- |
+| **Development** (hoy) | solo dispositivos de **tu** cuenta | nada |
+| **Beta** | hasta **500** personas invitadas por email | ficha completa + pasar *Validation*. Sin certificación |
+| **Publicada** | cualquiera, desde la tienda | certificación (funcional, política y seguridad) |
+
+Para la **beta** hacen falta: **Build** completo, todos los campos de
+**Distribution → Skill Preview** y de **Distribution → Privacy & Compliance**, y
+pasar **Certification → Validation**. Los textos, las respuestas del cuestionario,
+los iconos y el email de invitación están listos para copiar en
+[`ficha-tienda.md`](./ficha-tienda.md). Dos avisos: Amazon **ya no manda los emails**
+(el enlace de invitación lo repartes tú), el email invitado tiene que ser el de la
+cuenta de Amazon del Echo, y **la beta caduca a los 90 días y no se prorroga** —
+se crea otra.
+
+La **política de privacidad ya cubre la voz** (29-jul-2026): `/privacidad` describe
+qué se guarda del vínculo, que no recibimos grabaciones —solo la transcripción que
+hace Amazon—, la base legal, que **Amazon es responsable independiente y no
+encargado del tratamiento**, y los plazos. Es lo que pregunta *Privacy &
+Compliance*. Los datos del responsable estaban completos desde antes
+(`npm run check:legal` pasa en estricto).
+
+Un juicio legal a validar con asesor: la vinculación se apoya en **ejecución del
+contrato (art. 6.1.b)**, no en consentimiento, porque es una función que el usuario
+pide y generar el código y dictarlo ya es una acción afirmativa inequívoca. Por eso
+**no** lleva barrera de consentimiento como la IA. Si un asesor prefiere el 6.1.a,
+habría que montar ese gate.
+
+Si algún día se certifica, dos cosas más a vigilar: «mi despensa» es un nombre de
+invocación genérico y puede chocar con otra skill ya publicada, y habrá que dar
+credenciales de una cuenta de prueba en las instrucciones de certificación, porque
+el revisor necesita un código de la app para poder probar la skill.
+
+Si la vinculación por código llegara a estorbar, la alternativa es **account
+linking OAuth**: dos rutas (`authorize` + `token`), una tabla de tokens y una
+pantalla de consentimiento, con el handler leyendo `session.user.accessToken` y
+cayéndose al `amazon_user_id` actual para no romper los vínculos existentes. El
+*app-to-app account linking* (habilitar y vincular con un botón desde la propia
+app) **no** sirve aquí: Amazon solo lo soporta en apps nativas iOS/Android, y esto
+es una PWA.
+
 ## Limitaciones conocidas
 
-- **Reintentos**: si el endpoint tarda más de ~8 s (cold start extremo), Amazon
-  puede reenviar la petición y el descuento se aplicaría dos veces. No hay
-  deduplicación por `requestId` en esta versión.
 - **`amazon_user_id` cambia** si deshabilitas y vuelves a habilitar la skill en
   la app de Alexa: el vínculo antiguo queda huérfano en /perfil (revócalo) y hay
   que vincular otra vez.
+- **Un Echo apunta a un solo hogar**: `amazon_user_id` es único en `alexa_links`.
+  Con varios hogares hay que activar el que toque **antes** de generar el código,
+  porque el vínculo hereda el hogar activo de ese momento.
 - **Google Home / Nest no es posible**: Google cerró las *Conversational Actions*
   de terceros en 2023 y Gemini for Home no ofrece API pública equivalente.
-- «Se ha acabado el pan» (poner a cero) no está: con la cantidad vacía la
-  semántica correcta sería «todo», no «uno», y merece su propio intent.

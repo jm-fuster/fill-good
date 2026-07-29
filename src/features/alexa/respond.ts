@@ -22,12 +22,22 @@ export type SessionState = {
   pendiente?: { productId: string; name: string; normalized: string };
 };
 
+/**
+ * Tarjeta que Alexa deja ESCRITA en el móvil (app de Alexa → Actividad). Se usa
+ * solo para lo que no se puede resolver hablando: quien acaba de habilitar la
+ * skill tiene que ir a la app a por un código, y una frase que suena una vez y
+ * se olvida no basta. El resto de respuestas no llevan tarjeta a propósito —
+ * dejar un aviso en el móvil por cada yogur restado sería ruido.
+ */
+export type SimpleCard = { type: "Simple"; title: string; content: string };
+
 export type AlexaResponse = {
   version: "1.0";
   sessionAttributes?: SessionState;
   response: {
     outputSpeech?: { type: "PlainText"; text: string };
     reprompt?: { outputSpeech: { type: "PlainText"; text: string } };
+    card?: SimpleCard;
     shouldEndSession: boolean;
   };
 };
@@ -43,7 +53,13 @@ export function speak(
     endSession = true,
     reprompt,
     state,
-  }: { endSession?: boolean; reprompt?: string; state?: SessionState } = {},
+    card,
+  }: {
+    endSession?: boolean;
+    reprompt?: string;
+    state?: SessionState;
+    card?: SimpleCard;
+  } = {},
 ): AlexaResponse {
   return {
     version: "1.0",
@@ -53,8 +69,31 @@ export function speak(
       ...(reprompt
         ? { reprompt: { outputSpeech: { type: "PlainText", text: reprompt } } }
         : {}),
+      ...(card ? { card } : {}),
       shouldEndSession: endSession,
     },
+  };
+}
+
+/**
+ * Tarjeta con los pasos para vincular: el punto exacto en el que se atasca quien
+ * estrena la skill, porque oye «genera un código en Perfil» y no tiene dónde
+ * pinchar.
+ *
+ * El enlace sale de `VERCEL_PROJECT_PRODUCTION_URL`, que Vercel define en cada
+ * despliegue sin tener que configurar nada. En local no existe y la tarjeta se
+ * queda solo con los pasos, que da igual: ahí no hay app de Alexa que la muestre.
+ */
+export function linkCard(): SimpleCard {
+  const host = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  return {
+    type: "Simple",
+    title: "Vincula este altavoz con Fill Good",
+    content:
+      "1. Abre Fill Good y entra en Perfil.\n" +
+      "2. En la tarjeta de Alexa, pulsa «Vincular un altavoz».\n" +
+      "3. Dime: «Alexa, dile a mi despensa que vincule con código», y los seis dígitos.\n" +
+      (host ? `\nhttps://${host}/perfil` : ""),
   };
 }
 
@@ -131,6 +170,11 @@ export const SPEECH = {
   fallback: `No te he entendido. Prueba a decir: ${EXAMPLE}.`,
   fallbackReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
   error: "Ha habido un problema con tu despensa. Inténtalo otra vez en un momento.",
+  // Reintento de Amazon (la primera copia de la petición sigue en vuelo). NO
+  // invita a repetir la orden a propósito: repetirla es justo lo que duplicaría
+  // el movimiento que acabamos de proteger. Se remite a la app, que es la verdad.
+  slowRetry:
+    "Voy con retraso, pero lo estoy apuntando. Míralo en Fill Good dentro de un momento.",
   notLinked:
     "Este altavoz todavía no está vinculado a ningún hogar. Abre Fill Good, " +
     "entra en Perfil, genera un código de Alexa y dime: vincula con código, " +

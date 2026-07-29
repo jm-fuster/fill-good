@@ -107,7 +107,11 @@ export default async function PerfilPage() {
         {/* La vinculación con Alexa es configuración ocasional, así que va
             debajo del marcador: se toca una vez y se olvida. */}
         {household && householdLabel ? (
-          <AlexaCard householdName={householdLabel} links={alexaLinks} />
+          <AlexaCard
+            householdId={household.id}
+            householdName={householdLabel}
+            links={alexaLinks}
+          />
         ) : null}
       </div>
     </PageContainer>

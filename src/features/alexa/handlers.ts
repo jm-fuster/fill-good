@@ -23,6 +23,7 @@ import {
 } from "./resolve";
 import {
   emptyResponse,
+  linkCard,
   speak,
   speakList,
   speakListQuantity,
@@ -71,6 +72,15 @@ function asUnitType(value: string | null): UnitType | null {
 }
 
 type AlexaLink = { id: string; householdId: string; userId: string };
+
+/**
+ * Echo sin vincular. Además de decirlo, deja la tarjeta con los pasos en el
+ * móvil: es el punto donde se queda quien acaba de habilitar la skill, y lo que
+ * necesita está en la app, no en el altavoz.
+ */
+function notLinkedResponse(): AlexaResponse {
+  return speak(SPEECH.notLinked, { card: linkCard() });
+}
 
 type ProductInfo = {
   name: string;
@@ -193,9 +203,9 @@ async function prepareVoiceTarget(
   | { ok: false; notFound: true; spoken: string }
 > {
   const amazonUserId = getAmazonUserId(envelope);
-  if (!amazonUserId) return { ok: false, response: speak(SPEECH.notLinked) };
+  if (!amazonUserId) return { ok: false, response: notLinkedResponse() };
   const link = await findLink(admin, amazonUserId);
-  if (!link) return { ok: false, response: speak(SPEECH.notLinked) };
+  if (!link) return { ok: false, response: notLinkedResponse() };
 
   const spoken = getSlotValue(intent, "producto");
   if (!spoken) {
@@ -513,9 +523,9 @@ async function handleApuntarLista(
   intent: AlexaIntent,
 ): Promise<AlexaResponse> {
   const amazonUserId = getAmazonUserId(envelope);
-  if (!amazonUserId) return speak(SPEECH.notLinked);
+  if (!amazonUserId) return notLinkedResponse();
   const link = await findLink(admin, amazonUserId);
-  if (!link) return speak(SPEECH.notLinked);
+  if (!link) return notLinkedResponse();
 
   const spoken = getSlotValue(intent, "producto");
   if (!spoken) {
@@ -744,9 +754,9 @@ async function handleSi(
     });
   }
   const amazonUserId = getAmazonUserId(envelope);
-  if (!amazonUserId) return speak(SPEECH.notLinked);
+  if (!amazonUserId) return notLinkedResponse();
   const link = await findLink(admin, amazonUserId);
-  if (!link) return speak(SPEECH.notLinked);
+  if (!link) return notLinkedResponse();
 
   // La unidad de la lista sale del catálogo: el producto se acaba de agotar, así
   // que no queda ningún lote del que deducirla.
@@ -800,7 +810,7 @@ async function handleVincular(
   if (!found) {
     // Solo cuentan los intentos FALLIDOS, igual que en join_household_by_code.
     await admin.from("alexa_link_attempts").insert({ amazon_user_id: amazonUserId });
-    return speak(SPEECH.linkCodeInvalid);
+    return speak(SPEECH.linkCodeInvalid, { card: linkCard() });
   }
 
   const { error } = await admin.from("alexa_links").upsert(
@@ -874,6 +884,89 @@ async function handleIntent(
 }
 
 /**
+ * Intents que ESCRIBEN, los únicos que se protegen contra reintentos. Consultar
+ * y pedir ayuda no dejan rastro, así que cobrarles dos escrituras (reclamar y
+ * guardar la respuesta) las haría más lentas para prevenir un problema que no
+ * tienen — y la lentitud es justo lo que provoca los reintentos.
+ */
+const MUTATING_INTENTS = new Set([
+  "RestarStockIntent",
+  "SumarStockIntent",
+  "ApuntarListaIntent",
+  "AgotarStockIntent",
+  "AMAZON.YesIntent",
+  "VincularIntent",
+]);
+
+/**
+ * Estrecha lo que había guardado en `alexa_requests.response`. Viene de la base
+ * como jsonb, así que se comprueba como cualquier otra entrada: si no tiene la
+ * forma esperada se descarta y se contesta con la disculpa, nunca se reenvía a
+ * Amazon un envelope que no lo es.
+ */
+function storedResponse(value: unknown): AlexaResponse | null {
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as { version?: unknown; response?: unknown };
+  const ok =
+    candidate.version === "1.0" &&
+    typeof candidate.response === "object" &&
+    candidate.response !== null;
+  return ok ? (value as AlexaResponse) : null;
+}
+
+/**
+ * Idempotencia frente a los reintentos de Amazon. Si el endpoint tarda más de
+ * ~8 s (cold start), Amazon reenvía LA MISMA petición con el mismo `requestId`;
+ * sin esto, «resta dos yogures» descontaba cuatro.
+ *
+ * La reclamación es un INSERT: la clave primaria de `alexa_requests` es el
+ * cerrojo, así que de dos copias simultáneas solo una llega a escribir. La otra
+ * devuelve la respuesta ya calculada — que es la que el usuario oirá, porque el
+ * primer envío se lo comió el timeout— y si todavía no está lista, contesta que
+ * va con retraso en vez de repetir el movimiento.
+ */
+async function withRequestDedupe(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  run: () => Promise<AlexaResponse>,
+): Promise<AlexaResponse> {
+  const requestId = envelope.request.requestId;
+  const intentName = envelope.request.intent?.name;
+  if (!requestId || !intentName || !MUTATING_INTENTS.has(intentName)) {
+    return run();
+  }
+
+  const { error } = await admin
+    .from("alexa_requests")
+    .insert({ request_id: requestId });
+
+  if (error) {
+    // 23505 = clave duplicada: la petición ya estaba reclamada, esto es el
+    // reintento. Cualquier otro fallo no debe dejar muda a la skill: se atiende
+    // sin protección, como se hacía antes de esta tabla.
+    if (error.code !== "23505") {
+      console.error("Alexa: no se pudo reclamar la petición.", error);
+      return run();
+    }
+    const { data } = await admin
+      .from("alexa_requests")
+      .select("response")
+      .eq("request_id", requestId)
+      .maybeSingle();
+    return storedResponse(data?.response) ?? speak(SPEECH.slowRetry);
+  }
+
+  const response = await run();
+  // Best-effort: si esto falla, un reintento posterior oirá «voy con retraso»,
+  // molesto pero inofensivo. Lo importante ya ha pasado: la reclamación.
+  await admin
+    .from("alexa_requests")
+    .update({ response })
+    .eq("request_id", requestId);
+  return response;
+}
+
+/**
  * Punto de entrada: convierte una petición ya verificada en una respuesta de
  * voz. Cualquier excepción se traduce en una disculpa hablada, nunca en un 500:
  * ante un error HTTP el Echo suelta su propio «hay un problema con la skill
@@ -891,7 +984,9 @@ export async function dispatchAlexaRequest(
           reprompt: SPEECH.welcomeReprompt,
         });
       case "IntentRequest":
-        return await handleIntent(admin, envelope);
+        return await withRequestDedupe(admin, envelope, () =>
+          handleIntent(admin, envelope),
+        );
       case "SessionEndedRequest":
       default:
         // SessionEndedRequest llega también cuando el dispositivo aborta por un

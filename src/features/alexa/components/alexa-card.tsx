@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Mic, Unlink } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { ExternalLink, Mic, Unlink } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -22,12 +22,22 @@ import {
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
 import { relativeDaysLabel } from "@/lib/dates";
+import { vibrateTick } from "@/lib/haptics";
 import { generateAlexaCodeAction, unlinkAlexaAction } from "../actions";
 import type { AlexaLinkView } from "../queries";
+import { useRealtimeAlexaLinks } from "../use-realtime-links";
 
 type LiveCode = { code: string; expiresAt: string };
 
-/** Hora a la que caduca el código, para no prometer «10 minutos» a ciegas. */
+/**
+ * Ficha de la skill en la tienda de Alexa (o enlace de la beta). Mientras la
+ * skill siga en modo desarrollo no existe tal enlace: sin la variable, el primer
+ * paso se explica con palabras y no ofrece un botón que no llevaría a ninguna
+ * parte. Ver docs/alexa/README.md.
+ */
+const SKILL_URL = process.env.NEXT_PUBLIC_ALEXA_SKILL_URL;
+
+/** Hora a la que caduca el código, para quien no puede ver la cuenta atrás. */
 function expiryTime(expiresAt: string): string {
   return new Date(expiresAt).toLocaleTimeString("es-ES", {
     hour: "2-digit",
@@ -35,26 +45,77 @@ function expiryTime(expiresAt: string): string {
   });
 }
 
+/** Segundos restantes como «9:05». */
+function countdownLabel(seconds: number): string {
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Seis dígitos partidos en dos mitades: se dictan en voz alta, y «428 391» se
+ * lee sin tropezar mucho mejor que «428391». El webhook se queda solo con las
+ * cifras del slot, así que el hueco no cambia nada de lo que entiende Alexa.
+ */
+function groupCode(code: string): string {
+  return `${code.slice(0, 3)} ${code.slice(3)}`;
+}
+
 /**
  * Vinculación con Alexa (card de /perfil). El altavoz se empareja dictándole un
  * código de seis dígitos que se genera aquí: es de un solo uso y caduca en diez
  * minutos, así que solo se muestra en cliente y nunca se renderiza en servidor.
  *
- * El código se enseña en grande y se acompaña de la frase LITERAL que hay que
- * decir: la parte difícil de una skill no es el código, es acordarse de que la
- * orden empieza por «Alexa, dile a mi despensa…».
+ * Está montada como tres pasos numerados porque quien estrena la skill se atasca
+ * en el primero, que ni siquiera ocurre en esta app: habilitar la skill en la
+ * cuenta de Amazon. Con el código a secas parecía que bastaba con dictarlo.
+ *
+ * El canje llega por Realtime, así que la pantalla se contesta sola: en cuanto el
+ * Echo dice «listo», el código desaparece y el altavoz aparece en la lista. Es la
+ * diferencia entre una pantalla que parece funcionar y una que lo demuestra.
  */
 export function AlexaCard({
+  householdId,
   householdName,
   links,
 }: {
+  householdId: string;
   householdName: string;
   links: AlexaLinkView[];
 }) {
   const [live, setLive] = useState<LiveCode | null>(null);
+  // Reloj que solo avanza mientras hay un código vivo. La cuenta atrás se
+  // DERIVA de él al renderizar en vez de guardarse aparte: si fuera estado
+  // propio arrancaría en cero y el código recién generado se pintaría como
+  // caducado durante un frame.
+  const [now, setNow] = useState(() => Date.now());
   const [pending, startTransition] = useTransition();
+  const [showSteps, setShowSteps] = useState(links.length === 0);
   const [unlinking, setUnlinking] = useState<AlexaLinkView | null>(null);
   const [unlinkPending, startUnlink] = useTransition();
+
+  useRealtimeAlexaLinks(householdId);
+
+  // Cuenta atrás del código: un código muerto en pantalla es peor que ninguno,
+  // porque el usuario repite la frase y culpa a la skill de no entenderle.
+  useEffect(() => {
+    if (!live) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [live]);
+
+  // El vínculo nuevo llega por Realtime (router.refresh() trae `links` con una
+  // fila más): en ese momento el código ya no sirve para nada y sobra.
+  const linkCount = links.length;
+  const previousCount = useRef(linkCount);
+  useEffect(() => {
+    if (linkCount > previousCount.current && live) {
+      setLive(null);
+      setShowSteps(false);
+      vibrateTick();
+      toast.success("Altavoz vinculado");
+    }
+    previousCount.current = linkCount;
+  }, [linkCount, live]);
 
   function generate() {
     startTransition(async () => {
@@ -63,6 +124,10 @@ export function AlexaCard({
         toast.error(result.error ?? "No se pudo generar el código.");
         return;
       }
+      // El reloj se pone en hora en el mismo render que el código: si la card
+      // llevaba un rato abierta, `now` estaría atrasado y la cuenta atrás
+      // empezaría con más de diez minutos.
+      setNow(Date.now());
       setLive({ code: result.code, expiresAt: result.expiresAt });
     });
   }
@@ -80,6 +145,11 @@ export function AlexaCard({
       toast.success("Altavoz desvinculado");
     });
   }
+
+  const remaining = live
+    ? Math.max(0, Math.ceil((new Date(live.expiresAt).getTime() - now) / 1000))
+    : 0;
+  const expired = live !== null && remaining === 0;
 
   return (
     <Card>
@@ -129,33 +199,118 @@ export function AlexaCard({
           </ul>
         ) : null}
 
-        <div aria-live="polite">
-          {live ? (
-            <div className="flex flex-col gap-2 rounded-xl border bg-muted/50 p-4">
-              <p className="text-center font-mono text-3xl tracking-widest">
-                {live.code}
-              </p>
-              <p className="text-center text-sm">
-                Di: «Alexa, dile a mi despensa que vincule con código{" "}
-                {live.code}».
-              </p>
-              <p className="text-center text-xs text-muted-foreground">
-                Caduca a las {expiryTime(live.expiresAt)} y solo vale una vez.
-                Vinculará el altavoz con {householdName}.
-              </p>
-            </div>
-          ) : null}
-        </div>
+        {showSteps ? (
+          <ol className="flex flex-col gap-4">
+            <li className="flex gap-3">
+              <StepNumber>1</StepNumber>
+              <div className="flex min-w-0 flex-col gap-2">
+                <p className="text-sm font-medium">
+                  Habilita la skill en tu cuenta de Amazon
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Desde la app de Alexa, con la misma cuenta que tu Echo. Se
+                  hace una vez y vale para todos los altavoces de esa cuenta.
+                </p>
+                {SKILL_URL ? (
+                  <Button variant="outline" className="self-start" asChild>
+                    <a
+                      href={SKILL_URL}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      <ExternalLink aria-hidden />
+                      Ver la skill «mi despensa»
+                    </a>
+                  </Button>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Búscala como <strong>mi despensa</strong> en Más → Skills y
+                    juegos.
+                  </p>
+                )}
+              </div>
+            </li>
 
-        <Button
-          variant={live ? "outline" : "default"}
-          onClick={generate}
-          loading={pending}
-          className="self-start"
-        >
-          <Mic aria-hidden />
-          {live ? "Generar otro código" : "Vincular un altavoz"}
-        </Button>
+            <li className="flex gap-3">
+              <StepNumber>2</StepNumber>
+              <div className="flex min-w-0 flex-col gap-2">
+                <p className="text-sm font-medium">Genera un código</p>
+                <div aria-live="polite">
+                  {live ? (
+                    <div className="flex flex-col gap-1 rounded-xl border bg-muted/50 p-4">
+                      <p
+                        className={`text-center font-mono text-3xl tracking-widest ${
+                          expired ? "text-muted-foreground line-through" : ""
+                        }`}
+                      >
+                        {groupCode(live.code)}
+                      </p>
+                      {expired ? (
+                        <p className="text-center text-sm text-destructive">
+                          Ha caducado. Genera otro.
+                        </p>
+                      ) : (
+                        <>
+                          <p
+                            className={`text-center text-sm ${
+                              remaining <= 60
+                                ? "text-warning"
+                                : "text-muted-foreground"
+                            }`}
+                            aria-hidden
+                          >
+                            Caduca en {countdownLabel(remaining)}
+                          </p>
+                          {/* La cuenta atrás va oculta a los lectores de
+                              pantalla: dentro de un aria-live cantaría cada
+                              segundo. La hora es el mismo dato sin el ruido. */}
+                          <p className="sr-only">
+                            Caduca a las {expiryTime(live.expiresAt)}. Solo vale
+                            una vez.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+                <Button
+                  variant={live ? "outline" : "default"}
+                  onClick={generate}
+                  loading={pending}
+                  className="self-start"
+                >
+                  <Mic aria-hidden />
+                  {live ? "Generar otro código" : "Generar el código"}
+                </Button>
+              </div>
+            </li>
+
+            <li className="flex gap-3">
+              <StepNumber>3</StepNumber>
+              <div className="flex min-w-0 flex-col gap-2">
+                <p className="text-sm font-medium">Dícelo al altavoz</p>
+                <p className="rounded-lg border-l-4 border-primary bg-muted/50 px-3 py-2 text-sm italic">
+                  «Alexa, dile a mi despensa que vincule con código{" "}
+                  {live && !expired ? groupCode(live.code) : "…"}»
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Te contestará «listo». Quedará vinculado con{" "}
+                  <strong>{householdName}</strong> y esta pantalla se actualizará
+                  sola.
+                </p>
+              </div>
+            </li>
+          </ol>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={() => setShowSteps(true)}
+            className="self-start"
+          >
+            <Mic aria-hidden />
+            Vincular otro altavoz
+          </Button>
+        )}
       </CardContent>
 
       <ResponsiveModal
@@ -193,5 +348,17 @@ export function AlexaCard({
         </ResponsiveModalContent>
       </ResponsiveModal>
     </Card>
+  );
+}
+
+/** Número del paso. `aria-hidden`: el orden ya lo dice la lista. */
+function StepNumber({ children }: { children: string }) {
+  return (
+    <span
+      className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
+      aria-hidden
+    >
+      {children}
+    </span>
   );
 }
