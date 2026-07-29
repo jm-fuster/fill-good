@@ -10,6 +10,7 @@
     "lint": "eslint --max-warnings 0",
     "check:legal": "node scripts/check-legal-config.mjs --strict",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
+    "check:alexa": "node scripts/check-alexa.mjs",
     "build:check": "node scripts/check-legal-config.mjs && next build && node scripts/check-bundle-budget.mjs",
     "typecheck": "tsc --noEmit"
   },

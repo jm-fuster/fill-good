@@ -19,9 +19,11 @@ solo cambiar de fase en la consola de Amazon (ver
 | Sumar stock por voz | Dictar la caducidad |
 | Apuntar en la lista de la compra | Marcar artículos como comprados |
 | Consultar cuánto queda | Leer la lista entera en voz alta |
-| Vaciar lo que se ha acabado | |
-| Vincular el altavoz con un código | |
-| Preguntar cuando el producto es ambiguo | |
+| Vaciar lo que se ha acabado | Decir qué caduca pronto |
+| Vincular el altavoz con un código | Deshacer la última orden |
+| Preguntar cuál era, y **retomar la orden** con la respuesta suelta | Distinguir lo tirado de lo gastado |
+| Encadenar órdenes sin repetir «Alexa» tras abrir la skill | |
+| Medias cantidades: «medio kilo», «un cuarto de kilo» | |
 
 ## Piezas en el repo
 
@@ -31,6 +33,7 @@ solo cambiar de fase en la consola de Amazon (ver
 | Verificación de la firma de Amazon | `src/features/alexa/verify.ts` |
 | Lógica por intent | `src/features/alexa/handlers.ts` |
 | Resolución de producto y planes de resta/suma (puro) | `src/features/alexa/resolve.ts` |
+| Comprobaciones de la conversación (`npm run check:alexa`) | `scripts/alexa-conversation.check.ts` |
 | Deduplicación de la lista (L3), compartida con la app | `src/features/shopping-list/items.ts` |
 | Textos hablados y tarjetas | `src/features/alexa/respond.ts` |
 | Vinculación (subpágina de Ajustes) | `src/features/alexa/components/alexa-setup.tsx` |
@@ -103,9 +106,21 @@ enlace sale de `VERCEL_PROJECT_PRODUCTION_URL`, que Vercel define solo.
 
 ## 4. Probar
 
+**`npm run check:alexa`**: ejecuta el despacho real contra un cliente de Supabase
+falso, sin credenciales ni base. Cubre lo que ni el compilador ni el simulador
+ven: que el estado de la conversación sobreviva a la ida y vuelta por el
+dispositivo, que una orden interrumpida se retome bien y que un «sí» fuera de
+sitio no dispare nada. Es rápido; pásalo antes de subir cualquier cambio en
+`handlers.ts`, `respond.ts`, `resolve.ts` o `schemas.ts`.
+
 **Simulador** (Build → **Test**, con el modo en *Development*): manda peticiones
 **firmadas de verdad**, así que ejercita toda la verificación de `verify.ts`.
-Escribe `abre mi despensa` o `dile a mi despensa que reste dos yogures`.
+Escribe `abre mi despensa` o `dile a mi despensa que reste dos yogures`. Es lo
+**único** que prueba el reconocimiento de voz —qué frase cae en qué intent lo
+decide Alexa, no nuestro código—, así que después de tocar
+`interaction-model-es-ES.json` hay que volver a pegarlo, darle a **Build Model** y
+repasar aquí que los one-shot de la lista de arriba siguen cayendo donde deben:
+las muestras sueltas de `RespuestaIntent` compiten con todo lo demás.
 
 **Echo físico**: el dispositivo debe estar en **es-ES** y en la misma cuenta de
 Amazon. No hace falta habilitar nada: en modo desarrollo la skill ya está
@@ -115,11 +130,14 @@ Frases que entiende, por verbo:
 
 | Acción | Verbos |
 | --- | --- |
-| Restar del inventario | resta · quita · descuenta · he gastado · he usado · he cogido |
+| Restar del inventario | resta · quita · descuenta · he gastado · he usado · he cogido · me he comido · nos hemos comido · nos hemos bebido |
 | Sumar al inventario | añade · suma · mete · he comprado · he traído |
-| Apuntar en la lista | apunta · necesito · me falta · hay que comprar · compra · pon en la lista |
+| Apuntar en la lista | apunta · apúntame · necesito · me falta · hay que comprar · compra · pon en la lista · mete en la lista · tráete |
 | Consultar | cuánto queda · cuánto tengo · cuánto hay · queda · hay |
-| Vaciar (poner a 0) | se ha acabado · se acabó · se ha terminado · ya no queda · vacía · pon a cero |
+| Vaciar (poner a 0) | se ha acabado · se acabó · se ha terminado · ya no queda · me he quedado sin · vacía · pon a cero |
+
+Las cantidades admiten **medias**: «medio», «media», «un cuarto» y «tres cuartos»,
+solas o con el numeral («un cuarto de kilo»).
 
 ```text
 Alexa, dile a mi despensa que reste dos yogures
@@ -133,7 +151,37 @@ Alexa, pregunta a mi despensa si queda arroz
 Alexa, dile a mi despensa que se ha acabado el pan
    → «Vale, ya no queda Pan de molde. ¿Lo apunto en la lista de la compra?»
    → tú: «sí»  (sin repetir «Alexa»: la sesión se queda abierta)
-Alexa, abre mi despensa            → bienvenida y se queda escuchando
+Alexa, abre mi despensa            → bienvenida, y encadena órdenes
+```
+
+Cuando algo no está claro, la skill **pregunta y se queda con la orden a medias**,
+así que se contesta solo lo que falta:
+
+```text
+— Alexa, dile a mi despensa que quite dos yogures
+— Tengo varias cosas que se parecen a yogures: Yogur natural y Yogur griego.
+  ¿Cuál de ellas?
+— El natural.                      (o «la primera»)
+— Vale, he quitado 2 unidades de Yogur natural. Ahora hay 4 unidades.
+
+— Alexa, dile a mi despensa que quite arroz
+— Tienes 2 kilos de Arroz. ¿Cuánto quito? Por ejemplo: medio kilo.
+— Medio kilo.
+— Vale, he quitado 0,5 kilos de Arroz. Ahora hay 1,5 kilos.
+```
+
+Y al **abrir** la skill se encadenan órdenes sin repetir «Alexa» cada vez, que es
+lo que convierte deshacer la compra en una conversación:
+
+```text
+— Alexa, abre mi despensa
+— Hola. Dime qué gastas o qué traes y lo apunto en el inventario…
+— He comprado dos leches
+— Hecho, he añadido 2 unidades de Leche entera. Ahora hay 5 unidades. ¿Algo más?
+— Tres yogures naturales
+— Hecho… ¿Algo más?
+— No
+— Hasta luego.
 ```
 
 Para preguntar, «pregunta a mi despensa…» suena mejor que «dile a…», pero las
@@ -191,15 +239,25 @@ curl -s -X POST http://localhost:3000/api/alexa -H "Content-Type: application/js
 curl -s -X POST http://localhost:3000/api/alexa -H "Content-Type: application/json" -d '{"version":"1.0","session":{"new":true,"sessionId":"s1","application":{"applicationId":"amzn1.ask.skill.tu-skill-id"},"user":{"userId":"amzn1.ask.account.PRUEBA"}},"request":{"type":"IntentRequest","requestId":"r5","timestamp":"2026-07-29T10:00:00Z","locale":"es-ES","intent":{"name":"SumarStockIntent","slots":{"cantidad":{"name":"cantidad","value":"3"},"producto":{"name":"producto","value":"yogures"}}}}}'
 ```
 
-La respuesta trae el texto en `response.outputSpeech.text`.
+**Retomar tras una pregunta** (los `candidatos` van con ids reales de tu catálogo;
+esto es lo que Alexa devuelve en el turno siguiente a un «¿cuál de ellas?»)
+
+```bash
+curl -s -X POST http://localhost:3000/api/alexa -H "Content-Type: application/json" -d '{"version":"1.0","session":{"new":false,"sessionId":"s1","application":{"applicationId":"amzn1.ask.skill.tu-skill-id"},"user":{"userId":"amzn1.ask.account.PRUEBA"},"attributes":{"pendiente":{"tipo":"elegir","accion":"restar","candidatos":[{"id":"UUID-1","name":"Yogur natural"},{"id":"UUID-2","name":"Yogur griego"}],"cantidad":2,"unidad":null}}},"request":{"type":"IntentRequest","requestId":"r6","timestamp":"2026-07-29T10:00:00Z","locale":"es-ES","intent":{"name":"RespuestaIntent","slots":{"producto":{"name":"producto","value":"natural"}}}}}'
+```
+
+La respuesta trae el texto en `response.outputSpeech.text`, y lo que quede
+pendiente en `sessionAttributes`.
 
 ## Cómo decide qué toca
 
 **El producto** se resuelve igual para restar y para sumar: nombre exacto o alias
 aprendido → singular/plural → el nombre dicho como palabra completa dentro de uno
 del catálogo («yogur» → «yogur natural») → parecido por trigramas. Si encaja más
-de uno, pregunta en vez de adivinar, y cuando acierta **repite el nombre
-completo** para que un error se note al instante.
+de uno, pregunta en vez de adivinar —y guarda la orden entera para retomarla con
+la respuesta, ver [Conversación](#conversación-preguntar-sin-hacer-repetir)—, y
+cuando acierta **repite el nombre completo** para que un error se note al
+instante.
 
 **Al restar:**
 
@@ -269,6 +327,51 @@ días» en cada pregunta sería ruido.
    conversaciones a medias que guardar ni caducar, y cualquier otra orden borra
    lo pendiente por sí sola. Un «sí» sin nada pendiente se contesta con un
    «no sé a qué te refieres».
+
+## Conversación: preguntar sin hacer repetir
+
+La skill pregunta en tres situaciones —cuál de varios productos era, cuánto y en
+qué unidad, y si apunta en la lista lo que se ha quedado a cero— y en las tres se
+contesta **solo lo que falta**. Antes había que repetir la orden entera, que es lo
+que hacía que preguntar saliera casi tan caro como adivinar mal.
+
+Cómo funciona: al preguntar, la respuesta se lleva en sus `sessionAttributes` lo
+que hace falta para retomarla (`PendingState` en `respond.ts`): qué acción era,
+los candidatos, y la cantidad y la unidad **tal como se dijeron**. Alexa nos
+devuelve eso mismo en el turno siguiente, y ahí se ejecuta exactamente lo que se
+habría ejecutado de haberlo dicho todo a la primera. **El servidor no guarda
+nada**: no hay conversaciones a medias que caducar, y si el usuario se va, se van
+con él.
+
+Todas las respuestas sueltas entran por un único intent, `RespuestaIntent`. Es uno
+y no tres porque sus muestras son casi comodines (`{producto}`,
+`{cantidad} {unidad}`) y varios comodines se pelearían entre sí en el reconocedor.
+Qué significa la frase lo decide lo que quedó pendiente, no la frase; **sin nada
+pendiente no hace nada**, y ese es el guardarraíl que hace inofensivas unas
+muestras tan amplias.
+
+Detalles que importan:
+
+- **Ante la duda se vuelve a preguntar**, nunca se elige «el que casi encaja»: si
+  la respuesta no señala a un solo candidato, la pregunta sigue viva.
+- Un «sí» solo vale para las preguntas de sí o no. Un «no» **cancela** lo que
+  hubiera pendiente.
+- Las preguntas se pueden **encadenar**: elegir un producto a granel puede llevar
+  a que se pregunte la unidad, y de ahí a completar la orden.
+- Al **abrir** la skill se enciende el modo conversación (una marca en la sesión)
+  y las confirmaciones rematan con «¿Algo más?» dejando el micrófono abierto. Las
+  órdenes de una tacada («dile a mi despensa que…») siguen cerrando: quien las usa
+  quiere despachar y marcharse. Los errores y las despedidas cierran siempre —tras
+  un fallo, invitar a repetir es justo lo que duplicaría el movimiento.
+
+### «Medio kilo» no era un número
+
+`AMAZON.NUMBER` resuelve numerales («dos», «veinte»), pero **no fracciones**: con
+«medio» el slot llegaba vacío y «quita medio kilo de arroz» —el ejemplo que este
+mismo README anunciaba— restaba un kilo sin avisar. Las medias van ahora por un
+tipo propio, `TipoFraccion`, cuyo id **es el multiplicador** (`medio` → `0.5`), y
+se combinan con el numeral si lo hay: en «un cuarto de kilo» Alexa puede meter el
+«un» en `cantidad` y el «cuarto» en `fraccion`, y 1 × 0,25 es la lectura correcta.
 
 ## Reintentos de Amazon: por qué no se duplica
 

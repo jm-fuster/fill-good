@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import type { PendingState } from "./respond";
+
 /**
  * Forma del "envelope" que envía Alexa. Se modela solo lo que usamos: zod
  * descarta las claves desconocidas, así que los campos que Amazon añada con el
@@ -48,6 +50,44 @@ const intentSchema = z.object({
 const applicationSchema = z.object({ applicationId: z.string() });
 const userSchema = z.object({ userId: z.string() });
 
+const unitSchema = z.enum(["ud", "g", "kg", "ml", "l"]);
+const voiceActionSchema = z.enum([
+  "restar",
+  "sumar",
+  "agotar",
+  "consultar",
+  "apuntar",
+]);
+
+/**
+ * La pregunta que dejamos abierta en el turno anterior, de vuelta desde el
+ * dispositivo. Es un espejo de `PendingState` (respond.ts), y se valida con el
+ * mismo rigor que el resto del envelope: Alexa devuelve lo que le dimos, pero
+ * llega por la red y aquí no se da nada por bueno. `getPending` declara el tipo
+ * de retorno, así que el compilador avisa si los dos lados se separan.
+ */
+const pendingSchema = z.discriminatedUnion("tipo", [
+  z.object({
+    tipo: z.literal("apuntar"),
+    productId: z.string(),
+    name: z.string(),
+    normalized: z.string(),
+  }),
+  z.object({
+    tipo: z.literal("elegir"),
+    accion: voiceActionSchema,
+    candidatos: z.array(z.object({ id: z.string(), name: z.string() })).min(1),
+    cantidad: z.number().nullable().default(null),
+    unidad: unitSchema.nullable().default(null),
+  }),
+  z.object({
+    tipo: z.literal("unidad"),
+    accion: voiceActionSchema,
+    productId: z.string(),
+    name: z.string(),
+  }),
+]);
+
 export const alexaEnvelopeSchema = z.object({
   version: z.string().optional(),
   // `session` viaja en Launch/Intent/SessionEnded, pero no en todos los tipos de
@@ -60,15 +100,15 @@ export const alexaEnvelopeSchema = z.object({
       user: userSchema.optional(),
       // Lo que devolvimos como `sessionAttributes` en el turno anterior. Viene
       // del dispositivo, así que se valida como cualquier otra entrada.
+      //
+      // Cada campo lleva su `.catch`: un atributo con una forma que no
+      // reconocemos (una versión anterior de la skill todavía en vuelo, por
+      // ejemplo) tiene que valer como «no había nada pendiente», nunca tumbar la
+      // petición entera con un 400. Lo peor que pasa es que el usuario repita.
       attributes: z
         .object({
-          pendiente: z
-            .object({
-              productId: z.string(),
-              name: z.string(),
-              normalized: z.string(),
-            })
-            .optional(),
+          pendiente: pendingSchema.optional().catch(undefined),
+          conversacion: z.literal(true).optional().catch(undefined),
         })
         .optional(),
     })
@@ -113,11 +153,14 @@ export function getAmazonUserId(envelope: AlexaEnvelope): string | null {
   );
 }
 
-/** Producto agotado en el turno anterior que espera un sí para ir a la lista. */
-export function getPendingProduct(
-  envelope: AlexaEnvelope,
-): { productId: string; name: string; normalized: string } | null {
+/** La pregunta que dejamos abierta en el turno anterior, si la hubo. */
+export function getPending(envelope: AlexaEnvelope): PendingState | null {
   return envelope.session?.attributes?.pendiente ?? null;
+}
+
+/** ¿Abrió el usuario la skill, en vez de soltar una orden de una tacada? */
+export function isConversationMode(envelope: AlexaEnvelope): boolean {
+  return envelope.session?.attributes?.conversacion === true;
 }
 
 /** Valor dicho de un slot, tal cual (sin normalizar). */
@@ -157,4 +200,42 @@ export function getSlotNumber(
   // Alexa usa punto decimal en es-ES ("1.5"), pero por si acaso se admite coma.
   const value = Number(raw.replace(",", "."));
   return Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Posición dicha con un ordinal: «la primera» → 1. AMAZON.Ordinal entrega el
+ * número en el valor del slot, así que se lee como cualquier otro número, pero
+ * se exige entero y positivo antes de usarlo como índice.
+ */
+export function getSlotOrdinal(
+  intent: AlexaIntent | undefined,
+  name: string,
+): number | null {
+  const value = getSlotNumber(intent, name);
+  if (value === null || !Number.isInteger(value) || value < 1) return null;
+  return value;
+}
+
+/**
+ * Cantidad dicha, juntando el número con la fracción: «dos kilos» → 2, «medio
+ * kilo» → 0,5, «un cuarto de kilo» → 0,25. null si no dijo ninguna.
+ *
+ * Hace falta porque **AMAZON.NUMBER no resuelve las fracciones del castellano**:
+ * «medio» no es un numeral y llega vacío, así que «quita medio kilo de arroz»
+ * —el ejemplo que el propio README anuncia— restaba uno. Las fracciones vienen
+ * por el slot `fraccion`, un tipo propio cuyo id ES el multiplicador.
+ *
+ * Se multiplica en vez de elegir uno de los dos porque el numeral y la fracción
+ * conviven de verdad: en «un cuarto de kilo», Alexa puede rellenar `cantidad`
+ * con el «un» y `fraccion` con el «cuarto», y 1 × 0,25 es la lectura correcta.
+ */
+export function getSpokenQuantity(
+  intent: AlexaIntent | undefined,
+): number | null {
+  const number = getSlotNumber(intent, "cantidad");
+  const rawFraction = getSlotResolutionId(intent, "fraccion");
+  if (rawFraction === null) return number;
+  const fraction = Number(rawFraction);
+  if (!Number.isFinite(fraction) || fraction <= 0) return number;
+  return (number ?? 1) * fraction;
 }

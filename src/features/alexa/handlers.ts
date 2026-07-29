@@ -14,6 +14,8 @@ import type { Database, LocationType, UnitType } from "@/lib/supabase/types";
 import { defaultListQuantity, roundQuantity } from "@/lib/units";
 
 import {
+  ordinalFromWord,
+  pickCandidate,
   planAddition,
   planDeduction,
   resolveProduct,
@@ -31,13 +33,18 @@ import {
   speakUnit,
   SPEECH,
   type AlexaResponse,
+  type PendingState,
+  type SessionState,
+  type VoiceAction,
 } from "./respond";
 import {
   getAmazonUserId,
-  getPendingProduct,
-  getSlotNumber,
+  getPending,
+  getSlotOrdinal,
   getSlotResolutionId,
   getSlotValue,
+  getSpokenQuantity,
+  isConversationMode,
   type AlexaEnvelope,
   type AlexaIntent,
 } from "./schemas";
@@ -48,10 +55,12 @@ import {
  * `household_id` del vínculo ya verificado. Ese id no sale nunca del payload de
  * Amazon, solo de la fila de `alexa_links` que se buscó por `amazon_user_id`.
  *
- * El servidor es sin estado a propósito: cuando falta un dato se contesta con la
- * sesión abierta y el usuario repite la orden completa, que Alexa vuelve a
- * mandar como un IntentRequest entero. Así no hay que guardar conversaciones a
- * medias ni preocuparse de que caduquen.
+ * El servidor sigue siendo sin estado; la conversación, no. Cuando falta un dato
+ * se contesta con la sesión abierta y lo que quedó pendiente viaja en los
+ * `sessionAttributes` del propio envelope (`PendingState` en respond.ts), nunca
+ * en memoria nuestra. Así el usuario contesta SOLO lo que falta —«el natural»,
+ * «medio kilo»— en vez de repetir la orden entera, y aquí no hay conversaciones a
+ * medias que guardar ni que caducar: si el usuario se va, se va con ellas.
  */
 
 type Admin = SupabaseClient<Database>;
@@ -114,6 +123,14 @@ async function findLink(
   return { id: data.id, householdId: data.household_id, userId: data.user_id };
 }
 
+/** Delata en Ajustes los vínculos que ya no se usan. Best-effort, sin esperar. */
+function touchLink(admin: Admin, link: AlexaLink): PromiseLike<unknown> {
+  return admin
+    .from("alexa_links")
+    .update({ last_used_at: new Date().toISOString() })
+    .eq("id", link.id);
+}
+
 /** Nombres de catálogo para poder decirlos en voz alta, en el orden pedido. */
 async function loadProducts(
   admin: Admin,
@@ -135,6 +152,71 @@ async function loadProducts(
     });
   }
   return products;
+}
+
+/** Los candidatos con su nombre, para poder ofrecerlos, en el orden pedido. */
+function namedCandidates(
+  productIds: string[],
+  products: Map<string, ProductInfo>,
+): { id: string; name: string }[] {
+  return productIds
+    .map((id) => ({ id, name: products.get(id)?.name }))
+    .filter((c): c is { id: string; name: string } => c.name !== undefined);
+}
+
+/**
+ * Pregunta cuál de los candidatos era, dejando en la sesión TODO lo necesario
+ * para retomar la orden con una respuesta suelta. Es lo que evita que el usuario
+ * tenga que repetir «quita dos yogures naturales» entero.
+ */
+function askWhich(
+  spoken: string,
+  candidatos: { id: string; name: string }[],
+  accion: VoiceAction,
+  said: { quantity: number | null; unit: UnitType | null },
+): AlexaResponse {
+  return speak(
+    SPEECH.ambiguous(
+      spoken,
+      candidatos.map((candidate) => candidate.name),
+    ),
+    {
+      endSession: false,
+      reprompt: SPEECH.ambiguousReprompt,
+      state: {
+        pendiente: {
+          tipo: "elegir",
+          accion,
+          candidatos,
+          cantidad: said.quantity,
+          unidad: said.unit,
+        },
+      },
+    },
+  );
+}
+
+/** Lo que espera un «sí» para acabar en la lista de la compra. */
+function pendingApuntar(productId: string, name: string): PendingState {
+  return { tipo: "apuntar", productId, name, normalized: normalizeName(name) };
+}
+
+/**
+ * Remata un «ya no queda nada» ofreciendo apuntarlo, que es lo que uno querría a
+ * continuación —el sentido de la app es comprar lo justo, y algo a cero es justo
+ * lo que hay que comprar—. Deja la sesión abierta para que el «sí» llegue sin
+ * repetir «Alexa».
+ */
+function offerToList(
+  text: string,
+  productId: string,
+  name: string,
+): AlexaResponse {
+  return speak(text + SPEECH.offerList, {
+    endSession: false,
+    reprompt: SPEECH.emptiedAskReprompt,
+    state: { pendiente: pendingApuntar(productId, name) },
+  });
 }
 
 /** Aplica el plan lote a lote. Devuelve false si alguna escritura falla. */
@@ -197,6 +279,7 @@ async function prepareVoiceTarget(
   admin: Admin,
   envelope: AlexaEnvelope,
   intent: AlexaIntent,
+  accion: VoiceAction,
 ): Promise<
   | { ok: true; target: VoiceTarget }
   | { ok: false; response: AlexaResponse }
@@ -217,18 +300,18 @@ async function prepareVoiceTarget(
       }),
     };
   }
-  // Sin cantidad, «quita yogur» es una unidad. La unidad solo se acepta si Alexa
-  // la ha resuelto a uno de nuestros ids canónicos.
-  const quantity = getSlotNumber(intent, "cantidad") ?? 1;
-  const unit = asUnitType(getSlotResolutionId(intent, "unidad"));
+  // La cantidad se guarda TAL COMO SE DIJO (null si no la dijo): si hay que
+  // preguntar cuál de varios productos era, al retomar la orden se le aplican
+  // los mismos valores por defecto que aquí, en vez de arrastrar un 1 inventado.
+  // La unidad solo se acepta si Alexa la ha resuelto a un id canónico nuestro.
+  const said = {
+    quantity: getSpokenQuantity(intent),
+    unit: asUnitType(getSlotResolutionId(intent, "unidad")),
+  };
 
   const [matchData] = await Promise.all([
     loadHouseholdMatchData(admin, link.householdId),
-    // Delata en Ajustes los vínculos que ya no se usan. Best-effort.
-    admin
-      .from("alexa_links")
-      .update({ last_used_at: new Date().toISOString() })
-      .eq("id", link.id),
+    touchLink(admin, link),
   ]);
 
   const resolution = resolveProduct(spoken, matchData);
@@ -239,25 +322,33 @@ async function prepareVoiceTarget(
       link.householdId,
       resolution.productIds,
     );
-    const spokenNames = resolution.productIds
-      .map((id) => products.get(id)?.name)
-      .filter((name): name is string => Boolean(name));
+    const candidatos = namedCandidates(resolution.productIds, products);
     // Sin nombres que ofrecer no hay pregunta que hacer (no debería pasar: los
     // candidatos salen del catálogo de este mismo hogar).
-    if (spokenNames.length === 0) return { ok: false, notFound: true, spoken };
-    return {
-      ok: false,
-      response: speak(SPEECH.ambiguous(spoken, spokenNames), {
-        endSession: false,
-        reprompt: SPEECH.ambiguousReprompt,
-      }),
-    };
+    if (candidatos.length === 0) return { ok: false, notFound: true, spoken };
+    return { ok: false, response: askWhich(spoken, candidatos, accion, said) };
   }
 
-  const productId = resolution.productId;
+  const target = await loadTarget(admin, link, resolution.productId, said);
+  if (!target) return { ok: false, notFound: true, spoken };
+  return { ok: true, target };
+}
+
+/**
+ * Carga el producto y sus lotes cuando YA se sabe de cuál se habla. Está
+ * separado de la resolución por nombre porque al retomar una orden —el usuario
+ * acaba de elegir entre varios candidatos, o de decir la unidad que faltaba— no
+ * hay nombre que resolver ni slots que interpretar, solo un id.
+ */
+async function loadTarget(
+  admin: Admin,
+  link: AlexaLink,
+  productId: string,
+  said: { quantity: number | null; unit: UnitType | null },
+): Promise<VoiceTarget | null> {
   const products = await loadProducts(admin, link.householdId, [productId]);
   const product = products.get(productId);
-  if (!product) return { ok: false, notFound: true, spoken };
+  if (!product) return null;
 
   // Se cargan TODOS los lotes, también los agotados: una fila a 0 se conserva
   // como «agotado», y al sumar hay que reutilizarla en vez de intentar crear
@@ -277,7 +368,15 @@ async function prepareVoiceTarget(
     expiryDate: row.expiry_date,
   }));
 
-  return { ok: true, target: { link, productId, product, quantity, unit, lots } };
+  // Sin cantidad dicha, «quita yogur» es una unidad.
+  return {
+    link,
+    productId,
+    product,
+    quantity: said.quantity ?? 1,
+    unit: said.unit,
+    lots,
+  };
 }
 
 async function handleRestarStock(
@@ -285,13 +384,25 @@ async function handleRestarStock(
   envelope: AlexaEnvelope,
   intent: AlexaIntent,
 ): Promise<AlexaResponse> {
-  const prepared = await prepareVoiceTarget(admin, envelope, intent);
+  const prepared = await prepareVoiceTarget(admin, envelope, intent, "restar");
   if (!prepared.ok) {
     return "notFound" in prepared
       ? speak(SPEECH.productUnknown(prepared.spoken))
       : prepared.response;
   }
-  const { link, productId, product, quantity, unit, lots } = prepared.target;
+  return runRestar(admin, prepared.target);
+}
+
+/**
+ * El descuento en sí, ya con el producto decidido. Vive aparte del intent para
+ * que se pueda RETOMAR: cuando el usuario resuelve una ambigüedad o dice la
+ * unidad que faltaba, se vuelve aquí sin pasar por los slots.
+ */
+async function runRestar(
+  admin: Admin,
+  target: VoiceTarget,
+): Promise<AlexaResponse> {
+  const { link, productId, product, quantity, unit, lots } = target;
   const name = product.name;
 
   const plan = planDeduction({ quantity, unit, lots });
@@ -302,7 +413,7 @@ async function handleRestarStock(
         reprompt: SPEECH.fallbackReprompt,
       });
     case "no_stock":
-      return speak(SPEECH.noStock(name));
+      return offerToList(SPEECH.noStock(name), productId, name);
     case "unit_mismatch":
       return speak(
         SPEECH.unitMismatch(
@@ -317,23 +428,34 @@ async function handleRestarStock(
           name,
           speakList(plan.stock.map((s) => speakQuantity(s.quantity, s.unit))),
         ),
-        { endSession: false, reprompt: SPEECH.askUnitReprompt },
+        {
+          endSession: false,
+          reprompt: SPEECH.askUnitReprompt,
+          state: {
+            pendiente: { tipo: "unidad", accion: "restar", productId, name },
+          },
+        },
       );
     case "deduct": {
-      if (plan.steps.length === 0) return speak(SPEECH.noStock(name));
+      if (plan.steps.length === 0) {
+        return offerToList(SPEECH.noStock(name), productId, name);
+      }
       const applied = await applySteps(admin, link, plan.steps);
       if (!applied) return speak(SPEECH.error);
       await recordSteps(admin, link, productId, plan.steps);
 
+      // Quedarse a cero no es el final de la conversación, es el principio de la
+      // siguiente: se ofrece apuntarlo, igual que al decir «se ha acabado».
       const taken = speakQuantity(plan.taken, plan.unit);
-      if (!plan.covered) return speak(SPEECH.deductedPartial(taken, name));
-      return speak(
-        SPEECH.deducted(
-          taken,
-          name,
-          plan.remaining > 0 ? speakQuantity(plan.remaining, plan.unit) : null,
-        ),
-      );
+      if (!plan.covered) {
+        return offerToList(SPEECH.deductedPartial(taken, name), productId, name);
+      }
+      if (plan.remaining > 0) {
+        return speak(
+          SPEECH.deducted(taken, name, speakQuantity(plan.remaining, plan.unit)),
+        );
+      }
+      return offerToList(SPEECH.deducted(taken, name, null), productId, name);
     }
   }
 }
@@ -343,13 +465,21 @@ async function handleSumarStock(
   envelope: AlexaEnvelope,
   intent: AlexaIntent,
 ): Promise<AlexaResponse> {
-  const prepared = await prepareVoiceTarget(admin, envelope, intent);
+  const prepared = await prepareVoiceTarget(admin, envelope, intent, "sumar");
   if (!prepared.ok) {
     return "notFound" in prepared
       ? speak(SPEECH.addProductUnknown(prepared.spoken))
       : prepared.response;
   }
-  const { link, productId, product, quantity, unit, lots } = prepared.target;
+  return runSumar(admin, prepared.target);
+}
+
+/** El alta en sí, ya con el producto decidido (ver {@link runRestar}). */
+async function runSumar(
+  admin: Admin,
+  target: VoiceTarget,
+): Promise<AlexaResponse> {
+  const { link, productId, product, quantity, unit, lots } = target;
   const name = product.name;
 
   const plan = planAddition({
@@ -377,6 +507,9 @@ async function handleSumarStock(
       return speak(SPEECH.addAskUnit(name), {
         endSession: false,
         reprompt: SPEECH.addAskUnitReprompt,
+        state: {
+          pendiente: { tipo: "unidad", accion: "sumar", productId, name },
+        },
       });
     case "add": {
       // La caducidad no se toca a propósito: por voz no se puede dictar, así que
@@ -454,17 +587,26 @@ async function handleConsultarStock(
   envelope: AlexaEnvelope,
   intent: AlexaIntent,
 ): Promise<AlexaResponse> {
-  const prepared = await prepareVoiceTarget(admin, envelope, intent);
+  const prepared = await prepareVoiceTarget(admin, envelope, intent, "consultar");
   if (!prepared.ok) {
     return "notFound" in prepared
       ? speak(SPEECH.productUnknown(prepared.spoken))
       : prepared.response;
   }
-  const { product, lots } = prepared.target;
+  return runConsultar(prepared.target);
+}
+
+/** La consulta en sí, ya con el producto decidido (ver {@link runRestar}). */
+function runConsultar(target: VoiceTarget): AlexaResponse {
+  const { productId, product, lots } = target;
 
   // Solo lectura: este intent no escribe nada en el inventario.
   const stock = summarizeStock(lots.filter((lot) => lot.quantity > 0));
-  if (stock.length === 0) return speak(SPEECH.stockEmpty(product.name));
+  // Preguntar por algo que no queda es el momento exacto en que uno decide
+  // comprarlo, así que se ofrece apuntarlo en vez de cerrar con la mala noticia.
+  if (stock.length === 0) {
+    return offerToList(SPEECH.stockEmpty(product.name), productId, product.name);
+  }
 
   return speak(
     SPEECH.stockReport(
@@ -537,24 +679,20 @@ async function handleApuntarLista(
   // Aquí la cantidad se queda en null si no la dicen: para la lista eso no es
   // «uno», es «ya veré cuánto cojo», y lo decide `defaultListQuantity` según la
   // unidad (los contables nacen en 1, lo que va a granel sin cantidad).
-  const saidQuantity = getSlotNumber(intent, "cantidad");
-  const saidUnit = asUnitType(getSlotResolutionId(intent, "unidad"));
+  const said = {
+    quantity: getSpokenQuantity(intent),
+    unit: asUnitType(getSlotResolutionId(intent, "unidad")),
+  };
 
   const [matchData] = await Promise.all([
     loadHouseholdMatchData(admin, link.householdId),
-    admin
-      .from("alexa_links")
-      .update({ last_used_at: new Date().toISOString() })
-      .eq("id", link.id),
+    touchLink(admin, link),
   ]);
 
   // A diferencia del inventario, aquí NO hace falta que el producto exista: la
   // lista admite texto libre (`product_id` es nullable), igual que al escribirlo
   // en la app. Enlazarlo cuando se reconoce sirve para el checkout y los avisos.
   const resolution = resolveProduct(spoken, matchData);
-  let productId: string | null = null;
-  let name = capitalizar(spoken);
-  let defaultUnit: UnitType | null = null;
 
   if (resolution.kind === "ambiguous") {
     const products = await loadProducts(
@@ -562,14 +700,9 @@ async function handleApuntarLista(
       link.householdId,
       resolution.productIds,
     );
-    const spokenNames = resolution.productIds
-      .map((id) => products.get(id)?.name)
-      .filter((n): n is string => Boolean(n));
-    if (spokenNames.length > 0) {
-      return speak(SPEECH.ambiguous(spoken, spokenNames), {
-        endSession: false,
-        reprompt: SPEECH.ambiguousReprompt,
-      });
+    const candidatos = namedCandidates(resolution.productIds, products);
+    if (candidatos.length > 0) {
+      return askWhich(spoken, candidatos, "apuntar", said);
     }
   } else if (resolution.kind === "match") {
     const products = await loadProducts(admin, link.householdId, [
@@ -577,24 +710,62 @@ async function handleApuntarLista(
     ]);
     const product = products.get(resolution.productId);
     if (product) {
-      productId = resolution.productId;
-      name = product.name;
-      defaultUnit = product.defaultUnit;
+      return runApuntar(
+        admin,
+        link,
+        {
+          productId: resolution.productId,
+          name: product.name,
+          normalized: normalizeName(spoken),
+          defaultUnit: product.defaultUnit,
+        },
+        said,
+      );
     }
   }
 
-  const unit = saidUnit ?? defaultUnit;
-  const quantity = saidQuantity ?? defaultListQuantity(unit);
+  // Texto libre: ni lo reconoce el catálogo ni había candidatos que ofrecer.
+  return runApuntar(
+    admin,
+    link,
+    {
+      productId: null,
+      name: capitalizar(spoken),
+      normalized: normalizeName(spoken),
+      defaultUnit: null,
+    },
+    said,
+  );
+}
+
+/**
+ * El apuntado en sí, ya decidido si va contra un producto del catálogo o es
+ * texto libre. Aparte del intent para poder RETOMARLO cuando el usuario acaba de
+ * elegir entre varios candidatos (ver {@link runRestar}).
+ */
+async function runApuntar(
+  admin: Admin,
+  link: AlexaLink,
+  item: {
+    productId: string | null;
+    name: string;
+    normalized: string;
+    defaultUnit: UnitType | null;
+  },
+  said: { quantity: number | null; unit: UnitType | null },
+): Promise<AlexaResponse> {
+  const unit = said.unit ?? item.defaultUnit;
+  const quantity = said.quantity ?? defaultListQuantity(unit);
 
   // Aviso de existencias: el sentido de la app es comprar lo justo, así que si
   // aún queda en casa merece decirlo en voz alta antes de que se compre doble.
   let warning = "";
-  if (productId) {
+  if (item.productId) {
     const { data: inv } = await admin
       .from("inventory_items")
       .select("quantity, unit")
       .eq("household_id", link.householdId)
-      .eq("product_id", productId)
+      .eq("product_id", item.productId)
       .gt("quantity", 0);
     const total = (inv ?? []).reduce((sum, row) => sum + Number(row.quantity), 0);
     if (total > 0 && inv?.[0]) {
@@ -605,9 +776,9 @@ async function handleApuntarLista(
   }
 
   const resultado = await apuntarEnLista(admin, link, {
-    productId,
-    name,
-    normalized: normalizeName(spoken),
+    productId: item.productId,
+    name: item.name,
+    normalized: item.normalized,
     quantity,
     unit,
   });
@@ -689,20 +860,24 @@ async function handleAgotarStock(
   envelope: AlexaEnvelope,
   intent: AlexaIntent,
 ): Promise<AlexaResponse> {
-  const prepared = await prepareVoiceTarget(admin, envelope, intent);
+  const prepared = await prepareVoiceTarget(admin, envelope, intent, "agotar");
   if (!prepared.ok) {
     return "notFound" in prepared
       ? speak(SPEECH.productUnknown(prepared.spoken))
       : prepared.response;
   }
-  const { link, productId, product, lots } = prepared.target;
+  return runAgotar(admin, prepared.target);
+}
+
+/** El vaciado en sí, ya con el producto decidido (ver {@link runRestar}). */
+async function runAgotar(
+  admin: Admin,
+  target: VoiceTarget,
+): Promise<AlexaResponse> {
+  const { link, productId, product, lots } = target;
   const conStock = lots.filter((lot) => lot.quantity > 0);
 
-  const pendiente = {
-    productId,
-    name: product.name,
-    normalized: normalizeName(product.name),
-  };
+  const pendiente = pendingApuntar(productId, product.name);
 
   if (conStock.length === 0) {
     // Ya estaba a cero: no hay nada que vaciar, pero la oferta sigue teniendo
@@ -741,18 +916,58 @@ async function handleAgotarStock(
   });
 }
 
+/**
+ * Repite la pregunta que sigue abierta cuando lo que ha contestado el usuario no
+ * sirve para responderla —un «sí» a un «¿cuál de ellas?»—. Conserva el
+ * pendiente a propósito: la pregunta no se ha caído, solo no se ha entendido la
+ * respuesta, y darla por perdida obligaría a repetir la orden entera.
+ */
+function askAgain(pendiente: PendingState): AlexaResponse {
+  const state: SessionState = { pendiente };
+  switch (pendiente.tipo) {
+    case "apuntar":
+      return speak(SPEECH.emptiedAskReprompt, {
+        endSession: false,
+        reprompt: SPEECH.emptiedAskReprompt,
+        state,
+      });
+    case "elegir":
+      return speak(
+        SPEECH.ambiguousRetry(
+          pendiente.candidatos.map((candidate) => candidate.name),
+        ),
+        { endSession: false, reprompt: SPEECH.ambiguousReprompt, state },
+      );
+    case "unidad": {
+      const pregunta =
+        pendiente.accion === "sumar"
+          ? SPEECH.addAskUnitReprompt
+          : SPEECH.askUnitReprompt;
+      return speak(pregunta, {
+        endSession: false,
+        reprompt: pregunta,
+        state,
+      });
+    }
+  }
+}
+
 /** «Sí» a la pregunta de apuntar lo que se acaba de agotar. */
 async function handleSi(
   admin: Admin,
   envelope: AlexaEnvelope,
 ): Promise<AlexaResponse> {
-  const pendiente = getPendingProduct(envelope);
+  const pendiente = getPending(envelope);
   if (!pendiente) {
     return speak(SPEECH.nothingPending, {
       endSession: false,
       reprompt: SPEECH.fallbackReprompt,
     });
   }
+  // Un «sí» solo confirma preguntas de sí o no: con un «¿cuál de ellas?» abierto
+  // no hay nada que confirmar, así que se vuelve a preguntar.
+  if (pendiente.tipo !== "apuntar") return askAgain(pendiente);
+
   const amazonUserId = getAmazonUserId(envelope);
   if (!amazonUserId) return notLinkedResponse();
   const link = await findLink(admin, amazonUserId);
@@ -773,6 +988,128 @@ async function handleSi(
     unit,
   });
   return speak(resultado.ok ? resultado.speech : SPEECH.error);
+}
+
+/**
+ * El candidato elegido, por nombre («el natural») o por posición («la primera»).
+ *
+ * El nombre se prueba ANTES que la posición hablada: si un producto se llamara
+ * «Harina de primera», su nombre debe ganarle a la lectura de «primera» como
+ * ordinal. El slot `orden` sí va primero porque ahí Alexa ya ha decidido que era
+ * un ordinal y no hay nada que interpretar.
+ */
+function chooseCandidate(
+  intent: AlexaIntent,
+  candidatos: { id: string; name: string }[],
+): { id: string; name: string } | null {
+  const ordinal = getSlotOrdinal(intent, "orden");
+  if (ordinal !== null) return candidatos[ordinal - 1] ?? null;
+
+  const spoken = getSlotValue(intent, "producto");
+  if (!spoken) return null;
+  const porNombre = pickCandidate(spoken, candidatos);
+  if (porNombre) return porNombre;
+
+  const dicho = ordinalFromWord(spoken);
+  return dicho === null ? null : (candidatos[dicho - 1] ?? null);
+}
+
+/**
+ * Retoma la orden que se quedó a medias, ya con el producto resuelto. Es el
+ * punto donde la conversación vuelve al carril: a partir de aquí se ejecuta
+ * exactamente lo mismo que si el usuario lo hubiera dicho todo a la primera.
+ */
+async function resume(
+  admin: Admin,
+  link: AlexaLink,
+  accion: VoiceAction,
+  producto: { id: string; name: string },
+  said: { quantity: number | null; unit: UnitType | null },
+): Promise<AlexaResponse> {
+  // La lista no necesita lotes ni existencias: va por otro camino desde el
+  // principio (admite texto libre, no descuenta nada).
+  if (accion === "apuntar") {
+    const products = await loadProducts(admin, link.householdId, [producto.id]);
+    const product = products.get(producto.id);
+    if (!product) return speak(SPEECH.productUnknown(producto.name));
+    return runApuntar(
+      admin,
+      link,
+      {
+        productId: producto.id,
+        name: product.name,
+        normalized: normalizeName(product.name),
+        defaultUnit: product.defaultUnit,
+      },
+      said,
+    );
+  }
+
+  const target = await loadTarget(admin, link, producto.id, said);
+  if (!target) return speak(SPEECH.productUnknown(producto.name));
+  switch (accion) {
+    case "restar":
+      return runRestar(admin, target);
+    case "sumar":
+      return runSumar(admin, target);
+    case "agotar":
+      return runAgotar(admin, target);
+    case "consultar":
+      return runConsultar(target);
+  }
+}
+
+/**
+ * La respuesta suelta a una pregunta abierta: «el natural», «la primera»,
+ * «medio kilo». Es UN SOLO intent, y no uno por pregunta, porque sus muestras
+ * son casi comodines («{producto}», «{cantidad} {unidad}») y dos comodines se
+ * pelearían entre sí en el reconocedor de Alexa. Lo que significa la frase lo
+ * decide lo que quedó pendiente en la sesión, no la frase.
+ *
+ * Sin nada pendiente no hace absolutamente nada: ese es el guardarraíl que hace
+ * inofensivo que las muestras sean tan amplias.
+ */
+async function handleRespuesta(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<AlexaResponse> {
+  const pendiente = getPending(envelope);
+  if (!pendiente) {
+    return speak(SPEECH.nothingPending, {
+      endSession: false,
+      reprompt: SPEECH.fallbackReprompt,
+    });
+  }
+  // Una pregunta de sí o no no se contesta con un nombre ni con una cantidad.
+  if (pendiente.tipo === "apuntar") return askAgain(pendiente);
+
+  const amazonUserId = getAmazonUserId(envelope);
+  if (!amazonUserId) return notLinkedResponse();
+  const link = await findLink(admin, amazonUserId);
+  if (!link) return notLinkedResponse();
+
+  if (pendiente.tipo === "elegir") {
+    const elegido = chooseCandidate(intent, pendiente.candidatos);
+    if (!elegido) return askAgain(pendiente);
+    return resume(admin, link, pendiente.accion, elegido, {
+      quantity: pendiente.cantidad,
+      unit: pendiente.unidad,
+    });
+  }
+
+  // Faltaba saber cuánto, y en qué. Sin las dos cosas no se puede seguir: la
+  // unidad es justo el dato que no se puede adivinar (por eso se preguntó).
+  const unit = asUnitType(getSlotResolutionId(intent, "unidad"));
+  const quantity = getSpokenQuantity(intent);
+  if (unit === null || quantity === null) return askAgain(pendiente);
+  return resume(
+    admin,
+    link,
+    pendiente.accion,
+    { id: pendiente.productId, name: pendiente.name },
+    { quantity, unit },
+  );
 }
 
 async function handleVincular(
@@ -835,7 +1172,73 @@ async function handleVincular(
   return speak(SPEECH.linked(household?.name ?? "tu hogar"));
 }
 
+/**
+ * Respuestas que CIERRAN la sesión aunque estemos en modo conversación. Tras un
+ * fallo, dejar el micrófono abierto invita a repetir la orden, que es justo lo
+ * que la idempotencia viene a evitar; y a una despedida no se le pega un «¿algo
+ * más?». Lo demás sí encadena.
+ */
+const CLOSING_SPEECH: readonly string[] = [
+  SPEECH.stop,
+  SPEECH.error,
+  SPEECH.slowRetry,
+  SPEECH.notLinked,
+  SPEECH.linkCodeInvalid,
+  SPEECH.linkRateLimited,
+];
+
+/**
+ * Encadena órdenes cuando el usuario ABRIÓ la skill: en lugar de cerrar tras
+ * cada confirmación, se remata con «¿Algo más?» y el micrófono sigue abierto.
+ * Es lo que convierte deshacer la compra en una conversación en vez de en diez
+ * invocaciones seguidas de «Alexa, dile a mi despensa que…».
+ *
+ * Va en un único sitio, y no respuesta a respuesta, para que ningún intent pueda
+ * olvidarse. A las órdenes de una tacada no las toca: quien dice «dile a mi
+ * despensa que reste dos yogures» quiere despachar y marcharse.
+ */
+function applySessionMode(
+  envelope: AlexaEnvelope,
+  response: AlexaResponse,
+): AlexaResponse {
+  if (!isConversationMode(envelope)) return response;
+
+  const text = response.response.outputSpeech?.text;
+  // Sin voz (SessionEnded) o con una respuesta de cierre, el modo se va con la
+  // sesión: no se propaga la marca.
+  if (text === undefined || CLOSING_SPEECH.includes(text)) return response;
+
+  const sessionAttributes: SessionState = {
+    ...response.sessionAttributes,
+    conversacion: true,
+  };
+  // Las respuestas que ya dejan la sesión abierta traen su propia pregunta;
+  // añadirles «¿algo más?» sería preguntar dos cosas a la vez.
+  if (!response.response.shouldEndSession) {
+    return { ...response, sessionAttributes };
+  }
+  return {
+    ...response,
+    sessionAttributes,
+    response: {
+      ...response.response,
+      outputSpeech: { type: "PlainText", text: `${text} ${SPEECH.anythingElse}` },
+      reprompt: {
+        outputSpeech: { type: "PlainText", text: SPEECH.anythingElseReprompt },
+      },
+      shouldEndSession: false,
+    },
+  };
+}
+
 async function handleIntent(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+): Promise<AlexaResponse> {
+  return applySessionMode(envelope, await routeIntent(admin, envelope));
+}
+
+async function routeIntent(
   admin: Admin,
   envelope: AlexaEnvelope,
 ): Promise<AlexaResponse> {
@@ -860,10 +1263,12 @@ async function handleIntent(
     case "AMAZON.YesIntent":
       return handleSi(admin, envelope);
     case "AMAZON.NoIntent":
-      // Un «no» sin nada pendiente es tan inofensivo como un «vale»: se cierra.
-      return speak(
-        getPendingProduct(envelope) ? SPEECH.emptiedNo : SPEECH.stop,
-      );
+      // Un «no» cancela lo que hubiera pendiente (no se devuelve el estado, así
+      // que la pregunta muere aquí). Sin nada pendiente es tan inofensivo como
+      // un «vale»: se cierra.
+      return speak(getPending(envelope) ? SPEECH.emptiedNo : SPEECH.stop);
+    case "RespuestaIntent":
+      return handleRespuesta(admin, envelope, intent);
     case "VincularIntent":
       return handleVincular(admin, envelope, intent);
     case "AMAZON.HelpIntent":
@@ -896,6 +1301,10 @@ const MUTATING_INTENTS = new Set([
   "AgotarStockIntent",
   "AMAZON.YesIntent",
   "VincularIntent",
+  // Retoma una orden interrumpida, así que hereda lo que escribiera aquella: un
+  // «el natural» puede acabar restando dos yogures. Se protege siempre, aunque a
+  // veces solo consulte, porque desde aquí no se sabe cuál de las dos era.
+  "RespuestaIntent",
 ]);
 
 /**
@@ -979,9 +1388,13 @@ export async function dispatchAlexaRequest(
   try {
     switch (envelope.request.type) {
       case "LaunchRequest":
+        // Abrir la skill es lo que enciende el modo conversación: a partir de
+        // aquí las confirmaciones encadenan con «¿Algo más?» hasta que el
+        // usuario se despida (ver `applySessionMode`).
         return speak(SPEECH.welcome, {
           endSession: false,
           reprompt: SPEECH.welcomeReprompt,
+          state: { conversacion: true },
         });
       case "IntentRequest":
         return await withRequestDedupe(admin, envelope, () =>

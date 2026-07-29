@@ -17,9 +17,43 @@ import { formatQuantityValue } from "@/lib/units";
  * Solo se conserva si la respuesta lo vuelve a incluir: cualquier otra orden
  * limpia lo pendiente por sí sola, que es justo lo que se quiere.
  */
+/** Orden de voz a la que se vuelve cuando el usuario contesta una pregunta. */
+export type VoiceAction = "restar" | "sumar" | "agotar" | "consultar" | "apuntar";
+
+/**
+ * La pregunta que quedó abierta en el turno anterior. Es una unión discriminada
+ * porque un «sí» o un «el natural» no significan lo mismo según lo que se
+ * preguntara: sin el `tipo`, la respuesta suelta del usuario no se puede
+ * interpretar.
+ */
+export type PendingState =
+  /** Producto sin existencias, a la espera de un sí para apuntarlo en la lista. */
+  | { tipo: "apuntar"; productId: string; name: string; normalized: string }
+  /**
+   * Varios productos se parecen a lo que se dijo. Se guardan los candidatos y lo
+   * que hace falta para RETOMAR la orden, que es justo la gracia: el usuario
+   * contesta solo el nombre y no repite la frase entera. `cantidad` y `unidad`
+   * son las que dijo —null si no las dijo—, para que al reanudar se apliquen los
+   * mismos valores por defecto que en la primera pasada.
+   */
+  | {
+      tipo: "elegir";
+      accion: VoiceAction;
+      candidatos: { id: string; name: string }[];
+      cantidad: number | null;
+      unidad: UnitType | null;
+    }
+  /** Producto a granel del que falta la unidad: «¿medio kilo o dos kilos?». */
+  | { tipo: "unidad"; accion: VoiceAction; productId: string; name: string };
+
 export type SessionState = {
-  /** Producto que se acaba de agotar, a la espera de un sí para apuntarlo. */
-  pendiente?: { productId: string; name: string; normalized: string };
+  pendiente?: PendingState;
+  /**
+   * El usuario ABRIÓ la skill («Alexa, abre mi despensa») en vez de soltar una
+   * orden de una tacada. Solo entonces se encadena «¿Algo más?»: quien dice
+   * «dile a mi despensa que…» quiere despachar y marcharse, no conversar.
+   */
+  conversacion?: true;
 };
 
 /**
@@ -166,7 +200,13 @@ export const SPEECH = {
     "está vinculado, genera un código en Fill Good, en Ajustes, Alexa, y dime: " +
     "vincula con código, y los seis dígitos.",
   helpReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
+  // Despedida. Está en CLOSING_SPEECH (handlers.ts): cierra la sesión aunque
+  // estemos en modo conversación, porque «Hasta luego. ¿Algo más?» no se sostiene.
   stop: "Hasta luego.",
+  // Coletilla del modo conversación. Se pega a las confirmaciones cuando el
+  // usuario abrió la skill, para poder encadenar órdenes sin repetir «Alexa».
+  anythingElse: "¿Algo más?",
+  anythingElseReprompt: "¿Algo más? Si ya está, di: no.",
   fallback: `No te he entendido. Prueba a decir: ${EXAMPLE}.`,
   fallbackReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
   error: "Ha habido un problema con tu despensa. Inténtalo otra vez en un momento.",
@@ -192,17 +232,23 @@ export const SPEECH = {
   productMissing: "No he entendido qué producto quitar.",
   productUnknown: (spoken: string) =>
     `No encuentro ${spoken} en tu inventario. Añádelo primero en Fill Good.`,
+  // Se PREGUNTA, no se manda repetir: la respuesta suelta («el natural», «la
+  // primera») la recoge RespuestaIntent y retoma la orden con lo que quedó
+  // guardado en la sesión, así que el usuario no vuelve a decir la frase entera.
   ambiguous: (spoken: string, names: string[]) =>
-    `Tengo varias cosas que se parecen a ${spoken}: ${speakList(names)}. ` +
-    "Repite la orden con el nombre completo.",
-  ambiguousReprompt: "¿Cuál de ellos quito?",
+    `Tengo varias cosas que se parecen a ${spoken}: ${speakList(names)}. ¿Cuál de ellas?`,
+  ambiguousReprompt: "Dime cuál de ellas, o di: la primera.",
+  ambiguousRetry: (names: string[]) =>
+    `No he cogido cuál. Puedes decir: ${speakList(names)}, o: la primera.`,
   quantityInvalid: "Dime una cantidad que pueda restar, por ejemplo: dos.",
   noStock: (name: string) => `No te queda ${name} en el inventario.`,
   unitMismatch: (name: string, available: string, asked: string) =>
     `Tengo ${name} en ${available}, no en ${asked}. Dime cuánto quito en ${available}.`,
+  // El ejemplo va DESNUDO («medio kilo», no «quita medio kilo»): la sesión se
+  // queda abierta y RespuestaIntent recoge la cantidad suelta, así que pedir la
+  // orden entera sería mandar trabajo de más.
   askUnit: (name: string, stock: string) =>
-    `Tienes ${stock} de ${name}. Dime cuánto quito con su unidad, por ejemplo: ` +
-    "quita medio kilo.",
+    `Tienes ${stock} de ${name}. ¿Cuánto quito? Por ejemplo: medio kilo.`,
   askUnitReprompt: "¿Cuánto quito, y en qué unidad?",
   // Ojo con la concordancia: «te quedan 1 unidad» y «solo quedaba 4 unidades»
   // suenan a robot. Se usa el impersonal («hay», «había»), que en español no
@@ -223,7 +269,7 @@ export const SPEECH = {
   addUnitMismatch: (name: string, available: string, asked: string) =>
     `Tengo ${name} en ${available}, no en ${asked}. Dime cuánto añado en ${available}.`,
   addAskUnit: (name: string) =>
-    `${name} va a granel, así que dime la unidad, por ejemplo: añade medio kilo.`,
+    `${name} va a granel, así que dime cuánto. Por ejemplo: medio kilo.`,
   addAskUnitReprompt: "¿Cuánto añado, y en qué unidad?",
   listMissing: "No he entendido qué apunto en la lista.",
   // En la lista sí vale un nombre libre: un artículo apuntado es efímero y se ve
@@ -247,6 +293,11 @@ export const SPEECH = {
   stockAllExpired: " Ojo, ya está caducado.",
   stockSomeExpired: " Ojo, parte de eso ya está caducado.",
   stockExpiringSoon: (cuando: string) => ` Ojo, lo primero caduca ${cuando}.`,
+  // Coletilla que convierte un callejón sin salida en la acción que de verdad
+  // viene después: si algo se ha quedado a cero, lo siguiente es comprarlo. Se
+  // pega a las respuestas que dejan el stock vacío, y la sesión se queda abierta
+  // para poder contestar «sí» sin repetir «Alexa».
+  offerList: " ¿Lo apunto en la lista de la compra?",
   emptiedAsk: (name: string) =>
     `Vale, ya no queda ${name}. ¿Lo apunto en la lista de la compra?`,
   emptiedAskReprompt: "¿Lo apunto en la lista?",

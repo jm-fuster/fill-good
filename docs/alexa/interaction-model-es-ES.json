@@ -30,6 +30,7 @@
           "name": "RestarStockIntent",
           "slots": [
             { "name": "cantidad", "type": "AMAZON.NUMBER" },
+            { "name": "fraccion", "type": "TipoFraccion" },
             { "name": "unidad", "type": "TipoUnidad" },
             { "name": "producto", "type": "TipoProducto" }
           ],
@@ -38,12 +39,17 @@
             "reste {cantidad} {producto}",
             "resta {cantidad} {unidad} de {producto}",
             "reste {cantidad} {unidad} de {producto}",
+            "resta {fraccion} {unidad} de {producto}",
+            "resta {fraccion} de {unidad} de {producto}",
             "resta {producto}",
             "reste {producto}",
             "quita {cantidad} {producto}",
             "quite {cantidad} {producto}",
             "quita {cantidad} {unidad} de {producto}",
             "quite {cantidad} {unidad} de {producto}",
+            "quita {fraccion} {unidad} de {producto}",
+            "quita {fraccion} de {unidad} de {producto}",
+            "quite {fraccion} {unidad} de {producto}",
             "quita {producto}",
             "quite {producto}",
             "quita un {producto}",
@@ -52,18 +58,25 @@
             "descuente {cantidad} {producto}",
             "descuenta {cantidad} {unidad} de {producto}",
             "descuente {cantidad} {unidad} de {producto}",
+            "descuenta {fraccion} {unidad} de {producto}",
             "he gastado {cantidad} {producto}",
             "he gastado {cantidad} {unidad} de {producto}",
+            "he gastado {fraccion} {unidad} de {producto}",
             "hemos gastado {cantidad} {producto}",
             "he usado {cantidad} {producto}",
             "he usado {cantidad} {unidad} de {producto}",
-            "he cogido {cantidad} {producto}"
+            "he usado {fraccion} {unidad} de {producto}",
+            "he cogido {cantidad} {producto}",
+            "me he comido {cantidad} {producto}",
+            "nos hemos comido {cantidad} {producto}",
+            "nos hemos bebido {cantidad} {producto}"
           ]
         },
         {
           "name": "SumarStockIntent",
           "slots": [
             { "name": "cantidad", "type": "AMAZON.NUMBER" },
+            { "name": "fraccion", "type": "TipoFraccion" },
             { "name": "unidad", "type": "TipoUnidad" },
             { "name": "producto", "type": "TipoProducto" }
           ],
@@ -72,6 +85,8 @@
             "añada {cantidad} {producto}",
             "añade {cantidad} {unidad} de {producto}",
             "añada {cantidad} {unidad} de {producto}",
+            "añade {fraccion} {unidad} de {producto}",
+            "añade {fraccion} de {unidad} de {producto}",
             "añade {producto}",
             "añada {producto}",
             "añade un {producto}",
@@ -80,15 +95,18 @@
             "sume {cantidad} {producto}",
             "suma {cantidad} {unidad} de {producto}",
             "sume {cantidad} {unidad} de {producto}",
+            "suma {fraccion} {unidad} de {producto}",
             "suma {producto}",
             "mete {cantidad} {producto}",
             "meta {cantidad} {producto}",
             "mete {cantidad} {unidad} de {producto}",
             "he comprado {cantidad} {producto}",
             "he comprado {cantidad} {unidad} de {producto}",
+            "he comprado {fraccion} {unidad} de {producto}",
             "hemos comprado {cantidad} {producto}",
             "he traído {cantidad} {producto}",
             "he traído {cantidad} {unidad} de {producto}",
+            "he traído {fraccion} {unidad} de {producto}",
             "tengo {cantidad} {producto} más",
             "quedan {cantidad} {producto} más"
           ]
@@ -97,17 +115,21 @@
           "name": "ApuntarListaIntent",
           "slots": [
             { "name": "cantidad", "type": "AMAZON.NUMBER" },
+            { "name": "fraccion", "type": "TipoFraccion" },
             { "name": "unidad", "type": "TipoUnidad" },
             { "name": "producto", "type": "TipoProducto" }
           ],
           "samples": [
             "apunta {producto}",
             "apunte {producto}",
+            "apúntame {producto}",
             "apunta {cantidad} {producto}",
             "apunte {cantidad} {producto}",
             "apunta {cantidad} {unidad} de {producto}",
+            "apunta {fraccion} {unidad} de {producto}",
             "apunta {producto} en la lista",
             "apunte {producto} en la lista",
+            "apunta {producto} a la lista",
             "apunta {cantidad} {producto} en la lista",
             "añade {producto} a la lista",
             "añada {producto} a la lista",
@@ -115,8 +137,10 @@
             "añade {producto} en la lista",
             "pon {producto} en la lista",
             "ponme {producto} en la lista",
+            "mete {producto} en la lista",
             "necesito {producto}",
             "necesito {cantidad} {producto}",
+            "necesito {fraccion} {unidad} de {producto}",
             "necesitamos {producto}",
             "me falta {producto}",
             "me faltan {cantidad} {producto}",
@@ -125,7 +149,9 @@
             "hay que comprar {cantidad} {producto}",
             "tenemos que comprar {producto}",
             "compra {producto}",
-            "compra {cantidad} {producto}"
+            "compra {cantidad} {producto}",
+            "tráete {producto}",
+            "tráeme {producto}"
           ]
         },
         {
@@ -179,10 +205,39 @@
             "no nos queda {producto}",
             "hemos gastado todo el {producto}",
             "he gastado todo el {producto}",
+            "me he quedado sin {producto}",
+            "nos hemos quedado sin {producto}",
+            "se me ha acabado el {producto}",
+            "se nos ha acabado el {producto}",
+            "se nos ha acabado {producto}",
             "vacía el {producto}",
             "vacía {producto}",
             "pon el {producto} a cero",
             "pon {producto} a cero"
+          ]
+        },
+        {
+          "name": "RespuestaIntent",
+          "slots": [
+            { "name": "producto", "type": "TipoProducto" },
+            { "name": "orden", "type": "AMAZON.Ordinal" },
+            { "name": "cantidad", "type": "AMAZON.NUMBER" },
+            { "name": "fraccion", "type": "TipoFraccion" },
+            { "name": "unidad", "type": "TipoUnidad" }
+          ],
+          "samples": [
+            "{producto}",
+            "el {producto}",
+            "la {producto}",
+            "los {producto}",
+            "las {producto}",
+            "{orden}",
+            "el {orden}",
+            "la {orden}",
+            "{cantidad} {unidad}",
+            "{fraccion} {unidad}",
+            "{fraccion} de {unidad}",
+            "{cantidad}"
           ]
         }
       ],
@@ -229,6 +284,23 @@
             {
               "id": "l",
               "name": { "value": "litros", "synonyms": ["litro"] }
+            }
+          ]
+        },
+        {
+          "name": "TipoFraccion",
+          "values": [
+            {
+              "id": "0.5",
+              "name": { "value": "medio", "synonyms": ["media", "un medio"] }
+            },
+            {
+              "id": "0.25",
+              "name": { "value": "un cuarto", "synonyms": ["cuarto", "una cuarta parte"] }
+            },
+            {
+              "id": "0.75",
+              "name": { "value": "tres cuartos" }
             }
           ]
         },
@@ -298,6 +370,13 @@
               "prompts": {}
             },
             {
+              "name": "fraccion",
+              "type": "TipoFraccion",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            },
+            {
               "name": "unidad",
               "type": "TipoUnidad",
               "confirmationRequired": false,
@@ -326,6 +405,13 @@
               "prompts": {}
             },
             {
+              "name": "fraccion",
+              "type": "TipoFraccion",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            },
+            {
               "name": "unidad",
               "type": "TipoUnidad",
               "confirmationRequired": false,
@@ -349,6 +435,13 @@
             {
               "name": "cantidad",
               "type": "AMAZON.NUMBER",
+              "confirmationRequired": false,
+              "elicitationRequired": false,
+              "prompts": {}
+            },
+            {
+              "name": "fraccion",
+              "type": "TipoFraccion",
               "confirmationRequired": false,
               "elicitationRequired": false,
               "prompts": {}

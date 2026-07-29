@@ -139,6 +139,65 @@ export function resolveProduct(
   return { kind: "ambiguous", productIds: ranked.slice(0, 3).map((r) => r.productId) };
 }
 
+/**
+ * Artículos con los que arranca una respuesta al elegir entre candidatos: «el
+ * natural», «la de litro». Se quitan porque el nombre del catálogo no los lleva,
+ * y sin esto «el natural» no casaría con «Yogur natural».
+ *
+ * No se toca `normalizeName`, que sirve a la restricción de unicidad de la base:
+ * esto es solo para comparar una respuesta hablada.
+ */
+const LEADING_ARTICLES = /^(?:el|la|los|las|un|una|unos|unas|lo|de|del) /;
+
+/**
+ * Cuál de los candidatos ofrecidos ha elegido el usuario, o null si su respuesta
+ * no señala a uno solo. Ante la duda se vuelve a preguntar: quedarse con el
+ * primero «porque casi» es exactamente lo que la pregunta venía a evitar.
+ *
+ * Se comparan las mismas variantes de número que en la resolución inicial,
+ * porque al elegir se dice el apellido que distingue («el natural», «los
+ * griegos») y no el nombre entero del catálogo.
+ */
+export function pickCandidate<T extends { name: string }>(
+  spoken: string,
+  candidates: readonly T[],
+): T | null {
+  const normalized = normalizeName(spoken).replace(LEADING_ARTICLES, "");
+  if (!normalized) return null;
+  const variants = numberVariants(normalized);
+  const hits = candidates.filter((candidate) => {
+    const name = normalizeName(candidate.name);
+    return variants.some(
+      (variant) => name === variant || containsWord(name, variant),
+    );
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * Ordinales hablados, por si se cuelan por el slot de producto. `TipoProducto`
+ * es de vocabulario abierto, así que ante «la primera» Alexa puede rellenar
+ * `producto` en vez de `orden`; sin esta red, elegir por posición dependería de
+ * con cuál de los dos acertara. Solo llegan tres candidatos como mucho.
+ */
+const SPOKEN_ORDINALS: Record<string, number> = {
+  primero: 1,
+  primera: 1,
+  uno: 1,
+  segundo: 2,
+  segunda: 2,
+  dos: 2,
+  tercero: 3,
+  tercera: 3,
+  tres: 3,
+};
+
+/** La posición que nombra una respuesta hablada («la primera» → 1), o null. */
+export function ordinalFromWord(spoken: string): number | null {
+  const normalized = normalizeName(spoken).replace(LEADING_ARTICLES, "");
+  return SPOKEN_ORDINALS[normalized] ?? null;
+}
+
 /** Un lote de stock: una fila de `inventory_items` (producto + ubicación). */
 export type StockLot = {
   id: string;
