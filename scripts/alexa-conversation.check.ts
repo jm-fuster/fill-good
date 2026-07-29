@@ -21,6 +21,7 @@ import {
   alexaEnvelopeSchema,
   getSpokenQuantity,
 } from "@/features/alexa/schemas";
+import { shiftDays, todayLocalISO } from "@/lib/dates";
 import type { Database } from "@/lib/supabase/types";
 
 let fallos = 0;
@@ -40,14 +41,26 @@ const APP = "amzn1.ask.skill.test";
 
 /**
  * Cliente de Supabase falso: cada tabla declara qué devuelve como fila única y
- * como lista, y toda escritura dice que ha ido bien. Es deliberadamente tonto
- * —no filtra por nada— porque lo que se prueba son las decisiones de la
- * conversación, no el SQL.
+ * como lista, y toda escritura dice que ha ido bien.
+ *
+ * De todos los filtros solo entiende `.eq()`, y solo cuando la columna existe en
+ * la fila de prueba: así se puede comprobar lo que sí decide el código (que el
+ * menú se acote a un hueco, que los artículos marcados no se lean) sin acabar
+ * escribiendo un motor de SQL. Lo que se prueba son las decisiones de la
+ * conversación.
  */
 type TableData = { single?: unknown; list?: unknown[] };
 function fakeAdmin(tables: Record<string, TableData>): SupabaseClient<Database> {
-  const chain = (table: string): unknown =>
-    new Proxy(
+  const from = (table: string): unknown => {
+    const filtros: [string, unknown][] = [];
+    const rows = () =>
+      (tables[table]?.list ?? []).filter((row) =>
+        filtros.every(([columna, valor]) => {
+          const fila = row as Record<string, unknown>;
+          return !(columna in fila) || fila[columna] === valor;
+        }),
+      );
+    const chain: unknown = new Proxy(
       {},
       {
         get(_target, prop) {
@@ -55,7 +68,7 @@ function fakeAdmin(tables: Record<string, TableData>): SupabaseClient<Database> 
           // resuelve igual que en el cliente de verdad.
           if (prop === "then") {
             return (resolve: (value: unknown) => void) =>
-              resolve({ data: tables[table]?.list ?? [], error: null });
+              resolve({ data: rows(), error: null });
           }
           if (prop === "maybeSingle" || prop === "single") {
             return () =>
@@ -64,11 +77,21 @@ function fakeAdmin(tables: Record<string, TableData>): SupabaseClient<Database> 
                 error: null,
               });
           }
-          return () => chain(table);
+          // `.is(col, null)` filtra igual que `.eq` con null, y es como se pide
+          // «lo que no está saltado» o «sin autor».
+          if (prop === "eq" || prop === "is") {
+            return (columna: string, valor: unknown) => {
+              filtros.push([columna, valor]);
+              return chain;
+            };
+          }
+          return () => chain;
         },
       },
     );
-  return { from: (table: string) => chain(table) } as unknown as SupabaseClient<Database>;
+    return chain;
+  };
+  return { from } as unknown as SupabaseClient<Database>;
 }
 
 const LINK = { single: { id: "l1", household_id: "h1", user_id: "u1" } };
@@ -131,6 +154,60 @@ const ARROZ = fakeAdmin({
 });
 
 const VACIO = fakeAdmin({ alexa_links: LINK, shopping_lists: LISTA });
+
+/** Un Echo que todavía no se ha vinculado con ningún hogar. */
+const SIN_VINCULO = fakeAdmin({});
+
+const MANANA = shiftDays(todayLocalISO(), 1);
+const HOY = todayLocalISO();
+
+/** Hogar con cosas que decir: lista con artículos y dos productos que caducan. */
+const CON_AVISOS = fakeAdmin({
+  alexa_links: LINK,
+  shopping_lists: LISTA,
+  shopping_list_items: {
+    list: [
+      { name: "Pan", is_checked: false, product: null },
+      // El rótulo quedó desfasado tras renombrar el producto: manda el producto.
+      { name: "Leche", is_checked: false, product: { name: "Leche entera" } },
+      // Ya en el carro: no se lee.
+      { name: "Arroz", is_checked: true, product: null },
+    ],
+  },
+  inventory_items: {
+    list: [
+      { expiry_date: HOY, product: { name: "Pollo" } },
+      { expiry_date: MANANA, product: { name: "Yogur natural" } },
+      // Segundo lote del mismo yogur: es una sola cosa de la que preocuparse.
+      { expiry_date: MANANA, product: { name: "Yogur natural" } },
+    ],
+  },
+});
+
+const CON_MENU = fakeAdmin({
+  alexa_links: LINK,
+  shopping_lists: LISTA,
+  weekly_menus: { single: { id: "m1" } },
+  menu_entries: {
+    list: [
+      // A propósito en orden inverso: el orden lo pone SLOT_ORDER, no la query.
+      {
+        meal_slot: "dinner",
+        free_text: null,
+        skipped_at: null,
+        recipe: { name: "Tortilla" },
+      },
+      { meal_slot: "lunch", free_text: "Lentejas", skipped_at: null, recipe: null },
+      // Ya dijiste que este desayuno no lo hacías: no se cuenta.
+      {
+        meal_slot: "breakfast",
+        free_text: "Tostadas",
+        skipped_at: "2026-07-29T08:00:00Z",
+        recipe: null,
+      },
+    ],
+  },
+});
 
 function envelope(request: unknown, attributes?: SessionState) {
   return {
@@ -520,6 +597,133 @@ async function main() {
       text(r2) === "Vale, he quitado 2 unidades de Yogur griego. Ahora hay 4 unidades.",
       text(r2),
     );
+  }
+
+  console.log("\n8. Consultas de solo lectura");
+  {
+    const r = await run(intentRequest("LeerListaIntent"), undefined, CON_AVISOS);
+    check(
+      "lee la lista con el nombre vivo del producto, y sin lo ya marcado",
+      text(r) === "En la lista tienes Pan y Leche entera.",
+      text(r),
+    );
+  }
+  {
+    const r = await run(intentRequest("LeerListaIntent"), undefined, VACIO);
+    check("una lista vacía se dice y ya", text(r) === SPEECH.listEmpty, text(r));
+  }
+  {
+    const muchos = fakeAdmin({
+      alexa_links: LINK,
+      shopping_lists: LISTA,
+      shopping_list_items: {
+        list: Array.from({ length: 11 }, (_, i) => ({
+          name: `Cosa ${i + 1}`,
+          is_checked: false,
+          product: null,
+        })),
+      },
+    });
+    const r = await run(intentRequest("LeerListaIntent"), undefined, muchos);
+    check(
+      "una lista larga se corta y remite a la app",
+      text(r) ===
+        "En la lista tienes Cosa 1, Cosa 2, Cosa 3, Cosa 4, Cosa 5, Cosa 6, Cosa 7 " +
+          "y Cosa 8. Y 3 cosas más, que las tienes en Fill Good.",
+      text(r),
+    );
+  }
+  {
+    const r = await run(intentRequest("CaducidadesIntent"), undefined, CON_AVISOS);
+    check(
+      "lo que caduca va de lo más urgente a lo menos, sin repetir producto",
+      text(r) === "Ojo con esto: Pollo caduca hoy y Yogur natural caduca mañana.",
+      text(r),
+    );
+  }
+  {
+    const r = await run(intentRequest("CaducidadesIntent"), undefined, YOGURES);
+    check(
+      "sin nada a punto de caducar se dice que está todo en orden",
+      text(r) === SPEECH.expiryNone,
+      text(r),
+    );
+  }
+  {
+    const r = await run(intentRequest("MenuHoyIntent"), undefined, CON_MENU);
+    check(
+      "el menú de hoy se cuenta en el orden del día, y lo saltado no cuenta",
+      text(r) === "Hoy toca de comida, Lentejas y de cena, Tortilla.",
+      text(r),
+    );
+  }
+  {
+    const r = await run(
+      intentRequest("MenuHoyIntent", { comida: slot("comida", "cenar", "dinner") }),
+      undefined,
+      CON_MENU,
+    );
+    check(
+      "«qué hay de cena» acota a ese hueco",
+      text(r) === "Hoy toca de cena, Tortilla.",
+      text(r),
+    );
+  }
+  {
+    const r = await run(intentRequest("MenuHoyIntent"), undefined, VACIO);
+    check("sin menú de la semana se dice", text(r) === SPEECH.menuNone, text(r));
+  }
+
+  console.log("\n9. Bienvenida con contexto");
+  {
+    const r = await run(
+      {
+        type: "LaunchRequest",
+        requestId: "r-launch-1",
+        timestamp: "2026-07-29T10:00:00Z",
+        locale: "es-ES",
+      },
+      undefined,
+      CON_AVISOS,
+    );
+    check(
+      "al abrir, lo urgente por delante",
+      text(r) ===
+        "Hola. Te caducan 2 cosas pronto. Tienes 2 cosas apuntadas en la lista. ¿Qué apunto?",
+      text(r),
+    );
+    check("y sigue encendiendo el modo", r.sessionAttributes?.conversacion === true);
+  }
+  {
+    const r = await run(
+      {
+        type: "LaunchRequest",
+        requestId: "r-launch-2",
+        timestamp: "2026-07-29T10:00:00Z",
+        locale: "es-ES",
+      },
+      undefined,
+      VACIO,
+    );
+    check("sin nada que avisar, el saludo de siempre", text(r) === SPEECH.welcome, text(r));
+  }
+  {
+    const r = await run(
+      {
+        type: "LaunchRequest",
+        requestId: "r-launch-3",
+        timestamp: "2026-07-29T10:00:00Z",
+        locale: "es-ES",
+      },
+      undefined,
+      SIN_VINCULO,
+    );
+    check(
+      "abrir sin vínculo explica cómo vincular, en vez de saludar",
+      text(r) === SPEECH.notLinked,
+      text(r),
+    );
+    check("con la tarjeta para el móvil", r.response.card !== undefined);
   }
 
   if (fallos > 0) {

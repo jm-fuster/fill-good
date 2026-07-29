@@ -181,6 +181,22 @@ export function speakListQuantity(
   return speakQuantity(quantity, effective);
 }
 
+/** Cuándo pasa algo, dicho en corto: «hoy», «mañana», «en 3 días». */
+export function speakWhen(days: number): string {
+  if (days === 0) return "hoy";
+  if (days === 1) return "mañana";
+  return `en ${days} días`;
+}
+
+/**
+ * La urgencia de una caducidad ya con su verbo: «ya está caducado», «caduca
+ * mañana». Se dice dentro de una enumeración, así que va sin nombre delante ni
+ * puntuación detrás.
+ */
+export function speakDue(days: number): string {
+  return days < 0 ? "ya está caducado" : `caduca ${speakWhen(days)}`;
+}
+
 /** Enumeración natural en español: «A, B y C». */
 export function speakList(items: string[]): string {
   if (items.length === 0) return "";
@@ -196,9 +212,10 @@ export const SPEECH = {
   help:
     "Puedo restar lo que gastes, sumar lo que traigas, apuntar en la lista de la " +
     "compra y decirte cuánto queda. Di, por ejemplo: quita dos yogures, añade " +
-    "tres leches, apunta pan, o cuánta leche queda. Si este altavoz todavía no " +
-    "está vinculado, genera un código en Fill Good, en Ajustes, Alexa, y dime: " +
-    "vincula con código, y los seis dígitos.",
+    "tres leches, apunta pan, o cuánta leche queda. También puedo leerte la " +
+    "lista, decirte qué caduca pronto y qué toca hoy de menú. Si este altavoz " +
+    "todavía no está vinculado, genera un código en Fill Good, en Ajustes, " +
+    "Alexa, y dime: vincula con código, y los seis dígitos.",
   helpReprompt: `¿Qué apunto? Por ejemplo: ${EXAMPLE}.`,
   // Despedida. Está en CLOSING_SPEECH (handlers.ts): cierra la sesión aunque
   // estemos en modo conversación, porque «Hasta luego. ¿Algo más?» no se sostiene.
@@ -306,4 +323,31 @@ export const SPEECH = {
   emptiedNo: "Vale, lo dejo así.",
   // «Sí» sin nada pendiente: la sesión ya se había cerrado o venía de otra orden.
   nothingPending: `No sé a qué te refieres. Prueba a decir: ${EXAMPLE}.`,
+
+  // Consultas de solo lectura. Todas se cortan a unos pocos artículos: por voz
+  // no se retiene una lista de veinte cosas, y quien necesita la lista entera la
+  // quiere en la mano, no en el aire. El resto se resume y se remite a la app.
+  andMore: (rest: number) =>
+    rest === 1
+      ? " Y una cosa más, que la tienes en Fill Good."
+      : ` Y ${rest} cosas más, que las tienes en Fill Good.`,
+  listEmpty: "No tienes nada apuntado en la lista de la compra.",
+  listReport: (items: string) => `En la lista tienes ${items}.`,
+  expiryNone: "No tienes nada a punto de caducar.",
+  expiryReport: (items: string) => `Ojo con esto: ${items}.`,
+  menuNone: "Hoy no tienes nada planificado en el menú.",
+  menuReport: (partes: string) => `Hoy toca ${partes}.`,
+  /** Un hueco del día dentro de la enumeración: «de cena, Tortilla». */
+  menuPart: (label: string, names: string) =>
+    `de ${label.toLowerCase()}, ${names}`,
+
+  // Bienvenida con lo urgente por delante: abrir la skill y oír solo «dime qué
+  // gastas» desaprovecha el único momento en que el usuario está escuchando.
+  welcomeWithContext: (avisos: string) => `Hola. ${avisos} ¿Qué apunto?`,
+  expiryHeadline: (count: number) =>
+    count === 1 ? "Te caduca una cosa pronto." : `Te caducan ${count} cosas pronto.`,
+  listHeadline: (count: number) =>
+    count === 1
+      ? "Tienes una cosa apuntada en la lista."
+      : `Tienes ${count} cosas apuntadas en la lista.`,
 } as const;

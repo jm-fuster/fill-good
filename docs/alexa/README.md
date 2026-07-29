@@ -18,10 +18,13 @@ solo cambiar de fase en la consola de Amazon (ver
 | Restar stock por voz | Crear productos del catálogo por voz |
 | Sumar stock por voz | Dictar la caducidad |
 | Apuntar en la lista de la compra | Marcar artículos como comprados |
-| Consultar cuánto queda | Leer la lista entera en voz alta |
-| Vaciar lo que se ha acabado | Decir qué caduca pronto |
-| Vincular el altavoz con un código | Deshacer la última orden |
-| Preguntar cuál era, y **retomar la orden** con la respuesta suelta | Distinguir lo tirado de lo gastado |
+| Consultar cuánto queda | Deshacer la última orden |
+| Vaciar lo que se ha acabado | Distinguir lo tirado de lo gastado |
+| **Leer la lista de la compra** | Decir qué se puede cocinar con lo que hay |
+| **Decir qué caduca pronto** | |
+| **Decir qué toca hoy de menú** | |
+| Vincular el altavoz con un código | |
+| Preguntar cuál era, y **retomar la orden** con la respuesta suelta | |
 | Encadenar órdenes sin repetir «Alexa» tras abrir la skill | |
 | Medias cantidades: «medio kilo», «un cuarto de kilo» | |
 
@@ -33,6 +36,7 @@ solo cambiar de fase en la consola de Amazon (ver
 | Verificación de la firma de Amazon | `src/features/alexa/verify.ts` |
 | Lógica por intent | `src/features/alexa/handlers.ts` |
 | Resolución de producto y planes de resta/suma (puro) | `src/features/alexa/resolve.ts` |
+| Consultas de solo lectura (lista, caducidades, menú) | `src/features/alexa/reports.ts` |
 | Comprobaciones de la conversación (`npm run check:alexa`) | `scripts/alexa-conversation.check.ts` |
 | Deduplicación de la lista (L3), compartida con la app | `src/features/shopping-list/items.ts` |
 | Textos hablados y tarjetas | `src/features/alexa/respond.ts` |
@@ -135,6 +139,9 @@ Frases que entiende, por verbo:
 | Apuntar en la lista | apunta · apúntame · necesito · me falta · hay que comprar · compra · pon en la lista · mete en la lista · tráete |
 | Consultar | cuánto queda · cuánto tengo · cuánto hay · queda · hay |
 | Vaciar (poner a 0) | se ha acabado · se acabó · se ha terminado · ya no queda · me he quedado sin · vacía · pon a cero |
+| Leer la lista | qué hay en la lista · qué tengo que comprar · léeme la lista · cómo va la lista |
+| Caducidades | qué caduca · qué caduca pronto · qué tengo que gastar · qué está a punto de caducar |
+| Menú de hoy | qué hay de cena · qué hay para comer · qué toca hoy · cuál es el menú de hoy |
 
 Las cantidades admiten **medias**: «medio», «media», «un cuarto» y «tres cuartos»,
 solas o con el numeral («un cuarto de kilo»).
@@ -151,7 +158,15 @@ Alexa, pregunta a mi despensa si queda arroz
 Alexa, dile a mi despensa que se ha acabado el pan
    → «Vale, ya no queda Pan de molde. ¿Lo apunto en la lista de la compra?»
    → tú: «sí»  (sin repetir «Alexa»: la sesión se queda abierta)
+Alexa, pregunta a mi despensa qué hay en la lista
+   → «En la lista tienes Pan, Leche entera y Papel de cocina.»
+Alexa, pregunta a mi despensa qué caduca
+   → «Ojo con esto: Pollo caduca hoy y Yogur natural caduca mañana.»
+Alexa, pregunta a mi despensa qué hay de cena
+   → «Hoy toca de cena, Tortilla de patatas.»
 Alexa, abre mi despensa            → bienvenida, y encadena órdenes
+   → «Hola. Te caducan 2 cosas pronto. Tienes 5 cosas apuntadas en la lista.
+      ¿Qué apunto?»
 ```
 
 Cuando algo no está claro, la skill **pregunta y se queda con la orden a medias**,
@@ -327,6 +342,33 @@ días» en cada pregunta sería ruido.
    conversaciones a medias que guardar ni caducar, y cualquier otra orden borra
    lo pendiente por sí sola. Un «sí» sin nada pendiente se contesta con un
    «no sé a qué te refieres».
+
+**Al preguntar por la lista, las caducidades o el menú:** son las tres únicas
+órdenes que **no escriben nada** (más allá de marcar el vínculo como usado), y
+las tres viven en `reports.ts`, aparte de los handlers, porque solo devuelven
+datos. Tres reglas comunes:
+
+1. **No crean nada.** Preguntar por la lista no crea la lista activa, al
+   contrario que apuntar en ella: una pregunta no debe dejar rastro.
+2. **Se cortan**: 8 artículos de la lista y 5 caducidades, y el resto se resume
+   en «y N cosas más, que las tienes en Fill Good». Por voz nadie retiene veinte
+   nombres, y quien necesita la lista entera la quiere en la mano.
+3. **El nombre lo manda el producto**, con el rótulo de la fila como respaldo —
+   la misma regla que el resto de la app, para que un renombrado no deje a Alexa
+   diciendo el nombre viejo.
+
+Las caducidades usan la **misma ventana de 3 días** que el resumen diario por
+push, para que las dos vías no se contradigan, y agrupan por producto: dos lotes
+del mismo yogur son una sola cosa de la que preocuparse. El menú lee lo
+planificado para hoy saltándose lo que ya marcaste como saltado, y «qué hay de
+cena» acota a ese hueco mientras que «qué toca hoy» los cuenta todos.
+
+**La bienvenida los aprovecha**: al abrir la skill se dice lo urgente («Te
+caducan 2 cosas pronto. Tienes 5 cosas apuntadas en la lista.») antes de
+preguntar qué apuntas, porque es el único momento en que el usuario está
+escuchando de verdad. Si no hay nada que avisar, el saludo corto de siempre; y si
+el altavoz **no está vinculado**, se explica cómo vincularlo con la tarjeta en el
+móvil en vez de saludar, que solo retrasaría el tropiezo a la primera orden.
 
 ## Conversación: preguntar sin hacer repetir
 

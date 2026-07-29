@@ -217,6 +217,60 @@
           ]
         },
         {
+          "name": "LeerListaIntent",
+          "slots": [],
+          "samples": [
+            "qué hay en la lista",
+            "qué tengo en la lista",
+            "qué hay apuntado",
+            "qué tengo apuntado",
+            "qué tengo que comprar",
+            "qué hay que comprar",
+            "qué queda por comprar",
+            "qué falta por comprar",
+            "léeme la lista",
+            "lee la lista",
+            "dime la lista",
+            "cómo va la lista",
+            "la lista de la compra"
+          ]
+        },
+        {
+          "name": "CaducidadesIntent",
+          "slots": [],
+          "samples": [
+            "qué caduca",
+            "qué caduca pronto",
+            "qué se caduca",
+            "qué se me caduca",
+            "qué está a punto de caducar",
+            "hay algo que caduque",
+            "qué caducidades hay",
+            "qué tengo que gastar",
+            "qué hay que gastar",
+            "qué se me va a poner malo"
+          ]
+        },
+        {
+          "name": "MenuHoyIntent",
+          "slots": [{ "name": "comida", "type": "TipoComida" }],
+          "samples": [
+            "qué hay para {comida}",
+            "qué hay de {comida}",
+            "qué toca de {comida}",
+            "qué toca para {comida}",
+            "qué hay hoy de {comida}",
+            "qué toca hoy",
+            "qué toca hoy de menú",
+            "qué hay hoy de menú",
+            "qué hay de menú hoy",
+            "cuál es el menú de hoy",
+            "el menú de hoy",
+            "qué comemos hoy",
+            "qué cocino hoy"
+          ]
+        },
+        {
           "name": "RespuestaIntent",
           "slots": [
             { "name": "producto", "type": "TipoProducto" },
@@ -284,6 +338,26 @@
             {
               "id": "l",
               "name": { "value": "litros", "synonyms": ["litro"] }
+            }
+          ]
+        },
+        {
+          "name": "TipoComida",
+          "values": [
+            {
+              "id": "breakfast",
+              "name": { "value": "desayuno", "synonyms": ["desayunar"] }
+            },
+            {
+              "id": "lunch",
+              "name": {
+                "value": "comida",
+                "synonyms": ["comer", "almuerzo", "almorzar"]
+              }
+            },
+            {
+              "id": "dinner",
+              "name": { "value": "cena", "synonyms": ["cenar"] }
             }
           ]
         },

@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { recordStockEvent } from "@/features/inventory/events";
+import type { MealSlotKey } from "@/features/menus/slots";
 import {
   mergeIntoExisting,
   nextListPosition,
@@ -24,13 +25,20 @@ import {
   type StockLot,
 } from "./resolve";
 import {
+  readExpiring,
+  readShoppingList,
+  readTodayMenu,
+} from "./reports";
+import {
   emptyResponse,
   linkCard,
   speak,
+  speakDue,
   speakList,
   speakListQuantity,
   speakQuantity,
   speakUnit,
+  speakWhen,
   SPEECH,
   type AlexaResponse,
   type PendingState,
@@ -77,6 +85,15 @@ const EXPIRY_WARN_DAYS = 3;
 function asUnitType(value: string | null): UnitType | null {
   return value !== null && (UNIT_VALUES as readonly string[]).includes(value)
     ? (value as UnitType)
+    : null;
+}
+
+const MEAL_SLOTS: readonly MealSlotKey[] = ["breakfast", "lunch", "dinner"];
+
+/** Hueco de comida dicho («de cena»), o null si la pregunta no lo acotaba. */
+function asMealSlot(value: string | null): MealSlotKey | null {
+  return value !== null && (MEAL_SLOTS as readonly string[]).includes(value)
+    ? (value as MealSlotKey)
     : null;
 }
 
@@ -129,6 +146,24 @@ function touchLink(admin: Admin, link: AlexaLink): PromiseLike<unknown> {
     .from("alexa_links")
     .update({ last_used_at: new Date().toISOString() })
     .eq("id", link.id);
+}
+
+/**
+ * El vínculo de este Echo, o ya la respuesta de «no vinculado». Todo lo que
+ * toca datos empieza igual, y de aquí sale el `household_id`: el único sitio de
+ * donde puede salir, porque el payload de Amazon no lo trae.
+ */
+async function requireLink(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+): Promise<
+  { ok: true; link: AlexaLink } | { ok: false; response: AlexaResponse }
+> {
+  const amazonUserId = getAmazonUserId(envelope);
+  if (!amazonUserId) return { ok: false, response: notLinkedResponse() };
+  const link = await findLink(admin, amazonUserId);
+  if (!link) return { ok: false, response: notLinkedResponse() };
+  return { ok: true, link };
 }
 
 /** Nombres de catálogo para poder decirlos en voz alta, en el orden pedido. */
@@ -285,10 +320,9 @@ async function prepareVoiceTarget(
   | { ok: false; response: AlexaResponse }
   | { ok: false; notFound: true; spoken: string }
 > {
-  const amazonUserId = getAmazonUserId(envelope);
-  if (!amazonUserId) return { ok: false, response: notLinkedResponse() };
-  const link = await findLink(admin, amazonUserId);
-  if (!link) return { ok: false, response: notLinkedResponse() };
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked;
+  const link = linked.link;
 
   const spoken = getSlotValue(intent, "producto");
   if (!spoken) {
@@ -577,9 +611,7 @@ function expiryHint(lots: StockLot[]): string {
     });
     return todo ? SPEECH.stockAllExpired : SPEECH.stockSomeExpired;
   }
-  const cuando =
-    status.days === 0 ? "hoy" : status.days === 1 ? "mañana" : `en ${status.days} días`;
-  return SPEECH.stockExpiringSoon(cuando);
+  return SPEECH.stockExpiringSoon(speakWhen(status.days));
 }
 
 async function handleConsultarStock(
@@ -664,10 +696,9 @@ async function handleApuntarLista(
   envelope: AlexaEnvelope,
   intent: AlexaIntent,
 ): Promise<AlexaResponse> {
-  const amazonUserId = getAmazonUserId(envelope);
-  if (!amazonUserId) return notLinkedResponse();
-  const link = await findLink(admin, amazonUserId);
-  if (!link) return notLinkedResponse();
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked.response;
+  const link = linked.link;
 
   const spoken = getSlotValue(intent, "producto");
   if (!spoken) {
@@ -968,10 +999,9 @@ async function handleSi(
   // no hay nada que confirmar, así que se vuelve a preguntar.
   if (pendiente.tipo !== "apuntar") return askAgain(pendiente);
 
-  const amazonUserId = getAmazonUserId(envelope);
-  if (!amazonUserId) return notLinkedResponse();
-  const link = await findLink(admin, amazonUserId);
-  if (!link) return notLinkedResponse();
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked.response;
+  const link = linked.link;
 
   // La unidad de la lista sale del catálogo: el producto se acaba de agotar, así
   // que no queda ningún lote del que deducirla.
@@ -1084,10 +1114,9 @@ async function handleRespuesta(
   // Una pregunta de sí o no no se contesta con un nombre ni con una cantidad.
   if (pendiente.tipo === "apuntar") return askAgain(pendiente);
 
-  const amazonUserId = getAmazonUserId(envelope);
-  if (!amazonUserId) return notLinkedResponse();
-  const link = await findLink(admin, amazonUserId);
-  if (!link) return notLinkedResponse();
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked.response;
+  const link = linked.link;
 
   if (pendiente.tipo === "elegir") {
     const elegido = chooseCandidate(intent, pendiente.candidatos);
@@ -1109,6 +1138,133 @@ async function handleRespuesta(
     pendiente.accion,
     { id: pendiente.productId, name: pendiente.name },
     { quantity, unit },
+  );
+}
+
+/**
+ * Cuántos artículos se recitan antes de remitir a la app. Por voz no se retiene
+ * una lista de veinte cosas, y quien necesita la lista entera la quiere en la
+ * mano, no en el aire. El de caducidades es más corto porque cada línea lleva
+ * además su fecha.
+ */
+const SPOKEN_LIST_MAX = 8;
+const SPOKEN_EXPIRY_MAX = 5;
+
+/**
+ * Enumera hasta `max` dentro de `frase` y, si se ha cortado, añade el «y N cosas
+ * más» DESPUÉS. Va fuera y no dentro de la enumeración porque es otra frase: si
+ * se cuela dentro, el punto de `frase` acaba detrás del añadido.
+ */
+function speakSome(
+  items: string[],
+  max: number,
+  frase: (items: string) => string,
+): string {
+  const rest = items.length - max;
+  return frase(speakList(items.slice(0, max))) + (rest > 0 ? SPEECH.andMore(rest) : "");
+}
+
+/** «¿Qué hay en la lista?» — solo lectura, y no crea lista si no hay. */
+async function handleLeerLista(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+): Promise<AlexaResponse> {
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked.response;
+  const link = linked.link;
+
+  const [items] = await Promise.all([
+    readShoppingList(admin, link.householdId),
+    touchLink(admin, link),
+  ]);
+  if (items.length === 0) return speak(SPEECH.listEmpty);
+  return speak(speakSome(items, SPOKEN_LIST_MAX, SPEECH.listReport));
+}
+
+/** «¿Qué caduca?» — la misma ventana que el resumen diario por push. */
+async function handleCaducidades(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+): Promise<AlexaResponse> {
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked.response;
+  const link = linked.link;
+
+  const [items] = await Promise.all([
+    readExpiring(admin, link.householdId, EXPIRY_WARN_DAYS),
+    touchLink(admin, link),
+  ]);
+  if (items.length === 0) return speak(SPEECH.expiryNone);
+  return speak(
+    speakSome(
+      items.map((item) => `${item.name} ${speakDue(item.days)}`),
+      SPOKEN_EXPIRY_MAX,
+      SPEECH.expiryReport,
+    ),
+  );
+}
+
+/** «¿Qué hay de cena?» — lo planificado para hoy, entero o de un solo hueco. */
+async function handleMenuHoy(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+  intent: AlexaIntent,
+): Promise<AlexaResponse> {
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked.response;
+  const link = linked.link;
+
+  const only = asMealSlot(getSlotResolutionId(intent, "comida"));
+  const [huecos] = await Promise.all([
+    readTodayMenu(admin, link.householdId, only),
+    touchLink(admin, link),
+  ]);
+  if (huecos.length === 0) return speak(SPEECH.menuNone);
+  return speak(
+    SPEECH.menuReport(
+      speakList(
+        huecos.map((hueco) => SPEECH.menuPart(hueco.label, speakList(hueco.names))),
+      ),
+    ),
+  );
+}
+
+/**
+ * Bienvenida al abrir la skill. Se aprovecha para decir lo urgente —lo que
+ * caduca y lo que hay apuntado— porque es el único momento en que el usuario
+ * está escuchando de verdad; si no hay nada que avisar, el saludo de siempre.
+ *
+ * Sin vínculo se explica cómo vincular, con la tarjeta en el móvil: soltar el
+ * saludo genérico solo retrasaría el tropiezo a la primera orden.
+ */
+async function handleLaunch(
+  admin: Admin,
+  envelope: AlexaEnvelope,
+): Promise<AlexaResponse> {
+  const linked = await requireLink(admin, envelope);
+  if (!linked.ok) return linked.response;
+  const { householdId } = linked.link;
+
+  const [caducan, lista] = await Promise.all([
+    readExpiring(admin, householdId, EXPIRY_WARN_DAYS),
+    readShoppingList(admin, householdId),
+  ]);
+  const avisos = [
+    caducan.length > 0 ? SPEECH.expiryHeadline(caducan.length) : null,
+    lista.length > 0 ? SPEECH.listHeadline(lista.length) : null,
+  ].filter((aviso): aviso is string => aviso !== null);
+
+  return speak(
+    avisos.length > 0
+      ? SPEECH.welcomeWithContext(avisos.join(" "))
+      : SPEECH.welcome,
+    {
+      endSession: false,
+      reprompt: SPEECH.welcomeReprompt,
+      // Abrir la skill es lo que enciende el modo conversación: a partir de aquí
+      // las confirmaciones encadenan con «¿Algo más?» (ver `applySessionMode`).
+      state: { conversacion: true },
+    },
   );
 }
 
@@ -1260,6 +1416,12 @@ async function routeIntent(
       return handleConsultarStock(admin, envelope, intent);
     case "AgotarStockIntent":
       return handleAgotarStock(admin, envelope, intent);
+    case "LeerListaIntent":
+      return handleLeerLista(admin, envelope);
+    case "CaducidadesIntent":
+      return handleCaducidades(admin, envelope);
+    case "MenuHoyIntent":
+      return handleMenuHoy(admin, envelope, intent);
     case "AMAZON.YesIntent":
       return handleSi(admin, envelope);
     case "AMAZON.NoIntent":
@@ -1388,14 +1550,7 @@ export async function dispatchAlexaRequest(
   try {
     switch (envelope.request.type) {
       case "LaunchRequest":
-        // Abrir la skill es lo que enciende el modo conversación: a partir de
-        // aquí las confirmaciones encadenan con «¿Algo más?» hasta que el
-        // usuario se despida (ver `applySessionMode`).
-        return speak(SPEECH.welcome, {
-          endSession: false,
-          reprompt: SPEECH.welcomeReprompt,
-          state: { conversacion: true },
-        });
+        return await handleLaunch(admin, envelope);
       case "IntentRequest":
         return await withRequestDedupe(admin, envelope, () =>
           handleIntent(admin, envelope),
