@@ -253,10 +253,51 @@ export async function updateListItemAction(
   if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
 
+  // Si el ítem está vinculado al catálogo, el nombre que se ve en la lista es el
+  // del producto, así que editarlo aquí tiene que renombrar el producto: escribir
+  // solo en la fila sería un guardado que no cambia nada de lo que el usuario ve.
+  const { data: row } = await supabase
+    .from("shopping_list_items")
+    .select("product_id, product:products(name)")
+    .eq("id", d.itemId)
+    .eq("household_id", household.id)
+    .maybeSingle();
+  const linked = row as unknown as {
+    product_id: string | null;
+    product: { name: string } | null;
+  } | null;
+
+  if (linked?.product_id && linked.product && linked.product.name !== d.name) {
+    const normalized = normalizeName(d.name);
+    // Misma regla que al renombrar desde el inventario: la unicidad es por
+    // (household_id, normalized_name) y ante un choque se rechaza en vez de
+    // fusionar, que perdería el histórico enlazado al otro producto.
+    const { data: clash } = await supabase
+      .from("products")
+      .select("id")
+      .eq("household_id", household.id)
+      .eq("normalized_name", normalized)
+      .neq("id", linked.product_id)
+      .maybeSingle();
+    if (clash) return { error: "Ya existe otro producto con ese nombre." };
+
+    const { error: renameErr } = await supabase
+      .from("products")
+      .update({ name: d.name, normalized_name: normalized })
+      .eq("household_id", household.id)
+      .eq("id", linked.product_id);
+    if (renameErr) return { error: "No se pudo guardar el nombre." };
+    // El inventario y las sugerencias también lo muestran.
+    revalidatePath("/inventario");
+  }
+
   const unit = d.unit ?? null;
   const { error } = await supabase
     .from("shopping_list_items")
     .update({
+      // Se guarda igualmente aunque el nombre vivo salga del producto: es el
+      // fallback si algún día se desvincula la fila, y dejarlo desfasado a
+      // propósito solo sería una trampa para el siguiente que lo lea.
       name: d.name,
       // Sostiene el invariante «un contable siempre tiene cantidad»: vaciar el
       // campo en el editor vale 1, no el estado sin stepper. Cambiar la unidad a

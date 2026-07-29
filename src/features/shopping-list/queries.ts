@@ -19,6 +19,16 @@ export type ActiveList = { id: string; name: string };
 
 export type ListItem = {
   id: string;
+  /**
+   * Nombre VIVO: el del producto vinculado, no el rótulo con el que se apuntó.
+   * `shopping_list_items.name` es una copia del momento del alta, así que
+   * renombrar «Aceite» → «Aceite de oliva virgen extra» en el inventario dejaba
+   * la lista con el nombre viejo mientras el icono y la categoría del embed sí
+   * se actualizaban — esa mezcla es lo que se lee como un fallo. La columna
+   * sigue siendo el fallback, y hace falta: el texto libre (y lo que Alexa no
+   * consigue casar) no tiene producto hasta el checkout, y ahí es lo único que
+   * hay.
+   */
   name: string;
   quantity: number | null;
   unit: UnitType | null;
@@ -167,6 +177,7 @@ export async function getActiveListProductIds(): Promise<Set<string>> {
 /** Ítem de la lista enriquecido para el modo compra (M4). */
 export type ShoppingModeItem = {
   id: string;
+  /** Nombre vivo del producto vinculado; ver `ListItem.name`. */
   name: string;
   quantity: number | null;
   unit: UnitType | null;
@@ -199,6 +210,7 @@ type ShoppingModeRow = {
   is_checked: boolean;
   product_id: string | null;
   product: {
+    name: string;
     preferred_chain: string | null;
     inferred_chain: string | null;
     icon: string | null;
@@ -234,7 +246,7 @@ export async function getShoppingModeItems(
     supabase
       .from("shopping_list_items")
       .select(
-        "id, name, quantity, unit, is_checked, product_id, product:products(preferred_chain, inferred_chain, icon, content_size, content_unit, content_is_estimate, category:categories(id, name, icon, sort_order))",
+        "id, name, quantity, unit, is_checked, product_id, product:products(name, preferred_chain, inferred_chain, icon, content_size, content_unit, content_is_estimate, category:categories(id, name, icon, sort_order))",
       )
       .eq("household_id", householdId)
       .eq("list_id", listId)
@@ -262,7 +274,7 @@ export async function getShoppingModeItems(
     }
     return {
       id: r.id,
-      name: r.name,
+      name: r.product?.name ?? r.name,
       quantity: qty,
       unit: r.unit,
       isChecked: r.is_checked,
@@ -296,6 +308,7 @@ type ListItemRow = {
   product_id: string | null;
   added_by: string | null;
   product: {
+    name: string;
     preferred_chain: string | null;
     inferred_chain: string | null;
     savings_tip: ChainSavingsTip | null;
@@ -317,7 +330,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
   const { data, error } = await supabase
     .from("shopping_list_items")
     .select(
-      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(preferred_chain, inferred_chain, savings_tip, icon, content_size, content_unit, content_is_estimate, category:categories(name, icon, sort_order))",
+      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(name, preferred_chain, inferred_chain, savings_tip, icon, content_size, content_unit, content_is_estimate, category:categories(name, icon, sort_order))",
     )
     .eq("household_id", householdId)
     .eq("list_id", listId)
@@ -329,7 +342,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
   const rows = (data ?? []) as unknown as ListItemRow[];
   return rows.map((i) => ({
     id: i.id,
-    name: i.name,
+    name: i.product?.name ?? i.name,
     quantity: i.quantity === null ? null : Number(i.quantity),
     unit: i.unit,
     isChecked: i.is_checked,

@@ -98,7 +98,21 @@ export function EditListItemDrawer({
               maxLength={120}
               autoComplete="off"
               defaultValue={item.name}
+              aria-describedby={
+                item.productId ? "edit-list-name-hint" : undefined
+              }
             />
+            {/* El ítem vinculado muestra el nombre del producto, así que
+                editarlo aquí lo renombra en todo el hogar. Decirlo evita la
+                sorpresa de ver cambiado el inventario sin haber entrado. */}
+            {item.productId ? (
+              <p
+                id="edit-list-name-hint"
+                className="text-xs text-muted-foreground"
+              >
+                Cambiarlo renombra el producto también en el inventario.
+              </p>
+            ) : null}
           </div>
 
           <div className="grid grid-cols-2 gap-3">

@@ -35,9 +35,25 @@ export async function nextListPosition(
 
 export type MergeResult = {
   itemId: string;
+  /**
+   * Nombre VIVO del ítem con el que se fusionó (el del producto vinculado, con
+   * el rótulo de la fila como fallback; ver `ListItem.name`). Importa porque
+   * este nombre se le dice al usuario: en un toast en la app y en voz alta por
+   * Alexa. Repetirle el nombre viejo de un producto que él mismo renombró es
+   * justo lo que hace dudar de si la orden ha ido al sitio correcto.
+   */
   name: string;
   quantity: number | null;
   unit: UnitType | null;
+};
+
+type CandidateRow = {
+  id: string;
+  name: string;
+  quantity: number | null;
+  unit: UnitType | null;
+  product_id: string | null;
+  product: { name: string } | null;
 };
 
 /**
@@ -54,19 +70,24 @@ export async function mergeIntoExisting(
   match: { productId: string | null; normalized: string },
   incoming: { quantity: number | null; unit: UnitType | null },
 ): Promise<MergeResult | null> {
-  const { data: rows } = await supabase
+  const { data } = await supabase
     .from("shopping_list_items")
-    .select("id, name, quantity, unit, product_id")
+    .select("id, name, quantity, unit, product_id, product:products(name)")
     .eq("list_id", listId)
     .eq("is_checked", false);
 
-  const candidate = (rows ?? []).find(
+  const rows = (data ?? []) as unknown as CandidateRow[];
+  // Casar por `product_id` es lo que sigue funcionando tras un renombrado: el
+  // rótulo de la fila puede haber quedado desfasado, así que la comparación de
+  // nombres solo salva al texto libre, que no tiene producto al que agarrarse.
+  const candidate = rows.find(
     (r) =>
       (match.productId !== null && r.product_id === match.productId) ||
       normalizeName(r.name) === match.normalized,
   );
   if (!candidate) return null;
 
+  const displayName = candidate.product?.name ?? candidate.name;
   const existingQty =
     candidate.quantity === null ? null : Number(candidate.quantity);
   const existingUnit = candidate.unit as UnitType | null;
@@ -75,7 +96,7 @@ export async function mergeIntoExisting(
   if (incoming.quantity == null) {
     return {
       itemId: candidate.id,
-      name: candidate.name,
+      name: displayName,
       quantity: existingQty,
       unit: existingUnit,
     };
@@ -98,7 +119,7 @@ export async function mergeIntoExisting(
 
   return {
     itemId: candidate.id,
-    name: candidate.name,
+    name: displayName,
     quantity: summedQty,
     unit: resultUnit,
   };
