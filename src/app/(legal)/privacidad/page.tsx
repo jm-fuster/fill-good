@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function PrivacidadPage() {
   return (
-    <LegalPage title="Política de privacidad" updated="28 de julio de 2026">
+    <LegalPage title="Política de privacidad" updated="29 de julio de 2026">
       <p>
         Esta política explica qué datos personales tratamos cuando usas{" "}
         <strong>Fill Good</strong>, con qué finalidad, con qué base legal y qué
@@ -70,6 +70,25 @@ export default function PrivacidadPage() {
           aviso. Se elimina al desactivarlas o al salir del hogar.
         </p>
         <p>
+          <strong>Vinculación con Alexa.</strong> Si vinculas un altavoz Amazon
+          Echo para manejar el inventario y la lista por voz, guardamos el
+          identificador opaco que Amazon asigna a tu cuenta en la skill, el
+          hogar y el miembro a los que queda asociado, y las fechas de
+          vinculación y de último uso. Es ese identificador —y no lo que dices—
+          lo que nos permite saber a qué hogar aplicar cada orden. Para crear el
+          vínculo se genera un código de seis dígitos válido diez minutos y de un
+          solo uso.
+        </p>
+        <p>
+          <strong>No recibimos grabaciones de tu voz.</strong> Del altavoz nos
+          llega únicamente la transcripción que hace Amazon de tu orden (por
+          ejemplo, «resta dos yogures»), y le devolvemos el texto que debe leerte
+          en voz alta: nombres de producto, cantidades y avisos de caducidad de tu
+          hogar. Durante un día conservamos el identificador de cada orden junto
+          con la respuesta que dimos, para no aplicar dos veces el mismo
+          movimiento si Amazon reenvía la petición.
+        </p>
+        <p>
           <strong>Datos técnicos.</strong> Nuestra infraestructura registra
           datos de conexión (como la dirección IP) en registros técnicos de
           corta duración, con fines de seguridad y diagnóstico.
@@ -82,6 +101,14 @@ export default function PrivacidadPage() {
             <strong>Prestar el servicio</strong> (gestionar tu cuenta y tu
             hogar, sincronizar el contenido entre miembros, calcular tendencias
             de precios): ejecución del contrato — art. 6.1.b del RGPD.
+          </li>
+          <li>
+            <strong>Manejar la app por voz con Alexa</strong> (aplicar al
+            inventario y a la lista del hogar vinculado lo que dictas al
+            altavoz): ejecución del contrato — art. 6.1.b del RGPD. La
+            vinculación es voluntaria y solo existe si generas un código y lo
+            dictas al altavoz; puedes deshacerla en cualquier momento desde
+            Perfil.
           </li>
           <li>
             <strong>Leer tickets y generar menús con IA</strong>: tu
@@ -138,6 +165,16 @@ export default function PrivacidadPage() {
             las notificaciones push que actives.
           </li>
         </ul>
+        <p>
+          <strong>Con Amazon, solo si vinculas un altavoz.</strong> En ese caso
+          Amazon no actúa por cuenta nuestra: es responsable de su propio
+          tratamiento de la interacción por voz (la grabación, su reconocimiento
+          y el historial de actividad de tu cuenta de Alexa), regido por el aviso
+          de privacidad de Alexa de Amazon y por los ajustes de privacidad que
+          tengas en la app de Alexa. Nosotros solo recibimos la transcripción de
+          la orden y devolvemos el texto que el altavoz te lee. Si no vinculas
+          ningún altavoz, no hay ningún intercambio con Amazon.
+        </p>
         <p>
           No vendemos ni cedemos tus datos a terceros con fines comerciales,
           y no hay publicidad ni analítica de terceros en la app.
@@ -201,6 +238,13 @@ export default function PrivacidadPage() {
           días, el historial de consumo y reposición a los 90 días, los
           descartes a los 24 meses y los menús semanales pasadas 26 semanas. Los
           registros técnicos se conservan durante periodos breves.
+        </p>
+        <p>
+          En cuanto a Alexa: los códigos de vinculación caducan a los diez
+          minutos, y el identificador y la respuesta de cada orden de voz se
+          borran al día siguiente. El vínculo con un altavoz dura mientras lo
+          quieras: desaparece cuando lo revocas desde Perfil, cuando cualquier
+          miembro del hogar lo retira y cuando borras tu cuenta.
         </p>
         <p>
           Cuando borras datos, pueden permanecer un tiempo limitado en las
