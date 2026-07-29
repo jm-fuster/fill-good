@@ -5,8 +5,8 @@ Textos listos para copiar en **Distribution → Skill Preview** y respuestas par
 para publicar: sin estos campos completos la beta no se puede crear (ver
 [README](./README.md) § «Abrirla a otros usuarios»).
 
-> Sustituye `TU-DOMINIO` por el dominio de producción de Vercel antes de pegar
-> las URLs.
+> Todo va con el dominio de producción real (`fillgood.jorgemolinafuster.com`):
+> no queda nada que sustituir, se copia y se pega.
 
 ## Skill Preview
 
@@ -92,8 +92,8 @@ Alexa no las quiere):
 **URLs:**
 
 ```text
-Privacy Policy URL: https://TU-DOMINIO/privacidad
-Terms of Use URL:   https://TU-DOMINIO/terminos
+Privacy Policy URL: https://fillgood.jorgemolinafuster.com/privacidad
+Terms of Use URL:   https://fillgood.jorgemolinafuster.com/terminos
 ```
 
 ## Privacy & Compliance
@@ -122,7 +122,7 @@ This skill manages the pantry inventory and shopping list of a household kept in
 
 How to test:
 
-1. Open https://TU-DOMINIO and sign in with the test account above.
+1. Open https://fillgood.jorgemolinafuster.com and sign in with the test account above.
 2. Go to "Perfil" and find the "Alexa" card. Press "Vincular un altavoz". A 6-digit code appears, valid for 10 minutes and single use.
 3. Say: "Alexa, dile a mi despensa que vincule con código" followed by the six digits. The skill replies "Listo, este altavoz ya está vinculado con ...".
 4. Then try:

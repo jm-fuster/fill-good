@@ -60,7 +60,7 @@ solo cambiar de fase en la consola de Amazon (ver
 ## 2. Apuntar la skill a tu endpoint
 
 1. **Build → Endpoint** → selecciona **HTTPS**.
-2. Default Region: `https://TU-DOMINIO/api/alexa`
+2. Default Region: `https://fillgood.jorgemolinafuster.com/api/alexa`
 3. En el desplegable del certificado elige
    **«My development endpoint is a sub-domain of a domain that has a wildcard
    certificate from a certificate authority»** (es el caso de Vercel).
