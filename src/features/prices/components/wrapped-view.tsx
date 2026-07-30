@@ -6,11 +6,9 @@ import {
   ListChecks,
   PiggyBank,
   Receipt,
-  Sprout,
   Star,
   Store,
   Target,
-  Trash2,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -41,8 +39,6 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
     savingsTotal,
     topProduct,
     bestChain,
-    wastedTotal,
-    wastedVsAverage,
     tripsMatched,
     tripsPerfect,
     topExtra,
@@ -184,28 +180,6 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
                 accent={tripsPerfect === tripsMatched ? "success" : undefined}
               />
             ) : null}
-
-            {wastedTotal > 0 ? (
-              <StatTile
-                icon={Trash2}
-                label="Comida tirada"
-                value={formatEuro(wastedTotal)}
-                hint={
-                  wastedVsAverage != null && wastedVsAverage < 0
-                    ? `${formatEuro(Math.abs(wastedVsAverage))} menos que tu media`
-                    : undefined
-                }
-                accent="warning"
-              />
-            ) : (
-              <StatTile
-                icon={Sprout}
-                label="Comida tirada"
-                value="Nada"
-                hint="Mes impecable"
-                accent="success"
-              />
-            )}
 
             {topExtra ? (
               <StatTile

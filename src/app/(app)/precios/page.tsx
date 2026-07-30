@@ -6,7 +6,7 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { getPriceOverview } from "@/features/prices/queries";
-import { getMonthlySpending, getWasteInsight } from "@/features/prices/spending";
+import { getMonthlySpending } from "@/features/prices/spending";
 import { getPriceAlerts } from "@/features/prices/alerts";
 import { SpendingPanel } from "@/features/prices/components/spending-panel";
 import { PriceAlerts } from "@/features/prices/components/price-alerts";
@@ -45,11 +45,10 @@ export default async function PreciosPage({
   searchParams: Promise<{ mes?: string }>;
 }) {
   const { mes } = await searchParams;
-  const [rows, spending, alerts, waste] = await Promise.all([
+  const [rows, spending, alerts] = await Promise.all([
     getPriceOverview(),
     getMonthlySpending(mes),
     getPriceAlerts(),
-    getWasteInsight(),
   ]);
 
   return (
@@ -72,10 +71,7 @@ export default async function PreciosPage({
           <PriceAlerts alerts={alerts} />
 
           {spending ? (
-            <SpendingPanel
-              data={spending}
-              wasteAverage={waste?.monthlyAverage ?? null}
-            />
+            <SpendingPanel data={spending} />
           ) : null}
 
           <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2">

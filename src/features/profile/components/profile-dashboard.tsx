@@ -6,8 +6,6 @@ import {
   Receipt,
   ScanLine,
   Sparkles,
-  Sprout,
-  Trash2,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -25,9 +23,9 @@ import {
 import type { ProfileOverview } from "../queries";
 
 /**
- * Marcador del mes en curso en /perfil: hucha, racha, compras perfectas y
- * objetivo, más las salidas a las dos pantallas que profundizan (el resumen del
- * mes cerrado y el análisis de precios).
+ * Marcador del mes en curso en /perfil: hucha, compras perfectas y objetivo,
+ * más las salidas a las dos pantallas que profundizan (el resumen del mes
+ * cerrado y el análisis de precios).
  *
  * Todo lo que se pinta aquí sale de componentes que ya usan /precios y
  * /resumen; esta pantalla los ordena, no los reimplementa.
@@ -35,7 +33,6 @@ import type { ProfileOverview } from "../queries";
 export function ProfileDashboard({ data }: { data: ProfileOverview }) {
   const {
     spending,
-    waste,
     trips,
     hasData,
     hasSavings,
@@ -52,7 +49,7 @@ export function ProfileDashboard({ data }: { data: ProfileOverview }) {
       <EmptyState
         icon={PiggyBank}
         title="Tu hucha empieza aquí"
-        description="Escanea un ticket y esta pantalla te dirá cuánto ahorras cada mes, cuántas compras se ciñen a la lista y cuánto llevas sin tirar comida."
+        description="Escanea un ticket y esta pantalla te dirá cuánto ahorras cada mes y cuántas compras se ciñen a la lista."
         action={
           <Button asChild>
             <Link href="/escanear">
@@ -68,7 +65,6 @@ export function ProfileDashboard({ data }: { data: ProfileOverview }) {
   const {
     total,
     receiptCount,
-    discardedTotal,
     discountTotal,
     savingsByPrice,
     savingsTotal,
@@ -76,48 +72,10 @@ export function ProfileDashboard({ data }: { data: ProfileOverview }) {
     budget,
   } = spending;
 
-  const streak = waste?.streak ?? null;
-  // Misma regla que en /precios: la racha solo acompaña al mes limpio. Con algo
-  // ya tirado, sacar aquí "tu récord fueron 8 semanas" suena a restregarlo.
-  const showStreak =
-    discardedTotal === 0 && streak !== null && streak.currentWeeks >= 1;
-
   const compras = receiptCount === 1 ? "1 compra" : `${receiptCount} compras`;
   const perfectTrips = trips.tripsPerfect === trips.tripsMatched;
 
   const tiles = [
-    showStreak ? (
-      <StatTile
-        key="racha"
-        icon={Sprout}
-        label="Sin tirar comida"
-        value={
-          streak.currentWeeks === 1
-            ? "1 semana"
-            : `${streak.currentWeeks} semanas`
-        }
-        hint={
-          streak.isBest ? "Tu mejor racha" : `Tu récord son ${streak.bestWeeks}`
-        }
-        accent="success"
-      />
-    ) : discardedTotal > 0 ? (
-      <StatTile
-        key="tirado"
-        icon={Trash2}
-        label="Comida tirada"
-        value={formatEuro(discardedTotal)}
-        hint={
-          waste?.monthlyAverage != null
-            ? discardedTotal < waste.monthlyAverage
-              ? `Menos que tus ${formatEuro(waste.monthlyAverage)} habituales`
-              : `Tu media mensual son ${formatEuro(waste.monthlyAverage)}`
-            : undefined
-        }
-        accent="warning"
-      />
-    ) : null,
-
     trips.tripsMatched > 0 ? (
       <StatTile
         key="compras-perfectas"

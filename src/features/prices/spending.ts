@@ -1,22 +1,12 @@
 import "server-only";
 
-import {
-  addMonths,
-  differenceInCalendarMonths,
-  format,
-  parseISO,
-  startOfMonth,
-  subMonths,
-} from "date-fns";
+import { addMonths, format, parseISO, startOfMonth, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 
 import { roundCents } from "@/lib/money";
-import type { UnitType } from "@/lib/supabase/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { CHAIN_LABELS, chainLabel } from "./chains";
-import { getLatestUnitPrices } from "./queries";
-import { computeWasteStreak, valueDiscard, type WasteStreak } from "./waste";
 
 export type SpendingBreakdownItem = {
   key: string;
@@ -86,107 +76,9 @@ export type MonthlySpending = {
    * una cadena donde se paga de más resta.
    */
   savingsByChain: SpendingBreakdownItem[];
-  /** Desperdicio del mes valorado en € (M8); 0 si no hay eventos valorables. */
-  discardedTotal: number;
-  discardedByProduct: SpendingBreakdownItem[];
 };
 
 const OTHER_KEY = "otros";
-
-/** Meses de histórico de descartes que se miran para la racha y la media. */
-const WASTE_HISTORY_MONTHS = 12;
-
-/** Meses completos mínimos para que una "media habitual" signifique algo. */
-const MIN_MONTHS_FOR_AVERAGE = 2;
-
-export type WasteInsight = {
-  streak: WasteStreak | null;
-  /**
-   * Media de € tirados por mes en meses YA CERRADOS. Excluye el mes en curso
-   * (que va a medias y arrastraría la media hacia abajo) y es null mientras no
-   * haya histórico suficiente: comparar contra una media de un solo mes sería
-   * comparar contra el ruido.
-   */
-  monthlyAverage: number | null;
-};
-
-/**
- * Racha sin desperdicio y media habitual de desperdicio (G3). Una sola consulta
- * sobre `inventory_events` acotada a {@link WASTE_HISTORY_MONTHS}, más otra
- * mínima para saber desde cuándo registra el hogar. `getLatestUnitPrices` está
- * envuelta en `cache()`, así que compartir render con `getMonthlySpending` no
- * cuesta una segunda lectura del histórico de precios.
- */
-export async function getWasteInsight(): Promise<WasteInsight | null> {
-  const household = await getCurrentHousehold();
-  if (!household) return null;
-
-  const supabase = createServerSupabaseClient();
-  const today = new Date();
-  const currentMonthStart = startOfMonth(today);
-  const historyStart = format(
-    subMonths(currentMonthStart, WASTE_HISTORY_MONTHS),
-    "yyyy-MM-dd",
-  );
-
-  const [{ data: discards }, { data: firstRows }, prices] = await Promise.all([
-    supabase
-      .from("inventory_events")
-      .select("created_at, product_id, quantity, unit")
-      .eq("household_id", household.id)
-      .eq("kind", "discarded")
-      .gte("created_at", historyStart)
-      .order("created_at", { ascending: true }),
-    supabase
-      .from("inventory_events")
-      .select("created_at")
-      .eq("household_id", household.id)
-      .order("created_at", { ascending: true })
-      .limit(1),
-    getLatestUnitPrices(),
-  ]);
-
-  const firstActivity = firstRows?.[0]?.created_at ?? null;
-  const rows = discards ?? [];
-
-  const streak = computeWasteStreak(
-    rows.map((r) => r.created_at),
-    firstActivity,
-    today,
-  );
-
-  // Total tirado en meses YA CERRADOS (el mes en curso va a medias y hundiría
-  // la media).
-  const currentMonthKey = format(currentMonthStart, "yyyy-MM");
-  let closedWaste = 0;
-  for (const r of rows) {
-    if (!r.product_id) continue;
-    if (format(new Date(r.created_at), "yyyy-MM") === currentMonthKey) continue;
-    closedWaste += valueDiscard(r, prices.get(r.product_id));
-  }
-
-  // El divisor son TODOS los meses cerrados observados, no solo aquellos en los
-  // que se tiró algo: un mes impecable tiene que tirar de la media hacia abajo.
-  // Contarlo de otro modo daría una "media habitual" sistemáticamente inflada,
-  // y entonces cualquier mes normal parecería un éxito.
-  const windowStart = new Date(`${historyStart}T00:00:00`);
-  const firstActivityDate = firstActivity ? new Date(firstActivity) : null;
-  const observationStart =
-    firstActivityDate && firstActivityDate > windowStart
-      ? firstActivityDate
-      : windowStart;
-  const monthsClosed = differenceInCalendarMonths(
-    currentMonthStart,
-    startOfMonth(observationStart),
-  );
-
-  const monthlyAverage =
-    monthsClosed >= MIN_MONTHS_FOR_AVERAGE
-      ? roundCents(closedWaste / monthsClosed)
-      : null;
-
-  return { streak, monthlyAverage };
-}
 
 /** Normaliza un "yyyy-MM" arbitrario a uno válido; si no lo es, usa el actual. */
 function resolveMonth(month: string | undefined, today: Date): string {
@@ -227,39 +119,29 @@ export async function getMonthlySpending(
   const nextStartStr = fmt(nextStart);
   const prevStartStr = fmt(prevStart);
 
-  // Una sola tanda: receipts (mes objetivo + anterior), líneas por categoría,
-  // eventos de desperdicio del mes y el mapa de precios para valorarlos.
-  const [{ data: receiptRows }, { data: itemRows }, { data: discardRows }, prices] =
-    await Promise.all([
-      supabase
-        .from("receipts")
-        .select(
-          "id, total_amount, discount_total, savings_amount, store_chain, purchased_at",
-        )
-        .eq("household_id", household.id)
-        .eq("status", "confirmed")
-        .gte("purchased_at", prevStartStr)
-        .lt("purchased_at", nextStartStr),
-      supabase
-        .from("receipt_items")
-        .select(
-          // 2 FKs a products → hay que nombrar la relación (PGRST201). El embed
-          // products → categories es no ambiguo (una sola FK).
-          "total_price, purchased_at, product:products!receipt_items_product_id_fkey(category:categories(name))",
-        )
-        .eq("household_id", household.id)
-        .not("total_price", "is", null)
-        .gte("purchased_at", monthStartStr)
-        .lt("purchased_at", nextStartStr),
-      supabase
-        .from("inventory_events")
-        .select("product_id, quantity, unit, product:products(name)")
-        .eq("household_id", household.id)
-        .eq("kind", "discarded")
-        .gte("created_at", monthStartStr)
-        .lt("created_at", nextStartStr),
-      getLatestUnitPrices(),
-    ]);
+  // Una sola tanda: receipts (mes objetivo + anterior) y líneas por categoría.
+  const [{ data: receiptRows }, { data: itemRows }] = await Promise.all([
+    supabase
+      .from("receipts")
+      .select(
+        "id, total_amount, discount_total, savings_amount, store_chain, purchased_at",
+      )
+      .eq("household_id", household.id)
+      .eq("status", "confirmed")
+      .gte("purchased_at", prevStartStr)
+      .lt("purchased_at", nextStartStr),
+    supabase
+      .from("receipt_items")
+      .select(
+        // 2 FKs a products → hay que nombrar la relación (PGRST201). El embed
+        // products → categories es no ambiguo (una sola FK).
+        "total_price, purchased_at, product:products!receipt_items_product_id_fkey(category:categories(name))",
+      )
+      .eq("household_id", household.id)
+      .not("total_price", "is", null)
+      .gte("purchased_at", monthStartStr)
+      .lt("purchased_at", nextStartStr),
+  ]);
 
   // Totales y desglose por cadena a partir de receipts.
   let total = 0;
@@ -340,28 +222,6 @@ export async function getMonthlySpending(
     .filter((c) => c.total !== 0)
     .sort((a, b) => b.total - a.total);
 
-  // Desperdicio valorado en € (M8): cantidad tirada × último precio del producto,
-  // solo dentro de la misma familia de unidad (sin conversión ud↔peso).
-  type DiscardRow = {
-    product_id: string | null;
-    quantity: number;
-    unit: UnitType;
-    product: { name: string } | null;
-  };
-  const discardTotals = new Map<string, number>();
-  let discardedTotal = 0;
-  for (const e of (discardRows ?? []) as unknown as DiscardRow[]) {
-    if (!e.product_id) continue;
-    const value = valueDiscard(e, prices.get(e.product_id));
-    if (value === 0) continue;
-    discardedTotal += value;
-    const name = e.product?.name ?? "Producto";
-    discardTotals.set(name, (discardTotals.get(name) ?? 0) + value);
-  }
-  const discardedByProduct: SpendingBreakdownItem[] = [...discardTotals.entries()]
-    .map(([label, t]) => ({ key: label, label, total: t }))
-    .sort((a, b) => b.total - a.total);
-
   const canGoForward = nextStart <= currentMonthStart;
 
   return {
@@ -385,7 +245,5 @@ export async function getMonthlySpending(
     byCategory,
     byChain,
     savingsByChain,
-    discardedTotal,
-    discardedByProduct,
   };
 }

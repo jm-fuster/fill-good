@@ -38,13 +38,8 @@ import { cn } from "@/lib/utils";
 import { chainLabel, chainOptions, orderChains } from "@/features/prices/chains";
 import { relativeDaysLabel } from "@/lib/dates";
 import { formatQuantity, LOCATION_OPTIONS, UNIT_OPTIONS } from "@/lib/units";
-import type {
-  InventoryEventKind,
-  LocationType,
-  UnitType,
-} from "@/lib/supabase/types";
+import type { LocationType, UnitType } from "@/lib/supabase/types";
 import type { Category, InventoryEntry } from "../queries";
-import { getInventoryStatus } from "../status";
 import {
   deleteInventoryAction,
   getMergeCandidatesAction,
@@ -159,7 +154,7 @@ export function EditItemDrawer({
     }
     if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
     setConfirmDelete(false);
-    handleDelete("consumed");
+    handleDelete();
   }
 
   /**
@@ -340,27 +335,15 @@ export function EditItemDrawer({
     }
   }
 
-  // ¿El lote está caducado o caduca pronto? Solo entonces preguntamos si se
-  // consumió o se tiró (M8); en el caso feliz se registra consumo sin fricción.
-  const status = getInventoryStatus({
-    quantity: entry.quantity,
-    expiryDate: entry.expiryDate,
-    useSoon: entry.useSoon,
-    minQuantity: entry.minQuantity,
-  });
-  const askWaste = status.expired || status.soon;
-
-  async function handleDelete(kind: InventoryEventKind) {
+  async function handleDelete() {
     setDeleting(true);
-    const result = await deleteInventoryAction(entry.id, kind);
+    const result = await deleteInventoryAction(entry.id);
     setDeleting(false);
     if (result?.error) {
       toast.error(result.error);
       return;
     }
-    toast.success(
-      kind === "discarded" ? "Anotado como tirado" : "Eliminado del inventario",
-    );
+    toast.success("Eliminado del inventario");
     onOpenChange(false);
     router.refresh();
   }
@@ -801,45 +784,16 @@ export function EditItemDrawer({
             <Button type="submit" size="lg" loading={pending}>
               {pending ? "Guardando…" : "Guardar cambios"}
             </Button>
-            {askWaste ? (
-              <div className="flex flex-col gap-1.5">
-                <p className="text-xs text-muted-foreground">
-                  Al quitarlo, ¿qué ha pasado con lo que quedaba?
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="flex-1"
-                    onClick={() => handleDelete("consumed")}
-                    disabled={deleting}
-                  >
-                    Lo consumí
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    className="flex-1"
-                    onClick={() => handleDelete("discarded")}
-                    disabled={deleting}
-                  >
-                    <Trash2 aria-hidden />
-                    Lo tiré
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={requestDelete}
-                loading={deleting}
-                aria-live="polite"
-              >
-                <Trash2 aria-hidden />
-                {confirmDelete ? "¿Seguro? Eliminar" : "Eliminar del inventario"}
-              </Button>
-            )}
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={requestDelete}
+              loading={deleting}
+              aria-live="polite"
+            >
+              <Trash2 aria-hidden />
+              {confirmDelete ? "¿Seguro? Eliminar" : "Eliminar del inventario"}
+            </Button>
             <ResponsiveModalClose asChild>
               <Button type="button" variant="ghost">
                 Cancelar

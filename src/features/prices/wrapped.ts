@@ -7,17 +7,15 @@ import { roundCents } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getActiveHouseholdId } from "@/features/household/queries";
 import { getMonthlyTripStats } from "@/features/shopping-list/queries";
-import { getMonthlySpending, getWasteInsight } from "./spending";
+import { getMonthlySpending } from "./spending";
 
 /**
- * Resumen mensual (G4): el envoltorio que empaqueta las tres mecánicas —hucha,
- * compra perfecta y desperdicio— en una sola pantalla al cerrar el mes.
+ * Resumen mensual (G4): el envoltorio que empaqueta las mecánicas —hucha y
+ * compra perfecta— en una sola pantalla al cerrar el mes.
  *
  * Todo son agregaciones sobre datos que ya existen: CERO coste de IA, que es
- * requisito del proyecto (Gemini free tier). Reutiliza `getMonthlySpending`,
- * `getWasteInsight` y `getMonthlyTripStats` en vez de recalcular: las dos
- * primeras comparten `getLatestUnitPrices`, que está envuelta en `cache()`, así
- * que el histórico de precios se lee una vez. Aquí solo queda la consulta del
+ * requisito del proyecto (Gemini free tier). Reutiliza `getMonthlySpending` y
+ * `getMonthlyTripStats` en vez de recalcular. Aquí solo queda la consulta del
  * producto estrella, que no la necesita nadie más.
  *
  * Cada bloque se omite cuando no hay dato con el que sostenerlo. Un resumen que
@@ -61,10 +59,6 @@ export type MonthlyWrapped = {
   /** Cadena que más aportó a la hucha; null si ninguna aportó nada. */
   bestChain: WrappedHighlight | null;
 
-  wastedTotal: number;
-  /** wastedTotal − media habitual; null sin histórico suficiente. */
-  wastedVsAverage: number | null;
-
   /** Compras cerradas desde la lista que se emparejaron con un ticket. */
   tripsMatched: number;
   /** De esas, cuántas no tuvieron ni un producto fuera de lista. */
@@ -80,10 +74,7 @@ function cap(s: string): string {
 export async function getMonthlyWrapped(
   month?: string,
 ): Promise<MonthlyWrapped | null> {
-  const [spending, waste] = await Promise.all([
-    getMonthlySpending(month),
-    getWasteInsight(),
-  ]);
+  const spending = await getMonthlySpending(month);
   if (!spending) return null;
 
   const supabase = createServerSupabaseClient();
@@ -156,12 +147,6 @@ export async function getMonthlyWrapped(
     savingsTotal: spending.savingsTotal,
     topProduct,
     bestChain,
-
-    wastedTotal: roundCents(spending.discardedTotal),
-    wastedVsAverage:
-      waste?.monthlyAverage != null
-        ? roundCents(spending.discardedTotal - waste.monthlyAverage)
-        : null,
 
     tripsMatched: tripStats.tripsMatched,
     tripsPerfect: tripStats.tripsPerfect,

@@ -9,11 +9,7 @@ import { isKnownIcon } from "@/lib/product-icons/catalog";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { refreshPriceInsights } from "@/features/prices/materialize";
 import { getProductCatalog } from "@/features/shopping-list/queries";
-import type {
-  InventoryEventKind,
-  LocationType,
-  UnitType,
-} from "@/lib/supabase/types";
+import type { LocationType, UnitType } from "@/lib/supabase/types";
 import { UNIT_LABELS } from "@/lib/units";
 import {
   addInventorySchema,
@@ -555,21 +551,16 @@ export async function mergeProductsAction(
 }
 
 /**
- * Elimina un ítem del inventario y registra la baja (M8). `kind` distingue si
- * lo que quedaba se consumió o se tiró: el desperdicio ('discarded') se valora
- * en euros en el panel de gasto. Por defecto 'consumed' (caso feliz, sin
- * fricción). Solo se registra evento si quedaba cantidad > 0.
+ * Elimina un ítem del inventario y registra la baja. Toda baja desde la app se
+ * anota como 'consumed': la app ya no distingue si lo que quedaba se consumió o
+ * se tiró, así que tampoco se pregunta. El valor 'discarded' sigue existiendo en
+ * la base porque hay eventos antiguos y porque la skill de Alexa lo usa, pero
+ * ninguna pantalla lo cuenta aparte. Solo se registra evento si quedaba
+ * cantidad > 0.
  */
-export async function deleteInventoryAction(
-  id: string,
-  kind: InventoryEventKind = "consumed",
-): Promise<ActionState> {
+export async function deleteInventoryAction(id: string): Promise<ActionState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
-  // `kind` llega del cliente: validarlo en runtime (no basta el tipo TS).
-  if (kind !== "consumed" && kind !== "discarded" && kind !== "restocked") {
-    return { error: "Tipo de baja no válido." };
-  }
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
 
@@ -594,7 +585,7 @@ export async function deleteInventoryAction(
       product_id: item.product_id,
       quantity: Number(item.quantity),
       unit: item.unit,
-      kind,
+      kind: "consumed",
       created_by: userId,
     });
   }

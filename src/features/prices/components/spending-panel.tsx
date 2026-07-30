@@ -3,7 +3,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Receipt,
-  Trash2,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
@@ -91,21 +90,11 @@ function BreakdownBars({
 
 /**
  * Panel de gasto de un mes (M1). Es la herramienta de ANÁLISIS: cuánto se fue,
- * en qué y dónde. La hucha y la racha ya no viven aquí —son el marcador del mes
- * en curso y están en /perfil, y de cualquier mes pasado, en /resumen— para que
- * el mismo número no se cuente de dos maneras distintas.
+ * en qué y dónde. La hucha ya no vive aquí —es el marcador del mes en curso y
+ * está en /perfil, y de cualquier mes pasado, en /resumen— para que el mismo
+ * número no se cuente de dos maneras distintas.
  */
-export function SpendingPanel({
-  data,
-  wasteAverage,
-}: {
-  data: MonthlySpending;
-  /**
-   * Media habitual de € tirados al mes (G3), para poner el desperdicio del mes
-   * en contexto. null cuando aún no hay histórico con el que comparar.
-   */
-  wasteAverage?: number | null;
-}) {
+export function SpendingPanel({ data }: { data: MonthlySpending }) {
   const {
     monthLabel,
     prevMonth,
@@ -117,8 +106,6 @@ export function SpendingPanel({
     budget,
     byCategory,
     byChain,
-    discardedTotal,
-    discardedByProduct,
   } = data;
 
   const hasData = receiptCount > 0;
@@ -189,47 +176,6 @@ export function SpendingPanel({
                 {receiptCount} {receiptCount === 1 ? "compra" : "compras"}
               </p>
             </div>
-
-            {discardedTotal > 0 ? (
-              <details className="group">
-                <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm text-destructive">
-                  <Trash2 className="size-4" aria-hidden />
-                  Has tirado {formatEuro(discardedTotal)} este mes
-                  {discardedByProduct.length > 0 ? (
-                    <span className="text-xs text-muted-foreground group-open:hidden">
-                      · ver detalle
-                    </span>
-                  ) : null}
-                </summary>
-                {discardedByProduct.length > 0 ? (
-                  <ul className="mt-2 flex flex-col gap-1 pl-6">
-                    {discardedByProduct.map((d) => (
-                      <li
-                        key={d.key}
-                        className="flex items-baseline justify-between gap-2 text-sm"
-                      >
-                        <span className="truncate text-muted-foreground">
-                          {d.label}
-                        </span>
-                        <span className="shrink-0 tabular-nums">
-                          {formatEuro(d.total)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </details>
-            ) : null}
-
-            {/* Comparación contra la propia media, no contra un ideal: es la
-                diferencia entre "vas mejor de lo normal" y "no eres perfecto". */}
-            {wasteAverage != null && discardedTotal > 0 ? (
-              <p className="pl-6 text-xs text-muted-foreground text-pretty">
-                {discardedTotal < wasteAverage
-                  ? `Menos que tus ${formatEuro(wasteAverage)} habituales al mes.`
-                  : `Tu media mensual son ${formatEuro(wasteAverage)}.`}
-              </p>
-            ) : null}
 
             {budget != null ? <BudgetBar total={total} budget={budget} /> : null}
 

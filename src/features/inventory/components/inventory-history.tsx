@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/units";
@@ -7,6 +7,20 @@ import type { InventoryEvent } from "../queries";
 
 const TZ = "Europe/Madrid";
 
+const OUT = {
+  label: "Consumido",
+  sign: "−",
+  icon: ArrowDown,
+  tone: "bg-muted text-muted-foreground",
+};
+
+/**
+ * La app ya no distingue si algo se consumió o se tiró, así que las bajas se
+ * presentan todas igual. 'discarded' sigue apareciendo aquí porque hay eventos
+ * antiguos y porque la skill de Alexa aún los escribe: se pintan como una baja
+ * normal en vez de desaparecer del historial, que es lo que pasaría si esta
+ * tabla dejara de cubrir ese valor.
+ */
 const KIND_META: Record<
   InventoryEventKind,
   { label: string; sign: string; icon: typeof ArrowUp; tone: string }
@@ -17,18 +31,8 @@ const KIND_META: Record<
     icon: ArrowUp,
     tone: "bg-success/15 text-success",
   },
-  consumed: {
-    label: "Consumido",
-    sign: "−",
-    icon: ArrowDown,
-    tone: "bg-muted text-muted-foreground",
-  },
-  discarded: {
-    label: "Tirado",
-    sign: "−",
-    icon: Trash2,
-    tone: "bg-destructive/15 text-destructive",
-  },
+  consumed: OUT,
+  discarded: OUT,
 };
 
 /** Clave de día (YYYY-MM-DD) en la zona horaria de la app. */
@@ -67,11 +71,14 @@ export function InventoryHistory({
   events: InventoryEvent[];
   nowMs: number;
 }) {
-  // Resumen de la semana (conteo simple de eventos por tipo).
+  // Resumen de la semana: entradas y salidas. Las bajas se cuentan juntas, sin
+  // separar lo tirado, igual que en la lista de abajo.
   const weekAgo = nowMs - 7 * 24 * 60 * 60 * 1000;
-  const week = { restocked: 0, consumed: 0, discarded: 0 };
+  const week = { restocked: 0, consumed: 0 };
   for (const e of events) {
-    if (new Date(e.createdAt).getTime() >= weekAgo) week[e.kind] += 1;
+    if (new Date(e.createdAt).getTime() < weekAgo) continue;
+    if (e.kind === "restocked") week.restocked += 1;
+    else week.consumed += 1;
   }
 
   // Agrupar por día conservando el orden (los eventos ya vienen desc por fecha).
@@ -98,10 +105,6 @@ export function InventoryHistory({
         ·{" "}
         <span className="font-medium text-foreground">
           −{week.consumed} consumido{week.consumed === 1 ? "" : "s"}
-        </span>{" "}
-        ·{" "}
-        <span className="font-medium text-destructive">
-          −{week.discarded} tirado{week.discarded === 1 ? "" : "s"}
         </span>
       </p>
 
