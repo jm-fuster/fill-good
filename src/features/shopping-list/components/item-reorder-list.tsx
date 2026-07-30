@@ -21,13 +21,24 @@ import { groupByCategory } from "../grouping";
 export function ItemReorderList({
   items,
   grouped,
+  chainOrder,
   onReorder,
 }: {
   items: ListItem[];
   grouped: boolean;
+  /**
+   * Orden de pasillos de la tienda elegida, si tiene uno propio. Los pasillos se
+   * ven aquí en el MISMO orden que en la lista de detrás: reordenar dentro de un
+   * pasillo con los pasillos en otro orden que el de la pantalla anterior sería
+   * pedirle al usuario que se reoriente a mitad de la tarea.
+   */
+  chainOrder?: Record<string, number>;
   onReorder: (globalIds: string[]) => void;
 }) {
-  const groups = useMemo(() => groupByCategory(items), [items]);
+  const groups = useMemo(
+    () => groupByCategory(items, chainOrder),
+    [items, chainOrder],
+  );
 
   if (!grouped) {
     return <SortableRows items={items} onReorder={onReorder} />;

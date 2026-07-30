@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/responsive-modal";
 import { EmptyState } from "@/components/layout/empty-state";
 import { ProductIcon } from "@/components/product-icon";
+import { ChainChip } from "@/components/chain-chip";
 import { cn } from "@/lib/utils";
 import { vibrateTick } from "@/lib/haptics";
 import { useSwipeRemove } from "@/hooks/use-swipe-remove";
@@ -44,8 +45,16 @@ import {
   formatPurchaseQuantity,
   listTotalLabel,
 } from "@/lib/units";
-import { usePersistedFlag } from "@/hooks/use-persisted-flag";
+import {
+  usePersistedChoice,
+  usePersistedFlag,
+} from "@/hooks/use-persisted-flag";
 import { useRealtimeList } from "../use-realtime-list";
+import {
+  ACTIVE_CHAIN_KEY,
+  resolveChain,
+  storeOptionsFor,
+} from "../aisle-view";
 import type {
   CatalogProduct,
   ListItem,
@@ -124,6 +133,9 @@ export function ShoppingListView({
   // reordenar: es la misma pregunta —«en qué orden quiero recorrer esto»— pero
   // una respuesta que se guarda y se reutiliza en cada compra, y por tienda.
   const [aisleOrdering, setAisleOrdering] = useState(false);
+  // Tienda elegida, compartida con el modo compra (`ACTIVE_CHAIN_KEY`).
+  const [storedChain, setStoredChain] = usePersistedChoice(ACTIVE_CHAIN_KEY);
+  const storeLabelId = useId();
 
   // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh) y
   // descarta los ítems optimistas que ya han aterrizado en el servidor.
@@ -326,6 +338,17 @@ export function ShoppingListView({
   const pending = allItems.filter((i) => !i.isChecked);
   const done = allItems.filter((i) => i.isChecked);
 
+  // Tienda con la que se miran los pasillos: la MISMA elección que el modo
+  // compra, no una propia de esta pantalla (ver `aisle-view.ts`). Aquí solo
+  // decide el ORDEN de los grupos —nada se filtra, que estás montando la lista
+  // entera—, y por eso el chip de «sin elegir» se llama "General" y no "Todas".
+  const storeOptions = storeOptionsFor(chains, allItems);
+  const activeChain = resolveChain(storedChain, storeOptions);
+  const chainOrder = activeChain ? aisleOrders[activeChain] : undefined;
+  // Solo se pregunta si hay algo que responder: agrupada (es lo único que el
+  // orden cambia aquí) y con dos tiendas o más, igual que en el modo compra.
+  const showStorePicker = grouped && storeOptions.length >= 2;
+
   // Productos ya en la lista (servidor + optimistas) para ocultar sus chips.
   const onListProductIds = new Set<string>();
   for (const i of allItems) if (i.productId) onListProductIds.add(i.productId);
@@ -375,7 +398,7 @@ export function ShoppingListView({
           onClick={() => setAisleOrdering(true)}
         >
           <ListOrdered aria-hidden />
-          {chains.length >= 2
+          {storeOptions.length >= 2
             ? "Orden de los pasillos por tienda"
             : "Orden de los pasillos"}
         </Button>
@@ -383,6 +406,7 @@ export function ShoppingListView({
         <ItemReorderList
           items={pending}
           grouped={grouped}
+          chainOrder={chainOrder}
           onReorder={applyReorder}
         />
 
@@ -400,10 +424,15 @@ export function ShoppingListView({
               </ResponsiveModalDescription>
             </ResponsiveModalHeader>
             <div className="px-4">
+              {/* Abre por la tienda que se está mirando (`chain`), con el
+                  conmutador para saltar a otra (`stores`). Las tiendas ofrecidas
+                  son las MISMAS que las del selector de arriba: cualquier orden
+                  que se pueda ver, se tiene que poder editar. */}
               <AisleOrderPanel
                 categories={categories}
                 orders={aisleOrders}
-                stores={chains}
+                stores={storeOptions}
+                chain={activeChain}
               />
             </div>
             <ResponsiveModalFooter>
@@ -465,6 +494,39 @@ export function ShoppingListView({
             </div>
           </div>
 
+          {/* Mismo patrón que el panel de Ajustes (rótulo + chips): lo que se
+              elige aquí es con qué tienda se miran los pasillos, y viaja al modo
+              compra. "General" = el orden del hogar, sin tienda concreta. */}
+          {showStorePicker ? (
+            <div className="flex flex-col gap-2">
+              <p
+                id={storeLabelId}
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Orden de los pasillos
+              </p>
+              <div
+                className="flex gap-2 overflow-x-auto pb-1"
+                role="group"
+                aria-labelledby={storeLabelId}
+              >
+                <ChainChip
+                  label="General"
+                  active={activeChain === null}
+                  onClick={() => setStoredChain(null)}
+                />
+                {storeOptions.map((chain) => (
+                  <ChainChip
+                    key={chain}
+                    label={chainLabel(chain)}
+                    active={activeChain === chain}
+                    onClick={() => setStoredChain(chain)}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {pending.length > 0 ? (
             <Button
               asChild
@@ -481,7 +543,7 @@ export function ShoppingListView({
 
           <div className="flex flex-col gap-1">
             {grouped
-              ? groupByCategory(pending).map((g) => (
+              ? groupByCategory(pending, chainOrder).map((g) => (
                   <section key={g.name} aria-label={g.name}>
                     <h2 className="mt-2 mb-1 flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                       <ProductIcon categoryIcon={g.icon} size={16} />

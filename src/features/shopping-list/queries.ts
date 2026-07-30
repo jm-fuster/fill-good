@@ -40,6 +40,12 @@ export type ListItem = {
   categoryName?: string;
   categoryIcon?: string | null;
   categorySort?: number;
+  /**
+   * Id de la categoría; null/ausente = sin categoría ("Otros"). Hace falta para
+   * resolver el orden de pasillos propio de una tienda (`aisleSort`), que se
+   * guarda por id y no por nombre.
+   */
+  categoryId?: string | null;
   /** Icono manual del producto (L16); null/ausente = automático (se adivina del nombre). */
   productIcon?: string | null;
   /** Tienda preferida del producto (L15); null/ausente = sin preferencia. */
@@ -328,7 +334,12 @@ type ListItemRow = {
     content_size: number | null;
     content_unit: UnitType | null;
     content_is_estimate: boolean;
-    category: { name: string; icon: string | null; sort_order: number } | null;
+    category: {
+      id: string;
+      name: string;
+      icon: string | null;
+      sort_order: number;
+    } | null;
   } | null;
 };
 
@@ -342,7 +353,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
   const { data, error } = await supabase
     .from("shopping_list_items")
     .select(
-      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(name, preferred_chain, inferred_chain, savings_tip, icon, pack_size, content_size, content_unit, content_is_estimate, category:categories(name, icon, sort_order))",
+      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(name, preferred_chain, inferred_chain, savings_tip, icon, pack_size, content_size, content_unit, content_is_estimate, category:categories(id, name, icon, sort_order))",
     )
     .eq("household_id", householdId)
     .eq("list_id", listId)
@@ -363,6 +374,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
     categoryName: i.product?.category?.name ?? "Otros",
     categoryIcon: i.product?.category?.icon ?? null,
     productIcon: i.product?.icon ?? null,
+    categoryId: i.product?.category?.id ?? null,
     categorySort: i.product?.category?.sort_order ?? NO_CATEGORY_SORT,
     // Efectiva: la manual gana; si no hay, la inferida materializada (fase 2).
     preferredChain: i.product?.preferred_chain ?? i.product?.inferred_chain ?? null,

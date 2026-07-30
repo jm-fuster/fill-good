@@ -30,7 +30,10 @@ import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
 import { cn } from "@/lib/utils";
-import { usePersistedFlag } from "@/hooks/use-persisted-flag";
+import {
+  usePersistedChoice,
+  usePersistedFlag,
+} from "@/hooks/use-persisted-flag";
 import { useSwipeRemove } from "@/hooks/use-swipe-remove";
 import { AisleOrderPanel } from "@/features/categories/components/aisle-order-panel";
 import {
@@ -39,6 +42,11 @@ import {
 } from "@/features/categories/aisle-order";
 import type { StoreCategory } from "@/features/categories/queries";
 import { chainLabel, orderChains } from "@/features/prices/chains";
+import {
+  ACTIVE_CHAIN_KEY,
+  resolveChain,
+  storeOptionsFor,
+} from "../aisle-view";
 import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
 import { formatPurchaseQuantity, listTotalLabel } from "@/lib/units";
@@ -141,9 +149,14 @@ export function ShoppingMode({
   // Tienda de esta compra (null = "Todas", sin decidir). Empezó siendo solo un
   // filtro (L15) y ahora manda también en el ORDEN de los pasillos: es la misma
   // pregunta ("¿dónde estás?") y tener dos controles para responderla dos veces
-  // sería justo la confusión que hay que evitar. Sección "otras tiendas"
-  // contraída por defecto.
-  const [activeChain, setActiveChain] = useState<string | null>(null);
+  // sería justo la confusión que hay que evitar.
+  //
+  // Se GUARDA (antes era estado local que volvía a "Todas" en cada entrada): se
+  // compra muchas veces en el mismo sitio, y sobre todo es lo que permite que
+  // `/lista` agrupe por los pasillos de esa tienda en vez de por el orden
+  // general. Una sola respuesta para las dos pantallas (ver `aisle-view.ts`).
+  const [storedChain, setStoredChain] = usePersistedChoice(ACTIVE_CHAIN_KEY);
+  // Sección "otras tiendas" contraída por defecto.
   const [showOther, setShowOther] = useState(false);
 
   // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh).
@@ -264,24 +277,19 @@ export function ShoppingMode({
     [items, removedIds],
   );
 
-  // Tiendas ofrecidas: las del hogar MÁS las que aparezcan como preferencia de
-  // algún ítem. Las del hogar entran aunque no haya nada suyo en la lista —son
-  // las que pueden tener orden propio—, y las de los ítems porque filtrarlas
-  // sigue teniendo sentido aunque el hogar no las tenga apuntadas.
-  const storeOptions = useMemo(() => {
-    const set = new Set(chains);
-    for (const it of visible) if (it.preferredChain) set.add(it.preferredChain);
-    return orderChains([...set]);
-  }, [chains, visible]);
+  // Las mismas tiendas que ofrece `/lista`, con la misma regla (ver `aisle-view`).
+  const storeOptions = useMemo(
+    () => storeOptionsFor(chains, visible),
+    [chains, visible],
+  );
 
   // Con una sola tienda no hay pregunta que hacer: "Todas" y ella muestran lo
   // mismo, y su orden es el general del hogar (que se edita igual desde el sheet).
   const showStorePicker = storeOptions.length >= 2;
 
-  // Tienda efectiva: si la activa dejó de existir (cambió la lista o las tiendas
-  // del hogar), volvemos a "Todas" sin tocar estado en render.
-  const effectiveChain =
-    activeChain && storeOptions.includes(activeChain) ? activeChain : null;
+  // Tienda efectiva: si la guardada dejó de existir (cambió la lista o las
+  // tiendas del hogar), volvemos a "Todas" sin tocar estado en render.
+  const effectiveChain = resolveChain(storedChain, storeOptions);
   const chainOrder = effectiveChain ? aisleOrders[effectiveChain] : undefined;
 
   // Vista principal (tienda activa + sin asignar) y, aparte, los ítems de otras
@@ -531,14 +539,14 @@ export function ShoppingMode({
             <ChainChip
               label="Todas"
               active={effectiveChain === null}
-              onClick={() => setActiveChain(null)}
+              onClick={() => setStoredChain(null)}
             />
             {storeOptions.map((chain) => (
               <ChainChip
                 key={chain}
                 label={chainLabel(chain)}
                 active={effectiveChain === chain}
-                onClick={() => setActiveChain(chain)}
+                onClick={() => setStoredChain(chain)}
               />
             ))}
           </div>
