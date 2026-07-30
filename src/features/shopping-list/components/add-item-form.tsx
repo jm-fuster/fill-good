@@ -4,7 +4,13 @@ import { useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { formatQuantity } from "@/lib/units";
+import {
+  defaultListQuantity,
+  effectivePackSize,
+  formatPurchaseQuantity,
+  listTotalLabel,
+} from "@/lib/units";
+import { normalizeName } from "@/lib/normalize";
 import { parseQuantityFromText } from "@/lib/parse-quantity";
 import type { CatalogProduct } from "../queries";
 import type { AddInput } from "./add-item";
@@ -32,6 +38,37 @@ export function AddItemForm({
 
   // L8: parseo determinista de cantidad/unidad desde el texto libre.
   const parsed = useMemo(() => parseQuantityFromText(text), [text]);
+
+  // El alta de texto libre la ENLAZA el servidor con el producto de igual nombre,
+  // así que hereda su pack sin que nadie lo haya elegido: teclear "10 huevos" en
+  // un pack de 10 mete 100 unidades al finalizar la compra. Se dice aquí, que es
+  // el único momento en que aún se puede corregir barato.
+  const preview = useMemo(() => {
+    const normalized = normalizeName(parsed.name);
+    const match = normalized
+      ? catalog.find((p) => p.normalizedName === normalized)
+      : undefined;
+    const unit = parsed.unit ?? match?.defaultUnit ?? null;
+    const packSize = match?.packSize ?? null;
+    return {
+      // Solo si la escribió: un "· 1 ud" en cada alta sería ruido.
+      quantity:
+        parsed.quantity === null
+          ? null
+          : formatPurchaseQuantity(parsed.quantity, unit, packSize),
+      // Sin cantidad escrita, el total solo aparece si hay pack —la sorpresa—;
+      // el contenido del envase por sí solo no cambia cuánto compras.
+      total:
+        parsed.quantity !== null || effectivePackSize(unit, packSize)
+          ? listTotalLabel(
+              parsed.quantity ?? defaultListQuantity(unit),
+              unit,
+              null,
+              packSize,
+            )
+          : null,
+    };
+  }, [catalog, parsed]);
 
   // Devuelve el foco al input para poder encadenar altas sin cerrar el teclado.
   function refocus() {
@@ -98,9 +135,8 @@ export function AddItemForm({
         >
           Añadir:{" "}
           <span className="font-medium text-foreground">{parsed.name}</span>
-          {parsed.quantity != null ? (
-            <> · {formatQuantity(parsed.quantity, parsed.unit ?? "ud")}</>
-          ) : null}
+          {preview.quantity ? <> · {preview.quantity}</> : null}
+          {preview.total ? <> {preview.total}</> : null}
         </p>
       ) : null}
       {error ? (

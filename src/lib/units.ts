@@ -275,6 +275,71 @@ export function contentTotalLabel(
 }
 
 /**
+ * Multiplicador de pack que de verdad se aplica (`products.pack_size`, F4), o
+ * null. Un pack de 1 no multiplica nada, y en un producto al peso no significa
+ * nada: son las dos condiciones que ya usa el checkout al pasar la lista al
+ * inventario, y viven aquí para que ninguna pantalla prometa un total que luego
+ * no se cumpla. `unit` null (texto libre sin producto) cuenta como piezas.
+ */
+export function effectivePackSize(
+  unit: UnitType | null,
+  packSize: number | null | undefined,
+): number | null {
+  if (packSize == null || packSize <= 1) return null;
+  return unit === null || unit === "ud" ? packSize : null;
+}
+
+/**
+ * Cantidad de una línea de lista nombrada como se cuenta al comprar: "2 ud", o
+ * "2 packs" cuando el producto viene en pack. Ahí la cantidad NO son unidades, y
+ * escribir "2 ud" de algo que repone 20 es dar un número falso.
+ */
+export function formatPurchaseQuantity(
+  qty: number,
+  unit: UnitType | null,
+  packSize: number | null,
+): string {
+  if (!effectivePackSize(unit, packSize)) {
+    return formatQuantity(qty, unit ?? "ud");
+  }
+  return `${formatQuantityValue(qty)} ${qty === 1 ? "pack" : "packs"}`;
+}
+
+/**
+ * Equivalencia de una línea de la LISTA, donde la cantidad cuenta COMPRAS y no
+ * unidades: con `pack_size` 10, un «1» son 10 ud en casa; y con contenido
+ * declarado, 3 bricks de medio litro son 1,5 l. Existe para que el
+ * multiplicador se vea en el pasillo: hasta ahora solo se aplicaba al finalizar
+ * la compra, así que apuntar 10 huevos y llevarse 100 era un error silencioso.
+ *
+ * El «=» abre la etiqueta a propósito: sin él, un «10 ud» al lado de un stepper
+ * que marca 1 se lee como la cantidad de la línea. Lo sustituye «≈» en cuanto el
+ * contenido es un peso medio; el recuento del pack sí es exacto, pero declarar
+ * menos confianza de la que hay no engaña a nadie, y al revés sí.
+ *
+ * null cuando no aporta nada: sin pack ni contenido, sin cantidad, o a granel
+ * (ahí la cantidad ya ES la medida, y el pack solo vale para conteo).
+ */
+export function listTotalLabel(
+  quantity: number | null,
+  unit: UnitType | null,
+  content: UnitContent,
+  packSize: number | null,
+): string | null {
+  if (quantity === null || quantity <= 0) return null;
+  // null = alta de texto libre sin producto detrás: lo que se apunta ahí son
+  // piezas, así que cuenta como contable.
+  if (unit !== null && unit !== "ud") return null;
+  const pack = effectivePackSize(unit, packSize);
+  const units = pack ? quantity * pack : quantity;
+  const parts: string[] = [];
+  if (pack) parts.push(formatQuantity(roundQuantity(units), "ud"));
+  if (content) parts.push(formatContentTotal(units, content.size, content.unit));
+  if (parts.length === 0) return null;
+  return `${content?.estimate ? APPROX : "="} ${parts.join(" · ")}`;
+}
+
+/**
  * Contenido total de un stock contable: 3 ud de 500 ml → "1,5 l". Sube a la
  * unidad grande de la familia al pasar de 1000 porque "1500 ml" se lee peor que
  * "1,5 l" (y es lo que uno diría en voz alta).

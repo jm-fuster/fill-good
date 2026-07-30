@@ -7,7 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { normalizeName } from "@/lib/normalize";
-import { LOCATION_ICONS, LOCATION_LABELS, UNIT_LABELS } from "@/lib/units";
+import {
+  effectivePackSize,
+  LOCATION_ICONS,
+  LOCATION_LABELS,
+  UNIT_LABELS,
+} from "@/lib/units";
 import type { CatalogProduct } from "../queries";
 
 const MAX_SUGGESTIONS = 6;
@@ -184,44 +189,55 @@ export function ProductAutocomplete({
               className="fixed z-[80] overflow-hidden rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-md"
               style={{ top: rect.top + 4, left: rect.left, width: rect.width }}
             >
-              {options.map(({ product, reason }, index) => (
-                // eslint-disable-next-line jsx-a11y/click-events-have-key-events
-                <li
-                  key={product.id}
-                  id={`${listboxId}-opt-${index}`}
-                  // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
-                  role="option"
-                  aria-selected={index === active}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => choose(product)}
-                  onMouseEnter={() => setActive(index)}
-                  className={cn(
-                    "flex min-h-11 cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-sm",
-                    index === active && "bg-muted",
-                  )}
-                >
-                  <span className="truncate font-medium">{product.name}</span>
-                  <span className="flex shrink-0 items-center gap-1.5">
-                    {onListProductIds?.has(product.id) ? (
-                      <Badge variant="secondary">En la lista</Badge>
-                    ) : reason ? (
-                      <span className="text-xs text-muted-foreground">
-                        {reason}
-                      </span>
-                    ) : (
-                      <>
-                        <Badge variant="secondary">
-                          {LOCATION_ICONS[product.defaultLocation]}{" "}
-                          {LOCATION_LABELS[product.defaultLocation]}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {UNIT_LABELS[product.defaultUnit]}
-                        </span>
-                      </>
+              {options.map(({ product, reason }, index) => {
+                const pack = effectivePackSize(
+                  product.defaultUnit,
+                  product.packSize,
+                );
+                return (
+                  // eslint-disable-next-line jsx-a11y/click-events-have-key-events
+                  <li
+                    key={product.id}
+                    id={`${listboxId}-opt-${index}`}
+                    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role
+                    role="option"
+                    aria-selected={index === active}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => choose(product)}
+                    onMouseEnter={() => setActive(index)}
+                    className={cn(
+                      "flex min-h-11 cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-sm",
+                      index === active && "bg-muted",
                     )}
-                  </span>
-                </li>
-              ))}
+                  >
+                    <span className="truncate font-medium">{product.name}</span>
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      {onListProductIds?.has(product.id) ? (
+                        <Badge variant="secondary">En la lista</Badge>
+                      ) : reason ? (
+                        <span className="text-xs text-muted-foreground">
+                          {reason}
+                        </span>
+                      ) : (
+                        <>
+                          <Badge variant="secondary">
+                            {LOCATION_ICONS[product.defaultLocation]}{" "}
+                            {LOCATION_LABELS[product.defaultLocation]}
+                          </Badge>
+                          {/* El pack sustituye a la unidad porque ES la unidad
+                              de compra: elegir este producto apunta packs, no
+                              piezas, y verlo aquí evita pedir diez veces más. */}
+                          <span className="text-xs text-muted-foreground">
+                            {pack
+                              ? `pack de ${pack}`
+                              : UNIT_LABELS[product.defaultUnit]}
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>,
             document.body,
           )

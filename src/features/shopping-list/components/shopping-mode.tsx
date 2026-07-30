@@ -37,7 +37,7 @@ import type { StoreCategory } from "@/features/categories/queries";
 import { chainLabel, orderChains } from "@/features/prices/chains";
 import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
-import { contentTotalLabel, formatQuantity } from "@/lib/units";
+import { formatPurchaseQuantity, listTotalLabel } from "@/lib/units";
 import { useRealtimeList } from "../use-realtime-list";
 import { toggleItemAction } from "../actions";
 import type { CatalogProduct, ShoppingModeItem, Suggestion } from "../queries";
@@ -634,7 +634,12 @@ function ShoppingModeRowItem({
 }) {
   const cbId = `shop-${item.id}`;
   const showChain = item.preferredChain && item.preferredChain !== activeChain;
-  const contentTotal = contentTotalLabel(item.quantity, item.unit, item.content);
+  const total = listTotalLabel(
+    item.quantity,
+    item.unit,
+    item.content,
+    item.packSize,
+  );
   return (
     <li className="flex items-center gap-1 rounded-lg transition-colors hover:bg-muted">
       <label
@@ -661,10 +666,13 @@ function ShoppingModeRowItem({
           )}
         >
           {item.name}
-          {/* Cuánto llevas en total si el envase declara su contenido. */}
-          {contentTotal ? (
-            <span className="ml-2 text-sm text-muted-foreground">
-              {contentTotal}
+          {/* A qué equivale de verdad lo que cogerás del estante: las unidades
+              que repone el pack y, si el envase lo declara, cuánto llevas. Sin
+              `nowrap` la etiqueta se parte por dentro y deja huérfana la unidad
+              ("= 6 ud · 6" / "l"); así salta entera a la línea siguiente. */}
+          {total ? (
+            <span className="ml-2 whitespace-nowrap text-sm text-muted-foreground">
+              {total}
             </span>
           ) : null}
           {showChain ? (
@@ -714,13 +722,26 @@ function RecommendedSection({
       <ul className="flex flex-col gap-1">
         {suggestions.map((s) => {
           const reason = suggestionReasonLabel(s);
+          // La cantidad sugerida viene contada en packs: se nombra como tal y se
+          // dice a cuántas unidades equivale (ver `listTotalLabel`).
+          const qtyLabel = formatPurchaseQuantity(
+            s.suggestedQuantity,
+            s.unit,
+            s.packSize,
+          );
+          const total = listTotalLabel(
+            s.suggestedQuantity,
+            s.unit,
+            null,
+            s.packSize,
+          );
           return (
             <li key={s.productId}>
               <button
                 type="button"
                 onClick={() => onAdd(s)}
                 className="flex min-h-12 w-full items-center gap-3 rounded-lg px-2 text-left transition-colors hover:bg-muted"
-                aria-label={`Añadir ${formatQuantity(s.suggestedQuantity, s.unit)} de ${s.name}`}
+                aria-label={`Añadir ${qtyLabel} de ${s.name}${total ? ` ${total}` : ""}`}
               >
                 <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <Plus className="size-4" aria-hidden />
@@ -731,8 +752,11 @@ function RecommendedSection({
                     {reason}
                   </span>
                 </span>
-                <span className="shrink-0 text-sm font-medium tabular-nums text-muted-foreground">
-                  {formatQuantity(s.suggestedQuantity, s.unit)}
+                <span className="shrink-0 text-right text-sm font-medium tabular-nums text-muted-foreground">
+                  {qtyLabel}
+                  {total ? (
+                    <span className="block text-xs font-normal">{total}</span>
+                  ) : null}
                 </span>
               </button>
             </li>

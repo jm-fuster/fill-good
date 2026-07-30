@@ -23,7 +23,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { UNIT_OPTIONS } from "@/lib/units";
+import {
+  effectivePackSize,
+  formatPurchaseQuantity,
+  formatQuantity,
+  listTotalLabel,
+  UNIT_OPTIONS,
+} from "@/lib/units";
 import type { UnitType } from "@/lib/supabase/types";
 import type { ListItem } from "../queries";
 import { updateListItemAction } from "../actions";
@@ -44,13 +50,37 @@ export function EditListItemDrawer({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  // Unidad controlada, resincronizada cuando cambia el item mostrado.
+  // Unidad y cantidad controladas para poder decir a qué equivale la línea
+  // mientras se teclea. Se resincronizan comparando el propio item —y no sus
+  // campos— porque dos artículos distintos pueden compartir unidad y cantidad, y
+  // ahí una comparación por valor no detectaría el cambio.
   const [unit, setUnit] = useState<UnitType>(item.unit ?? "ud");
-  const [serverUnit, setServerUnit] = useState(item.unit);
-  if (serverUnit !== item.unit) {
-    setServerUnit(item.unit);
+  const [quantity, setQuantity] = useState(item.quantity?.toString() ?? "");
+  const [shownItem, setShownItem] = useState(item);
+  if (shownItem !== item) {
+    setShownItem(item);
     setUnit(item.unit ?? "ud");
+    setQuantity(item.quantity?.toString() ?? "");
   }
+
+  // Pack (F4): con él, la cantidad de la lista cuenta COMPRAS, no unidades. Se
+  // resuelve contra la unidad ELEGIDA aquí, no la guardada: pasar el artículo a
+  // kg desactiva el pack, y el aviso tiene que caerse con él.
+  const pack = effectivePackSize(unit, item.packSize);
+  const typed = quantity.trim() === "" ? Number.NaN : Number(quantity);
+  const total = listTotalLabel(
+    Number.isFinite(typed) ? typed : null,
+    unit,
+    item.content ?? null,
+    item.packSize ?? null,
+  );
+  // Con cantidad, la equivalencia completa ("2 packs = 20 ud"); sin ella, al
+  // menos el factor, que es lo que hay que saber ANTES de escribir el número.
+  const equivalence = total
+    ? `${formatPurchaseQuantity(typed, unit, item.packSize ?? null)} ${total}`
+    : pack
+      ? `Viene en pack de ${formatQuantity(pack, "ud")}.`
+      : null;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -128,7 +158,11 @@ export function EditListItemDrawer({
                 inputMode="decimal"
                 min={0}
                 step="any"
-                defaultValue={item.quantity ?? ""}
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                aria-describedby={
+                  equivalence ? "edit-list-equivalence" : undefined
+                }
               />
             </div>
             <div className="flex flex-col gap-2">
@@ -151,6 +185,17 @@ export function EditListItemDrawer({
               </Select>
             </div>
           </div>
+
+          {/* Fuera del grid a propósito: a media columna la frase se parte en
+              tres líneas justo cuando más se necesita leer de un golpe. */}
+          {equivalence ? (
+            <p
+              id="edit-list-equivalence"
+              className="-mt-2 text-xs text-muted-foreground"
+            >
+              {equivalence}
+            </p>
+          ) : null}
 
           {error ? (
             <p role="alert" className="text-sm text-destructive">

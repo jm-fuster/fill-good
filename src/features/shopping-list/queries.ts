@@ -50,6 +50,13 @@ export type ListItem = {
    * llevas en total ("3 bricks · 1,5 l"). Ausente en altas optimistas.
    */
   content?: UnitContent;
+  /**
+   * Unidades por compra (F4); null = sin pack. Viaja hasta la fila porque en la
+   * lista la cantidad cuenta COMPRAS: con pack 10, un «1» repone 10 ud, y eso
+   * hay que verlo en el pasillo, no descubrirlo al finalizar la compra.
+   * Ausente en altas optimistas.
+   */
+  packSize?: number | null;
 };
 
 export type SuggestionReason =
@@ -70,6 +77,11 @@ export type Suggestion = {
    * cubre el déficit hasta el mínimo; para "restock" es una compra estándar.
    */
   suggestedQuantity: number;
+  /**
+   * Unidades por compra (F4); null = sin pack. La cantidad sugerida ya viene
+   * contada en packs, así que sin esto la fila dice "1 ud" de algo que repone 10.
+   */
+  packSize: number | null;
 };
 
 /** Catálogo ligero para el autocompletado (filtrado en cliente). */
@@ -198,6 +210,8 @@ export type ShoppingModeItem = {
   lineCost: number | null;
   /** Contenido de cada unidad del producto; null = no declarado. */
   content: UnitContent;
+  /** Unidades por compra (F4); null = sin pack. Ver `ListItem.packSize`. */
+  packSize: number | null;
   /** Tienda preferida del producto (L15); null = sin preferencia. */
   preferredChain: string | null;
 };
@@ -214,6 +228,7 @@ type ShoppingModeRow = {
     preferred_chain: string | null;
     inferred_chain: string | null;
     icon: string | null;
+    pack_size: number | null;
     content_size: number | null;
     content_unit: UnitType | null;
     content_is_estimate: boolean;
@@ -246,7 +261,7 @@ export async function getShoppingModeItems(
     supabase
       .from("shopping_list_items")
       .select(
-        "id, name, quantity, unit, is_checked, product_id, product:products(name, preferred_chain, inferred_chain, icon, content_size, content_unit, content_is_estimate, category:categories(id, name, icon, sort_order))",
+        "id, name, quantity, unit, is_checked, product_id, product:products(name, preferred_chain, inferred_chain, icon, pack_size, content_size, content_unit, content_is_estimate, category:categories(id, name, icon, sort_order))",
       )
       .eq("household_id", householdId)
       .eq("list_id", listId)
@@ -292,6 +307,8 @@ export async function getShoppingModeItems(
               unit: r.product.content_unit,
               estimate: r.product.content_is_estimate,
             },
+      packSize:
+        r.product?.pack_size == null ? null : Number(r.product.pack_size),
       // Efectiva: la manual gana; si no hay, la inferida materializada (fase 2).
       preferredChain:
         r.product?.preferred_chain ?? r.product?.inferred_chain ?? null,
@@ -313,6 +330,7 @@ type ListItemRow = {
     inferred_chain: string | null;
     savings_tip: ChainSavingsTip | null;
     icon: string | null;
+    pack_size: number | null;
     content_size: number | null;
     content_unit: UnitType | null;
     content_is_estimate: boolean;
@@ -330,7 +348,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
   const { data, error } = await supabase
     .from("shopping_list_items")
     .select(
-      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(name, preferred_chain, inferred_chain, savings_tip, icon, content_size, content_unit, content_is_estimate, category:categories(name, icon, sort_order))",
+      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(name, preferred_chain, inferred_chain, savings_tip, icon, pack_size, content_size, content_unit, content_is_estimate, category:categories(name, icon, sort_order))",
     )
     .eq("household_id", householdId)
     .eq("list_id", listId)
@@ -363,6 +381,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
             unit: i.product.content_unit,
             estimate: i.product.content_is_estimate,
           },
+    packSize: i.product?.pack_size == null ? null : Number(i.product.pack_size),
   }));
 }
 
@@ -522,6 +541,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
           min,
           packSize,
         ),
+        packSize,
       });
       continue;
     }
@@ -539,6 +559,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
           min,
           packSize,
         ),
+        packSize,
       });
       continue;
     }
@@ -556,6 +577,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
           min,
           packSize,
         ),
+        packSize,
       });
       continue;
     }
@@ -588,6 +610,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
           min,
           packSize,
         ),
+        packSize,
       });
     }
   }

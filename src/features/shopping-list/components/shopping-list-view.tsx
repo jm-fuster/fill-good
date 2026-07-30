@@ -27,9 +27,9 @@ import { chainLabel } from "@/features/prices/chains";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import { ScanTicketNudge } from "@/features/receipts/components/scan-ticket-nudge";
 import {
-  contentTotalLabel,
   defaultListQuantity,
-  formatQuantity,
+  formatPurchaseQuantity,
+  listTotalLabel,
 } from "@/lib/units";
 import { usePersistedFlag } from "@/hooks/use-persisted-flag";
 import { useRealtimeList } from "../use-realtime-list";
@@ -513,10 +513,11 @@ function ListRow({
   // Suprime el "click" que sigue a un deslizamiento (no abrir el editor).
   const swiped = useRef(false);
 
-  const contentTotal = contentTotalLabel(
+  const total = listTotalLabel(
     item.quantity,
     item.unit,
     item.content ?? null,
+    item.packSize ?? null,
   );
 
   function onPointerDown(e: React.PointerEvent) {
@@ -636,8 +637,11 @@ function ListRow({
         {/* Zona 2: el texto abre el editor directamente (L5, sin modo edición). */}
         <button
           type="button"
+          // El total va en la etiqueta accesible porque el aria-label tapa el
+          // texto visible: sin esto, quien navega con lector solo oye "Huevos"
+          // y se pierde justo el dato que evita multiplicar de más.
+          aria-label={total ? `Editar ${item.name} ${total}` : `Editar ${item.name}`}
           onClick={() => onEdit(item)}
-          aria-label={`Editar ${item.name}`}
           className="flex min-h-12 flex-1 items-center text-left text-sm"
         >
           <span
@@ -647,11 +651,13 @@ function ListRow({
             )}
           >
             {item.name}
-            {/* Cuánto llevas en total cuando el envase declara su contenido:
-                "3 bricks" no dice si es litro y medio o tres. */}
-            {contentTotal ? (
-              <span className="ml-1.5 text-muted-foreground">
-                · {contentTotal}
+            {/* A qué equivale la línea de verdad: un «1» con pack de 10 repone
+                10 ud, y "3 bricks" no dice si es litro y medio o tres. Con
+                `nowrap` para que no se parta por dentro y deje el «=» colgando
+                al final de una línea con los nombres largos. */}
+            {total ? (
+              <span className="ml-1.5 whitespace-nowrap text-muted-foreground">
+                {total}
               </span>
             ) : null}
             {/* L15: si otra tienda sale más barata (fase 3), el aviso de ahorro
@@ -734,47 +740,63 @@ function Suggestions({
     <section className="rounded-xl border border-dashed p-3">
       <h2 className="mb-1 text-sm font-medium">Te puede faltar</h2>
       <ul className="flex flex-col gap-0.5">
-        {visible.map((s) => (
-          <li key={s.productId} className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() =>
-                onAdd({
-                  kind: "product",
-                  productId: s.productId,
-                  name: s.name,
-                  quantity: s.suggestedQuantity,
-                  unit: s.unit,
-                })
-              }
-              className="flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-lg px-1 text-left transition-colors hover:bg-muted"
-              aria-label={`Añadir ${formatQuantity(s.suggestedQuantity, s.unit)} de ${s.name}`}
-            >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Plus className="size-4" aria-hidden />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">
-                  {s.name}
+        {visible.map((s) => {
+          // La cantidad sugerida ya viene contada en packs, así que se nombra
+          // como tal y se acompaña de a cuántas unidades equivale.
+          const qtyLabel = formatPurchaseQuantity(
+            s.suggestedQuantity,
+            s.unit,
+            s.packSize,
+          );
+          const total = listTotalLabel(
+            s.suggestedQuantity,
+            s.unit,
+            null,
+            s.packSize,
+          );
+          return (
+            <li key={s.productId} className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() =>
+                  onAdd({
+                    kind: "product",
+                    productId: s.productId,
+                    name: s.name,
+                    quantity: s.suggestedQuantity,
+                    unit: s.unit,
+                  })
+                }
+                className="flex min-h-12 min-w-0 flex-1 items-center gap-3 rounded-lg px-1 text-left transition-colors hover:bg-muted"
+                aria-label={`Añadir ${qtyLabel} de ${s.name}${total ? ` ${total}` : ""}`}
+              >
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                  <Plus className="size-4" aria-hidden />
                 </span>
-                <span className="block text-xs text-muted-foreground">
-                  {suggestionReasonLabel(s)}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium">
+                    {s.name}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    {suggestionReasonLabel(s)}
+                  </span>
                 </span>
-              </span>
-              <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-                {formatQuantity(s.suggestedQuantity, s.unit)}
-              </span>
-            </button>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={`Descartar ${s.name}`}
-              onClick={() => onDismiss(s)}
-            >
-              <X aria-hidden className="text-muted-foreground" />
-            </Button>
-          </li>
-        ))}
+                <span className="shrink-0 text-right text-sm tabular-nums text-muted-foreground">
+                  {qtyLabel}
+                  {total ? <span className="block text-xs">{total}</span> : null}
+                </span>
+              </button>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Descartar ${s.name}`}
+                onClick={() => onDismiss(s)}
+              >
+                <X aria-hidden className="text-muted-foreground" />
+              </Button>
+            </li>
+          );
+        })}
       </ul>
       {hidden > 0 || showAll ? (
         <Button
