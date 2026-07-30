@@ -285,6 +285,10 @@ export async function updateInventoryAction(
     inventoryId: formData.get("inventoryId"),
     productId: formData.get("productId"),
     name: formData.get("name"),
+    // OJO al quitar esta línea: sin ella el esquema da la categoría por ausente
+    // y la resuelve a null, así que el update de abajo no es que ignore el
+    // cambio, es que BORRA la categoría en cada guardado del panel.
+    categoryId: formData.get("categoryId") || undefined,
     location: formData.get("location"),
     quantity: formData.get("quantity"),
     expiryDate: formData.get("expiryDate") || undefined,
