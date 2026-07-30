@@ -664,8 +664,14 @@ function ListRow({
                 10 ud, y "3 bricks" no dice si es litro y medio o tres. Con
                 `nowrap` para que no se parta por dentro y deje el «=» colgando
                 al final de una línea con los nombres largos. */}
+            {/* El punteado de esta fila significa «toca para editar el nombre»,
+                y corriendo bajo el total lo hacía pasar por parte del nombre.
+                `inline-block` es lo que de verdad lo corta: la decoración del
+                padre se propaga a los hijos EN LÍNEA y un `no-underline` suelto
+                no la apaga; hace falta una caja atómica, que es justo por lo que
+                los badges de tienda y ahorro son `inline-flex`. */}
             {total ? (
-              <span className="ml-1.5 whitespace-nowrap text-muted-foreground">
+              <span className="ml-1.5 inline-block whitespace-nowrap text-muted-foreground no-underline">
                 {total}
               </span>
             ) : null}
@@ -790,9 +796,12 @@ function Suggestions({
                     {suggestionReasonLabel(s)}
                   </span>
                 </span>
-                <span className="shrink-0 text-right text-sm tabular-nums text-muted-foreground">
-                  {qtyLabel}
-                  {total ? <span className="block text-xs">{total}</span> : null}
+                {/* En una línea, no apilado: apilarlo hacía más alta justo la
+                    fila con pack y desalineaba la columna de números, así que la
+                    sugerencia que más destacaba era la que traía envase, no la
+                    más urgente. */}
+                <span className="shrink-0 whitespace-nowrap text-sm tabular-nums text-muted-foreground">
+                  {total ? `${qtyLabel} ${total}` : qtyLabel}
                 </span>
               </button>
               <Button

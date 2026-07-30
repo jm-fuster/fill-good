@@ -752,11 +752,10 @@ function RecommendedSection({
                     {reason}
                   </span>
                 </span>
-                <span className="shrink-0 text-right text-sm font-medium tabular-nums text-muted-foreground">
-                  {qtyLabel}
-                  {total ? (
-                    <span className="block text-xs font-normal">{total}</span>
-                  ) : null}
+                {/* En una línea (ver la sección gemela de `/lista`): apilado,
+                    la fila con pack era más alta que sus vecinas. */}
+                <span className="shrink-0 whitespace-nowrap text-sm font-medium tabular-nums text-muted-foreground">
+                  {total ? `${qtyLabel} ${total}` : qtyLabel}
                 </span>
               </button>
             </li>
