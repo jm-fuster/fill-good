@@ -253,14 +253,21 @@
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-ring;
   }
-  /* Accesibilidad: respetar la preferencia de movimiento reducido */
+  /* Accesibilidad: respetar la preferencia de movimiento reducido.
+     Los `*-delay` también van a cero, y no es un detalle: una entrada escalonada
+     (varios hijos con `animation-delay` creciente y `fill-mode: both`) deja el
+     contenido INVISIBLE hasta que le toca el turno. Sin resetear el retardo,
+     apagar solo la duración le dejaría a quien pide menos movimiento una lista
+     en blanco durante un cuarto de segundo. */
   @media (prefers-reduced-motion: reduce) {
     *,
     ::before,
     ::after {
       animation-duration: 0.01ms !important;
+      animation-delay: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
+      transition-delay: 0.01ms !important;
       scroll-behavior: auto !important;
     }
   }

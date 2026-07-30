@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { normalizeName } from "@/lib/normalize";
 import { LOCATION_ICONS, LOCATION_LABELS, LOCATION_ORDER } from "@/lib/units";
 import { InventoryItemCard } from "./inventory-item-card";
+import { InventorySection, type SectionUrgency } from "./inventory-section";
 import type { Category, InventoryEntry } from "../queries";
 import {
   getInventoryStatus,
@@ -17,6 +18,19 @@ import {
   urgencyRank,
   type StatusFilter,
 } from "../status";
+
+/** Lo urgente de un grupo, para resumirlo en su cabecera aunque esté plegado. */
+function countUrgency(items: InventoryEntry[]): SectionUrgency {
+  let expired = 0;
+  let soon = 0;
+  for (const e of items) {
+    const s = getInventoryStatus(e);
+    // Caducado manda: un ítem cuenta una sola vez, en lo más grave que tenga.
+    if (s.expired) expired += 1;
+    else if (s.soon) soon += 1;
+  }
+  return { expired, soon };
+}
 
 /**
  * Listado del inventario con buscador y chips de estado (E4). Filtra 100% en
@@ -109,14 +123,21 @@ export function InventoryList({
 
   const groups = useMemo(
     () =>
-      LOCATION_ORDER.map((location) => ({
-        location,
-        items: visible
+      LOCATION_ORDER.map((location) => {
+        const items = visible
           .filter((e) => e.location === location && !pinned.has(e.productId))
-          .sort(byUrgency),
-      })).filter((g) => g.items.length > 0),
+          .sort(byUrgency);
+        return { location, items, urgency: countUrgency(items) };
+      }).filter((g) => g.items.length > 0),
     [visible, pinned],
   );
+
+  // Con búsqueda o chip activo las secciones se abren a la fuerza: si no, un
+  // resultado dentro de una ubicación plegada sería invisible y darías por hecho
+  // que no lo tienes. El resumen de urgencia se calla solo cuando el chip ya
+  // filtra por ese mismo estado (repetiría el recuento de la cabecera).
+  const locked = query.trim().length > 0 || filter !== null;
+  const urgencyOf = (u: SectionUrgency) => (filter === null ? u : null);
 
   return (
     <div className="flex flex-col gap-4 pb-fab md:pb-0">
@@ -200,46 +221,47 @@ export function InventoryList({
           className="flex flex-col gap-6 animate-in fade-in duration-150"
         >
           {pinnedItems.length > 0 ? (
-            <section>
-              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                <Star aria-hidden className="size-4 fill-current text-warning" />
-                Mis habituales
-                <span className="font-normal">({pinnedItems.length})</span>
-              </h2>
-              <div className="flex flex-col gap-2 md:grid md:grid-cols-2 md:gap-3 xl:grid-cols-3">
-                {pinnedItems.map((entry) => (
-                  <InventoryItemCard
-                    key={entry.id}
-                    entry={entry}
-                    categories={categories}
-                    householdChains={householdChains}
-                    onList={onList.has(entry.productId)}
-                    pinned
-                  />
-                ))}
-              </div>
-            </section>
+            <InventorySection
+              icon={<Star className="size-4 fill-current text-warning" />}
+              title="Mis habituales"
+              count={pinnedItems.length}
+              urgency={urgencyOf(countUrgency(pinnedItems))}
+              storageKey="inventario:collapsed:habituales"
+              locked={locked}
+            >
+              {pinnedItems.map((entry) => (
+                <InventoryItemCard
+                  key={entry.id}
+                  entry={entry}
+                  categories={categories}
+                  householdChains={householdChains}
+                  onList={onList.has(entry.productId)}
+                  pinned
+                />
+              ))}
+            </InventorySection>
           ) : null}
 
           {groups.map((group) => (
-            <section key={group.location}>
-              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                <span aria-hidden>{LOCATION_ICONS[group.location]}</span>
-                {LOCATION_LABELS[group.location]}
-                <span className="font-normal">({group.items.length})</span>
-              </h2>
-              <div className="flex flex-col gap-2 md:grid md:grid-cols-2 md:gap-3 xl:grid-cols-3">
-                {group.items.map((entry) => (
-                  <InventoryItemCard
-                    key={entry.id}
-                    entry={entry}
-                    categories={categories}
-                    householdChains={householdChains}
-                    onList={onList.has(entry.productId)}
-                  />
-                ))}
-              </div>
-            </section>
+            <InventorySection
+              key={group.location}
+              icon={LOCATION_ICONS[group.location]}
+              title={LOCATION_LABELS[group.location]}
+              count={group.items.length}
+              urgency={urgencyOf(group.urgency)}
+              storageKey={`inventario:collapsed:${group.location}`}
+              locked={locked}
+            >
+              {group.items.map((entry) => (
+                <InventoryItemCard
+                  key={entry.id}
+                  entry={entry}
+                  categories={categories}
+                  householdChains={householdChains}
+                  onList={onList.has(entry.productId)}
+                />
+              ))}
+            </InventorySection>
           ))}
         </div>
       )}
