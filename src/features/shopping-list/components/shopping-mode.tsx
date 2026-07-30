@@ -830,24 +830,31 @@ function ShoppingModeRowItem({
     item.content,
     item.packSize,
   );
-  const { swipeProps } = useSwipeRemove(() => onRemove(item));
+  const { rootRef, swipeProps, actionProps } = useSwipeRemove(() =>
+    onRemove(item),
+  );
 
   return (
     <li
+      ref={rootRef}
       className="group relative overflow-hidden rounded-lg"
       // Safari no recorta al border-radius del padre cuando un hijo usa
       // transform (bleed de las esquinas del fondo rojo al deslizar); esta
       // máscara fuerza el clip correcto sin afectar a otros navegadores.
       style={{ WebkitMaskImage: "-webkit-radial-gradient(white, black)" }}
     >
-      {/* Fondo revelado al deslizar hacia la izquierda. */}
-      <div
-        aria-hidden
-        className="absolute inset-y-0 right-0 flex items-center gap-1.5 bg-destructive px-4 text-sm font-medium text-destructive-foreground"
+      {/* Lo que hay detrás de la fila NO es un fondo decorativo: es el botón que
+          destapa el deslizamiento, y quitar es tocarlo. Deslizar no borra —en el
+          pasillo no miras la pantalla, y un borrado al soltar se perdía con el
+          aviso de «Deshacer» (ver `useSwipeRemove`). */}
+      <button
+        {...actionProps}
+        aria-label={`Quitar ${item.name}`}
+        className="absolute inset-y-0 right-0 flex items-center justify-center gap-1.5 bg-destructive text-sm font-medium text-destructive-foreground"
       >
-        <Trash2 className="size-4" />
+        <Trash2 className="size-4" aria-hidden />
         Quitar
-      </div>
+      </button>
       <div
         className="relative flex items-center gap-1 rounded-lg bg-background transition-colors hover:bg-muted"
         {...swipeProps}
@@ -921,9 +928,9 @@ function ShoppingModeRowItem({
           unit={item.unit}
           onQuantityChange={(quantity) => onQuantityChange(item.id, quantity)}
         />
-        {/* Quitar: en táctil, deslizando la fila (el pulgar ya está ahí y la
+        {/* Quitar: en táctil se destapa deslizando (el pulgar ya está ahí, y la
             fila no puede crecer más: checkbox, nombre, pack, precio y stepper ya
-            se reparten 360 px). En escritorio no hay deslizamiento, así que la
+            se reparten 360 px). En escritorio no hay deslizamiento, así que esta
             papelera aparece al pasar por encima o al recibir el foco —que es
             además el camino de teclado—. Con lector de pantalla en móvil el
             borrado sigue estando en `/lista`, con su papelera siempre visible. */}
