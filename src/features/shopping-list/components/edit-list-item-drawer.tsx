@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,7 +45,6 @@ export function EditListItemDrawer({
   /** Quitar de la lista con ventana de "Deshacer" (L6). */
   onRemove: (item: ListItem) => void;
 }) {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -95,7 +93,9 @@ export function EditListItemDrawer({
       }
       toast.success("Cambios guardados");
       onOpenChange(false);
-      router.refresh();
+      // Sin `router.refresh()`: la acción ya revalida `/lista` (así se refresca
+      // el catálogo si el nombre cambió) y la fila la actualiza el cambio suelto
+      // de Realtime. Refrescar además duplicaba el render de la página.
     } catch {
       setError("No se pudieron guardar los cambios. Comprueba tu conexión.");
     } finally {

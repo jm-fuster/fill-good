@@ -1,8 +1,8 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useUser } from "@clerk/nextjs";
 import {
   ArrowUpDown,
   Check,
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/responsive-modal";
 import { EmptyState } from "@/components/layout/empty-state";
 import { Fab, fabButtonClass } from "@/components/layout/fab";
+import { useNavListBadge } from "@/components/layout/nav-list-count";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
 import { cn } from "@/lib/utils";
@@ -50,7 +51,8 @@ import {
   usePersistedChoice,
   usePersistedFlag,
 } from "@/hooks/use-persisted-flag";
-import { useRealtimeList } from "../use-realtime-list";
+import type { ListItemRealtimeRow } from "../list-sync";
+import { useSyncedList } from "../use-synced-list";
 import {
   ACTIVE_CHAIN_KEY,
   resolveChain,
@@ -65,6 +67,7 @@ import type {
 import {
   deleteListItemAction,
   dismissSuggestionAction,
+  fetchListItemsAction,
   reorderListItemsAction,
   restoreListItemAction,
   restoreSuggestionAction,
@@ -78,12 +81,6 @@ import { ItemReorderList } from "./item-reorder-list";
 import { QuantityStepper } from "./quantity-stepper";
 import { useCheckout } from "./use-checkout";
 import { EditListItemDrawer } from "./edit-list-item-drawer";
-
-function signatureOf(items: ListItem[]) {
-  return items
-    .map((i) => `${i.id}:${i.isChecked}:${i.quantity}:${i.unit}:${i.name}`)
-    .join("|");
-}
 
 /** Alta optimista pendiente de confirmar contra el servidor. */
 type PendingAdd = { tempId: string; realId: string | null; item: ListItem };
@@ -111,13 +108,48 @@ export function ShoppingListView({
   /** Supermercados del hogar: cada uno puede guardar su propio orden. */
   chains: string[];
 }) {
-  useRealtimeList(listId);
-  const router = useRouter();
-  const [items, setItems] = useState(initialItems);
-  const [sig, setSig] = useState(signatureOf(initialItems));
+  const { user } = useUser();
+  const myUserId = user?.id ?? null;
+
+  // Fila con la que se pinta un alta que llega de otro móvil. El evento de
+  // Realtime trae la fila pero no lo que cuelga del producto (categoría, envase,
+  // ahorro), así que hasta que la cura lo complete cae en "Otros": aparecer al
+  // instante importa más en el pasillo que aparecer con su pasillo puesto.
+  const provisionalItem = useCallback(
+    (row: ListItemRealtimeRow): ListItem => ({
+      id: row.id,
+      name: row.name,
+      quantity: row.quantity === null ? null : Number(row.quantity),
+      unit: row.unit,
+      isChecked: row.is_checked,
+      position: row.position,
+      createdAt: row.created_at,
+      productId: row.product_id,
+      addedByMe: row.added_by !== null && row.added_by === myUserId,
+    }),
+    [myUserId],
+  );
+
+  const fetchItems = useCallback(async (id: string) => {
+    const result = await fetchListItemsAction(id);
+    return result.items ?? null;
+  }, []);
+
+  // La lista viva: siembra del servidor y, a partir de ahí, cambios sueltos de
+  // Realtime aplicados en memoria (ver `use-synced-list.ts`). Antes cada toque
+  // —propio o del otro móvil— recargaba la página entera, y varias respuestas en
+  // vuelo se pisaban entre ellas: de ahí que lo quitado reapareciera.
+  const list = useSyncedList<ListItem>({
+    listId,
+    initialItems,
+    fetchItems,
+    provisionalItem,
+  });
+
   const [pendingAdds, setPendingAdds] = useState<PendingAdd[]>([]);
-  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [editItem, setEditItem] = useState<ListItem | null>(null);
+  /** Ids con un «quitar» ya en marcha (papelera y deslizamiento a la vez). */
+  const removing = useRef<Set<string>>(new Set());
   // L17 — Selector de altas (el «+»): el catálogo entero para marcar de golpe.
   const [adding, setAdding] = useState(false);
   // Sugerencias descartadas en esta sesión: se ocultan al instante y el servidor
@@ -136,44 +168,24 @@ export function ShoppingListView({
   const [storedChain, setStoredChain] = usePersistedChoice(ACTIVE_CHAIN_KEY);
   const storeLabelId = useId();
 
-  // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh) y
-  // descarta los ítems optimistas que ya han aterrizado en el servidor.
-  const currentSig = signatureOf(initialItems);
-  if (currentSig !== sig) {
-    setSig(currentSig);
-    setItems(initialItems);
-    const serverIds = new Set(initialItems.map((i) => i.id));
-    setPendingAdds((prev) =>
-      prev.filter((p) => !(p.realId && serverIds.has(p.realId))),
-    );
-    // Suelta los ids ya borrados en el servidor (confirmados).
-    setRemovedIds((prev) => {
-      const next = new Set([...prev].filter((id) => serverIds.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }
-
   // L6 — Quitar con "Deshacer". El borrado se confirma en el servidor de
-  // inmediato (así sobrevive a una recarga); el ítem se oculta al instante para
-  // dar respuesta inmediata. "Deshacer" restaura la fila tal cual (mismo id,
-  // posición y added_by) desde la instantánea que devuelve el borrado.
-  function unhide(id: string) {
-    setRemovedIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
-  }
-
+  // inmediato (así sobrevive a una recarga); la fila sale al instante para dar
+  // respuesta inmediata y queda VETADA: ninguna respuesta del servidor pedida
+  // antes del borrado puede devolverla (era justo el bug de «lo quito y vuelve»).
+  // "Deshacer" restaura la fila tal cual (mismo id, posición y added_by) desde la
+  // instantánea que devuelve el borrado.
   function removeItem(item: ListItem) {
-    if (removedIds.has(item.id)) return;
-    setRemovedIds((prev) => new Set(prev).add(item.id));
+    if (removing.current.has(item.id)) return;
+    removing.current.add(item.id);
+    list.remove(item.id);
+    // Si era un alta aún sin confirmar, se cae también su fila optimista.
+    setPendingAdds((prev) => prev.filter((p) => p.item.id !== item.id));
 
     deleteListItemAction(item.id).then((r) => {
       if (r?.error) {
-        // El servidor rechazó el borrado: vuelve a mostrar el ítem.
-        unhide(item.id);
+        // El servidor rechazó el borrado: vuelve a mostrarse.
+        removing.current.delete(item.id);
+        list.unremove(item);
         toast.error(r.error);
         return;
       }
@@ -184,78 +196,105 @@ export function ShoppingListView({
           ? {
               label: "Deshacer",
               onClick: () => {
-                unhide(item.id);
+                removing.current.delete(item.id);
+                list.unremove(item);
                 restoreListItemAction(snapshot).then((res) => {
-                  if (res?.error) toast.error(res.error);
-                  else router.refresh();
+                  if (res?.error) {
+                    toast.error(res.error);
+                    // No volvió: fuera otra vez, o quedaría una fila fantasma.
+                    list.remove(item.id);
+                  }
                 });
               },
             }
           : undefined,
       });
-      router.refresh();
     });
   }
 
   function toggle(id: string, checked: boolean) {
     if (checked) vibrateTick();
-    setItems((prev) =>
-      prev.map((it) => (it.id === id ? { ...it, isChecked: checked } : it)),
-    );
-    toggleItemAction(id, checked).then((r) => {
-      if (r?.error) {
-        toast.error(r.error);
-        router.refresh();
-      }
+    const before = list.items.find((i) => i.id === id)?.isChecked ?? !checked;
+    list.patch(id, { isChecked: checked });
+    // `track` marca la fila mientras la escritura viaja: lo que llegue del
+    // servidor para ella entre tanto se ignora. Sin eso, marcar y desmarcar
+    // rápido dejaba la fila marcada medio segundo (el eco del primer toque
+    // aterrizaba cuando ya se había hecho el segundo).
+    list.pending.track(id, toggleItemAction(id, checked)).then((r) => {
+      if (!r?.error) return;
+      toast.error(r.error);
+      list.patch(id, { isChecked: before });
+      list.heal(0);
     });
+  }
+
+  /** Marca varias filas como «escribiéndose» mientras la acción viaja. */
+  function trackAll(ids: string[], work: Promise<unknown>) {
+    for (const id of ids) {
+      list.pending.track(id, work).catch(() => {});
+    }
   }
 
   // L14 — Aplica un nuevo orden de pendientes: reordena el estado local al
-  // instante (para que no "salte" antes del refresh) y persiste las posiciones.
+  // instante (con las posiciones que va a escribir el servidor, para que el
+  // orden no "salte" al llegar los ecos) y persiste.
   function applyReorder(globalIds: string[]) {
     const inSet = new Set(globalIds);
-    setItems((prev) => {
-      const map = new Map(prev.map((i) => [i.id, i]));
-      const reordered = globalIds
-        .map((id) => map.get(id))
-        .filter((i): i is ListItem => Boolean(i));
-      // Conserva cualquier pendiente no incluido y los marcados al final.
-      const rest = prev.filter((i) => i.isChecked || !inSet.has(i.id));
-      return [...reordered, ...rest];
+    const byId = new Map(list.items.map((i) => [i.id, i]));
+    const reordered = globalIds.flatMap((id, index) => {
+      const item = byId.get(id);
+      return item ? [{ ...item, position: index }] : [];
     });
-    reorderListItemsAction(globalIds).then((r) => {
+    // Conserva cualquier pendiente no incluido y los marcados al final.
+    const rest = list.items.filter((i) => i.isChecked || !inSet.has(i.id));
+    list.replace([...reordered, ...rest]);
+
+    const work = reorderListItemsAction(globalIds);
+    trackAll(globalIds, work);
+    work.then((r) => {
       if (r?.error) {
         toast.error(r.error);
-        router.refresh();
+        list.heal(0);
       }
     });
   }
 
-  // Alta optimista: el ítem aparece al instante y se reconcilia con el refresh.
+  // Alta optimista: el ítem aparece al instante y se reconcilia al confirmar.
   async function addItem(input: AddInput): Promise<boolean> {
     const tempId =
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `temp-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+    // Lo que ya sabemos del catálogo viaja en la fila optimista en vez de
+    // esperar al servidor: el envase es el dato que justifica la línea («= 10
+    // ud») y la categoría es el pasillo en el que se pinta. Verlos aparecer medio
+    // segundo después se lee como que la app ha cambiado de opinión.
+    const product =
+      input.kind === "product"
+        ? catalog.find((p) => p.id === input.productId)
+        : undefined;
     const optimistic: ListItem = {
       id: tempId,
       name: input.name,
       // Mismo defecto que aplica el servidor, para que la fila no parpadee de
-      // «+» a «− 1 +» cuando llega el refresh.
+      // «+» a «− 1 +» al confirmarse.
       quantity: input.quantity ?? defaultListQuantity(input.unit),
       unit: input.unit,
       isChecked: false,
+      // Al final de la lista, que es donde la va a poner el servidor.
+      position:
+        list.items.reduce((max, i) => Math.max(max, i.position), 0) + 1,
+      createdAt: new Date().toISOString(),
       productId: input.kind === "product" ? input.productId : null,
       addedByMe: true,
-      // El pack viaja ya en el ítem optimista, no esperando al refresh: es el
-      // dato que justifica la fila («= 10 ud»), y verlo aparecer medio segundo
-      // después se lee como que la app ha cambiado de opinión. En un alta de
-      // texto libre no se puede: ahí el producto lo resuelve el servidor por
-      // nombre normalizado, así que llega con el refresh (igual que el contenido).
-      packSize:
-        input.kind === "product"
-          ? (catalog.find((p) => p.id === input.productId)?.packSize ?? null)
-          : null,
+      packSize: product?.packSize ?? null,
+      productIcon: product?.icon ?? null,
+      categoryName: product?.categoryName ?? undefined,
+      categoryIcon: product?.categoryIcon ?? null,
+      categorySort: product?.categorySort,
+      // En un alta de texto libre no hay nada de esto: el producto lo resuelve el
+      // servidor por nombre normalizado, así que llega con la cura (igual que el
+      // contenido y el aviso de ahorro, que no están en el catálogo ligero).
     };
     setPendingAdds((prev) => [
       ...prev,
@@ -284,8 +323,13 @@ export function ShoppingListView({
       setPendingAdds((prev) =>
         prev.map((p) => (p.tempId === tempId ? { ...p, realId } : p)),
       );
+      // Fila nueva confirmada: entra ya con su id de verdad (si fue una fusión
+      // L3, la fila que había ya está en la lista y solo cambia su cantidad).
+      if (!result.merged) list.add({ ...optimistic, id: realId });
     }
-    router.refresh();
+    // Y la cura completa lo que el catálogo ligero no trae (contenido, aviso de
+    // ahorro, el pasillo de un alta de texto libre).
+    list.heal();
     return true;
   }
 
@@ -316,26 +360,41 @@ export function ShoppingListView({
             });
             restoreSuggestionAction(s.productId).then((res) => {
               if (res?.error) toast.error(res.error);
-              else router.refresh();
             });
           },
         },
       });
-      router.refresh();
     });
   }
 
   // Ítems optimistas aún no presentes en los datos del servidor.
   const optimisticItems = pendingAdds
-    .filter((p) => !(p.realId && items.some((i) => i.id === p.realId)))
+    .filter((p) => !(p.realId && list.items.some((i) => i.id === p.realId)))
     .map((p) => p.item);
-  // Oculta los ítems en ventana de undo (borrado diferido, L6).
-  const allItems = [...items, ...optimisticItems].filter(
-    (i) => !removedIds.has(i.id),
-  );
+  const allItems = [...list.items, ...optimisticItems];
 
   const pending = allItems.filter((i) => !i.isChecked);
   const done = allItems.filter((i) => i.isChecked);
+
+  // El badge de la navbar lo publica esta pantalla mientras está montada: aquí se
+  // sabe la cuenta exacta (con lo optimista incluido) y sale gratis, en vez de
+  // que el badge relea por su cuenta con cada cambio.
+  const badge = useNavListBadge();
+  const pendingCount = pending.length;
+  useEffect(() => badge.claim(), [badge]);
+  useEffect(() => {
+    badge.publish(pendingCount);
+  }, [badge, pendingCount]);
+
+  /** Cantidad al vuelo desde el stepper: la fila entera cuenta lo mismo. */
+  function setQuantity(id: string, quantity: number | null) {
+    list.patch(id, { quantity });
+  }
+
+  /** El stepper tiene toques sin asentar: que no los pise el servidor. */
+  function setQuantityBusy(id: string, busy: boolean) {
+    list.pending.setHold(id, busy);
+  }
 
   // Tienda con la que se miran los pasillos: la MISMA elección que el modo
   // compra, no una propia de esta pantalla (ver `aisle-view.ts`). Aquí solo
@@ -558,6 +617,8 @@ export function ShoppingListView({
                         onToggle={toggle}
                         onEdit={setEditItem}
                         onRemove={removeItem}
+                        onQuantity={setQuantity}
+                        onQuantityBusy={setQuantityBusy}
                         showIcon
                       />
                     ))}
@@ -570,6 +631,8 @@ export function ShoppingListView({
                     onToggle={toggle}
                     onEdit={setEditItem}
                     onRemove={removeItem}
+                    onQuantity={setQuantity}
+                    onQuantityBusy={setQuantityBusy}
                     showIcon
                   />
                 ))}
@@ -589,6 +652,8 @@ export function ShoppingListView({
                 onToggle={toggle}
                 onEdit={setEditItem}
                 onRemove={removeItem}
+                onQuantity={setQuantity}
+                onQuantityBusy={setQuantityBusy}
                 showIcon
               />
             ))}
@@ -649,7 +714,12 @@ export function ShoppingListView({
             catalog={catalog}
             suggestions={visibleSuggestions}
             onListProductIds={[...onListProductIds]}
-            onDone={() => setAdding(false)}
+            onDone={() => {
+              setAdding(false);
+              // Las filas nuevas llegan por Realtime; esto les pone lo que el
+              // evento no trae (pasillo, contenido, aviso de ahorro).
+              list.heal(0);
+            }}
           />
         </ResponsiveModalContent>
       </ResponsiveModal>
@@ -669,12 +739,18 @@ function ListRow({
   onToggle,
   onEdit,
   onRemove,
+  onQuantity,
+  onQuantityBusy,
   showIcon = false,
 }: {
   item: ListItem;
   onToggle: (id: string, checked: boolean) => void;
   onEdit: (item: ListItem) => void;
   onRemove: (item: ListItem) => void;
+  /** Cantidad nueva del stepper, en el mismo toque (para la equivalencia). */
+  onQuantity: (id: string, quantity: number | null) => void;
+  /** El stepper tiene toques sin asentar: no aplicar lo del servidor. */
+  onQuantityBusy: (id: string, busy: boolean) => void;
   /** Muestra el icono de categoría delante del nombre (vista sin agrupar). */
   showIcon?: boolean;
 }) {
@@ -793,6 +869,8 @@ function ListRow({
           name={item.name}
           quantity={item.quantity}
           unit={item.unit}
+          onQuantityChange={(quantity) => onQuantity(item.id, quantity)}
+          onBusy={(busy) => onQuantityBusy(item.id, busy)}
         />
         {/* Papelera: siempre visible en táctil (móvil, donde no hay hover ni se
             descubre el swipe); en escritorio se oculta y se revela al hover/foco. */}

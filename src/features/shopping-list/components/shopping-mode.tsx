@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   Check,
   ChevronDown,
@@ -27,6 +26,7 @@ import {
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
 import { Fab, fabButtonClass } from "@/components/layout/fab";
+import { useNavListBadge } from "@/components/layout/nav-list-count";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
 import { cn } from "@/lib/utils";
@@ -50,9 +50,12 @@ import {
 import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
 import { formatPurchaseQuantity, listTotalLabel } from "@/lib/units";
-import { useRealtimeList } from "../use-realtime-list";
+import type { ListItemRealtimeRow } from "../list-sync";
+import { useSyncedList } from "../use-synced-list";
+import { NO_CATEGORY_SORT } from "../grouping";
 import {
   deleteListItemAction,
+  fetchShoppingModeItemsAction,
   restoreListItemAction,
   toggleItemAction,
 } from "../actions";
@@ -63,22 +66,6 @@ import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import { QuantityStepper } from "./quantity-stepper";
 import { suggestionReasonLabel } from "../suggestion-reason";
 import { useCheckout } from "./use-checkout";
-
-/**
- * Firma de la lista para detectar datos nuevos del servidor. `categorySort` va
- * dentro a propósito: reordenar los pasillos desde aquí no cambia ningún ítem,
- * así que sin él la firma quedaría igual y la lista seguiría agrupada con el
- * orden viejo hasta recargar. El precio también: si llega un ticket nuevo, los
- * costes de las líneas cambian sin que cambie nada más.
- */
-function signatureOf(items: ShoppingModeItem[]) {
-  return items
-    .map(
-      (i) =>
-        `${i.id}:${i.isChecked}:${i.quantity}:${i.name}:${i.unitPrice?.price ?? ""}:${i.categorySort}`,
-    )
-    .join("|");
-}
 
 /** Sentinel mínimo del Screen Wake Lock API (evita depender del lib DOM). */
 type WakeLockLike = { release: () => Promise<void> };
@@ -116,19 +103,59 @@ export function ShoppingMode({
   /** Supermercados del hogar (elegidos o deducidos de los tickets). */
   chains: string[];
 }) {
-  useRealtimeList(listId);
-  const router = useRouter();
-  const [items, setItems] = useState(initialItems);
-  const [sig, setSig] = useState(signatureOf(initialItems));
+  // Fila con la que se pinta un alta que llega del otro móvil: el evento trae la
+  // fila, no lo que cuelga del producto (pasillo, envase, PRECIO), así que cae en
+  // "Otros" y sin coste hasta que la cura lo complete. En el pasillo, verla
+  // aparecer al instante vale más que verla aparecer completa.
+  const provisionalItem = useCallback(
+    (row: ListItemRealtimeRow): ShoppingModeItem => ({
+      id: row.id,
+      name: row.name,
+      productId: row.product_id,
+      quantity: row.quantity === null ? null : Number(row.quantity),
+      unit: row.unit,
+      isChecked: row.is_checked,
+      position: row.position,
+      createdAt: row.created_at,
+      categoryName: "Otros",
+      categoryIcon: null,
+      productIcon: null,
+      categoryId: null,
+      categorySort: NO_CATEGORY_SORT,
+      unitPrice: null,
+      content: null,
+      packSize: null,
+      preferredChain: null,
+    }),
+    [],
+  );
+
+  const fetchItems = useCallback(async (id: string) => {
+    const result = await fetchShoppingModeItemsAction(id);
+    return result.items ?? null;
+  }, []);
+
+  // La lista viva de la compra. `checkedLast: false` porque aquí los cogidos se
+  // ordenan dentro de cada pasillo, no al final de todo (ver `groups`).
+  const list = useSyncedList<ShoppingModeItem>({
+    listId,
+    initialItems,
+    fetchItems,
+    provisionalItem,
+    checkedLast: false,
+  });
+
   const [adding, setAdding] = useState(false);
   // Orden de pasillos en un sheet: se corrige aquí, delante de la estantería,
   // que es donde se nota que no cuadra (también sigue en Ajustes y en /lista).
   const [ordering, setOrdering] = useState(false);
-  // Recomendaciones ya añadidas en esta sesión: se ocultan al instante (el
-  // refresh del servidor las excluirá después al recalcular las sugerencias).
+  // Recomendaciones ya añadidas en esta sesión: se ocultan al instante y siguen
+  // ocultas mientras dure la compra. Las sugerencias las calcula el servidor al
+  // entrar aquí, y ya no se recalculan en cada cambio (era medio segundo de
+  // trabajo por cada artículo cogido); lo añadido no puede volver a ofrecerse.
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  // Ítems quitados en ventana de "Deshacer": ocultos ya, borrados en el servidor.
-  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
+  /** Ids con un «quitar» ya en marcha (papelera y deslizamiento a la vez). */
+  const removing = useRef<Set<string>>(new Set());
   // L13 — Secciones con los cogidos expandidos (por defecto contraídos).
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   function toggleExpanded(key: string) {
@@ -158,19 +185,6 @@ export function ShoppingMode({
   const [storedChain, setStoredChain] = usePersistedChoice(ACTIVE_CHAIN_KEY);
   // Sección "otras tiendas" contraída por defecto.
   const [showOther, setShowOther] = useState(false);
-
-  // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh).
-  const currentSig = signatureOf(initialItems);
-  if (currentSig !== sig) {
-    setSig(currentSig);
-    setItems(initialItems);
-    // Suelta los ids ya borrados en el servidor (confirmados).
-    const serverIds = new Set(initialItems.map((i) => i.id));
-    setRemovedIds((prev) => {
-      const next = new Set([...prev].filter((id) => serverIds.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }
 
   // Pantalla siempre encendida mientras dura la compra (feature-detect; degrada
   // en silencio donde no exista). Se re-solicita al volver de segundo plano
@@ -202,14 +216,15 @@ export function ShoppingMode({
 
   function toggle(id: string, checked: boolean) {
     if (checked) vibrateTick();
-    setItems((prev) =>
-      prev.map((it) => (it.id === id ? { ...it, isChecked: checked } : it)),
-    );
-    toggleItemAction(id, checked).then((r) => {
-      if (r?.error) {
-        toast.error(r.error);
-        router.refresh();
-      }
+    const before = list.items.find((i) => i.id === id)?.isChecked ?? !checked;
+    list.patch(id, { isChecked: checked });
+    // `track` marca la fila mientras la escritura viaja: lo que llegue del
+    // servidor para ella entre tanto va por detrás y se ignora.
+    list.pending.track(id, toggleItemAction(id, checked)).then((r) => {
+      if (!r?.error) return;
+      toast.error(r.error);
+      list.patch(id, { isChecked: before });
+      list.heal(0);
     });
   }
 
@@ -217,18 +232,12 @@ export function ShoppingMode({
   // su propio estado: es lo que permite recostear la línea y el total en el mismo
   // toque (ver `costs`). El stepper sigue siendo el que persiste.
   function setQuantity(id: string, quantity: number | null) {
-    setItems((prev) =>
-      prev.map((it) => (it.id === id ? { ...it, quantity } : it)),
-    );
+    list.patch(id, { quantity });
   }
 
-  function unhide(id: string) {
-    setRemovedIds((prev) => {
-      if (!prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.delete(id);
-      return next;
-    });
+  /** El stepper tiene toques sin asentar: que no los pise el servidor. */
+  function setQuantityBusy(id: string, busy: boolean) {
+    list.pending.setHold(id, busy);
   }
 
   /**
@@ -239,15 +248,18 @@ export function ShoppingMode({
    * mientras el artículo seguía contando en "quedan N por coger".
    *
    * Mismo borrado con "Deshacer" que en `/lista`: se confirma en el servidor de
-   * inmediato (sobrevive a una recarga) y se oculta al instante.
+   * inmediato (sobrevive a una recarga), sale al instante y queda vetado, para
+   * que ninguna respuesta pedida antes del borrado lo devuelva.
    */
   function removeItem(item: ShoppingModeItem) {
-    if (removedIds.has(item.id)) return;
-    setRemovedIds((prev) => new Set(prev).add(item.id));
+    if (removing.current.has(item.id)) return;
+    removing.current.add(item.id);
+    list.remove(item.id);
 
     deleteListItemAction(item.id).then((r) => {
       if (r?.error) {
-        unhide(item.id);
+        removing.current.delete(item.id);
+        list.unremove(item);
         toast.error(r.error);
         return;
       }
@@ -258,24 +270,22 @@ export function ShoppingMode({
           ? {
               label: "Deshacer",
               onClick: () => {
-                unhide(item.id);
+                removing.current.delete(item.id);
+                list.unremove(item);
                 restoreListItemAction(snapshot).then((res) => {
-                  if (res?.error) toast.error(res.error);
-                  else router.refresh();
+                  if (res?.error) {
+                    toast.error(res.error);
+                    list.remove(item.id);
+                  }
                 });
               },
             }
           : undefined,
       });
-      router.refresh();
     });
   }
 
-  // Lo que se ve: sin los que están en ventana de "Deshacer".
-  const visible = useMemo(
-    () => items.filter((i) => !removedIds.has(i.id)),
-    [items, removedIds],
-  );
+  const visible = list.items;
 
   // Las mismas tiendas que ofrece `/lista`, con la misma regla (ver `aisle-view`).
   const storeOptions = useMemo(
@@ -394,12 +404,22 @@ export function ShoppingMode({
   const totalPending = visible.filter((i) => !i.isChecked).length;
   const checkedCount = visible.filter((i) => i.isChecked).length;
 
+  // Esta pantalla se hace cargo del badge de la navbar mientras dura la compra.
+  // No se ve (el modo compra tapa la nav), y es justo el motivo: sin reclamarlo,
+  // el badge saldría a releer su cuenta con CADA artículo que se coge.
+  const badge = useNavListBadge();
+  useEffect(() => badge.claim(), [badge]);
+  useEffect(() => {
+    badge.publish(totalPending);
+  }, [badge, totalPending]);
+
   // L7 — Finalizar la compra desde aquí (al salir, el wake lock se libera en
   // el cleanup del efecto). Sin ids que revisar → vuelve a `/lista`.
   const { checkout, pending: checkingOut } = useCheckout("/lista");
 
-  // L12 — Añadir desde el modo compra: el ítem aparece en su grupo vía el
-  // refresh de Realtime (sin optimismo local aquí, aceptable en v1).
+  // L12 — Añadir desde el modo compra. La fila aparece por el cambio suelto de
+  // Realtime (sin optimismo local aquí, aceptable en v1) y la cura le pone
+  // pasillo y precio, que es lo que el evento no trae.
   async function addItem(input: AddInput): Promise<boolean> {
     const result = await runAddAction(input);
     if (result.error) {
@@ -407,7 +427,7 @@ export function ShoppingMode({
       return false;
     }
     showAddResultToast(result);
-    router.refresh();
+    list.heal();
     return true;
   }
 
@@ -594,6 +614,7 @@ export function ShoppingMode({
                           onToggle={toggle}
                           onRemove={removeItem}
                           onQuantityChange={setQuantity}
+                          onQuantityBusy={setQuantityBusy}
                           activeChain={effectiveChain}
                           showCost={showCost}
                         />
@@ -630,6 +651,7 @@ export function ShoppingMode({
                                 onToggle={toggle}
                                 onRemove={removeItem}
                                 onQuantityChange={setQuantity}
+                                onQuantityBusy={setQuantityBusy}
                                 showCost={showCost}
                               />
                             ))}
@@ -701,6 +723,7 @@ export function ShoppingMode({
                             onToggle={toggle}
                             onRemove={removeItem}
                             onQuantityChange={setQuantity}
+                            onQuantityBusy={setQuantityBusy}
                             activeChain={effectiveChain}
                             showCost={showCost}
                           />
@@ -777,7 +800,12 @@ export function ShoppingMode({
             catalog={catalog}
             suggestions={visibleSuggestions}
             onListProductIds={onListProductIds}
-            onDone={() => setAdding(false)}
+            onDone={() => {
+              setAdding(false);
+              // Las filas nuevas llegan por Realtime; esto les pone el pasillo y
+              // el precio, que el evento no trae (y sin precio no cuentan al total).
+              list.heal(0);
+            }}
           />
         </ResponsiveModalContent>
       </ResponsiveModal>
@@ -832,6 +860,7 @@ function ShoppingModeRowItem({
   onToggle,
   onRemove,
   onQuantityChange,
+  onQuantityBusy,
   activeChain = null,
   showCost = false,
 }: {
@@ -841,6 +870,8 @@ function ShoppingModeRowItem({
   onToggle: (id: string, checked: boolean) => void;
   onRemove: (item: ShoppingModeItem) => void;
   onQuantityChange: (id: string, quantity: number | null) => void;
+  /** El stepper tiene toques sin asentar: no aplicar lo del servidor. */
+  onQuantityBusy: (id: string, busy: boolean) => void;
   /** Hay algún precio conocido en la compra; si no, no hay columna de coste. */
   showCost?: boolean;
   /** Cadena filtrada; el badge de tienda se oculta si coincide (redundante). */
@@ -951,6 +982,7 @@ function ShoppingModeRowItem({
           quantity={item.quantity}
           unit={item.unit}
           onQuantityChange={(quantity) => onQuantityChange(item.id, quantity)}
+          onBusy={(busy) => onQuantityBusy(item.id, busy)}
         />
         {/* Quitar: en táctil se destapa deslizando (el pulgar ya está ahí, y la
             fila no puede crecer más: checkbox, nombre, pack, precio y stepper ya

@@ -36,6 +36,15 @@ export type ListItem = {
   isChecked: boolean;
   productId: string | null;
   addedByMe: boolean;
+  /**
+   * Orden dentro de la lista (el de «Reordenar»). Viaja al cliente porque la
+   * pantalla coloca las filas ella misma: cuando llega un alta de otro móvil o
+   * un reorden, con `position` sabe DÓNDE va sin recargar la página solo para
+   * averiguar el orden (ver `sortSyncedItems`).
+   */
+  position: number;
+  /** Antigüedad, para desempatar dos filas con la misma `position`. */
+  createdAt: string;
   /** Categoría del producto para agrupar en `/lista` (L10); ausente en altas optimistas. */
   categoryName?: string;
   categoryIcon?: string | null;
@@ -212,6 +221,10 @@ export type ShoppingModeItem = {
   quantity: number | null;
   unit: UnitType | null;
   isChecked: boolean;
+  /** Orden dentro de la lista; ver `ListItem.position`. */
+  position: number;
+  /** Antigüedad, para desempatar dos filas con la misma `position`. */
+  createdAt: string;
   categoryName: string;
   categoryIcon: string | null;
   /** Icono manual del producto (L16); null = automático. */
@@ -245,6 +258,8 @@ type ShoppingModeRow = {
   quantity: number | null;
   unit: UnitType | null;
   is_checked: boolean;
+  position: number;
+  created_at: string;
   product_id: string | null;
   product: {
     name: string;
@@ -284,7 +299,7 @@ export async function getShoppingModeItems(
     supabase
       .from("shopping_list_items")
       .select(
-        "id, name, quantity, unit, is_checked, product_id, product:products(name, preferred_chain, inferred_chain, icon, pack_size, content_size, content_unit, content_is_estimate, category:categories(id, name, icon, sort_order))",
+        "id, name, quantity, unit, is_checked, position, created_at, product_id, product:products(name, preferred_chain, inferred_chain, icon, pack_size, content_size, content_unit, content_is_estimate, category:categories(id, name, icon, sort_order))",
       )
       .eq("household_id", householdId)
       .eq("list_id", listId)
@@ -305,6 +320,8 @@ export async function getShoppingModeItems(
       quantity: qty,
       unit: r.unit,
       isChecked: r.is_checked,
+      position: r.position,
+      createdAt: r.created_at,
       categoryName: r.product?.category?.name ?? "Otros",
       categoryIcon: r.product?.category?.icon ?? null,
       productIcon: r.product?.icon ?? null,
@@ -334,6 +351,8 @@ type ListItemRow = {
   quantity: number | null;
   unit: UnitType | null;
   is_checked: boolean;
+  position: number;
+  created_at: string;
   product_id: string | null;
   added_by: string | null;
   product: {
@@ -365,7 +384,7 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
   const { data, error } = await supabase
     .from("shopping_list_items")
     .select(
-      "id, name, quantity, unit, is_checked, product_id, added_by, product:products(name, preferred_chain, inferred_chain, savings_tip, icon, pack_size, content_size, content_unit, content_is_estimate, category:categories(id, name, icon, sort_order))",
+      "id, name, quantity, unit, is_checked, position, created_at, product_id, added_by, product:products(name, preferred_chain, inferred_chain, savings_tip, icon, pack_size, content_size, content_unit, content_is_estimate, category:categories(id, name, icon, sort_order))",
     )
     .eq("household_id", householdId)
     .eq("list_id", listId)
@@ -381,6 +400,8 @@ export async function getListItems(listId: string): Promise<ListItem[]> {
     quantity: i.quantity === null ? null : Number(i.quantity),
     unit: i.unit,
     isChecked: i.is_checked,
+    position: i.position,
+    createdAt: i.created_at,
     productId: i.product_id,
     addedByMe: i.added_by === userId,
     categoryName: i.product?.category?.name ?? "Otros",

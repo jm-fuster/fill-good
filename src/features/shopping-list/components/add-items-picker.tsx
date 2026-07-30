@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Check, Plus, Search, ShoppingCart, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -67,10 +66,13 @@ export function AddItemsPicker({
    * no como Set porque cruza la frontera servidor→cliente.
    */
   onListProductIds: string[];
-  /** Cerrar el selector (el alta ya se ha guardado). */
+  /**
+   * Cerrar el selector: el alta ya está guardada. Las filas nuevas llegan a la
+   * lista por Realtime, así que quien abre esto no tiene que recargar nada —
+   * solo, si quiere, pedir una relectura para que traigan pasillo y precio.
+   */
   onDone: () => void;
 }) {
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -239,7 +241,6 @@ export function AddItemsPicker({
       }
       toast.success(resultLabel(result));
       onDone();
-      router.refresh();
     } catch {
       toast.error(
         "No se pudo añadir. Comprueba tu conexión e inténtalo de nuevo.",

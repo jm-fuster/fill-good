@@ -9,7 +9,14 @@ import { defaultListQuantity, formatQuantity } from "@/lib/units";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { recordStockEvent } from "@/features/inventory/events";
 import type { UnitType } from "@/lib/supabase/types";
-import { getActiveList } from "./queries";
+import {
+  getActiveList,
+  getActiveListBadge,
+  getListItems,
+  getShoppingModeItems,
+  type ListItem,
+  type ShoppingModeItem,
+} from "./queries";
 import {
   addManyToList,
   mergeIntoExisting,
@@ -32,6 +39,53 @@ export type ActionState = {
   /** Presente cuando el alta se fusionó con un ítem existente (L3). */
   merged?: { name: string; quantity: number | null; unit: UnitType | null };
 };
+
+// ── Relecturas para el cliente ("curas") ────────────────────────────────────
+// La lista se sincroniza con CAMBIOS SUELTOS de Realtime (ver `list-sync.ts`).
+// Lo que un cambio suelto no puede traer —la categoría y el precio de un alta
+// ajena, o lo que pasara mientras el móvil dormía— se pide con esto: UNA
+// consulta, en vez del `router.refresh()` que re-renderizaba la página entera
+// (sugerencias, catálogo, pasillos, tiendas… seis consultas) por cada toque de
+// cualquiera de los dos móviles.
+//
+// El `listId` llega del cliente y no se valida aparte: las lecturas van acotadas
+// al hogar activo, así que un id ajeno devuelve la lista vacía, no datos de otra
+// casa (ver la regla del hogar activo en AGENTS.md).
+
+export async function fetchListItemsAction(
+  listId: string,
+): Promise<{ items?: ListItem[]; error?: string }> {
+  try {
+    return { items: await getListItems(listId) };
+  } catch {
+    // La cura es best-effort: el cliente se queda con lo que tiene y lo
+    // reintenta en el siguiente latido. Devolver un error aquí solo sirve para
+    // que no se aplique una lista a medias.
+    return { error: "No se pudo leer la lista." };
+  }
+}
+
+export async function fetchShoppingModeItemsAction(
+  listId: string,
+): Promise<{ items?: ShoppingModeItem[]; error?: string }> {
+  try {
+    return { items: await getShoppingModeItems(listId) };
+  } catch {
+    return { error: "No se pudo leer la lista." };
+  }
+}
+
+/** Pendientes de la lista activa, para el badge de la navbar. */
+export async function fetchListBadgeAction(): Promise<{
+  listId: string | null;
+  pendingCount: number;
+}> {
+  try {
+    return await getActiveListBadge();
+  } catch {
+    return { listId: null, pendingCount: 0 };
+  }
+}
 
 export async function addListItemAction(
   _prev: ActionState,
@@ -442,8 +496,10 @@ export async function updateListItemAction(
 }
 
 /**
- * L9 — Ajuste ligero de solo la cantidad (stepper ±1). Optimista en cliente:
- * sin `revalidatePath`, Realtime reconcilia en el resto de dispositivos.
+ * L9 — Ajuste ligero de solo la cantidad (stepper ±1). Optimista en cliente y
+ * SIN `revalidatePath`: el cambio llega al resto de dispositivos como cambio
+ * suelto de Realtime, que lo aplican en memoria. Es lo que hace que sumar
+ * cantidad no cueste un render de la página por toque.
  */
 export async function setListItemQuantityAction(
   itemId: string,
@@ -513,7 +569,9 @@ export async function toggleItemAction(
     .eq("id", itemId)
     .eq("household_id", household.id);
   if (error) return { error: "No se pudo actualizar." };
-  // Sin revalidatePath: optimista en cliente + Realtime para el resto.
+  // Sin revalidatePath: optimista en cliente, y al resto de dispositivos llega
+  // como cambio suelto de Realtime (marcar es el gesto más repetido de la
+  // compra; recargar la ruta por cada uno era la mitad del problema).
   return { ok: true };
 }
 
@@ -539,6 +597,12 @@ export type DeletedListItem = {
  * (así sobrevive a una recarga de la página; no depende de un temporizador en el
  * cliente). Devuelve una instantánea de la fila para poder deshacerlo con
  * `restoreListItemAction`, conservando id, posición y `added_by`.
+ *
+ * El `revalidatePath("/lista")` NO es para la pantalla que llama (esa ya se
+ * actualizó sola, y el cliente descarta esta instantánea si va por detrás): es
+ * para invalidar el caché de router del cliente —que sirve la página hasta 30 s,
+ * ver `staleTimes`— y para que las sugerencias vuelvan a contar con este producto.
+ * Sin él, volver a `/lista` desde otra pestaña enseñaría el artículo borrado.
  */
 export async function deleteListItemAction(
   itemId: string,

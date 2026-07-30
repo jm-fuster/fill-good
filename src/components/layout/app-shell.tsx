@@ -46,7 +46,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <TooltipProvider>
       <SidebarProvider defaultOpen={defaultOpen}>
-        <NavListCountProvider badge={badge}>
+        {/* `key` por hogar: la cuenta viva del badge (la que mantiene el cliente
+            con los cambios de Realtime) es del hogar activo, así que al cambiar
+            de casa hay que olvidarla en vez de enseñar la de la otra. */}
+        <NavListCountProvider key={household?.id ?? "sin-hogar"} badge={badge}>
           {/* Primer elemento focusable: salta la navegación e ir al contenido. */}
           <a
             href="#contenido"
