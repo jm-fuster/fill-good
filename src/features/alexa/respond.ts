@@ -21,10 +21,14 @@ import { formatQuantityValue } from "@/lib/units";
  * Orden de voz a la que se vuelve cuando el usuario contesta una pregunta.
  *
  * «tirar» y «estropear» son las mismas operaciones que «restar» y «agotar» sobre
- * el inventario; lo que cambia es lo que queda escrito en el historial
- * (`discarded` en vez de `consumed`) y el verbo con el que se contesta. Merece
- * la pena distinguirlas porque gastar y desperdiciar no son lo mismo, y es lo
- * único que puede sostener una historia de ahorro creíble.
+ * el inventario; lo que cambia es el verbo con el que se contesta, que no es
+ * cosmético: repetirle «he quitado» a quien ha dicho que ha TIRADO algo delata
+ * que no se le ha escuchado.
+ *
+ * En el historial las cuatro dejan un `consumed`, porque la app ya no
+ * contabiliza el desperdicio (ver el comentario de `RestarFlavor` en
+ * handlers.ts). Se conservan como acciones distintas para poder volver a
+ * distinguirlas sin rehacer nada.
  */
 export type VoiceAction =
   | "restar"

@@ -516,10 +516,19 @@ async function loadTarget(
 
 /**
  * Lo que cambia entre gastar y tirar: el descuento del inventario es idéntico,
- * pero el historial y la frase no. Se pasa junto para que el cuerpo de
- * `runRestar` no tenga que preguntarse cuál de las dos era en cada rama.
+ * pero la frase no. Se pasa junto para que el cuerpo de `runRestar` no tenga que
+ * preguntarse cuál de las dos era en cada rama.
+ *
+ * `kind` es `consumed` en las dos **mientras la app no contabilice el
+ * desperdicio** (ver f0b2404: se quitaron la racha, los euros tirados y la
+ * pregunta «¿lo consumiste o lo tiraste?»). Escribir `discarded` que nadie lee
+ * solo dejaba en el historial movimientos que la pantalla ya pinta como una baja
+ * normal, con la voz y la app discrepando sin motivo. La distinción sigue viva
+ * donde de verdad se nota —el verbo con el que se contesta— y volver a
+ * contabilizarla es cambiar este campo, no rehacer el flujo.
  */
 type RestarFlavor = {
+  accion: "restar" | "tirar";
   kind: InventoryEventKind;
   verbo: string;
   done: (taken: string, name: string, left: string | null) => string;
@@ -527,16 +536,36 @@ type RestarFlavor = {
 };
 
 const GASTADO: RestarFlavor = {
+  accion: "restar",
   kind: "consumed",
   verbo: "quito",
   done: SPEECH.deducted,
   partial: SPEECH.deductedPartial,
 };
 const TIRADO: RestarFlavor = {
-  kind: "discarded",
+  accion: "tirar",
+  kind: "consumed",
   verbo: "tiro",
   done: SPEECH.discarded,
   partial: SPEECH.discardedPartial,
+};
+
+/** Lo mismo para vaciar del todo: «se ha acabado» frente a «se ha estropeado». */
+type AgotarFlavor = {
+  accion: "agotar" | "estropear";
+  kind: InventoryEventKind;
+  ask: (name: string) => string;
+};
+
+const ACABADO: AgotarFlavor = {
+  accion: "agotar",
+  kind: "consumed",
+  ask: SPEECH.emptiedAsk,
+};
+const ESTROPEADO: AgotarFlavor = {
+  accion: "estropear",
+  kind: "consumed",
+  ask: SPEECH.spoiledAsk,
 };
 
 async function handleRestarStock(
@@ -545,12 +574,7 @@ async function handleRestarStock(
   intent: AlexaIntent,
   flavor: RestarFlavor,
 ): Promise<AlexaResponse> {
-  const prepared = await prepareVoiceTarget(
-    admin,
-    envelope,
-    intent,
-    flavor.kind === "discarded" ? "tirar" : "restar",
-  );
+  const prepared = await prepareVoiceTarget(admin, envelope, intent, flavor.accion);
   if (!prepared.ok) {
     return "notFound" in prepared
       ? speak(SPEECH.productUnknown(prepared.spoken))
@@ -602,7 +626,7 @@ async function runRestar(
           state: {
             pendiente: {
               tipo: "unidad",
-              accion: flavor.kind === "discarded" ? "tirar" : "restar",
+              accion: flavor.accion,
               productId,
               name,
             },
@@ -1061,36 +1085,30 @@ async function apuntarEnLista(
  * servidor sigue sin recordar nada entre peticiones.
  *
  * Se registra por la cantidad que quedaba: si había dos panes y se acabaron, dos
- * panes se movieron, y el historial debe decirlo. Con `consumed` si se gastó y
- * con `discarded` si se estropeó («se ha puesto malo el pan»), que es la misma
- * operación contada de otra manera. Las filas se conservan a 0 (agotado), igual
- * que en el resto de la app.
+ * panes se movieron, y el historial debe decirlo. Que se acabara gastándolo o
+ * porque se puso malo solo cambia la frase, no el evento (ver `AgotarFlavor`).
+ * Las filas se conservan a 0 (agotado), igual que en el resto de la app.
  */
 async function handleAgotarStock(
   admin: Admin,
   envelope: AlexaEnvelope,
   intent: AlexaIntent,
-  kind: InventoryEventKind,
+  flavor: AgotarFlavor,
 ): Promise<AlexaResponse> {
-  const prepared = await prepareVoiceTarget(
-    admin,
-    envelope,
-    intent,
-    kind === "discarded" ? "estropear" : "agotar",
-  );
+  const prepared = await prepareVoiceTarget(admin, envelope, intent, flavor.accion);
   if (!prepared.ok) {
     return "notFound" in prepared
       ? speak(SPEECH.productUnknown(prepared.spoken))
       : prepared.response;
   }
-  return runAgotar(admin, prepared.target, kind);
+  return runAgotar(admin, prepared.target, flavor);
 }
 
 /** El vaciado en sí, ya con el producto decidido (ver {@link runRestar}). */
 async function runAgotar(
   admin: Admin,
   target: VoiceTarget,
-  kind: InventoryEventKind,
+  flavor: AgotarFlavor,
 ): Promise<AlexaResponse> {
   const { link, productId, product, lots } = target;
   const conStock = lots.filter((lot) => lot.quantity > 0);
@@ -1125,7 +1143,7 @@ async function runAgotar(
       taken: lot.quantity,
       unit: lot.unit,
     })),
-    kind,
+    flavor.kind,
   );
   await recordUndo(admin, target, {
     productId,
@@ -1134,16 +1152,11 @@ async function runAgotar(
     events,
   });
 
-  return speak(
-    kind === "discarded"
-      ? SPEECH.spoiledAsk(product.name)
-      : SPEECH.emptiedAsk(product.name),
-    {
-      endSession: false,
-      reprompt: SPEECH.emptiedAskReprompt,
-      state: { pendiente },
-    },
-  );
+  return speak(flavor.ask(product.name), {
+    endSession: false,
+    reprompt: SPEECH.emptiedAskReprompt,
+    state: { pendiente },
+  });
 }
 
 /**
@@ -1303,9 +1316,9 @@ async function resume(
     case "sumar":
       return runSumar(admin, target);
     case "agotar":
-      return runAgotar(admin, target, "consumed");
+      return runAgotar(admin, target, ACABADO);
     case "estropear":
-      return runAgotar(admin, target, "discarded");
+      return runAgotar(admin, target, ESTROPEADO);
     case "consultar":
       return runConsultar(target);
   }
@@ -2082,9 +2095,9 @@ async function routeIntent(
     case "ConsultarStockIntent":
       return handleConsultarStock(admin, envelope, intent);
     case "AgotarStockIntent":
-      return handleAgotarStock(admin, envelope, intent, "consumed");
+      return handleAgotarStock(admin, envelope, intent, ACABADO);
     case "EstropearStockIntent":
-      return handleAgotarStock(admin, envelope, intent, "discarded");
+      return handleAgotarStock(admin, envelope, intent, ESTROPEADO);
     case "LeerListaIntent":
       return handleLeerLista(admin, envelope);
     case "CaducidadesIntent":

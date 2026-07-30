@@ -817,7 +817,7 @@ async function main() {
     check("con la tarjeta para el móvil", r.response.card !== undefined);
   }
 
-  console.log("\n10. Tirar: lo desperdiciado no es lo gastado");
+  console.log("\n10. Tirar: se dice distinto, se anota igual");
   {
     limpiarEscrituras(YOGURES);
     const r = await run(
@@ -835,8 +835,8 @@ async function main() {
     );
     const eventos = escriturasEn(YOGURES, "inventory_events");
     check(
-      "y en el historial queda como desperdicio, no como consumo",
-      eventos.length === 1 && eventos[0].datos.kind === "discarded",
+      "y el historial lo anota como consumo, como el resto de la app",
+      eventos.length === 1 && eventos[0].datos.kind === "consumed",
       eventos.map((e) => e.datos.kind),
     );
   }
@@ -894,11 +894,38 @@ async function main() {
     );
     const eventos = escriturasEn(ARROZ, "inventory_events");
     check(
-      "y lo tirado se registra entero como desperdicio",
+      "y lo tirado se registra entero, como consumo",
       eventos.length === 1 &&
-        eventos[0].datos.kind === "discarded" &&
+        eventos[0].datos.kind === "consumed" &&
         eventos[0].datos.quantity === 2,
       eventos.map((e) => e.datos),
+    );
+  }
+
+  {
+    // Guardarraíl: desde que la app dejó de contabilizar el desperdicio (f0b2404)
+    // NINGÚN camino de voz debe volver a escribir 'discarded'. Si alguien
+    // reintroduce la distinción en el historial sin querer, salta aquí.
+    limpiarEscrituras(YOGURES);
+    for (const nombre of [
+      "TirarStockIntent",
+      "RestarStockIntent",
+      "EstropearStockIntent",
+      "AgotarStockIntent",
+    ]) {
+      await run(
+        intentRequest(nombre, { producto: slot("producto", "yogures") }),
+        undefined,
+        YOGURES,
+      );
+    }
+    const kinds = escriturasEn(YOGURES, "inventory_events").map(
+      (e) => e.datos.kind,
+    );
+    check(
+      "ningún camino de voz escribe ya «discarded»",
+      kinds.length === 4 && kinds.every((k) => k === "consumed"),
+      kinds,
     );
   }
 

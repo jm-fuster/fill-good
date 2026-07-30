@@ -22,7 +22,7 @@ solo cambiar de fase en la consola de Amazon (ver
 | Vaciar lo que se ha acabado | Dar por cocinado algo que no estaba en el menú |
 | Deshacer la última orden del inventario | |
 | **Marcar un plato cocinado y descontar sus ingredientes** | |
-| **Distinguir lo tirado de lo gastado** | |
+| Decir «he tirado» y que conteste con ese verbo | Contabilizar el desperdicio (lo quitó la app) |
 | **Tachar de la lista lo ya comprado** | |
 | **Borrar de la lista lo que ya no hace falta** | |
 | Leer la lista de la compra | |
@@ -171,7 +171,7 @@ Alexa, dile a mi despensa que se ha acabado el pan
    → tú: «sí»  (sin repetir «Alexa»: la sesión se queda abierta)
 Alexa, dile a mi despensa que he tirado dos yogures
    → «Vale, he tirado 2 unidades de Yogur natural. Ahora hay 4 unidades.»
-     (en el historial queda como desperdicio, no como consumo)
+     (contesta con tu verbo; en el historial es una baja como cualquier otra)
 Alexa, dile a mi despensa que se ha estropeado el pan
    → «Vaya. He tirado lo que quedaba de Pan de molde. ¿Lo apunto en la lista?»
 Alexa, dile a mi despensa que ya he comprado el pan
@@ -374,12 +374,21 @@ días» en cada pregunta sería ruido.
 
 **Al tirar («he tirado dos yogures», «se ha estropeado el pan»):** el descuento
 del inventario es **idéntico** al de gastar —mismo FIFO por caducidad, mismas
-reglas de unidades—; lo único que cambia es que el historial guarda `discarded`
-en vez de `consumed`, y que la respuesta usa el mismo verbo que dijo el usuario.
-Merece intents propios porque gastar y desperdiciar no son lo mismo, y esa
-distinción es la única que puede sostener una historia de ahorro creíble. Igual
-que con «se ha acabado», hay dos verbos porque hay dos cantidades: «he tirado dos
-yogures» descuenta dos, y «se ha estropeado el pan» vacía lo que hubiera.
+reglas de unidades— y lo único que cambia es **el verbo con el que se contesta**,
+que no es cosmético: repetirle «he quitado» a quien acaba de decir que ha TIRADO
+algo delata que no se le ha escuchado. Igual que con «se ha acabado», hay dos
+verbos porque hay dos cantidades: «he tirado dos yogures» descuenta dos, y «se ha
+estropeado el pan» vacía lo que hubiera.
+
+En el historial, en cambio, **las cuatro dejan un `consumed`**. La app dejó de
+contabilizar el desperdicio (se fueron la racha, los euros tirados y la pregunta
+«¿lo consumiste o lo tiraste?»), así que escribir `discarded` solo dejaba
+movimientos que la pantalla ya pinta como una baja normal, con la voz y la app
+discrepando sin motivo. Se conservan como acciones distintas —`RestarFlavor` y
+`AgotarFlavor` en `handlers.ts`— para poder volver a contabilizarlo cambiando un
+campo, sin rehacer el flujo ni pasar otra vez por Build Model. Hay una
+comprobación que salta si algún camino vuelve a escribir `discarded` por
+descuido.
 
 **Al marcar cocinado («hemos cenado la lasaña»):** son dos cosas, y van
 separadas igual que en la app —donde el descuento vive detrás de un modal de
