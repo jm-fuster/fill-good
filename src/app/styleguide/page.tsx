@@ -279,7 +279,7 @@ export default function StyleguidePage() {
 
       <Section
         title="Iconos de producto (L16)"
-        description="Iconos a color plano (Fluent Emoji Flat, MIT) — estilo propio, no emojis del sistema. Se resuelven por capas: icono manual → adivinado del nombre → icono de categoría → genérico. Componente ProductIcon; se eligen a mano con ProductIconPicker."
+        description="Iconos a color plano (Fluent Emoji Flat, MIT) — estilo propio, no emojis del sistema. Se resuelven por capas: icono manual → adivinado del nombre → icono de categoría → genérico. Componente ProductIcon; se eligen a mano con ProductIconPickerView, una vista que se mete dentro del panel que la abre (nunca un modal encima de otro)."
       >
         <div className="flex flex-wrap gap-3">
           {productIconSamples.map((slug) => (

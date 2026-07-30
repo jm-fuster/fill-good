@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CollapsibleFields } from "@/components/collapsible-fields";
 import { ProductIcon } from "@/components/product-icon";
-import { ProductIconPicker } from "@/components/product-icon-picker";
+import { ProductIconPickerView } from "@/components/product-icon-picker";
 import {
   ResponsiveModal,
   ResponsiveModalClose,
@@ -129,15 +129,6 @@ export function EditItemDrawer({
     };
   }, [open, entry.productId]);
 
-  // Reinicia la confirmación de borrado al cerrar el drawer (patrón de ajuste de
-  // estado en render, como el pin de arriba). Limpia el temporizador al desmontar.
-  const [prevOpen, setPrevOpen] = useState(open);
-  if (open !== prevOpen) {
-    setPrevOpen(open);
-    // Un temporizador pendiente que se dispare tras cerrar solo vuelve a poner
-    // `false` (inocuo); `requestDelete` limpia el temporizador viejo al re-armar.
-    if (!open) setConfirmDelete(false);
-  }
   useEffect(
     () => () => {
       if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
@@ -261,10 +252,48 @@ export function EditItemDrawer({
     setServerIcon(entry.productIcon);
     setIcon(entry.productIcon);
   }
-  const [pickerOpen, setPickerOpen] = useState(false);
   // Icono de la categoría seleccionada (para la vista previa del automático).
   const selectedCategoryIcon =
     categories.find((c) => c.id === categoryId)?.icon ?? entry.categoryIcon;
+
+  // El selector de icono es una VISTA de este mismo panel, no un modal encima:
+  // dos overlays abiertos se pelean por el «atrás» y al elegir un icono se
+  // cerraba también la ficha (ver product-icon-picker.tsx). El formulario se
+  // oculta con CSS en vez de desmontarse: sus campos son no controlados
+  // (nombre, cantidad, avisos…) y desmontarlo borraría lo escrito sin guardar.
+  const [view, setView] = useState<"form" | "icon">("form");
+  const iconTriggerRef = useRef<HTMLButtonElement>(null);
+  const restoreIconFocus = useRef(false);
+
+  // Al volver del selector, el foco regresa al botón del icono (que estaba
+  // oculto cuando se pidió el cambio de vista, así que hay que esperar al
+  // repintado). Solo tras un viaje de ida y vuelta: al abrir el panel el foco
+  // lo coloca el propio modal.
+  useEffect(() => {
+    if (view === "form" && restoreIconFocus.current) {
+      restoreIconFocus.current = false;
+      iconTriggerRef.current?.focus();
+    }
+  }, [view]);
+
+  function backToForm() {
+    restoreIconFocus.current = true;
+    setView("form");
+  }
+
+  // Reinicia el panel al cerrarlo: confirmación de borrado y vista activa
+  // (patrón de ajuste de estado en render, como el pin de arriba). El
+  // temporizador se limpia al desmontar, en el efecto de más arriba.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (!open) {
+      // Un temporizador pendiente que se dispare tras cerrar solo vuelve a poner
+      // `false` (inocuo); `requestDelete` limpia el temporizador viejo al re-armar.
+      setConfirmDelete(false);
+      setView("form");
+    }
+  }
 
   // Tiendas del hogar primero (L15 f4): de ocho cadenas, las que este hogar no
   // pisa nunca son ruido. Solo se agrupa si la separación aporta algo: sin
@@ -349,17 +378,39 @@ export function EditItemDrawer({
   }
 
   return (
-    <>
     <ResponsiveModal open={open} onOpenChange={onOpenChange}>
       <ResponsiveModalContent>
         <ResponsiveModalHeader>
-          <ResponsiveModalTitle>{entry.productName}</ResponsiveModalTitle>
+          <ResponsiveModalTitle>
+            {view === "icon" ? "Elegir icono" : entry.productName}
+          </ResponsiveModalTitle>
           <ResponsiveModalDescription>
-            {formatQuantity(entry.quantity, entry.unit)} en existencias
+            {view === "icon"
+              ? "Busca por nombre o elige de la lista. El automático se ajusta al nombre del producto."
+              : `${formatQuantity(entry.quantity, entry.unit)} en existencias`}
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4">
+        {view === "icon" ? (
+          <ProductIconPickerView
+            value={icon}
+            name={entry.productName}
+            categoryIcon={selectedCategoryIcon}
+            onSelect={(slug) => {
+              setIcon(slug);
+              backToForm();
+            }}
+            onBack={backToForm}
+          />
+        ) : null}
+
+        <form
+          onSubmit={handleSubmit}
+          className={cn(
+            "flex flex-col gap-4 px-4",
+            view !== "form" && "hidden",
+          )}
+        >
           <input type="hidden" name="inventoryId" value={entry.id} />
           <input type="hidden" name="productId" value={entry.productId} />
           <input type="hidden" name="useSoon" value={String(useSoon)} />
@@ -372,8 +423,9 @@ export function EditItemDrawer({
             <Label htmlFor="edit-name">Producto</Label>
             <div className="flex items-end gap-2">
               <button
+                ref={iconTriggerRef}
                 type="button"
-                onClick={() => setPickerOpen(true)}
+                onClick={() => setView("icon")}
                 aria-label="Cambiar icono del producto"
                 className="relative flex size-11 shrink-0 items-center justify-center rounded-lg border bg-muted transition-colors hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               >
@@ -803,15 +855,5 @@ export function EditItemDrawer({
         </form>
       </ResponsiveModalContent>
     </ResponsiveModal>
-
-    <ProductIconPicker
-      open={pickerOpen}
-      onOpenChange={setPickerOpen}
-      value={icon}
-      name={entry.productName}
-      categoryIcon={selectedCategoryIcon}
-      onSelect={setIcon}
-    />
-    </>
   );
 }
