@@ -29,10 +29,12 @@ import {
 import { normalizeName } from "@/lib/normalize";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, UnitType } from "@/lib/supabase/types";
+import { roundQuantity } from "@/lib/units";
 import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { getAiConsent } from "@/features/ai-consent/queries";
 import { AI_CONSENT_REQUIRED_ERROR } from "@/features/ai-consent/version";
+import { recordStockEvent } from "@/features/inventory/events";
 import { getInventory } from "@/features/inventory/queries";
 import { getInventoryStatus } from "@/features/inventory/status";
 import { getActiveList, getProductCatalog } from "@/features/shopping-list/queries";
@@ -1414,6 +1416,11 @@ export type CookedDeductionInput = {
  * si un lote no cubre la cantidad. Nunca deja stock negativo (clamp a 0; el lote
  * a 0 se conserva como agotado, igual que `setInventoryQuantityAction`). No hay
  * conversión de unidades: se descuenta solo de lotes en la misma unidad.
+ *
+ * Cada producto descontado deja su movimiento en el historial (F5). Sin esto,
+ * cocinar era la ÚNICA forma de gastar stock que no dejaba rastro: la nevera se
+ * vaciaba y los movimientos del inventario no se enteraban, así que la lista no
+ * cuadraba con las existencias y lo primero que se piensa es que la app falla.
  */
 export async function confirmCookedDeductionsAction(
   deductions: CookedDeductionInput[],
@@ -1452,7 +1459,27 @@ export async function confirmCookedDeductionsAction(
       if (error) return { error: "No se pudo actualizar el inventario." };
       remaining -= take;
     }
-    if (remaining < d.quantity) deducted += 1;
+
+    // Se anota lo que se descontó DE VERDAD, no lo que pedía la receta: el bucle
+    // para cuando se acaban los lotes, así que con stock insuficiente `remaining`
+    // se queda por encima de cero y registrar `d.quantity` inflaría el consumo
+    // justo en el caso en que te has quedado corto.
+    const taken = roundQuantity(d.quantity - remaining);
+    if (taken <= 0) continue;
+    deducted += 1;
+    // `fold` agrupa con un movimiento reciente del mismo producto y autor, igual
+    // que el stepper: cocinar dos recetas que comparten tomate deja una línea de
+    // «4 ud», no dos de dos. La unidad ya es única por línea (la consulta filtra
+    // por `d.unit`), así que no hay que agrupar nada aquí.
+    await recordStockEvent(supabase, {
+      householdId: household.id,
+      productId: d.productId,
+      quantity: taken,
+      unit: d.unit,
+      kind: "consumed",
+      userId,
+      fold: true,
+    });
   }
 
   revalidatePath("/inventario");
