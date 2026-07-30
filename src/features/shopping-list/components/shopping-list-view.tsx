@@ -210,6 +210,15 @@ export function ShoppingListView({
       isChecked: false,
       productId: input.kind === "product" ? input.productId : null,
       addedByMe: true,
+      // El pack viaja ya en el ítem optimista, no esperando al refresh: es el
+      // dato que justifica la fila («= 10 ud»), y verlo aparecer medio segundo
+      // después se lee como que la app ha cambiado de opinión. En un alta de
+      // texto libre no se puede: ahí el producto lo resuelve el servidor por
+      // nombre normalizado, así que llega con el refresh (igual que el contenido).
+      packSize:
+        input.kind === "product"
+          ? (catalog.find((p) => p.id === input.productId)?.packSize ?? null)
+          : null,
     };
     setPendingAdds((prev) => [
       ...prev,

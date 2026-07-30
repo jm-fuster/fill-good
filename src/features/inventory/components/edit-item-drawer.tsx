@@ -54,6 +54,7 @@ import {
 } from "@/features/receipts/actions";
 import { ContentPerUnitFields } from "./content-per-unit-fields";
 import { ExpiryQuickPicker } from "./expiry-quick-picker";
+import { PackSizeField } from "./pack-size-field";
 
 const NO_CATEGORY = "__none__";
 const NO_CHAIN = "__none__";
@@ -646,25 +647,7 @@ export function EditItemDrawer({
             ) : null}
 
             {unit === "ud" ? (
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="edit-pack">
-                  Unidades por compra{" "}
-                  <span className="text-muted-foreground">(opcional)</span>
-                </Label>
-                <Input
-                  id="edit-pack"
-                  name="packSize"
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  step="any"
-                  defaultValue={entry.packSize ?? ""}
-                />
-                <p className="text-sm text-muted-foreground">
-                  Si lo compras en cajas (p. ej. 30 sobres), pon cuántas unidades
-                  trae cada compra.
-                </p>
-              </div>
+              <PackSizeField idPrefix="edit" defaultValue={entry.packSize} />
             ) : null}
 
             <div className="flex items-center justify-between gap-3 rounded-lg border p-3">

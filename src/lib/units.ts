@@ -285,7 +285,12 @@ export function effectivePackSize(
   unit: UnitType | null,
   packSize: number | null | undefined,
 ): number | null {
-  if (packSize == null || packSize <= 1) return null;
+  // El descarte de no-finitos es para quien llame con lo que hay en un input a
+  // medio teclear: `NaN <= 1` es false, así que sin esto el NaN saldría por el
+  // return y acabaría interpolado en una etiqueta como «= NaN ud».
+  if (packSize == null || !Number.isFinite(packSize) || packSize <= 1) {
+    return null;
+  }
   return unit === null || unit === "ud" ? packSize : null;
 }
 
