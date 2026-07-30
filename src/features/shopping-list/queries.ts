@@ -10,8 +10,9 @@ import {
 } from "@/features/household/queries";
 import { getLatestUnitPrices } from "@/features/prices/queries";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
-import { convertQuantity, type UnitContent } from "@/lib/units";
+import type { UnitContent } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
+import type { ItemUnitPrice } from "./line-cost";
 import { compareTripToReceipt } from "./trip-comparison";
 import { TRIP_MATCH_WINDOW_HOURS } from "./trips";
 
@@ -206,8 +207,13 @@ export type ShoppingModeItem = {
    * cliente con `categoryId` (features/categories/aisle-order.ts).
    */
   categorySort: number;
-  /** Coste estimado de la línea (precio × cantidad) o null si no se conoce. */
-  lineCost: number | null;
+  /**
+   * Último precio conocido del producto, NO el coste ya multiplicado: en el
+   * pasillo la cantidad cambia con el stepper y el coste de la línea se
+   * recalcula en el cliente (`lineCostOf`), sin esperar al servidor. null = no
+   * se conoce precio.
+   */
+  unitPrice: ItemUnitPrice | null;
   /** Contenido de cada unidad del producto; null = no declarado. */
   content: UnitContent;
   /** Unidades por compra (F4); null = sin pack. Ver `ListItem.packSize`. */
@@ -245,9 +251,9 @@ const NO_CATEGORY_SORT = 9_000;
 
 /**
  * Ítems de la lista para el "Modo compra" (M4): con su categoría (para agrupar
- * por pasillo con el sort_order existente) y el coste estimado de cada línea
- * (último precio del producto × cantidad, solo dentro de la misma familia de
- * unidad). Una sola pasada + el mapa de precios; sin N+1.
+ * por pasillo con el sort_order existente) y el último precio conocido de cada
+ * producto, con el que el cliente costea la línea (`lineCostOf`). Una sola
+ * pasada + el mapa de precios; sin N+1.
  */
 export async function getShoppingModeItems(
   listId: string,
@@ -274,19 +280,7 @@ export async function getShoppingModeItems(
   const rows = (data ?? []) as unknown as ShoppingModeRow[];
   return rows.map((r) => {
     const qty = r.quantity === null ? null : Number(r.quantity);
-    let lineCost: number | null = null;
     const price = r.product_id ? prices.get(r.product_id) : undefined;
-    if (price && qty !== null && r.unit !== null) {
-      // La cantidad de la línea se lleva a la unidad del precio; con el contenido
-      // del envase ya se puede costear "500 ml" contra un precio por brick.
-      const inPriceUnit = convertQuantity(
-        qty,
-        r.unit,
-        price.unit,
-        price.content,
-      );
-      if (inPriceUnit !== null) lineCost = price.price * inPriceUnit;
-    }
     return {
       id: r.id,
       name: r.product?.name ?? r.name,
@@ -298,7 +292,7 @@ export async function getShoppingModeItems(
       productIcon: r.product?.icon ?? null,
       categoryId: r.product?.category?.id ?? null,
       categorySort: r.product?.category?.sort_order ?? NO_CATEGORY_SORT,
-      lineCost,
+      unitPrice: price ?? null,
       content:
         r.product?.content_size == null || r.product?.content_unit == null
           ? null

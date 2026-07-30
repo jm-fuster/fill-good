@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -8,6 +8,7 @@ import {
   Check,
   Layers,
   List,
+  ListOrdered,
   Plus,
   ShoppingCart,
   Store,
@@ -19,10 +20,22 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  ResponsiveModal,
+  ResponsiveModalContent,
+  ResponsiveModalDescription,
+  ResponsiveModalFooter,
+  ResponsiveModalHeader,
+  ResponsiveModalTitle,
+} from "@/components/ui/responsive-modal";
 import { EmptyState } from "@/components/layout/empty-state";
 import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
 import { vibrateTick } from "@/lib/haptics";
+import { useSwipeRemove } from "@/hooks/use-swipe-remove";
+import { AisleOrderPanel } from "@/features/categories/components/aisle-order-panel";
+import type { ChainAisleOrders } from "@/features/categories/aisle-order";
+import type { StoreCategory } from "@/features/categories/queries";
 import { chainLabel } from "@/features/prices/chains";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import { ScanTicketNudge } from "@/features/receipts/components/scan-ticket-nudge";
@@ -75,6 +88,9 @@ export function ShoppingListView({
   suggestions,
   catalog,
   pendingTicket,
+  categories,
+  aisleOrders,
+  chains,
 }: {
   listId: string;
   initialItems: ListItem[];
@@ -82,6 +98,12 @@ export function ShoppingListView({
   catalog: CatalogProduct[];
   /** Compra cerrada sin ticket: ofrece escanearlo (G2). null = nada que ofrecer. */
   pendingTicket: PendingTicketTrip | null;
+  /** Pasillos del hogar en su orden GENERAL, para el editor de orden. */
+  categories: StoreCategory[];
+  /** Órdenes de pasillo propios de cada tienda del hogar (excepciones). */
+  aisleOrders: ChainAisleOrders;
+  /** Supermercados del hogar: cada uno puede guardar su propio orden. */
+  chains: string[];
 }) {
   useRealtimeList(listId);
   const router = useRouter();
@@ -98,6 +120,10 @@ export function ShoppingListView({
   const [grouped, setGrouped] = usePersistedFlag("lista:grouped");
   // L14 — Modo reordenar (arrastrar artículos). Efímero, no se persiste.
   const [reordering, setReordering] = useState(false);
+  // Orden de los PASILLOS (no de los artículos), en un sheet dentro del modo
+  // reordenar: es la misma pregunta —«en qué orden quiero recorrer esto»— pero
+  // una respuesta que se guarda y se reutiliza en cada compra, y por tienda.
+  const [aisleOrdering, setAisleOrdering] = useState(false);
 
   // Resincroniza con el servidor cuando llegan cambios (Realtime / refresh) y
   // descarta los ítems optimistas que ya han aterrizado en el servidor.
@@ -338,11 +364,55 @@ export function ShoppingListView({
             Listo
           </Button>
         </div>
+
+        {/* Mover artículos a mano vale para ESTA lista; el orden de los pasillos
+            se guarda y manda en todas las compras siguientes. Están juntos porque
+            quien entra aquí quiere lo segundo casi siempre —recorrer la tienda
+            como es— y hasta ahora solo encontraba lo primero. */}
+        <Button
+          variant="outline"
+          className="self-start"
+          onClick={() => setAisleOrdering(true)}
+        >
+          <ListOrdered aria-hidden />
+          {chains.length >= 2
+            ? "Orden de los pasillos por tienda"
+            : "Orden de los pasillos"}
+        </Button>
+
         <ItemReorderList
           items={pending}
           grouped={grouped}
           onReorder={applyReorder}
         />
+
+        {/* `noDrag`: las filas del editor se arrastran, y sin esto arrastrarlas
+            cerraría el sheet. Con dos tiendas o más el panel saca su conmutador
+            «General + una tienda por chip»: ahí es donde se guarda el orden de
+            cada súper. */}
+        <ResponsiveModal open={aisleOrdering} onOpenChange={setAisleOrdering}>
+          <ResponsiveModalContent noDrag>
+            <ResponsiveModalHeader>
+              <ResponsiveModalTitle>Orden de los pasillos</ResponsiveModalTitle>
+              <ResponsiveModalDescription>
+                Colócalos como los recorres en la tienda. Se guarda al mover y
+                manda en la lista agrupada y en el modo compra.
+              </ResponsiveModalDescription>
+            </ResponsiveModalHeader>
+            <div className="px-4">
+              <AisleOrderPanel
+                categories={categories}
+                orders={aisleOrders}
+                stores={chains}
+              />
+            </div>
+            <ResponsiveModalFooter>
+              <Button variant="outline" onClick={() => setAisleOrdering(false)}>
+                Listo
+              </Button>
+            </ResponsiveModalFooter>
+          </ResponsiveModalContent>
+        </ResponsiveModal>
       </div>
     );
   }
@@ -486,9 +556,6 @@ export function ShoppingListView({
   );
 }
 
-/** Umbral (px) de deslizamiento para confirmar "Quitar". */
-const SWIPE_THRESHOLD = 72;
-
 /**
  * Sugerencias visibles antes de plegar el resto. Con "agotado" entre las
  * fuentes, una despensa grande puede generar decenas: se muestran las más
@@ -510,17 +577,7 @@ function ListRow({
   /** Muestra el icono de categoría delante del nombre (vista sin agrupar). */
   showIcon?: boolean;
 }) {
-  const [dx, setDx] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const gesture = useRef({
-    x: 0,
-    y: 0,
-    active: false,
-    axis: "none" as "none" | "h" | "v",
-    dx: 0,
-  });
-  // Suprime el "click" que sigue a un deslizamiento (no abrir el editor).
-  const swiped = useRef(false);
+  const { swipeProps } = useSwipeRemove(() => onRemove(item));
 
   const total = listTotalLabel(
     item.quantity,
@@ -528,54 +585,6 @@ function ListRow({
     item.content ?? null,
     item.packSize ?? null,
   );
-
-  function onPointerDown(e: React.PointerEvent) {
-    // Solo gesto táctil/lápiz; en escritorio se usa el botón papelera.
-    if (e.pointerType === "mouse") return;
-    gesture.current = {
-      x: e.clientX,
-      y: e.clientY,
-      active: true,
-      axis: "none",
-      dx: 0,
-    };
-    swiped.current = false;
-  }
-
-  function onPointerMove(e: React.PointerEvent) {
-    const g = gesture.current;
-    if (!g.active) return;
-    const deltaX = e.clientX - g.x;
-    const deltaY = e.clientY - g.y;
-    if (g.axis === "none") {
-      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) return;
-      g.axis = Math.abs(deltaX) > Math.abs(deltaY) ? "h" : "v";
-      if (g.axis === "h") {
-        (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
-      }
-    }
-    if (g.axis === "h") {
-      const clamped = Math.min(0, deltaX);
-      g.dx = clamped;
-      setDx(clamped);
-      setDragging(true);
-      if (clamped <= -8) swiped.current = true;
-    }
-  }
-
-  function endGesture() {
-    const g = gesture.current;
-    g.active = false;
-    setDragging(false);
-    if (g.axis === "h" && g.dx <= -SWIPE_THRESHOLD) {
-      setDx(0);
-      onRemove(item);
-    } else {
-      setDx(0);
-    }
-    g.axis = "none";
-    g.dx = 0;
-  }
 
   return (
     <div
@@ -595,22 +604,7 @@ function ListRow({
       </div>
       <div
         className="relative flex items-center gap-1 rounded-lg bg-background"
-        style={{
-          touchAction: "pan-y",
-          transform: `translateX(${dx}px)`,
-          transition: dragging ? "none" : "transform 0.2s ease-out",
-        }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endGesture}
-        onPointerCancel={endGesture}
-        onClickCapture={(e) => {
-          if (swiped.current) {
-            e.preventDefault();
-            e.stopPropagation();
-            swiped.current = false;
-          }
-        }}
+        {...swipeProps}
       >
         {/* Zona 1: checkbox con área táctil generosa (marca/desmarca).
             htmlFor/id asocian explícitamente el label con el Checkbox de Radix

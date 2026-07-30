@@ -11,6 +11,7 @@ import {
   ShoppingCart,
   Sparkles,
   Store,
+  Trash2,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -25,9 +26,12 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
+import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
 import { cn } from "@/lib/utils";
+import { usePersistedFlag } from "@/hooks/use-persisted-flag";
+import { useSwipeRemove } from "@/hooks/use-swipe-remove";
 import { AisleOrderPanel } from "@/features/categories/components/aisle-order-panel";
 import {
   aisleSort,
@@ -39,7 +43,12 @@ import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
 import { formatPurchaseQuantity, listTotalLabel } from "@/lib/units";
 import { useRealtimeList } from "../use-realtime-list";
-import { toggleItemAction } from "../actions";
+import {
+  deleteListItemAction,
+  restoreListItemAction,
+  toggleItemAction,
+} from "../actions";
+import { lineCostOf } from "../line-cost";
 import type { CatalogProduct, ShoppingModeItem, Suggestion } from "../queries";
 import { AddItemForm } from "./add-item-form";
 import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
@@ -51,19 +60,33 @@ import { useCheckout } from "./use-checkout";
  * Firma de la lista para detectar datos nuevos del servidor. `categorySort` va
  * dentro a propósito: reordenar los pasillos desde aquí no cambia ningún ítem,
  * así que sin él la firma quedaría igual y la lista seguiría agrupada con el
- * orden viejo hasta recargar.
+ * orden viejo hasta recargar. El precio también: si llega un ticket nuevo, los
+ * costes de las líneas cambian sin que cambie nada más.
  */
 function signatureOf(items: ShoppingModeItem[]) {
   return items
     .map(
       (i) =>
-        `${i.id}:${i.isChecked}:${i.quantity}:${i.name}:${i.lineCost}:${i.categorySort}`,
+        `${i.id}:${i.isChecked}:${i.quantity}:${i.name}:${i.unitPrice?.price ?? ""}:${i.categorySort}`,
     )
     .join("|");
 }
 
 /** Sentinel mínimo del Screen Wake Lock API (evita depender del lib DOM). */
 type WakeLockLike = { release: () => Promise<void> };
+
+/** Clave del único bloque cuando la lista va sin agrupar (no lleva cabecera). */
+const FLAT_GROUP = "__lista__";
+
+/** Bloque de la vista principal: un pasillo, o la lista entera sin agrupar. */
+type AisleGroup = {
+  /** Clave estable para la `key` de React y el plegado de los cogidos. */
+  key: string;
+  /** Cabecera del pasillo; null = sin agrupar (la lista va de una pieza). */
+  name: string | null;
+  icon: string | null;
+  items: ShoppingModeItem[];
+};
 
 export function ShoppingMode({
   listId,
@@ -91,21 +114,30 @@ export function ShoppingMode({
   const [sig, setSig] = useState(signatureOf(initialItems));
   const [adding, setAdding] = useState(false);
   // Orden de pasillos en un sheet: se corrige aquí, delante de la estantería,
-  // que es donde se nota que no cuadra (también sigue en Ajustes).
+  // que es donde se nota que no cuadra (también sigue en Ajustes y en /lista).
   const [ordering, setOrdering] = useState(false);
   // Recomendaciones ya añadidas en esta sesión: se ocultan al instante (el
   // refresh del servidor las excluirá después al recalcular las sugerencias).
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  // Ítems quitados en ventana de "Deshacer": ocultos ya, borrados en el servidor.
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   // L13 — Secciones con los cogidos expandidos (por defecto contraídos).
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  function toggleExpanded(name: string) {
+  function toggleExpanded(key: string) {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
+  // La misma preferencia que el conmutador "Agrupar" de `/lista`, con OTRO
+  // defecto a propósito: mientras nadie la haya tocado, editar la lista es más
+  // cómodo en plano y comprarla es más cómodo por pasillos, que es como se han
+  // comportado siempre las dos pantallas. En cuanto el usuario elige en `/lista`
+  // (se escribe el valor), manda su elección también aquí: reordenar a mano y
+  // que el modo compra lo ignorase dejaba ese trabajo en nada.
+  const [grouped] = usePersistedFlag("lista:grouped", true);
   // Tienda de esta compra (null = "Todas", sin decidir). Empezó siendo solo un
   // filtro (L15) y ahora manda también en el ORDEN de los pasillos: es la misma
   // pregunta ("¿dónde estás?") y tener dos controles para responderla dos veces
@@ -119,6 +151,12 @@ export function ShoppingMode({
   if (currentSig !== sig) {
     setSig(currentSig);
     setItems(initialItems);
+    // Suelta los ids ya borrados en el servidor (confirmados).
+    const serverIds = new Set(initialItems.map((i) => i.id));
+    setRemovedIds((prev) => {
+      const next = new Set([...prev].filter((id) => serverIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
   }
 
   // Pantalla siempre encendida mientras dura la compra (feature-detect; degrada
@@ -162,15 +200,79 @@ export function ShoppingMode({
     });
   }
 
+  // La cantidad que corrige el stepper se guarda TAMBIÉN aquí, no solo dentro de
+  // su propio estado: es lo que permite recostear la línea y el total en el mismo
+  // toque (ver `costs`). El stepper sigue siendo el que persiste.
+  function setQuantity(id: string, quantity: number | null) {
+    setItems((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, quantity } : it)),
+    );
+  }
+
+  function unhide(id: string) {
+    setRemovedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  /**
+   * Quitar de la lista sin salir de la compra. Dejar algo sin marcar ya
+   * significa "hoy no lo cojo, queda para la próxima"; esto significa la otra
+   * cosa —"ya no lo quiero", porque lo han descatalogado o has cambiado de
+   * idea delante del estante—, y hasta ahora obligaba a volver a `/lista`
+   * mientras el artículo seguía contando en "quedan N por coger".
+   *
+   * Mismo borrado con "Deshacer" que en `/lista`: se confirma en el servidor de
+   * inmediato (sobrevive a una recarga) y se oculta al instante.
+   */
+  function removeItem(item: ShoppingModeItem) {
+    if (removedIds.has(item.id)) return;
+    setRemovedIds((prev) => new Set(prev).add(item.id));
+
+    deleteListItemAction(item.id).then((r) => {
+      if (r?.error) {
+        unhide(item.id);
+        toast.error(r.error);
+        return;
+      }
+      const snapshot = r?.deleted;
+      toast(`${item.name} quitado`, {
+        duration: 5000,
+        action: snapshot
+          ? {
+              label: "Deshacer",
+              onClick: () => {
+                unhide(item.id);
+                restoreListItemAction(snapshot).then((res) => {
+                  if (res?.error) toast.error(res.error);
+                  else router.refresh();
+                });
+              },
+            }
+          : undefined,
+      });
+      router.refresh();
+    });
+  }
+
+  // Lo que se ve: sin los que están en ventana de "Deshacer".
+  const visible = useMemo(
+    () => items.filter((i) => !removedIds.has(i.id)),
+    [items, removedIds],
+  );
+
   // Tiendas ofrecidas: las del hogar MÁS las que aparezcan como preferencia de
   // algún ítem. Las del hogar entran aunque no haya nada suyo en la lista —son
   // las que pueden tener orden propio—, y las de los ítems porque filtrarlas
   // sigue teniendo sentido aunque el hogar no las tenga apuntadas.
   const storeOptions = useMemo(() => {
     const set = new Set(chains);
-    for (const it of items) if (it.preferredChain) set.add(it.preferredChain);
+    for (const it of visible) if (it.preferredChain) set.add(it.preferredChain);
     return orderChains([...set]);
-  }, [chains, items]);
+  }, [chains, visible]);
 
   // Con una sola tienda no hay pregunta que hacer: "Todas" y ella muestran lo
   // mismo, y su orden es el general del hogar (que se edita igual desde el sheet).
@@ -182,29 +284,39 @@ export function ShoppingMode({
     activeChain && storeOptions.includes(activeChain) ? activeChain : null;
   const chainOrder = effectiveChain ? aisleOrders[effectiveChain] : undefined;
 
-  // Vista principal (tienda activa + sin asignar) agrupada por pasillo EN EL
-  // ORDEN DE ESA TIENDA, y los ítems de otras tiendas agrupados por cadena para
-  // la sección secundaria.
+  // Vista principal (tienda activa + sin asignar) y, aparte, los ítems de otras
+  // tiendas agrupados por cadena para la sección secundaria. Agrupada, la
+  // principal va por pasillo EN EL ORDEN DE ESA TIENDA; sin agrupar, de una
+  // pieza y en el orden que trae la lista (el de «Reordenar»).
   const { groups, otherGroups, otherPending } = useMemo(() => {
     const isMain = (it: ShoppingModeItem) =>
       effectiveChain === null ||
       it.preferredChain === effectiveChain ||
       !it.preferredChain;
 
-    const byCat = new Map<
-      string,
-      {
-        name: string;
-        icon: string | null;
-        sort: number;
-        items: ShoppingModeItem[];
-      }
-    >();
+    const mainItems: ShoppingModeItem[] = [];
     const byChain = new Map<string, ShoppingModeItem[]>();
     let otherPendingCount = 0;
 
-    for (const it of items) {
+    for (const it of visible) {
       if (isMain(it)) {
+        mainItems.push(it);
+      } else {
+        const chain = it.preferredChain as string;
+        const arr = byChain.get(chain);
+        if (arr) arr.push(it);
+        else byChain.set(chain, [it]);
+        if (!it.isChecked) otherPendingCount += 1;
+      }
+    }
+
+    let groupsArr: AisleGroup[];
+    if (grouped) {
+      const byCat = new Map<
+        string,
+        { name: string; icon: string | null; sort: number; items: ShoppingModeItem[] }
+      >();
+      for (const it of mainItems) {
         let g = byCat.get(it.categoryName);
         if (!g) {
           g = {
@@ -216,18 +328,21 @@ export function ShoppingMode({
           byCat.set(it.categoryName, g);
         }
         g.items.push(it);
-      } else {
-        const chain = it.preferredChain as string;
-        const arr = byChain.get(chain);
-        if (arr) arr.push(it);
-        else byChain.set(chain, [it]);
-        if (!it.isChecked) otherPendingCount += 1;
       }
+      groupsArr = [...byCat.values()]
+        .sort((a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "es"))
+        .map((g) => ({
+          key: g.name,
+          name: g.name,
+          icon: g.icon,
+          items: g.items,
+        }));
+    } else {
+      groupsArr =
+        mainItems.length > 0
+          ? [{ key: FLAT_GROUP, name: null, icon: null, items: mainItems }]
+          : [];
     }
-
-    const groupsArr = [...byCat.values()].sort(
-      (a, b) => a.sort - b.sort || a.name.localeCompare(b.name, "es"),
-    );
     for (const g of groupsArr) {
       g.items.sort((a, b) => Number(a.isChecked) - Number(b.isChecked));
     }
@@ -244,19 +359,32 @@ export function ShoppingMode({
       otherGroups: otherGroupsArr,
       otherPending: otherPendingCount,
     };
-  }, [items, effectiveChain, chainOrder]);
+  }, [visible, effectiveChain, chainOrder, grouped]);
 
-  const priced = items.filter((i) => i.lineCost != null);
+  // Coste de cada línea CON LA CANTIDAD QUE HAY EN PANTALLA: en el pasillo se
+  // corrige con el stepper (eran 3 cajas y solo quedaban 2), y el total tiene que
+  // seguir al dedo. Antes venía multiplicado del servidor, así que hasta que
+  // Realtime devolvía el cambio la banda de precios enseñaba la cuenta vieja,
+  // justo en la pantalla que existe para vigilar el total.
+  const costs = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const it of visible) {
+      const cost = lineCostOf(it.unitPrice, it.quantity, it.unit);
+      if (cost !== null) map.set(it.id, cost);
+    }
+    return map;
+  }, [visible]);
+
   // Una compra sin ningún precio conocido no tiene columna de coste: ni banda de
   // total ni hueco en las filas. Es la MISMA condición para las dos cosas a
   // propósito, para que no puedan separarse y volver a contradecirse.
-  const showCost = priced.length > 0;
-  const total = priced.reduce((s, i) => s + (i.lineCost ?? 0), 0);
-  const remaining = items
-    .filter((i) => !i.isChecked && i.lineCost != null)
-    .reduce((s, i) => s + (i.lineCost ?? 0), 0);
-  const totalPending = items.filter((i) => !i.isChecked).length;
-  const checkedCount = items.filter((i) => i.isChecked).length;
+  const showCost = costs.size > 0;
+  const total = [...costs.values()].reduce((s, c) => s + c, 0);
+  const remaining = visible
+    .filter((i) => !i.isChecked)
+    .reduce((s, i) => s + (costs.get(i.id) ?? 0), 0);
+  const totalPending = visible.filter((i) => !i.isChecked).length;
+  const checkedCount = visible.filter((i) => i.isChecked).length;
 
   // L7 — Finalizar la compra desde aquí (al salir, el wake lock se libera en
   // el cleanup del efecto). Sin ids que revisar → vuelve a `/lista`.
@@ -306,8 +434,12 @@ export function ShoppingMode({
       {/* Bandas a todo el ancho (borde/fondo), con el contenido acotado a una
           columna centrada: en escritorio el modo compra deja de estirarse por
           todo el monitor. En móvil max-w-2xl es más ancho que la pantalla, así
-          que no cambia nada. */}
-      <header className="border-b px-4 py-3 pt-safe">
+          que no cambia nada.
+
+          `pt-safe-3` y no `py-3 pt-safe`: las dos declaran padding-top, gana la
+          del safe-area y en navegador sin notch vale 0, así que el título salía
+          pegado al borde. */}
+      <header className="border-b px-4 pb-3 pt-safe-3">
         <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="text-lg font-semibold">Modo compra</h1>
@@ -315,20 +447,24 @@ export function ShoppingMode({
               {totalPending > 0
                 ? `Quedan ${totalPending} por coger`
                 : "Todo en el carro"}
-              {items.length > 0 ? (
+              {visible.length > 0 ? (
                 <span className="tabular-nums">
                   {" · "}
-                  {checkedCount} de {items.length}
+                  {checkedCount} de {visible.length}
                 </span>
               ) : null}
             </p>
           </div>
           <div className="flex items-center gap-1">
+            {/* En móvil el alta vive en el FAB de abajo a la derecha (patrón de
+                la app, y al alcance del pulgar); aquí arriba solo en escritorio,
+                donde no hay FAB y las acciones van en el header. */}
             <Button
               variant="ghost"
               size="icon"
               aria-label="Añadir a la lista"
               onClick={() => setAdding(true)}
+              className="hidden md:inline-flex"
             >
               <Plus className="size-5" aria-hidden />
             </Button>
@@ -344,18 +480,18 @@ export function ShoppingMode({
             </Button>
           </div>
         </div>
-        {items.length > 0 ? (
+        {visible.length > 0 ? (
           <div
             className="mx-auto mt-2 h-1 w-full max-w-2xl overflow-hidden rounded-full bg-muted"
             role="progressbar"
             aria-valuemin={0}
-            aria-valuemax={items.length}
+            aria-valuemax={visible.length}
             aria-valuenow={checkedCount}
             aria-label="Progreso de la compra"
           >
             <div
               className="h-full rounded-full bg-success transition-[width] duration-300"
-              style={{ width: `${(checkedCount / items.length) * 100}%` }}
+              style={{ width: `${(checkedCount / visible.length) * 100}%` }}
             />
           </div>
         ) : null}
@@ -369,7 +505,7 @@ export function ShoppingMode({
                 {formatEuro(total)}
               </p>
               <p className="text-xs text-muted-foreground">
-                estimado sobre {priced.length} de {items.length} ítems
+                estimado sobre {costs.size} de {visible.length} ítems
               </p>
             </div>
             {remaining > 0 && remaining !== total ? (
@@ -409,9 +545,11 @@ export function ShoppingMode({
         </div>
       ) : null}
 
-      <div className="flex-1 overflow-y-auto px-4 py-3 pb-safe">
+      {/* `pb-fab-flush` reserva el hueco del FAB al final del scroll: sin él, el
+          botón flotante tapa el «+» del stepper de la última fila. */}
+      <div className="flex-1 overflow-y-auto px-4 pt-3 pb-fab-flush">
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
-          {items.length === 0 ? (
+          {visible.length === 0 ? (
             <p className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
               La lista está vacía.
             </p>
@@ -420,19 +558,27 @@ export function ShoppingMode({
               {groups.map((g) => {
                 const uncheckedItems = g.items.filter((i) => !i.isChecked);
                 const checkedItems = g.items.filter((i) => i.isChecked);
-                const isExpanded = expanded.has(g.name);
+                const isExpanded = expanded.has(g.key);
                 return (
-                  <section key={g.name} aria-label={g.name}>
-                    <h2 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-                      <ProductIcon categoryIcon={g.icon} size={18} />
-                      {g.name}
-                    </h2>
+                  <section
+                    key={g.key}
+                    aria-label={g.name ?? "Artículos de la lista"}
+                  >
+                    {g.name ? (
+                      <h2 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
+                        <ProductIcon categoryIcon={g.icon} size={18} />
+                        {g.name}
+                      </h2>
+                    ) : null}
                     <ul className="flex flex-col gap-1">
                       {uncheckedItems.map((item) => (
                         <ShoppingModeRowItem
                           key={item.id}
                           item={item}
+                          cost={costs.get(item.id) ?? null}
                           onToggle={toggle}
+                          onRemove={removeItem}
+                          onQuantityChange={setQuantity}
                           activeChain={effectiveChain}
                           showCost={showCost}
                         />
@@ -444,7 +590,7 @@ export function ShoppingMode({
                       <div className="mt-1">
                         <button
                           type="button"
-                          onClick={() => toggleExpanded(g.name)}
+                          onClick={() => toggleExpanded(g.key)}
                           aria-expanded={isExpanded}
                           className="flex min-h-11 w-full items-center gap-1.5 rounded-lg px-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
                         >
@@ -465,7 +611,10 @@ export function ShoppingMode({
                               <ShoppingModeRowItem
                                 key={item.id}
                                 item={item}
+                                cost={costs.get(item.id) ?? null}
                                 onToggle={toggle}
+                                onRemove={removeItem}
+                                onQuantityChange={setQuantity}
                                 showCost={showCost}
                               />
                             ))}
@@ -478,9 +627,11 @@ export function ShoppingMode({
               })}
 
               {/* El orden de pasillos solo se descubre cuando estorba, y solo
-                  estorba con varios pasillos por delante. Con uno, no aparece.
-                  Con tienda elegida se nombra: lo que se edita es SU orden. */}
-              {groups.length >= 2 ? (
+                  estorba con varios pasillos por delante. Con uno, no aparece —y
+                  sin agrupar tampoco: ahí no hay pasillos en pantalla a los que
+                  el orden pueda aplicarse. Con tienda elegida se nombra: lo que
+                  se edita es SU orden. */}
+              {grouped && groups.length >= 2 ? (
                 <button
                   type="button"
                   onClick={() => setOrdering(true)}
@@ -531,7 +682,10 @@ export function ShoppingMode({
                           <ShoppingModeRowItem
                             key={item.id}
                             item={item}
+                            cost={costs.get(item.id) ?? null}
                             onToggle={toggle}
+                            onRemove={removeItem}
+                            onQuantityChange={setQuantity}
                             activeChain={effectiveChain}
                             showCost={showCost}
                           />
@@ -554,7 +708,7 @@ export function ShoppingMode({
       </div>
 
       {checkedCount > 0 ? (
-        <footer className="border-t bg-background px-4 py-3 pb-safe">
+        <footer className="border-t bg-background px-4 pt-3 pb-safe-3">
           <div className="mx-auto w-full max-w-2xl">
             <Button
               size="lg"
@@ -570,6 +724,25 @@ export function ShoppingMode({
           </div>
         </footer>
       ) : null}
+
+      {/* Alta en móvil: FAB abajo a la derecha, como en inventario y recetas.
+          Aquí no hay bottom nav debajo (el modo compra es un overlay a pantalla
+          completa), así que se apoya en el borde inferior y sube por encima de la
+          banda de «Finalizar compra» en cuanto aparece. `max-w-2xl` para caer en
+          la misma columna que el contenido. */}
+      <Fab
+        className="max-w-2xl md:hidden"
+        bottomClass={checkedCount > 0 ? "bottom-fab-stacked" : "bottom-fab-flush"}
+      >
+        <Button
+          size="icon"
+          aria-label="Añadir a la lista"
+          className={fabButtonClass}
+          onClick={() => setAdding(true)}
+        >
+          <Plus className="size-6" aria-hidden />
+        </Button>
+      </Fab>
 
       {/* L12 — Alta desde el modo compra en un bottom sheet. El modo compra es un
           overlay a pantalla completa (z-[60]); el modal debe elevarse por encima
@@ -631,12 +804,19 @@ export function ShoppingMode({
  */
 function ShoppingModeRowItem({
   item,
+  cost,
   onToggle,
+  onRemove,
+  onQuantityChange,
   activeChain = null,
   showCost = false,
 }: {
   item: ShoppingModeItem;
+  /** Coste estimado de la línea ya calculado con la cantidad actual; null = no se sabe. */
+  cost: number | null;
   onToggle: (id: string, checked: boolean) => void;
+  onRemove: (item: ShoppingModeItem) => void;
+  onQuantityChange: (id: string, quantity: number | null) => void;
   /** Hay algún precio conocido en la compra; si no, no hay columna de coste. */
   showCost?: boolean;
   /** Cadena filtrada; el badge de tienda se oculta si coincide (redundante). */
@@ -650,76 +830,113 @@ function ShoppingModeRowItem({
     item.content,
     item.packSize,
   );
+  const { swipeProps } = useSwipeRemove(() => onRemove(item));
+
   return (
-    <li className="flex items-center gap-1 rounded-lg transition-colors hover:bg-muted">
-      <label
-        htmlFor={cbId}
-        className="flex min-h-12 min-w-0 flex-1 cursor-pointer items-center gap-3 pl-2"
+    <li
+      className="group relative overflow-hidden rounded-lg"
+      // Safari no recorta al border-radius del padre cuando un hijo usa
+      // transform (bleed de las esquinas del fondo rojo al deslizar); esta
+      // máscara fuerza el clip correcto sin afectar a otros navegadores.
+      style={{ WebkitMaskImage: "-webkit-radial-gradient(white, black)" }}
+    >
+      {/* Fondo revelado al deslizar hacia la izquierda. */}
+      <div
+        aria-hidden
+        className="absolute inset-y-0 right-0 flex items-center gap-1.5 bg-destructive px-4 text-sm font-medium text-destructive-foreground"
       >
-        <Checkbox
-          id={cbId}
-          checked={item.isChecked}
-          onCheckedChange={(v) => onToggle(item.id, v === true)}
-          className="size-6"
-        />
-        <ProductIcon
-          slug={item.productIcon}
-          name={item.name}
-          categoryIcon={item.categoryIcon}
-          size={22}
-          className={cn(item.isChecked && "opacity-50")}
-        />
-        <span
-          className={cn(
-            "min-w-0 flex-1 text-base",
-            item.isChecked && "text-muted-foreground line-through",
-          )}
+        <Trash2 className="size-4" />
+        Quitar
+      </div>
+      <div
+        className="relative flex items-center gap-1 rounded-lg bg-background transition-colors hover:bg-muted"
+        {...swipeProps}
+      >
+        <label
+          htmlFor={cbId}
+          className="flex min-h-12 min-w-0 flex-1 cursor-pointer items-center gap-3 pl-2"
         >
-          {item.name}
-          {/* A qué equivale de verdad lo que cogerás del estante: las unidades
-              que repone el pack y, si el envase lo declara, cuánto llevas. Sin
-              `nowrap` la etiqueta se parte por dentro y deja huérfana la unidad
-              ("= 6 ud · 6" / "l"); así salta entera a la línea siguiente.
-              `inline-block` no es decorativo: entre el nombre y esto NO hay
-              espacio en el texto —el hueco lo pone `ml-2`—, así que en línea no
-              existía punto de corte y con el nombre justo de ancho la etiqueta
-              desbordaba por encima del botón «−». Una caja atómica sí se puede
-              bajar de línea. */}
-          {total ? (
-            <span className="ml-2 inline-block whitespace-nowrap text-sm text-muted-foreground">
-              {total}
-            </span>
-          ) : null}
-          {showChain ? (
-            <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5 align-middle text-[11px] font-medium text-muted-foreground">
-              <Store className="size-3" aria-hidden />
-              {chainLabel(item.preferredChain as string)}
-            </span>
-          ) : null}
-        </span>
-      </label>
-      {/* El precio va ANTES del stepper: así los «− 1 +» quedan pegados al borde
-          y caen en la misma vertical en todas las filas. Con el precio al final
-          era su ancho el que decidía dónde empezaba el stepper, y «3,20 €»,
-          «13,10 €» y un precio desconocido lo dejaban a tres alturas distintas.
-          Vacío cuando no se conoce —el guion, pegado al «+», se leía como un
-          segundo botón de restar, y que no se sepan todos ya lo dice la banda de
-          arriba— y sin columna ninguna si en toda la compra no hay precios. */}
-      {showCost ? (
-        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
-          {item.lineCost != null ? formatEuro(item.lineCost) : null}
-        </span>
-      ) : null}
-      {/* Ajustable en el pasillo con cualquier unidad: apuntaste 3 cajas y solo
-          quedaban 2, o la bolsa pesó 0,75 kg en vez de 1. El «+» del último
-          botón se queda a 14 px del borde por su propio relleno, así que la fila
-          no necesita padding derecho (igual que la papelera en `/lista`). */}
-      <QuantityStepper
-        itemId={item.id}
-        name={item.name}
-        quantity={item.quantity}
-        unit={item.unit}
-      />
+          <Checkbox
+            id={cbId}
+            checked={item.isChecked}
+            onCheckedChange={(v) => onToggle(item.id, v === true)}
+            className="size-6"
+          />
+          <ProductIcon
+            slug={item.productIcon}
+            name={item.name}
+            categoryIcon={item.categoryIcon}
+            size={22}
+            className={cn(item.isChecked && "opacity-50")}
+          />
+          <span
+            className={cn(
+              "min-w-0 flex-1 text-base",
+              item.isChecked && "text-muted-foreground line-through",
+            )}
+          >
+            {item.name}
+            {/* A qué equivale de verdad lo que cogerás del estante: las unidades
+                que repone el pack y, si el envase lo declara, cuánto llevas. Sin
+                `nowrap` la etiqueta se parte por dentro y deja huérfana la unidad
+                ("= 6 ud · 6" / "l"); así salta entera a la línea siguiente.
+                `inline-block` no es decorativo: entre el nombre y esto NO hay
+                espacio en el texto —el hueco lo pone `ml-2`—, así que en línea no
+                existía punto de corte y con el nombre justo de ancho la etiqueta
+                desbordaba por encima del botón «−». Una caja atómica sí se puede
+                bajar de línea. */}
+            {total ? (
+              <span className="ml-2 inline-block whitespace-nowrap text-sm text-muted-foreground">
+                {total}
+              </span>
+            ) : null}
+            {showChain ? (
+              <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5 align-middle text-[11px] font-medium text-muted-foreground">
+                <Store className="size-3" aria-hidden />
+                {chainLabel(item.preferredChain as string)}
+              </span>
+            ) : null}
+          </span>
+        </label>
+        {/* El precio va ANTES del stepper: así los «− 1 +» quedan pegados al borde
+            y caen en la misma vertical en todas las filas. Con el precio al final
+            era su ancho el que decidía dónde empezaba el stepper, y «3,20 €»,
+            «13,10 €» y un precio desconocido lo dejaban a tres alturas distintas.
+            Vacío cuando no se conoce —el guion, pegado al «+», se leía como un
+            segundo botón de restar, y que no se sepan todos ya lo dice la banda de
+            arriba— y sin columna ninguna si en toda la compra no hay precios. */}
+        {showCost ? (
+          <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+            {cost != null ? formatEuro(cost) : null}
+          </span>
+        ) : null}
+        {/* Ajustable en el pasillo con cualquier unidad: apuntaste 3 cajas y solo
+            quedaban 2, o la bolsa pesó 0,75 kg en vez de 1. El «+» del último
+            botón se queda a 14 px del borde por su propio relleno, así que la fila
+            no necesita padding derecho (igual que la papelera en `/lista`). */}
+        <QuantityStepper
+          itemId={item.id}
+          name={item.name}
+          quantity={item.quantity}
+          unit={item.unit}
+          onQuantityChange={(quantity) => onQuantityChange(item.id, quantity)}
+        />
+        {/* Quitar: en táctil, deslizando la fila (el pulgar ya está ahí y la
+            fila no puede crecer más: checkbox, nombre, pack, precio y stepper ya
+            se reparten 360 px). En escritorio no hay deslizamiento, así que la
+            papelera aparece al pasar por encima o al recibir el foco —que es
+            además el camino de teclado—. Con lector de pantalla en móvil el
+            borrado sigue estando en `/lista`, con su papelera siempre visible. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Quitar ${item.name}`}
+          onClick={() => onRemove(item)}
+          className="hidden transition-opacity md:inline-flex md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100 md:focus-visible:pointer-events-auto md:focus-visible:opacity-100"
+        >
+          <Trash2 aria-hidden className="text-muted-foreground" />
+        </Button>
+      </div>
     </li>
   );
 }
@@ -736,58 +953,86 @@ function RecommendedSection({
   suggestions: Suggestion[];
   onAdd: (s: Suggestion) => void;
 }) {
+  // Plegable y RECORDADO (por dispositivo, como «Agrupar»): con una despensa
+  // grande son media pantalla de cosas que no vas a coger hoy, justo debajo de lo
+  // que sí. Quien las tiene por medio las cierra una vez y siguen cerradas la
+  // próxima compra; el número se queda a la vista para que plegarlas no sea
+  // esconderlas.
+  const [collapsed, setCollapsed] = usePersistedFlag(
+    "compra:recomendados-plegados",
+  );
+
   return (
     <section
       className="rounded-xl border border-dashed p-3"
       aria-label="Recomendados"
     >
-      <h2 className="mb-2 flex items-center gap-1.5 text-sm font-medium">
-        <Sparkles className="size-4 text-chart-3" aria-hidden />
-        Recomendados
+      <h2>
+        <button
+          type="button"
+          onClick={() => setCollapsed(!collapsed)}
+          aria-expanded={!collapsed}
+          className="flex min-h-11 w-full items-center gap-1.5 rounded-lg text-left text-sm font-medium transition-colors hover:bg-muted"
+        >
+          <Sparkles className="size-4 text-chart-3" aria-hidden />
+          Recomendados
+          <span className="tabular-nums text-muted-foreground">
+            ({suggestions.length})
+          </span>
+          <ChevronDown
+            aria-hidden
+            className={cn(
+              "ml-auto size-4 text-muted-foreground transition-transform",
+              !collapsed && "rotate-180",
+            )}
+          />
+        </button>
       </h2>
-      <ul className="flex flex-col gap-1">
-        {suggestions.map((s) => {
-          const reason = suggestionReasonLabel(s);
-          // La cantidad sugerida viene contada en packs: se nombra como tal y se
-          // dice a cuántas unidades equivale (ver `listTotalLabel`).
-          const qtyLabel = formatPurchaseQuantity(
-            s.suggestedQuantity,
-            s.unit,
-            s.packSize,
-          );
-          const total = listTotalLabel(
-            s.suggestedQuantity,
-            s.unit,
-            null,
-            s.packSize,
-          );
-          return (
-            <li key={s.productId}>
-              <button
-                type="button"
-                onClick={() => onAdd(s)}
-                className="flex min-h-12 w-full items-center gap-3 rounded-lg px-2 text-left transition-colors hover:bg-muted"
-                aria-label={`Añadir ${qtyLabel} de ${s.name}${total ? ` ${total}` : ""}`}
-              >
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <Plus className="size-4" aria-hidden />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-base">{s.name}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    {reason}
+      {collapsed ? null : (
+        <ul className="mt-1 flex flex-col gap-1 animate-in fade-in slide-in-from-top-1 duration-200">
+          {suggestions.map((s) => {
+            const reason = suggestionReasonLabel(s);
+            // La cantidad sugerida viene contada en packs: se nombra como tal y se
+            // dice a cuántas unidades equivale (ver `listTotalLabel`).
+            const qtyLabel = formatPurchaseQuantity(
+              s.suggestedQuantity,
+              s.unit,
+              s.packSize,
+            );
+            const total = listTotalLabel(
+              s.suggestedQuantity,
+              s.unit,
+              null,
+              s.packSize,
+            );
+            return (
+              <li key={s.productId}>
+                <button
+                  type="button"
+                  onClick={() => onAdd(s)}
+                  className="flex min-h-12 w-full items-center gap-3 rounded-lg px-2 text-left transition-colors hover:bg-muted"
+                  aria-label={`Añadir ${qtyLabel} de ${s.name}${total ? ` ${total}` : ""}`}
+                >
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Plus className="size-4" aria-hidden />
                   </span>
-                </span>
-                {/* En una línea (ver la sección gemela de `/lista`): apilado,
-                    la fila con pack era más alta que sus vecinas. */}
-                <span className="shrink-0 whitespace-nowrap text-sm font-medium tabular-nums text-muted-foreground">
-                  {total ? `${qtyLabel} ${total}` : qtyLabel}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-base">{s.name}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {reason}
+                    </span>
+                  </span>
+                  {/* En una línea (ver la sección gemela de `/lista`): apilado,
+                      la fila con pack era más alta que sus vecinas. */}
+                  <span className="shrink-0 whitespace-nowrap text-sm font-medium tabular-nums text-muted-foreground">
+                    {total ? `${qtyLabel} ${total}` : qtyLabel}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }

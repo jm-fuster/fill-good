@@ -210,6 +210,16 @@
 @utility pb-safe-4 {
   padding-bottom: calc(env(safe-area-inset-bottom) + --spacing(4));
 }
+/* Variantes CON relleno propio, para barras fijas que además pegan al borde.
+   Existen porque `py-3 pt-safe` NO se suma: las dos declaran el mismo lado, gana
+   la de aquí, y donde el inset es 0 (navegador sin notch) el relleno se quedaba
+   en nada y la barra salía pegada al texto. */
+@utility pt-safe-3 {
+  padding-top: calc(env(safe-area-inset-top) + --spacing(3));
+}
+@utility pb-safe-3 {
+  padding-bottom: calc(env(safe-area-inset-bottom) + --spacing(3));
+}
 /* Bottom sheet apoyado en el borde inferior: aparta el contenido de la barra de
    gestos. Se resta `--fg-kb-inset` (lo que sube el sheet cuando hay teclado, ver
    src/hooks/use-keyboard-inset.ts) porque ahí ya no hay barra que esquivar y el
@@ -228,6 +238,22 @@
    botón flotante nunca tape la última tarjeta (p. ej. sus controles de stock) */
 @utility pb-fab {
   padding-bottom: calc(env(safe-area-inset-bottom) + --spacing(12));
+}
+/* FAB de una pantalla SIN bottom nav (el modo compra, que es un overlay a
+   pantalla completa): se apoya en el borde inferior... */
+@utility bottom-fab-flush {
+  bottom: calc(env(safe-area-inset-bottom) + --spacing(4));
+}
+/* ...y sube por encima de la barra de acción cuando aparece («Finalizar
+   compra»: borde + pt-3 + botón lg + pb-3 = 4,5rem). */
+@utility bottom-fab-stacked {
+  bottom: calc(env(safe-area-inset-bottom) + 4.5rem + --spacing(4));
+}
+/* Reserva de la lista de esa pantalla. Sirve para los dos casos de arriba: al
+   subir el FAB sube con él el borde inferior del área que scrollea, así que la
+   distancia entre ambos —lo único que hay que reservar— no cambia. */
+@utility pb-fab-flush {
+  padding-bottom: calc(env(safe-area-inset-bottom) + --spacing(22));
 }
 /* Oculta la barra de scroll (p. ej. fila de chips con scroll horizontal). */
 @utility no-scrollbar {

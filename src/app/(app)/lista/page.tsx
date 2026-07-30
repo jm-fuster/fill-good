@@ -6,6 +6,11 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
+import {
+  getChainAisleOrders,
+  getStoreCategories,
+} from "@/features/categories/queries";
+import { getHouseholdChains } from "@/features/household/queries";
 import { ShoppingListView } from "@/features/shopping-list/components/shopping-list-view";
 import {
   getActiveList,
@@ -18,14 +23,20 @@ import {
 export const metadata: Metadata = { title: "Lista de la compra" };
 
 export default async function ListaPage() {
-  // getProductCatalog y getTripPendingTicket no dependen de list.id → van en la
-  // primera tanda junto a getActiveList (antes el catálogo esperaba a tener la
-  // lista: waterfall innecesario).
-  const [list, catalog, pendingTicket] = await Promise.all([
-    getActiveList(),
-    getProductCatalog(),
-    getTripPendingTicket(),
-  ]);
+  // Nada de esto depende de list.id → todo en la primera tanda junto a
+  // getActiveList (antes el catálogo esperaba a tener la lista: waterfall
+  // innecesario). Los pasillos y las tiendas viajan aquí porque el orden de
+  // pasillos —el que se guarda por supermercado— se edita desde el modo
+  // reordenar de esta pantalla; son unas pocas filas.
+  const [list, catalog, pendingTicket, categories, aisleOrders, { chains }] =
+    await Promise.all([
+      getActiveList(),
+      getProductCatalog(),
+      getTripPendingTicket(),
+      getStoreCategories(),
+      getChainAisleOrders(),
+      getHouseholdChains(),
+    ]);
 
   if (!list) {
     return (
@@ -60,6 +71,9 @@ export default async function ListaPage() {
         suggestions={suggestions}
         catalog={catalog}
         pendingTicket={pendingTicket}
+        categories={categories}
+        aisleOrders={aisleOrders}
+        chains={chains}
       />
     </PageContainer>
   );

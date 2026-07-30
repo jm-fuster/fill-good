@@ -9,14 +9,26 @@ import { cn } from "@/lib/utils";
 export function Fab({
   children,
   className,
+  bottomClass = "bottom-fab",
 }: {
   children: React.ReactNode;
   className?: string;
+  /**
+   * Altura a la que flota, por si la pantalla no tiene bottom nav debajo (el
+   * modo compra, que es un overlay a pantalla completa: `bottom-fab-flush` /
+   * `bottom-fab-stacked`).
+   *
+   * Va en su propia prop y no en `className` porque `bottom-fab*` son utilidades
+   * propias del proyecto, y de esas tailwind-merge no sabe que se pisan entre
+   * sí: pasadas por `className` conviviría con el defecto en vez de sustituirlo.
+   */
+  bottomClass?: string;
 }) {
   return (
     <div
       className={cn(
-        "pointer-events-none fixed inset-x-0 bottom-fab z-40 mx-auto flex max-w-lg justify-end px-4",
+        "pointer-events-none fixed inset-x-0 z-40 mx-auto flex max-w-lg justify-end px-4",
+        bottomClass,
         className,
       )}
     >

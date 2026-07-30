@@ -45,6 +45,7 @@ export function QuantityStepper({
   name,
   quantity,
   unit,
+  onQuantityChange,
 }: {
   itemId: string;
   /** Nombre del artículo, solo para las etiquetas accesibles de los botones. */
@@ -52,6 +53,14 @@ export function QuantityStepper({
   quantity: number | null;
   /** Unidad del artículo: fija el paso y si el número se muestra con unidad. */
   unit: UnitType | null;
+  /**
+   * Aviso al padre de la nueva cantidad, en el mismo toque y sin esperar a que
+   * se persista. Lo usa el modo compra para recostear la línea y el total al
+   * instante: sin esto, la banda de precios seguiría mostrando la cuenta de la
+   * cantidad vieja hasta que Realtime devolviera el cambio (más de medio
+   * segundo después), justo en la pantalla que existe para vigilar el total.
+   */
+  onQuantityChange?: (quantity: number | null) => void;
 }) {
   const [qty, setQty] = useState<number | null>(quantity);
   const [serverQty, setServerQty] = useState<number | null>(quantity);
@@ -87,6 +96,7 @@ export function QuantityStepper({
   function change(next: number | null) {
     setQty(next);
     persist(next);
+    onQuantityChange?.(next);
   }
 
   const step = quantityStep(unit);
