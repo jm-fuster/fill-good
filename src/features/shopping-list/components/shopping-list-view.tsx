@@ -29,6 +29,7 @@ import {
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
 import { EmptyState } from "@/components/layout/empty-state";
+import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
 import { cn } from "@/lib/utils";
@@ -69,16 +70,12 @@ import {
   restoreSuggestionAction,
   toggleItemAction,
 } from "../actions";
-import {
-  suggestionReasonLabel,
-  suggestionReasonShort,
-} from "../suggestion-reason";
+import { suggestionReasonLabel } from "../suggestion-reason";
 import { groupByCategory } from "../grouping";
-import { AddItemForm } from "./add-item-form";
+import { AddItemsPicker } from "./add-items-picker";
 import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import { ItemReorderList } from "./item-reorder-list";
 import { QuantityStepper } from "./quantity-stepper";
-import type { AutocompleteOption } from "./product-autocomplete";
 import { useCheckout } from "./use-checkout";
 import { EditListItemDrawer } from "./edit-list-item-drawer";
 
@@ -121,6 +118,8 @@ export function ShoppingListView({
   const [pendingAdds, setPendingAdds] = useState<PendingAdd[]>([]);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [editItem, setEditItem] = useState<ListItem | null>(null);
+  // L17 — Selector de altas (el «+»): el catálogo entero para marcar de golpe.
+  const [adding, setAdding] = useState(false);
   // Sugerencias descartadas en esta sesión: se ocultan al instante y el servidor
   // las silencia un mes. Al llegar el refresh ya no vienen, así que el set solo
   // cubre la ventana entre el clic y la respuesta.
@@ -357,18 +356,6 @@ export function ShoppingListView({
     (s) => !onListProductIds.has(s.productId) && !dismissedIds.has(s.productId),
   );
 
-  // L4: opciones al enfocar el input vacío, resueltas contra el catálogo para
-  // reutilizar el mismo alta.
-  const catalogById = new Map(catalog.map((p) => [p.id, p]));
-  const focusOptions: AutocompleteOption[] = [];
-  const seenFocus = new Set<string>();
-  for (const s of visibleSuggestions) {
-    const product = catalogById.get(s.productId);
-    if (!product || seenFocus.has(product.id)) continue;
-    seenFocus.add(product.id);
-    focusOptions.push({ product, reason: suggestionReasonShort(s) });
-  }
-
   // L14 — Modo reordenar: vista enfocada solo con los pendientes arrastrables.
   if (reordering && pending.length > 0) {
     return (
@@ -447,23 +434,38 @@ export function ShoppingListView({
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <AddItemForm
-        catalog={catalog}
-        onAdd={addItem}
-        onListProductIds={onListProductIds}
-        defaultOptions={focusOptions}
-      />
+    // La reserva del final de la lista (se suma a la del shell) sigue al FAB:
+    // sin ella, el botón flotante tapa el «+» del stepper de la última fila, y
+    // el FAB sube cuando aparece la banda de «Finalizar compra».
+    <div
+      className={cn(
+        "flex flex-col gap-4 md:pb-0",
+        done.length > 0 ? "pb-fab-over-bar" : "pb-fab",
+      )}
+    >
+      {/* El alta entera vive en el «+» (L17): FAB al alcance del pulgar en móvil
+          y este botón en escritorio, donde no hay FAB. Antes esto era un
+          formulario de uno-en-uno ocupando el sitio de la propia lista. */}
+      <div className="hidden md:flex md:justify-end">
+        <Button onClick={() => setAdding(true)}>
+          <Plus aria-hidden />
+          Añadir a la lista
+        </Button>
+      </div>
 
-      {/* Debajo del alta a propósito: el gesto frecuente (añadir) manda, y el
-          aviso no puede empujarlo fuera del alcance del pulgar. */}
       {pendingTicket ? <ScanTicketNudge trip={pendingTicket} /> : null}
 
       {allItems.length === 0 ? (
         <EmptyState
           icon={ShoppingCart}
           title="La lista está vacía"
-          description="Añade productos arriba. Al terminar la compra, lo que marques pasará a tu inventario."
+          description="Marca de una vez todo lo que necesites. Al terminar la compra, lo que marques pasará a tu inventario."
+          action={
+            <Button size="lg" onClick={() => setAdding(true)}>
+              <Plus aria-hidden />
+              Añadir productos
+            </Button>
+          }
         />
       ) : (
         <>
@@ -614,6 +616,43 @@ export function ShoppingListView({
           onRemove={removeItem}
         />
       ) : null}
+
+      {/* Alta en móvil, como en inventario y en el modo compra. Sube por encima
+          de la banda de «Finalizar compra» en cuanto hay algo en el carro, que
+          si no la taparía; y desaparece al imprimir (la lista se imprime). */}
+      <Fab
+        className="md:hidden print:hidden"
+        bottomClass={done.length > 0 ? "bottom-fab-over-bar" : "bottom-fab"}
+      >
+        <Button
+          size="icon"
+          aria-label="Añadir a la lista"
+          className={fabButtonClass}
+          onClick={() => setAdding(true)}
+        >
+          <Plus className="size-6" aria-hidden />
+        </Button>
+      </Fab>
+
+      {/* L17 — El catálogo del hogar para marcar de golpe lo que haga falta. Las
+          sugerencias que van dentro son las MISMAS que se ven en la página (sin
+          lo descartado ni lo que ya está en la lista). */}
+      <ResponsiveModal open={adding} onOpenChange={setAdding}>
+        <ResponsiveModalContent>
+          <ResponsiveModalHeader>
+            <ResponsiveModalTitle>Añadir a la lista</ResponsiveModalTitle>
+            <ResponsiveModalDescription>
+              Marca todo lo que necesites y entra de una vez.
+            </ResponsiveModalDescription>
+          </ResponsiveModalHeader>
+          <AddItemsPicker
+            catalog={catalog}
+            suggestions={visibleSuggestions}
+            onListProductIds={[...onListProductIds]}
+            onDone={() => setAdding(false)}
+          />
+        </ResponsiveModalContent>
+      </ResponsiveModal>
     </div>
   );
 }

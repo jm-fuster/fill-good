@@ -234,10 +234,20 @@
 @utility bottom-fab {
   bottom: calc(env(safe-area-inset-bottom) + 4rem + --spacing(4));
 }
+/* ...y sube por encima de la barra de acción que aparece SOBRE la bottom nav
+   («Finalizar compra» en /lista: bottom-16 + botón lg = 7rem). */
+@utility bottom-fab-over-bar {
+  bottom: calc(env(safe-area-inset-bottom) + 7rem + --spacing(4));
+}
 /* Reserva al final de una lista con FAB: se suma a la del AppShell para que el
    botón flotante nunca tape la última tarjeta (p. ej. sus controles de stock) */
 @utility pb-fab {
   padding-bottom: calc(env(safe-area-inset-bottom) + --spacing(12));
+}
+/* La misma reserva cuando el FAB ha subido por encima de una barra de acción
+   (`bottom-fab-over-bar`): lo que tapaba la última fila era el «+» de su stepper. */
+@utility pb-fab-over-bar {
+  padding-bottom: calc(env(safe-area-inset-bottom) + --spacing(22));
 }
 /* FAB de una pantalla SIN bottom nav (el modo compra, que es un overlay a
    pantalla completa): se apoya en el borde inferior... */

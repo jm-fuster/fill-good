@@ -101,6 +101,15 @@ export type CatalogProduct = {
   purchaseCount: number;
   /** Unidades por compra (F4); null = sin pack. */
   packSize: number | null;
+  /** Icono manual del producto (L16); null = automático (se adivina del nombre). */
+  icon: string | null;
+  /**
+   * Categoría del producto, para recorrer el catálogo por pasillos en el
+   * selector de altas (L17). null = sin categoría ("Otros"), que va al final.
+   */
+  categoryName: string | null;
+  categoryIcon: string | null;
+  categorySort: number;
 };
 
 export async function getActiveList(): Promise<ActiveList | null> {
@@ -198,6 +207,8 @@ export type ShoppingModeItem = {
   id: string;
   /** Nombre vivo del producto vinculado; ver `ListItem.name`. */
   name: string;
+  /** Producto del catálogo, o null en un alta de texto libre sin enlazar. */
+  productId: string | null;
   quantity: number | null;
   unit: UnitType | null;
   isChecked: boolean;
@@ -290,6 +301,7 @@ export async function getShoppingModeItems(
     return {
       id: r.id,
       name: r.product?.name ?? r.name,
+      productId: r.product_id,
       quantity: qty,
       unit: r.unit,
       isChecked: r.is_checked,
@@ -643,9 +655,25 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
   return suggestions;
 }
 
+type CatalogRow = {
+  id: string;
+  name: string;
+  normalized_name: string;
+  default_unit: UnitType;
+  default_location: LocationType;
+  purchase_count: number;
+  pack_size: number | null;
+  icon: string | null;
+  category: { name: string; icon: string | null; sort_order: number } | null;
+};
+
 /**
  * Catálogo ligero del hogar para el autocompletado en cliente. Ordenado por
  * habitualidad (más comprados primero) y luego alfabético como desempate.
+ *
+ * Trae también icono y categoría porque este mismo catálogo es el que se
+ * recorre entero en el selector de altas (L17): sin la categoría no habría
+ * pasillos por los que agruparlo, y sin el icono las fichas irían desnudas.
  */
 export async function getProductCatalog(): Promise<CatalogProduct[]> {
   const householdId = await getActiveHouseholdId();
@@ -654,13 +682,14 @@ export async function getProductCatalog(): Promise<CatalogProduct[]> {
   const { data, error } = await supabase
     .from("products")
     .select(
-      "id, name, normalized_name, default_unit, default_location, purchase_count, pack_size",
+      "id, name, normalized_name, default_unit, default_location, purchase_count, pack_size, icon, category:categories(name, icon, sort_order)",
     )
     .eq("household_id", householdId)
     .order("purchase_count", { ascending: false })
     .order("name", { ascending: true });
   if (error) throw error;
-  return (data ?? []).map((p) => ({
+  const rows = (data ?? []) as unknown as CatalogRow[];
+  return rows.map((p) => ({
     id: p.id,
     name: p.name,
     normalizedName: p.normalized_name,
@@ -668,6 +697,10 @@ export async function getProductCatalog(): Promise<CatalogProduct[]> {
     defaultLocation: p.default_location,
     purchaseCount: p.purchase_count,
     packSize: p.pack_size === null ? null : Number(p.pack_size),
+    icon: p.icon,
+    categoryName: p.category?.name ?? null,
+    categoryIcon: p.category?.icon ?? null,
+    categorySort: p.category?.sort_order ?? NO_CATEGORY_SORT,
   }));
 }
 

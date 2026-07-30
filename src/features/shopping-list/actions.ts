@@ -10,8 +10,18 @@ import { getCurrentHousehold } from "@/features/household/queries";
 import { recordStockEvent } from "@/features/inventory/events";
 import type { UnitType } from "@/lib/supabase/types";
 import { getActiveList } from "./queries";
-import { mergeIntoExisting, nextListPosition } from "./items";
-import { addListItemSchema, updateListItemSchema } from "./schemas";
+import {
+  addManyToList,
+  mergeIntoExisting,
+  nextListPosition,
+  type BulkAddItem,
+} from "./items";
+import {
+  addListItemSchema,
+  addListItemsSchema,
+  updateListItemSchema,
+  type AddListItemsInput,
+} from "./schemas";
 
 export type ActionState = {
   error?: string;
@@ -183,6 +193,124 @@ export async function addProductToListAction(
 
   revalidatePath("/lista");
   return { ok: true, itemId: inserted.id };
+}
+
+/** Resultado del alta múltiple: qué se creó y qué se sumó a lo que ya había. */
+export type BulkAddState = {
+  error?: string;
+  ok?: boolean;
+  /** Filas nuevas en la lista. */
+  added?: number;
+  /** Altas que se sumaron a un artículo que ya estaba sin marcar (L3). */
+  merged?: number;
+};
+
+/**
+ * L17 — Alta de varios artículos de golpe (el selector que abre el «+»). Un solo
+ * viaje: las Server Actions se despachan de una en una desde el cliente, así que
+ * marcar quince productos y llamar quince veces al alta suelta las pondría en
+ * cola una detrás de otra.
+ *
+ * A diferencia del alta suelta NO avisa de existencias en el inventario: quince
+ * altas serían quince avisos, y el sitio donde eso se dice sin estorbar es la
+ * propia ficha de cada producto.
+ */
+export async function addListItemsAction(
+  input: AddListItemsInput,
+): Promise<BulkAddState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+
+  const parsed = addListItemsSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+
+  const supabase = createServerSupabaseClient();
+  const list = await getActiveList();
+  if (!list) return { error: "No hay lista activa." };
+
+  // Lo que llega del cliente son REFERENCIAS (ids y nombres); se resuelven contra
+  // el catálogo del hogar activo. Acotar por hogar no es una formalidad: sin ese
+  // filtro se podría enlazar la lista con un producto del otro hogar del usuario
+  // (la RLS solo comprueba que seas miembro de alguno).
+  const productIds = [
+    ...new Set(
+      parsed.data.flatMap((e) => (e.kind === "product" ? [e.productId] : [])),
+    ),
+  ];
+  // Nombre normalizado → tal cual lo escribió el usuario.
+  const freeNames = new Map<string, string>();
+  for (const entry of parsed.data) {
+    if (entry.kind !== "free") continue;
+    const normalized = normalizeName(entry.name);
+    if (normalized.length > 0 && !freeNames.has(normalized)) {
+      freeNames.set(normalized, entry.name);
+    }
+  }
+
+  type CatalogRow = { id: string; name: string; default_unit: UnitType };
+  const byId = new Map<string, CatalogRow>();
+  const byNormalized = new Map<string, CatalogRow>();
+  if (productIds.length > 0) {
+    const { data } = await supabase
+      .from("products")
+      .select("id, name, default_unit")
+      .eq("household_id", household.id)
+      .in("id", productIds);
+    for (const p of data ?? []) byId.set(p.id, p);
+  }
+  // Un nombre nuevo puede existir ya como producto (lo acaba de crear otro
+  // miembro del hogar, o nunca se compró): enlazarlo es lo que hace que el
+  // checkout reponga en la ficha correcta en vez de crear un duplicado.
+  if (freeNames.size > 0) {
+    const { data } = await supabase
+      .from("products")
+      .select("id, name, default_unit, normalized_name")
+      .eq("household_id", household.id)
+      .in("normalized_name", [...freeNames.keys()]);
+    for (const p of data ?? []) byNormalized.set(p.normalized_name, p);
+  }
+
+  const items: BulkAddItem[] = [];
+  for (const entry of parsed.data) {
+    if (entry.kind === "product") {
+      const product = byId.get(entry.productId);
+      // Id desconocido (o de otro hogar): se ignora en silencio, el resto entra.
+      if (!product) continue;
+      items.push({
+        productId: product.id,
+        name: product.name,
+        normalized: normalizeName(product.name),
+        quantity: entry.quantity ?? defaultListQuantity(product.default_unit),
+        unit: product.default_unit,
+      });
+      continue;
+    }
+    const normalized = normalizeName(entry.name);
+    if (normalized.length === 0) continue;
+    const product = byNormalized.get(normalized);
+    const unit = entry.unit ?? product?.default_unit ?? null;
+    items.push({
+      productId: product?.id ?? null,
+      name: entry.name,
+      normalized,
+      quantity: entry.quantity ?? defaultListQuantity(unit),
+      unit,
+    });
+  }
+  if (items.length === 0) return { error: "No se pudo añadir a la lista." };
+
+  const result = await addManyToList(
+    supabase,
+    { listId: list.id, householdId: household.id, userId },
+    items,
+  );
+  if (!result) return { error: "No se pudo añadir a la lista." };
+
+  revalidatePath("/lista");
+  return { ok: true, added: result.added, merged: result.merged };
 }
 
 /** Cuánto se calla una sugerencia descartada antes de volver a ofrecerse. */

@@ -17,8 +17,8 @@ import type { CatalogProduct } from "../queries";
 
 const MAX_SUGGESTIONS = 6;
 
-/** Opción del combobox: un producto del catálogo, con un motivo opcional. */
-export type AutocompleteOption = { product: CatalogProduct; reason?: string };
+/** Opción del combobox: un producto del catálogo. */
+type AutocompleteOption = { product: CatalogProduct };
 
 /**
  * Combobox accesible para el nombre del producto. Sustituye al <datalist>
@@ -26,9 +26,9 @@ export type AutocompleteOption = { product: CatalogProduct; reason?: string };
  * habitualidad y permite elegir un producto ya conocido (con su ubicación y
  * unidad) o seguir con texto libre (Enter → deja que el formulario se envíe).
  *
- * L4: al enfocar el input vacío muestra `defaultOptions` (sugerencias +
- * habituales al alcance del pulgar) con su motivo abreviado; al escribir vuelve
- * a filtrar el catálogo completo.
+ * Con el input vacío no despliega nada: recorrer el catálogo entero es trabajo
+ * del selector de la lista (`AddItemsPicker`), que lo enseña por pasillos y con
+ * multiselección. Aquí solo se teclea un nombre.
  */
 export function ProductAutocomplete({
   ref,
@@ -38,8 +38,6 @@ export function ProductAutocomplete({
   onValueChange,
   onSelect,
   disabled,
-  onListProductIds,
-  defaultOptions,
   inputName = "name",
   required = true,
   placeholder = "Añadir a la lista…",
@@ -53,10 +51,6 @@ export function ProductAutocomplete({
   onValueChange: (v: string) => void;
   onSelect: (product: CatalogProduct) => void;
   disabled?: boolean;
-  /** Ids de producto ya en la lista, para el badge "En la lista" (L3). */
-  onListProductIds?: Set<string>;
-  /** Opciones al enfocar el input vacío (sugerencias/habituales) (L4). */
-  defaultOptions?: AutocompleteOption[];
   inputName?: string;
   required?: boolean;
   placeholder?: string;
@@ -75,7 +69,7 @@ export function ProductAutocomplete({
 
   const options = useMemo<AutocompleteOption[]>(() => {
     const q = normalizeName(filterValue ?? value);
-    if (q.length < 1) return (defaultOptions ?? []).slice(0, MAX_SUGGESTIONS);
+    if (q.length < 1) return [];
     return products
       .filter((p) => p.normalizedName.includes(q))
       .sort(
@@ -85,7 +79,7 @@ export function ProductAutocomplete({
       )
       .slice(0, MAX_SUGGESTIONS)
       .map((product) => ({ product }));
-  }, [products, value, filterValue, defaultOptions]);
+  }, [products, value, filterValue]);
 
   const showList = open && options.length > 0;
 
@@ -189,7 +183,7 @@ export function ProductAutocomplete({
               className="fixed z-[80] overflow-hidden rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-md"
               style={{ top: rect.top + 4, left: rect.left, width: rect.width }}
             >
-              {options.map(({ product, reason }, index) => {
+              {options.map(({ product }, index) => {
                 const pack = effectivePackSize(
                   product.defaultUnit,
                   product.packSize,
@@ -212,28 +206,18 @@ export function ProductAutocomplete({
                   >
                     <span className="truncate font-medium">{product.name}</span>
                     <span className="flex shrink-0 items-center gap-1.5">
-                      {onListProductIds?.has(product.id) ? (
-                        <Badge variant="secondary">En la lista</Badge>
-                      ) : reason ? (
-                        <span className="text-xs text-muted-foreground">
-                          {reason}
-                        </span>
-                      ) : (
-                        <>
-                          <Badge variant="secondary">
-                            {LOCATION_ICONS[product.defaultLocation]}{" "}
-                            {LOCATION_LABELS[product.defaultLocation]}
-                          </Badge>
-                          {/* El pack sustituye a la unidad porque ES la unidad
-                              de compra: elegir este producto apunta packs, no
-                              piezas, y verlo aquí evita pedir diez veces más. */}
-                          <span className="text-xs text-muted-foreground">
-                            {pack
-                              ? `pack de ${pack}`
-                              : UNIT_LABELS[product.defaultUnit]}
-                          </span>
-                        </>
-                      )}
+                      <Badge variant="secondary">
+                        {LOCATION_ICONS[product.defaultLocation]}{" "}
+                        {LOCATION_LABELS[product.defaultLocation]}
+                      </Badge>
+                      {/* El pack sustituye a la unidad porque ES la unidad de
+                          compra: elegir este producto apunta packs, no piezas, y
+                          verlo aquí evita pedir diez veces más. */}
+                      <span className="text-xs text-muted-foreground">
+                        {pack
+                          ? `pack de ${pack}`
+                          : UNIT_LABELS[product.defaultUnit]}
+                      </span>
                     </span>
                   </li>
                 );

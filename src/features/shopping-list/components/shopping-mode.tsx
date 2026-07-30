@@ -58,7 +58,7 @@ import {
 } from "../actions";
 import { lineCostOf } from "../line-cost";
 import type { CatalogProduct, ShoppingModeItem, Suggestion } from "../queries";
-import { AddItemForm } from "./add-item-form";
+import { AddItemsPicker } from "./add-items-picker";
 import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import { QuantityStepper } from "./quantity-stepper";
 import { suggestionReasonLabel } from "../suggestion-reason";
@@ -417,6 +417,13 @@ export function ShoppingMode({
     (s) => !dismissed.has(s.productId),
   );
 
+  // Lo que ya está en la lista, para que el selector lo marque como tal: volver
+  // a marcarlo suma cantidad en vez de duplicar la fila (L3).
+  const onListProductIds = useMemo(
+    () => visible.flatMap((i) => (i.productId ? [i.productId] : [])),
+    [visible],
+  );
+
   // Añadir una recomendación con su cantidad sugerida, de un toque.
   async function addSuggestion(s: Suggestion) {
     setDismissed((prev) => new Set(prev).add(s.productId));
@@ -752,17 +759,26 @@ export function ShoppingMode({
         </Button>
       </Fab>
 
-      {/* L12 — Alta desde el modo compra en un bottom sheet. El modo compra es un
-          overlay a pantalla completa (z-[60]); el modal debe elevarse por encima
-          (overlay y contenido) para no quedar oculto detrás. */}
+      {/* L12/L17 — Alta desde el modo compra: el MISMO selector que `/lista`, que
+          aquí sirve para las dos cosas que pasan en el pasillo —lo que se te
+          olvidó apuntar (buscar y crear) y lo que ves y decides llevarte (marcar
+          varios)—. El modo compra es un overlay a pantalla completa (z-[60]); el
+          modal debe elevarse por encima (overlay y contenido) para no quedar
+          oculto detrás. */}
       <ResponsiveModal open={adding} onOpenChange={setAdding}>
         <ResponsiveModalContent className="z-[70]" overlayClassName="z-[70]">
           <ResponsiveModalHeader>
             <ResponsiveModalTitle>Añadir a la lista</ResponsiveModalTitle>
+            <ResponsiveModalDescription>
+              Marca todo lo que necesites y entra de una vez.
+            </ResponsiveModalDescription>
           </ResponsiveModalHeader>
-          <div className="px-4 pb-2">
-            <AddItemForm catalog={catalog} onAdd={addItem} />
-          </div>
+          <AddItemsPicker
+            catalog={catalog}
+            suggestions={visibleSuggestions}
+            onListProductIds={onListProductIds}
+            onDone={() => setAdding(false)}
+          />
         </ResponsiveModalContent>
       </ResponsiveModal>
 
