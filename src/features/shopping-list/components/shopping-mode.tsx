@@ -623,7 +623,7 @@ export function ShoppingMode({
 }
 
 /**
- * Fila de un ítem en el modo compra (checkbox + nombre + cantidad + coste).
+ * Fila de un ítem en el modo compra (checkbox + nombre + coste + cantidad).
  *
  * El stepper vive FUERA del `<label>` a propósito: dentro, cada pulsación de
  * «+»/«−» activaría también el checkbox asociado al label y marcaría el
@@ -698,26 +698,28 @@ function ShoppingModeRowItem({
           ) : null}
         </span>
       </label>
+      {/* El precio va ANTES del stepper: así los «− 1 +» quedan pegados al borde
+          y caen en la misma vertical en todas las filas. Con el precio al final
+          era su ancho el que decidía dónde empezaba el stepper, y «3,20 €»,
+          «13,10 €» y un precio desconocido lo dejaban a tres alturas distintas.
+          Vacío cuando no se conoce —el guion, pegado al «+», se leía como un
+          segundo botón de restar, y que no se sepan todos ya lo dice la banda de
+          arriba— y sin columna ninguna si en toda la compra no hay precios. */}
+      {showCost ? (
+        <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
+          {item.lineCost != null ? formatEuro(item.lineCost) : null}
+        </span>
+      ) : null}
       {/* Ajustable en el pasillo con cualquier unidad: apuntaste 3 cajas y solo
-          quedaban 2, o la bolsa pesó 0,75 kg en vez de 1. */}
+          quedaban 2, o la bolsa pesó 0,75 kg en vez de 1. El «+» del último
+          botón se queda a 14 px del borde por su propio relleno, así que la fila
+          no necesita padding derecho (igual que la papelera en `/lista`). */}
       <QuantityStepper
         itemId={item.id}
         name={item.name}
         quantity={item.quantity}
         unit={item.unit}
       />
-      {/* Vacío, no «—»: pegado al «+» del stepper el guion se leía como un
-          segundo botón de restar, y que no se conozcan todos los precios ya lo
-          dice la banda de arriba («estimado sobre 1 de 2 ítems»). Sin ancho
-          reservado a propósito: fijarlo alineaba los «− 1 +» de todas las filas,
-          pero a 375 px dejaba el nombre en 81 px y mandaba el «= 10 ud» a una
-          segunda línea en CADA fila con pack. Leer el nombre de un tirón vale
-          más que esa alineación. */}
-      {showCost ? (
-        <span className="shrink-0 pr-2 text-sm tabular-nums text-muted-foreground">
-          {item.lineCost != null ? formatEuro(item.lineCost) : null}
-        </span>
-      ) : null}
     </li>
   );
 }

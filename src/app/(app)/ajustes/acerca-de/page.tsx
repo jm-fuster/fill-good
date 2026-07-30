@@ -14,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { appVersion, buildSha } from "@/lib/version";
 
 export const metadata: Metadata = { title: "Acerca de" };
 
@@ -66,6 +67,15 @@ export default function AcercaDePage() {
             </ul>
           </CardContent>
         </Card>
+
+        {/* Al pie y discreto, como en los «Acerca de» del sistema: no es algo
+            que se venga a leer, es algo que se viene a comprobar. El commit va
+            entero visible (no truncado con puntos) para poder compararlo de un
+            vistazo con el último de `git log`. */}
+        <p className="pb-2 text-center text-xs text-muted-foreground">
+          Fill Good v{appVersion}
+          {buildSha ? ` · build ${buildSha}` : " · desarrollo"}
+        </p>
       </div>
     </PageContainer>
   );
