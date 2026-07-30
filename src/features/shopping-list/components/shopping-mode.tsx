@@ -247,6 +247,10 @@ export function ShoppingMode({
   }, [items, effectiveChain, chainOrder]);
 
   const priced = items.filter((i) => i.lineCost != null);
+  // Una compra sin ningún precio conocido no tiene columna de coste: ni banda de
+  // total ni hueco en las filas. Es la MISMA condición para las dos cosas a
+  // propósito, para que no puedan separarse y volver a contradecirse.
+  const showCost = priced.length > 0;
   const total = priced.reduce((s, i) => s + (i.lineCost ?? 0), 0);
   const remaining = items
     .filter((i) => !i.isChecked && i.lineCost != null)
@@ -357,7 +361,7 @@ export function ShoppingMode({
         ) : null}
       </header>
 
-      {priced.length > 0 ? (
+      {showCost ? (
         <div className="border-b bg-muted/40 px-4 py-3">
           <div className="mx-auto flex w-full max-w-2xl items-end justify-between gap-3">
             <div>
@@ -430,6 +434,7 @@ export function ShoppingMode({
                           item={item}
                           onToggle={toggle}
                           activeChain={effectiveChain}
+                          showCost={showCost}
                         />
                       ))}
                     </ul>
@@ -461,6 +466,7 @@ export function ShoppingMode({
                                 key={item.id}
                                 item={item}
                                 onToggle={toggle}
+                                showCost={showCost}
                               />
                             ))}
                           </ul>
@@ -527,6 +533,7 @@ export function ShoppingMode({
                             item={item}
                             onToggle={toggle}
                             activeChain={effectiveChain}
+                            showCost={showCost}
                           />
                         ))}
                       </ul>
@@ -626,9 +633,12 @@ function ShoppingModeRowItem({
   item,
   onToggle,
   activeChain = null,
+  showCost = false,
 }: {
   item: ShoppingModeItem;
   onToggle: (id: string, checked: boolean) => void;
+  /** Hay algún precio conocido en la compra; si no, no hay columna de coste. */
+  showCost?: boolean;
   /** Cadena filtrada; el badge de tienda se oculta si coincide (redundante). */
   activeChain?: string | null;
 }) {
@@ -669,9 +679,14 @@ function ShoppingModeRowItem({
           {/* A qué equivale de verdad lo que cogerás del estante: las unidades
               que repone el pack y, si el envase lo declara, cuánto llevas. Sin
               `nowrap` la etiqueta se parte por dentro y deja huérfana la unidad
-              ("= 6 ud · 6" / "l"); así salta entera a la línea siguiente. */}
+              ("= 6 ud · 6" / "l"); así salta entera a la línea siguiente.
+              `inline-block` no es decorativo: entre el nombre y esto NO hay
+              espacio en el texto —el hueco lo pone `ml-2`—, así que en línea no
+              existía punto de corte y con el nombre justo de ancho la etiqueta
+              desbordaba por encima del botón «−». Una caja atómica sí se puede
+              bajar de línea. */}
           {total ? (
-            <span className="ml-2 whitespace-nowrap text-sm text-muted-foreground">
+            <span className="ml-2 inline-block whitespace-nowrap text-sm text-muted-foreground">
               {total}
             </span>
           ) : null}
@@ -691,9 +706,18 @@ function ShoppingModeRowItem({
         quantity={item.quantity}
         unit={item.unit}
       />
-      <span className="shrink-0 pr-2 text-sm tabular-nums text-muted-foreground">
-        {item.lineCost != null ? formatEuro(item.lineCost) : "—"}
-      </span>
+      {/* Vacío, no «—»: pegado al «+» del stepper el guion se leía como un
+          segundo botón de restar, y que no se conozcan todos los precios ya lo
+          dice la banda de arriba («estimado sobre 1 de 2 ítems»). Sin ancho
+          reservado a propósito: fijarlo alineaba los «− 1 +» de todas las filas,
+          pero a 375 px dejaba el nombre en 81 px y mandaba el «= 10 ud» a una
+          segunda línea en CADA fila con pack. Leer el nombre de un tirón vale
+          más que esa alineación. */}
+      {showCost ? (
+        <span className="shrink-0 pr-2 text-sm tabular-nums text-muted-foreground">
+          {item.lineCost != null ? formatEuro(item.lineCost) : null}
+        </span>
+      ) : null}
     </li>
   );
 }
