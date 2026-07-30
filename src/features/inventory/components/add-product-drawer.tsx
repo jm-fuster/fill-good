@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { CollapsibleFields } from "@/components/collapsible-fields";
 import { Fab, fabButtonClass } from "@/components/layout/fab";
 import {
   ResponsiveModal,
@@ -108,7 +109,7 @@ export function AddProductDrawer({
             </p>
           ) : null}
 
-          <ResponsiveModalFooter className="px-0">
+          <ResponsiveModalFooter sticky>
             <Button type="submit" size="lg" loading={pending}>
               {pending ? "Añadiendo…" : "Añadir al inventario"}
             </Button>
@@ -180,26 +181,6 @@ function AddProductFields({
         </Select>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="add-location">Ubicación</Label>
-        <Select
-          value={location}
-          onValueChange={(v) => setLocation(v as LocationType)}
-          name="location"
-        >
-          <SelectTrigger id="add-location" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {LOCATION_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
           <Label htmlFor="add-quantity">Cantidad</Label>
@@ -235,52 +216,80 @@ function AddProductFields({
         </div>
       </div>
 
-      <ExpiryQuickPicker
-        id="add-expiry"
-        name="expiryDate"
-        value={expiryDate}
-        onChange={setExpiryDate}
-      />
+      {/* Mismo reparto que en editar: a la vista lo imprescindible para dar de
+          alta, y los ajustes finos plegados. Dar de alta un producto no debería
+          exigir decidir su contenido por envase. */}
+      <CollapsibleFields
+        title="Ajustes adicionales"
+        hint="Caducidad, ubicación y avisos de stock"
+      >
+        <ExpiryQuickPicker
+          id="add-expiry"
+          name="expiryDate"
+          value={expiryDate}
+          onChange={setExpiryDate}
+        />
 
-      {unit === "ud" ? <ContentPerUnitFields idPrefix="add" /> : null}
-
-      {unit === "ud" ? (
         <div className="flex flex-col gap-2">
-          <Label htmlFor="add-pack">
-            Unidades por compra{" "}
+          <Label htmlFor="add-location">Ubicación</Label>
+          <Select
+            value={location}
+            onValueChange={(v) => setLocation(v as LocationType)}
+            name="location"
+          >
+            <SelectTrigger id="add-location" className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LOCATION_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="add-min">
+            Avísame cuando queden menos de{" "}
             <span className="text-muted-foreground">(opcional)</span>
           </Label>
           <Input
-            id="add-pack"
-            name="packSize"
+            id="add-min"
+            name="minQuantity"
             type="number"
-            inputMode="numeric"
-            min={1}
+            inputMode="decimal"
+            min={0}
             step="any"
-            placeholder="p. ej. 30"
+            placeholder="p. ej. 2"
           />
-          <p className="text-sm text-muted-foreground">
-            Si lo compras en cajas (p. ej. 30 sobres), pon cuántas unidades trae
-            cada compra.
-          </p>
         </div>
-      ) : null}
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="add-min">
-          Avísame cuando queden menos de{" "}
-          <span className="text-muted-foreground">(opcional)</span>
-        </Label>
-        <Input
-          id="add-min"
-          name="minQuantity"
-          type="number"
-          inputMode="decimal"
-          min={0}
-          step="any"
-          placeholder="p. ej. 2"
-        />
-      </div>
+        {unit === "ud" ? <ContentPerUnitFields idPrefix="add" /> : null}
+
+        {unit === "ud" ? (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="add-pack">
+              Unidades por compra{" "}
+              <span className="text-muted-foreground">(opcional)</span>
+            </Label>
+            <Input
+              id="add-pack"
+              name="packSize"
+              type="number"
+              inputMode="numeric"
+              min={1}
+              step="any"
+              placeholder="p. ej. 30"
+            />
+            <p className="text-sm text-muted-foreground">
+              Si lo compras en cajas (p. ej. 30 sobres), pon cuántas unidades
+              trae cada compra.
+            </p>
+          </div>
+        ) : null}
+      </CollapsibleFields>
     </>
   );
 }

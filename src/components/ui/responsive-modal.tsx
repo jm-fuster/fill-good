@@ -267,13 +267,26 @@ function ResponsiveModalHeader({
 
 function ResponsiveModalFooter({
   className,
+  sticky,
   ...props
-}: React.ComponentProps<"div">) {
+}: React.ComponentProps<"div"> & {
+  /**
+   * Fija las acciones al fondo del panel: en formularios largos, guardar y
+   * eliminar quedan siempre a la vista y el contenido scrollea por detrás. El
+   * `-mx-4` da fondo y separador de borde a borde, y asume el patrón de los
+   * paneles de la app (footer dentro de un `<form>` con `px-4`).
+   */
+  sticky?: boolean;
+}) {
   // Mismo layout apilado en ambos (botones a ancho completo, táctiles).
   return (
     <div
       data-slot="responsive-modal-footer"
-      className={cn("mt-auto flex flex-col gap-2 p-4", className)}
+      className={cn(
+        "mt-auto flex flex-col gap-2 p-4",
+        sticky && "sticky bottom-0 -mx-4 border-t bg-popover px-4",
+        className,
+      )}
       {...props}
     />
   );

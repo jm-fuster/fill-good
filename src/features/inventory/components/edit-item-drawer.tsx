@@ -6,6 +6,7 @@ import { Pencil, Star, Store, TrendingDown, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { CollapsibleFields } from "@/components/collapsible-fields";
 import { ProductIcon } from "@/components/product-icon";
 import { ProductIconPicker } from "@/components/product-icon-picker";
 import {
@@ -183,6 +184,13 @@ export function EditItemDrawer({
     if (unknown) groups.push({ chain: null, aliases: unknown });
     return groups;
   }, [aliases]);
+
+  // Dos nombres en la MISMA cadena es el caso que pide una revisión. Al quedar
+  // la lista plegada, el aviso sube a la cabecera de la sección: si no, el único
+  // sitio donde se veía deja de estar a la vista.
+  const hasSuspiciousAliases = aliasGroups.some(
+    (g) => g.chain !== null && g.aliases.length > 1,
+  );
 
   function removeAlias(id: string) {
     const prev = aliases;
@@ -433,98 +441,6 @@ export function EditItemDrawer({
             </Select>
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-chain" className="flex items-center gap-1.5">
-              <Store className="size-4 text-muted-foreground" aria-hidden />
-              Tienda preferida{" "}
-              <span className="text-muted-foreground">(opcional)</span>
-            </Label>
-            <Select
-              value={preferredChain === "" ? NO_CHAIN : preferredChain}
-              onValueChange={(v) =>
-                setPreferredChain(v === NO_CHAIN ? "" : v)
-              }
-            >
-              <SelectTrigger id="edit-chain" className="w-full">
-                <SelectValue placeholder="Cualquier tienda" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NO_CHAIN}>Cualquier tienda</SelectItem>
-                {groupChains ? (
-                  <>
-                    <SelectGroup>
-                      <SelectLabel>Tus tiendas</SelectLabel>
-                      {habitualChains.map(chainItem)}
-                    </SelectGroup>
-                    <SelectGroup>
-                      <SelectLabel>Otras</SelectLabel>
-                      {otherChains.map(chainItem)}
-                    </SelectGroup>
-                  </>
-                ) : (
-                  allChains.map(chainItem)
-                )}
-              </SelectContent>
-            </Select>
-            {entry.savings ? (
-              // Fase 3: otra cadena sale más barata según tus tickets. Informativo
-              // (acento cálido de precios); el aviso también aparece en la lista.
-              <div className="flex items-start gap-1.5 rounded-lg bg-chart-3/10 p-2 text-sm text-chart-3">
-                <TrendingDown className="mt-0.5 size-4 shrink-0" aria-hidden />
-                <span>
-                  En{" "}
-                  <span className="font-medium">
-                    {chainLabel(entry.savings.cheaperChain)}
-                  </span>{" "}
-                  ahorras ~{entry.savings.savingsPct}% frente a{" "}
-                  {chainLabel(entry.savings.currentChain)}, según tus tickets.
-                </span>
-              </div>
-            ) : preferredChain === "" && entry.inferredChain ? (
-              // Fase 2: pista inferida del histórico de tickets. Un toque la fija
-              // como preferencia manual (pasa a mandar sobre la inferencia).
-              <button
-                type="button"
-                onClick={() => setPreferredChain(entry.inferredChain as string)}
-                className="flex items-start gap-1.5 rounded-lg bg-muted/60 p-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
-              >
-                <Store className="mt-0.5 size-4 shrink-0" aria-hidden />
-                <span>
-                  Según tus tickets, sueles comprarlo en{" "}
-                  <span className="font-medium text-foreground">
-                    {chainLabel(entry.inferredChain)}
-                  </span>
-                  . Tócalo para fijarlo.
-                </span>
-              </button>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Dónde sueles comprarlo. Sirve para filtrar por tienda en el modo
-                compra.
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-location">Ubicación</Label>
-            <Select
-              value={location}
-              onValueChange={(v) => setLocation(v as LocationType)}
-              name="location"
-            >
-              <SelectTrigger id="edit-location" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {LOCATION_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-2">
               <Label htmlFor="edit-quantity">Cantidad</Label>
@@ -560,193 +476,317 @@ export function EditItemDrawer({
             </div>
           </div>
 
-          <ExpiryQuickPicker
-            id="edit-expiry"
-            name="expiryDate"
-            value={expiryDate}
-            onChange={setExpiryDate}
-          />
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="edit-min">
-              Avísame cuando queden menos de{" "}
-              <span className="text-muted-foreground">(opcional)</span>
-            </Label>
-            <Input
-              id="edit-min"
-              name="minQuantity"
-              type="number"
-              inputMode="decimal"
-              min={0}
-              step="any"
-              defaultValue={entry.minQuantity ?? ""}
+          {/* A la vista solo lo que se edita a diario (nombre, icono, categoría
+              y unidades); el resto son ajustes que se ponen una vez y casi nunca
+              se vuelven a tocar. Tenerlos todos desplegados dejaba las acciones
+              del panel fuera de pantalla en móvil. */}
+          <CollapsibleFields
+            title="Ajustes adicionales"
+            hint="Caducidad, ubicación, tienda y avisos de stock"
+          >
+            <ExpiryQuickPicker
+              id="edit-expiry"
+              name="expiryDate"
+              value={expiryDate}
+              onChange={setExpiryDate}
             />
-          </div>
 
-          {unit === "ud" ? (
-            <ContentPerUnitFields
-              idPrefix="edit"
-              defaultSize={entry.contentSize}
-              defaultUnit={entry.contentUnit}
-              defaultIsEstimate={entry.contentIsEstimate}
-            />
-          ) : null}
-
-          {unit === "ud" ? (
             <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-pack">
-                Unidades por compra{" "}
+              <Label htmlFor="edit-location">Ubicación</Label>
+              <Select
+                value={location}
+                onValueChange={(v) => setLocation(v as LocationType)}
+                name="location"
+              >
+                <SelectTrigger id="edit-location" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOCATION_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-chain" className="flex items-center gap-1.5">
+                <Store className="size-4 text-muted-foreground" aria-hidden />
+                Tienda preferida{" "}
+                <span className="text-muted-foreground">(opcional)</span>
+              </Label>
+              <Select
+                value={preferredChain === "" ? NO_CHAIN : preferredChain}
+                onValueChange={(v) =>
+                  setPreferredChain(v === NO_CHAIN ? "" : v)
+                }
+              >
+                <SelectTrigger id="edit-chain" className="w-full">
+                  <SelectValue placeholder="Cualquier tienda" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NO_CHAIN}>Cualquier tienda</SelectItem>
+                  {groupChains ? (
+                    <>
+                      <SelectGroup>
+                        <SelectLabel>Tus tiendas</SelectLabel>
+                        {habitualChains.map(chainItem)}
+                      </SelectGroup>
+                      <SelectGroup>
+                        <SelectLabel>Otras</SelectLabel>
+                        {otherChains.map(chainItem)}
+                      </SelectGroup>
+                    </>
+                  ) : (
+                    allChains.map(chainItem)
+                  )}
+                </SelectContent>
+              </Select>
+              {entry.savings ? (
+                // Fase 3: otra cadena sale más barata según tus tickets. Informativo
+                // (acento cálido de precios); el aviso también aparece en la lista.
+                <div className="flex items-start gap-1.5 rounded-lg bg-chart-3/10 p-2 text-sm text-chart-3">
+                  <TrendingDown className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <span>
+                    En{" "}
+                    <span className="font-medium">
+                      {chainLabel(entry.savings.cheaperChain)}
+                    </span>{" "}
+                    ahorras ~{entry.savings.savingsPct}% frente a{" "}
+                    {chainLabel(entry.savings.currentChain)}, según tus tickets.
+                  </span>
+                </div>
+              ) : preferredChain === "" && entry.inferredChain ? (
+                // Fase 2: pista inferida del histórico de tickets. Un toque la fija
+                // como preferencia manual (pasa a mandar sobre la inferencia).
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPreferredChain(entry.inferredChain as string)
+                  }
+                  className="flex items-start gap-1.5 rounded-lg bg-muted/60 p-2 text-left text-sm text-muted-foreground transition-colors hover:bg-muted"
+                >
+                  <Store className="mt-0.5 size-4 shrink-0" aria-hidden />
+                  <span>
+                    Según tus tickets, sueles comprarlo en{" "}
+                    <span className="font-medium text-foreground">
+                      {chainLabel(entry.inferredChain)}
+                    </span>
+                    . Tócalo para fijarlo.
+                  </span>
+                </button>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Dónde sueles comprarlo. Sirve para filtrar por tienda en el
+                  modo compra.
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-min">
+                Avísame cuando queden menos de{" "}
                 <span className="text-muted-foreground">(opcional)</span>
               </Label>
               <Input
-                id="edit-pack"
-                name="packSize"
+                id="edit-min"
+                name="minQuantity"
                 type="number"
-                inputMode="numeric"
-                min={1}
+                inputMode="decimal"
+                min={0}
                 step="any"
-                defaultValue={entry.packSize ?? ""}
+                defaultValue={entry.minQuantity ?? ""}
               />
-              <p className="text-sm text-muted-foreground">
-                Si lo compras en cajas (p. ej. 30 sobres), pon cuántas unidades
-                trae cada compra.
-              </p>
             </div>
-          ) : null}
 
-          <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
-            <Label htmlFor="edit-use-soon" className="flex flex-col gap-0.5">
-              <span>Consumir pronto</span>
-              <span className="text-sm font-normal text-muted-foreground">
-                Priorízalo en los menús aunque no caduque
-              </span>
-            </Label>
-            <Switch
-              id="edit-use-soon"
-              checked={useSoon}
-              onCheckedChange={setUseSoon}
-            />
-          </div>
+            {unit === "ud" ? (
+              <ContentPerUnitFields
+                idPrefix="edit"
+                defaultSize={entry.contentSize}
+                defaultUnit={entry.contentUnit}
+                defaultIsEstimate={entry.contentIsEstimate}
+              />
+            ) : null}
 
-          <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
-            <Label htmlFor="edit-pin" className="flex flex-col gap-0.5">
-              <span className="flex items-center gap-1.5">
-                <Star
-                  aria-hidden
-                  className={cn(
-                    "size-4",
-                    isPinned && "fill-current text-warning",
-                  )}
+            {unit === "ud" ? (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="edit-pack">
+                  Unidades por compra{" "}
+                  <span className="text-muted-foreground">(opcional)</span>
+                </Label>
+                <Input
+                  id="edit-pack"
+                  name="packSize"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  step="any"
+                  defaultValue={entry.packSize ?? ""}
                 />
-                Mis habituales
-              </span>
-              <span className="text-sm font-normal text-muted-foreground">
-                Ánclalo arriba en tu inventario
-              </span>
-            </Label>
-            <Switch
-              id="edit-pin"
-              checked={isPinned}
-              onCheckedChange={togglePin}
-              disabled={pinPending}
-            />
-          </div>
+                <p className="text-sm text-muted-foreground">
+                  Si lo compras en cajas (p. ej. 30 sobres), pon cuántas unidades
+                  trae cada compra.
+                </p>
+              </div>
+            ) : null}
 
-          {aliases.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">Nombres en tickets</span>
-              <p className="text-sm text-muted-foreground">
-                Cómo aparece en tus tickets, por tienda. Un nombre distinto en
-                cada tienda es normal; dos en la misma suelen ser una etiqueta
-                antigua. Bórralo si se asoció por error: no afecta a tu historial
-                de precios.
-              </p>
-              <ul className="flex flex-col gap-3">
-                {aliasGroups.map((group) => (
-                  <li
-                    key={group.chain ?? "__sin_tienda__"}
-                    className="flex flex-col gap-1.5"
-                  >
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-xs font-medium text-muted-foreground">
-                        {group.chain
-                          ? chainLabel(group.chain)
-                          : "Sin tienda identificada"}
-                      </span>
-                      {/* Solo es sospechoso dentro de una MISMA cadena: el grupo
-                          sin identificar mezcla tiendas y no prueba nada. */}
-                      {group.chain && group.aliases.length > 1 ? (
-                        <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
-                          {group.aliases.length} nombres
-                        </span>
-                      ) : null}
-                    </div>
-                    <ul className="flex flex-col gap-1.5">
-                      {group.aliases.map((a) => (
-                        <li
-                          key={a.id}
-                          className="flex items-center justify-between gap-2 rounded-lg border py-1 pr-1 pl-3"
-                        >
-                          <span className="min-w-0 flex-1 truncate text-sm">
-                            {a.alias}
-                            {a.lastSeenAt ? (
-                              <span className="ml-1.5 text-xs text-muted-foreground">
-                                {relativeDaysLabel(a.lastSeenAt.slice(0, 10))}
-                              </span>
-                            ) : null}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Borrar el nombre «${a.alias}»`}
-                            onClick={() => removeAlias(a.id)}
-                            disabled={removingAlias}
-                          >
-                            <X aria-hidden />
-                          </Button>
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-
-          {mergeCandidates.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              <span className="text-sm font-medium">
-                Fusionar con otro producto
-              </span>
-              <p className="text-sm text-muted-foreground">
-                Une este producto con otro: el historial de precios de ambos
-                se juntará en el que elijas. Esta acción no se puede deshacer.
-              </p>
-              <ProductCombobox
-                products={mergeCandidates}
-                value={mergeTarget}
-                onChange={setMergeTarget}
-                ariaLabel="Producto con el que fusionar"
-                placeholder="Buscar producto…"
-                triggerLabel="Elegir producto…"
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <Label htmlFor="edit-use-soon" className="flex flex-col gap-0.5">
+                <span>Consumir pronto</span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  Priorízalo en los menús aunque no caduque
+                </span>
+              </Label>
+              <Switch
+                id="edit-use-soon"
+                checked={useSoon}
+                onCheckedChange={setUseSoon}
               />
-              {mergeTarget ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={confirmMerge}
-                  disabled={merging}
-                >
-                  {merging
-                    ? "Fusionando…"
-                    : `Fusionar «${entry.productName}» en «${
-                        mergeCandidates.find((p) => p.id === mergeTarget)
-                          ?.name ?? "…"
-                      }»`}
-                </Button>
-              ) : null}
             </div>
+
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <Label htmlFor="edit-pin" className="flex flex-col gap-0.5">
+                <span className="flex items-center gap-1.5">
+                  <Star
+                    aria-hidden
+                    className={cn(
+                      "size-4",
+                      isPinned && "fill-current text-warning",
+                    )}
+                  />
+                  Mis habituales
+                </span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  Ánclalo arriba en tu inventario
+                </span>
+              </Label>
+              <Switch
+                id="edit-pin"
+                checked={isPinned}
+                onCheckedChange={togglePin}
+                disabled={pinPending}
+              />
+            </div>
+          </CollapsibleFields>
+
+          {/* Mantenimiento del catálogo: se toca una vez en la vida y lleva
+              texto largo, así que va en su propia sección y no mezclado con los
+              ajustes del día a día (fusionar, además, no se puede deshacer). */}
+          {aliases.length > 0 || mergeCandidates.length > 0 ? (
+            <CollapsibleFields
+              title="Nombres y duplicados"
+              hint="Cómo aparece en tus tickets y unir dos productos en uno"
+              badge={
+                hasSuspiciousAliases ? (
+                  <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
+                    Revisa los nombres
+                  </span>
+                ) : null
+              }
+            >
+              {aliases.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm font-medium">Nombres en tickets</span>
+                  <p className="text-sm text-muted-foreground">
+                    Cómo aparece en tus tickets, por tienda. Un nombre distinto
+                    en cada tienda es normal; dos en la misma suelen ser una
+                    etiqueta antigua. Bórralo si se asoció por error: no afecta a
+                    tu historial de precios.
+                  </p>
+                  <ul className="flex flex-col gap-3">
+                    {aliasGroups.map((group) => (
+                      <li
+                        key={group.chain ?? "__sin_tienda__"}
+                        className="flex flex-col gap-1.5"
+                      >
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {group.chain
+                              ? chainLabel(group.chain)
+                              : "Sin tienda identificada"}
+                          </span>
+                          {/* Solo es sospechoso dentro de una MISMA cadena: el
+                              grupo sin identificar mezcla tiendas y no prueba
+                              nada. */}
+                          {group.chain && group.aliases.length > 1 ? (
+                            <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
+                              {group.aliases.length} nombres
+                            </span>
+                          ) : null}
+                        </div>
+                        <ul className="flex flex-col gap-1.5">
+                          {group.aliases.map((a) => (
+                            <li
+                              key={a.id}
+                              className="flex items-center justify-between gap-2 rounded-lg border py-1 pr-1 pl-3"
+                            >
+                              <span className="min-w-0 flex-1 truncate text-sm">
+                                {a.alias}
+                                {a.lastSeenAt ? (
+                                  <span className="ml-1.5 text-xs text-muted-foreground">
+                                    {relativeDaysLabel(
+                                      a.lastSeenAt.slice(0, 10),
+                                    )}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                aria-label={`Borrar el nombre «${a.alias}»`}
+                                onClick={() => removeAlias(a.id)}
+                                disabled={removingAlias}
+                              >
+                                <X aria-hidden />
+                              </Button>
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+
+              {mergeCandidates.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm font-medium">
+                    Fusionar con otro producto
+                  </span>
+                  <p className="text-sm text-muted-foreground">
+                    Une este producto con otro: el historial de precios de ambos
+                    se juntará en el que elijas. Esta acción no se puede
+                    deshacer.
+                  </p>
+                  <ProductCombobox
+                    products={mergeCandidates}
+                    value={mergeTarget}
+                    onChange={setMergeTarget}
+                    ariaLabel="Producto con el que fusionar"
+                    placeholder="Buscar producto…"
+                    triggerLabel="Elegir producto…"
+                  />
+                  {mergeTarget ? (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={confirmMerge}
+                      disabled={merging}
+                    >
+                      {merging
+                        ? "Fusionando…"
+                        : `Fusionar «${entry.productName}» en «${
+                            mergeCandidates.find((p) => p.id === mergeTarget)
+                              ?.name ?? "…"
+                          }»`}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </CollapsibleFields>
           ) : null}
 
           {error ? (
@@ -755,7 +795,9 @@ export function EditItemDrawer({
             </p>
           ) : null}
 
-          <ResponsiveModalFooter className="gap-2 px-0">
+          {/* Acciones fijas al fondo: guardar, «lo tiré» y eliminar se ven sin
+              scroll incluso con los ajustes desplegados. */}
+          <ResponsiveModalFooter sticky className="gap-2">
             <Button type="submit" size="lg" loading={pending}>
               {pending ? "Guardando…" : "Guardar cambios"}
             </Button>

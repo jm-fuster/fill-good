@@ -439,6 +439,21 @@ export default function StyleguidePage() {
           </div>
 
           <div className="rounded-xl border p-4">
+            <p className="mb-1 font-medium">
+              <code>CollapsibleFields</code>
+            </p>
+            <p className="text-muted-foreground">
+              En un panel de formulario, a la vista solo los campos del día a
+              día; el resto va plegado en{" "}
+              <code>&laquo;Ajustes adicionales&raquo;</code> para que las
+              acciones (guardar, eliminar) se lean sin scroll en móvil. Lo
+              plegado se oculta con CSS y sigue montado: las Server Actions leen
+              el <code>FormData</code> completo y un campo ausente se guarda como
+              vacío. Acompáñalo de <code>ResponsiveModalFooter sticky</code>.
+            </p>
+          </div>
+
+          <div className="rounded-xl border p-4">
             <p className="mb-1 font-medium">FAB → header</p>
             <p className="text-muted-foreground">
               La acción primaria es un FAB flotante en móvil y un botón en el
