@@ -828,11 +828,16 @@ function ListRow({
           // y se pierde justo el dato que evita multiplicar de más.
           aria-label={total ? `Editar ${item.name} ${total}` : `Editar ${item.name}`}
           onClick={() => onEdit(item)}
-          className="flex min-h-12 flex-1 items-center text-left text-sm"
+          // `min-w-0` + `break-words`: un nombre sin espacios (hasta 120
+          // caracteres válidos) no tiene punto de corte, y el mínimo implícito
+          // de flex (min-width: auto) ensancharía la fila entera hasta sacar el
+          // stepper y la papelera de la pantalla. Mismo patrón que la tarjeta
+          // de inventario.
+          className="flex min-h-12 min-w-0 flex-1 items-center text-left text-sm"
         >
           <span
             className={cn(
-              "flex-1 underline decoration-dotted decoration-muted-foreground/30 underline-offset-4",
+              "min-w-0 flex-1 break-words underline decoration-dotted decoration-muted-foreground/30 underline-offset-4",
               item.isChecked && "text-muted-foreground line-through",
             )}
           >

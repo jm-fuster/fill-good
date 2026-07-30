@@ -932,8 +932,11 @@ function ShoppingModeRowItem({
             className={cn(item.isChecked && "opacity-50")}
           />
           <span
+            // `break-words`: el `min-w-0` deja encoger la caja, pero un nombre
+            // sin espacios no tiene por dónde partirse y desbordaba pintándose
+            // encima del precio y del stepper.
             className={cn(
-              "min-w-0 flex-1 text-base",
+              "min-w-0 flex-1 break-words text-base",
               item.isChecked && "text-muted-foreground line-through",
             )}
           >
