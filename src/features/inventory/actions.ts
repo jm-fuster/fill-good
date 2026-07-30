@@ -10,7 +10,7 @@ import { getCurrentHousehold } from "@/features/household/queries";
 import { refreshPriceInsights } from "@/features/prices/materialize";
 import { getProductCatalog } from "@/features/shopping-list/queries";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
-import { UNIT_LABELS } from "@/lib/units";
+import { formatQuantity, LOCATION_LABELS, UNIT_LABELS } from "@/lib/units";
 import {
   addInventorySchema,
   editInventorySchema,
@@ -377,7 +377,7 @@ export async function updateInventoryAction(
   // Ubicación de destino: si ya existe una fila del mismo producto en esa
   // ubicación (unique household_id, product_id, location), fusionamos sumando
   // cantidades y borramos la fila movida; si no, movemos la fila.
-  const { data: target } = await supabase
+  const { data: occupant } = await supabase
     .from("inventory_items")
     .select("id, quantity, unit")
     .eq("household_id", household.id)
@@ -386,14 +386,40 @@ export async function updateInventoryAction(
     .neq("id", d.inventoryId)
     .maybeSingle();
 
-  if (target) {
-    // Sumar magnitudes de unidades distintas (2 ud + 0,7 kg) daría un número sin
-    // significado, así que se rechaza en vez de fusionar a ciegas.
-    if (d.unit && target.unit !== d.unit) {
+  // Sumar magnitudes de unidades distintas (2 ud + 0,7 kg) daría un número sin
+  // significado, así que se rechaza en vez de fusionar a ciegas. Pero solo hay
+  // conflicto REAL si ambas filas tienen stock: una fila a cero no aporta
+  // magnitud, así que se elimina y el movimiento sigue (su historial vive en
+  // inventory_events, no se pierde). Sin esto, la fila agotada que dejaba una
+  // fusión de duplicados bloqueaba el movimiento sin nada visible que unificar.
+  let target = occupant;
+  if (target && d.unit && target.unit !== d.unit) {
+    if (Number(target.quantity) === 0) {
+      const { error: delErr } = await supabase
+        .from("inventory_items")
+        .delete()
+        .eq("household_id", household.id)
+        .eq("id", target.id);
+      if (delErr) return { error: "No se pudo mover el producto." };
+      target = null;
+    } else if (d.quantity === 0) {
+      // La fila movida es la vacía: quitarla y dejar intacta la del destino.
+      const { error: delErr } = await supabase
+        .from("inventory_items")
+        .delete()
+        .eq("household_id", household.id)
+        .eq("id", d.inventoryId);
+      if (delErr) return { error: "No se pudo mover el producto." };
+      revalidatePath("/inventario");
+      return { ok: true };
+    } else {
       return {
-        error: `Ya tienes este producto en esa ubicación medido en ${UNIT_LABELS[target.unit]}. Unifica la unidad antes de moverlo.`,
+        error: `En ${LOCATION_LABELS[d.location].toLowerCase()} ya tienes ${formatQuantity(Number(target.quantity), target.unit)} de este producto, y esta fila va en ${UNIT_LABELS[d.unit]}. Unifica las unidades antes de moverlo.`,
       };
     }
+  }
+
+  if (target) {
     const { error: mergeErr } = await supabase
       .from("inventory_items")
       .update({
