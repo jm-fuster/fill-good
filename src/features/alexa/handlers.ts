@@ -176,6 +176,20 @@ async function requireLink(
   if (!amazonUserId) return { ok: false, response: notLinkedResponse() };
   const link = await findLink(admin, amazonUserId);
   if (!link) return { ok: false, response: notLinkedResponse() };
+  // La membresía puede perderse DESPUÉS de vincular (salir del hogar, ser
+  // expulsado). Este cliente es service-role, sin RLS que lo pare, así que el
+  // vínculo se re-verifica en cada petición y muere aquí si ya no procede; la
+  // migración 20260731180000 limpia además al salir/expulsar.
+  const { data: member } = await admin
+    .from("household_members")
+    .select("user_id")
+    .eq("household_id", link.householdId)
+    .eq("user_id", link.userId)
+    .maybeSingle();
+  if (!member) {
+    await admin.from("alexa_links").delete().eq("id", link.id);
+    return { ok: false, response: notLinkedResponse() };
+  }
   return { ok: true, link };
 }
 
@@ -1000,11 +1014,18 @@ async function runApuntar(
       .eq("household_id", link.householdId)
       .eq("product_id", item.productId)
       .gt("quantity", 0);
-    const total = (inv ?? []).reduce((sum, row) => sum + Number(row.quantity), 0);
-    if (total > 0 && inv?.[0]) {
-      warning = SPEECH.listStockWarning(
-        speakQuantity(roundQuantity(total), inv[0].unit),
-      );
+    // Los lotes pueden estar en unidades distintas (500 g en despensa, 2 ud en
+    // nevera): sumarlos a lo bruto diría «502 unidades». Un total por unidad,
+    // como hace summarizeStock.
+    const byUnit = new Map<UnitType, number>();
+    for (const row of inv ?? []) {
+      byUnit.set(row.unit, (byUnit.get(row.unit) ?? 0) + Number(row.quantity));
+    }
+    const parts = [...byUnit.entries()]
+      .filter(([, total]) => total > 0)
+      .map(([u, total]) => speakQuantity(roundQuantity(total), u));
+    if (parts.length > 0) {
+      warning = SPEECH.listStockWarning(parts.join(" y "));
     }
   }
 
@@ -1974,6 +1995,22 @@ async function handleVincular(
     .maybeSingle();
   if (!found) {
     // Solo cuentan los intentos FALLIDOS, igual que en join_household_by_code.
+    await admin.from("alexa_link_attempts").insert({ amazon_user_id: amazonUserId });
+    return speak(SPEECH.linkCodeInvalid, { card: linkCard() });
+  }
+
+  // Un código generado justo antes de salir del hogar (o de una expulsión)
+  // sobreviviría a la limpieza si nadie lo re-comprueba: el canje solo vale si
+  // quien lo generó sigue siendo miembro. Se trata como código inválido, sin
+  // revelar el porqué.
+  const { data: stillMember } = await admin
+    .from("household_members")
+    .select("user_id")
+    .eq("household_id", found.household_id)
+    .eq("user_id", found.user_id)
+    .maybeSingle();
+  if (!stillMember) {
+    await admin.from("alexa_link_codes").delete().eq("code", code);
     await admin.from("alexa_link_attempts").insert({ amazon_user_id: amazonUserId });
     return speak(SPEECH.linkCodeInvalid, { card: linkCard() });
   }

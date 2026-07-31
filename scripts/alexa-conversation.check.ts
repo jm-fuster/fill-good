@@ -130,6 +130,9 @@ function fakeAdmin(tables: Record<string, TableData>): SupabaseClient<Database> 
 }
 
 const LINK = { single: { id: "l1", household_id: "h1", user_id: "u1" } };
+// El vínculo va siempre con su membresía viva: requireLink la re-verifica en
+// cada petición (auditoría 2026-07-31). Sin esta fila, el vínculo se borra.
+const MIEMBRO = { single: { user_id: "u1" } };
 const LISTA = { single: { id: "list1" } };
 
 const YOGUR_NATURAL = {
@@ -153,7 +156,7 @@ const SEIS_YOGURES = {
 };
 
 const YOGURES = fakeAdmin({
-  alexa_links: LINK,
+  alexa_links: LINK, household_members: MIEMBRO,
   products: { list: [YOGUR_NATURAL] },
   inventory_items: SEIS_YOGURES,
   shopping_lists: LISTA,
@@ -163,14 +166,14 @@ const YOGURES = fakeAdmin({
 
 /** Dos productos que se parecen: el caso que obliga a preguntar. */
 const DOS_YOGURES = fakeAdmin({
-  alexa_links: LINK,
+  alexa_links: LINK, household_members: MIEMBRO,
   products: { list: [YOGUR_NATURAL, YOGUR_GRIEGO] },
   inventory_items: SEIS_YOGURES,
   shopping_lists: LISTA,
 });
 
 const ARROZ = fakeAdmin({
-  alexa_links: LINK,
+  alexa_links: LINK, household_members: MIEMBRO,
   products: {
     list: [
       {
@@ -190,7 +193,7 @@ const ARROZ = fakeAdmin({
   shopping_lists: LISTA,
 });
 
-const VACIO = fakeAdmin({ alexa_links: LINK, shopping_lists: LISTA });
+const VACIO = fakeAdmin({ alexa_links: LINK, household_members: MIEMBRO, shopping_lists: LISTA });
 
 /** Un Echo que todavía no se ha vinculado con ningún hogar. */
 const SIN_VINCULO = fakeAdmin({});
@@ -200,7 +203,7 @@ const HOY = todayLocalISO();
 
 /** Hogar con cosas que decir: lista con artículos y dos productos que caducan. */
 const CON_AVISOS = fakeAdmin({
-  alexa_links: LINK,
+  alexa_links: LINK, household_members: MIEMBRO,
   shopping_lists: LISTA,
   shopping_list_items: {
     list: [
@@ -227,7 +230,7 @@ const CON_AVISOS = fakeAdmin({
 });
 
 const CON_MENU = fakeAdmin({
-  alexa_links: LINK,
+  alexa_links: LINK, household_members: MIEMBRO,
   shopping_lists: LISTA,
   weekly_menus: { single: { id: "m1" } },
   menu_entries: {
@@ -253,7 +256,7 @@ const CON_MENU = fakeAdmin({
 
 /** Hogar con la cena de hoy planificada y su receta detrás. */
 const CON_RECETA = fakeAdmin({
-  alexa_links: LINK,
+  alexa_links: LINK, household_members: MIEMBRO,
   weekly_menus: { single: { id: "m1" } },
   menu_entries: {
     list: [
@@ -705,7 +708,7 @@ async function main() {
   }
   {
     const muchos = fakeAdmin({
-      alexa_links: LINK,
+      alexa_links: LINK, household_members: MIEMBRO,
       shopping_lists: LISTA,
       shopping_list_items: {
         list: Array.from({ length: 11 }, (_, i) => ({
@@ -970,7 +973,7 @@ async function main() {
   }
   {
     const dosLeches = fakeAdmin({
-      alexa_links: LINK,
+      alexa_links: LINK, household_members: MIEMBRO,
       shopping_lists: LISTA,
       shopping_list_items: {
         list: [
@@ -996,7 +999,7 @@ async function main() {
   }
   {
     const ultimo = fakeAdmin({
-      alexa_links: LINK,
+      alexa_links: LINK, household_members: MIEMBRO,
       shopping_lists: LISTA,
       shopping_list_items: {
         list: [{ id: "z", name: "Pan", is_checked: false, product: null }],
@@ -1071,7 +1074,7 @@ async function main() {
   }
   {
     const dosLeches = fakeAdmin({
-      alexa_links: LINK,
+      alexa_links: LINK, household_members: MIEMBRO,
       shopping_lists: LISTA,
       shopping_list_items: {
         list: [
@@ -1130,7 +1133,7 @@ async function main() {
   }
   {
     const conDeshacer = fakeAdmin({
-      alexa_links: LINK,
+      alexa_links: LINK, household_members: MIEMBRO,
       alexa_requests: {
         single: {
           request_id: "r-anterior",
@@ -1175,7 +1178,7 @@ async function main() {
   {
     // Lote que creó la propia orden: deshacerlo es que no exista, no dejarlo a 0.
     const conAlta = fakeAdmin({
-      alexa_links: LINK,
+      alexa_links: LINK, household_members: MIEMBRO,
       alexa_requests: {
         single: {
           request_id: "r-alta",
@@ -1209,7 +1212,7 @@ async function main() {
   }
   {
     const yaDeshecho = fakeAdmin({
-      alexa_links: LINK,
+      alexa_links: LINK, household_members: MIEMBRO,
       alexa_requests: {
         single: {
           request_id: "r-ya",
@@ -1232,7 +1235,7 @@ async function main() {
   }
   {
     const corrupto = fakeAdmin({
-      alexa_links: LINK,
+      alexa_links: LINK, household_members: MIEMBRO,
       alexa_requests: {
         single: {
           request_id: "r-raro",
@@ -1366,7 +1369,7 @@ async function main() {
   }
   {
     const yaCocinado = fakeAdmin({
-      alexa_links: LINK,
+      alexa_links: LINK, household_members: MIEMBRO,
       weekly_menus: { single: { id: "m1" } },
       menu_entries: {
         list: [
@@ -1399,7 +1402,7 @@ async function main() {
   }
   {
     const textoLibre = fakeAdmin({
-      alexa_links: LINK,
+      alexa_links: LINK, household_members: MIEMBRO,
       weekly_menus: { single: { id: "m1" } },
       menu_entries: {
         list: [
@@ -1429,7 +1432,7 @@ async function main() {
   }
   {
     const dosPlatos = fakeAdmin({
-      alexa_links: LINK,
+      alexa_links: LINK, household_members: MIEMBRO,
       weekly_menus: { single: { id: "m1" } },
       menu_entries: {
         list: [
@@ -1474,6 +1477,33 @@ async function main() {
       "un plato que hoy no está en el menú se dice",
       text(r) === SPEECH.cookedNoDish,
       text(r),
+    );
+  }
+
+  console.log("\n15. Un ex-miembro se queda sin voz");
+  {
+    // Vínculo vivo pero sin membresía: quien vinculó el Echo salió del hogar
+    // (o fue expulsado) después. Debe responder como «sin vincular» y borrar
+    // el vínculo huérfano, no seguir sirviendo datos del hogar.
+    const EX_MIEMBRO = fakeAdmin({ alexa_links: LINK, shopping_lists: LISTA });
+    const r = await run(
+      {
+        type: "LaunchRequest",
+        requestId: "r-exmiembro-1",
+        timestamp: "2026-07-29T10:00:00Z",
+        locale: "es-ES",
+      },
+      undefined,
+      EX_MIEMBRO,
+    );
+    check(
+      "responde como si no hubiera vínculo",
+      text(r) === SPEECH.notLinked,
+      text(r),
+    );
+    check(
+      "y el vínculo huérfano se borra",
+      escriturasEn(EX_MIEMBRO, "alexa_links").some((e) => e.op === "delete"),
     );
   }
 
