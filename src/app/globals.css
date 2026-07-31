@@ -136,7 +136,20 @@
   /* Semánticos: destructive = caducado/eliminar, warning = caduca pronto, success = ok/en stock */
   --destructive: oklch(0.53 0.19 27);
   --destructive-foreground: oklch(0.985 0.005 150);
-  --success: oklch(0.52 0.12 152);
+  /*
+    Va MÁS OSCURO que sus hermanos a propósito, y no se puede aclarar «para que
+    combine»: la L de oklch es lightness percibida, pero el contraste WCAG se
+    calcula con luminancia relativa, donde el verde pesa 0,7152 de los tres
+    canales. Medido: a L 0,52 este verde tenía luminancia 0,1517, MÁS que el rojo
+    de destructive a L 0,53 (0,1304) y que el ámbar de warning a L 0,50 (0,1208).
+    O sea que con la misma L «de diseño» el verde contrasta bastante menos, y el
+    badge `bg-success/15 text-success` de caducidad correcta se quedaba en 4,25:1
+    sobre `bg-card` — por debajo del 4,5 que pide AA para `text-xs` (jul-2026).
+    A 0,48 el par pasa en las dos superficies con margen: 4,95 sobre `bg-card` y
+    4,83 sobre `bg-background`. Bajar el tinte NO era alternativa: había que
+    llegar a /8 para aprobar, y eso rompía la escala /15 común a los tres badges.
+  */
+  --success: oklch(0.48 0.12 152);
   --success-foreground: oklch(0.985 0.005 150);
   --warning: oklch(0.5 0.11 70);
   --warning-foreground: oklch(0.985 0.005 150);

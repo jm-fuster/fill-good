@@ -138,6 +138,21 @@ export default function StyleguidePage() {
             </div>
           ))}
         </div>
+        <p className="mt-4 text-sm text-muted-foreground">
+          <strong className="font-medium text-foreground">
+            El verde de <code>success</code> va más oscuro que sus hermanos y no
+            se puede aclarar «para que combine».
+          </strong>{" "}
+          La <code>L</code> de <code>oklch()</code> es lightness percibida, pero
+          el contraste WCAG se calcula con luminancia relativa, y ahí el verde
+          pesa 0,7152 de los tres canales. A la misma <code>L</code> de diseño el
+          verde contrasta bastante menos que el rojo o el ámbar: medido, a{" "}
+          <code>L 0,52</code> tenía más luminancia (0,1517) que{" "}
+          <code>destructive</code> a <code>L 0,53</code> (0,1304). Por eso el
+          badge <code>success/15</code> se quedaba en 4,25:1 y hubo que bajar el
+          token a <code>L 0,48</code>. Moraleja para cualquier token nuevo:{" "}
+          <em>la misma L no da el mismo contraste en dos tonos distintos</em>.
+        </p>
         <p className="mt-4 mb-2 text-sm font-medium">
           Charts (series: supermercados, categorías) — chart-3 es el acento
           cálido de precios
