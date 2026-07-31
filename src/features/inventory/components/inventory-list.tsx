@@ -143,7 +143,9 @@ export function InventoryList({
     <div className="flex flex-col gap-4 pb-fab md:pb-0">
       <div className="flex flex-col gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="inv-search">Buscar en el inventario</Label>
+          <Label htmlFor="inv-search" className="sr-only">
+            Buscar producto o categoría
+          </Label>
           <div className="relative">
             <Search
               aria-hidden
@@ -153,7 +155,7 @@ export function InventoryList({
               id="inv-search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Producto o categoría…"
+              placeholder="Buscar producto o categoría"
               autoComplete="off"
               className="pl-9 pr-9"
             />

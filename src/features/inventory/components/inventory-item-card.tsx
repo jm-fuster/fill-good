@@ -220,7 +220,14 @@ export function InventoryItemCard({
           )}
           {inList ? "Quitar" : "A la lista"}
         </button>
-        <div className="rounded-xl border bg-card" {...swipeProps}>
+        {/* `h-full` es obligatorio, no cosmético: el ítem de la rejilla es ahora
+            el envoltorio del gesto, y se estira a la altura de la fila (ver
+            `InventorySection`). Sin esto, la tarjeta se queda en su alto de
+            contenido y el botón —que sí ocupa el envoltorio entero— se ve por
+            debajo: 24 px de verde asomando en toda tarjeta de una línea que
+            comparta fila con una de dos. Además devuelve las tarjetas a la misma
+            altura por fila, que es como se veían antes del gesto. */}
+        <div className="h-full rounded-xl border bg-card" {...swipeProps}>
           <div className="flex items-center gap-3 p-3">
             <button
               type="button"
