@@ -23,8 +23,6 @@ export const singleDishSchema = z.object({
   ),
 });
 
-export type SingleDishGeneration = z.infer<typeof singleDishSchema>;
-
 /** Contrato del menú semanal generado por IA (comida + cena, 7 días). */
 export const menuSchema = z.object({
   days: z
@@ -78,5 +76,3 @@ export const menuSchema = z.object({
     )
     .describe("Exactamente 7 días (day_index 0 a 6), cada uno con comida y cena."),
 });
-
-export type MenuGeneration = z.infer<typeof menuSchema>;

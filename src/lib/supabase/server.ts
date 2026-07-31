@@ -37,6 +37,3 @@ export function createServerSupabaseClient() {
     global: { fetch: fetchWithJwtRetry },
   });
 }
-
-/** true si las variables de Supabase están configuradas. */
-export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_KEY);

@@ -68,6 +68,3 @@ export const customChainSchema = z
     (name) => matchBuiltInChain(name) === null,
     "Esa cadena ya está en la lista de arriba: márcala ahí.",
   );
-
-export type CreateHouseholdInput = z.infer<typeof createHouseholdSchema>;
-export type JoinHouseholdInput = z.infer<typeof joinHouseholdSchema>;

@@ -5,8 +5,6 @@ import { getActiveHouseholdId } from "@/features/household/queries";
 import { shiftDays, todayLocalISO } from "@/lib/dates";
 import type { MenuRuleKind } from "./rules";
 
-export type MealSlot = "lunch" | "dinner";
-
 export type MenuEntry = {
   id: string;
   date: string;
@@ -348,39 +346,3 @@ export async function getMenuPrefs(): Promise<MenuPrefs> {
   };
 }
 
-export type RecipeDetail = {
-  name: string;
-  description: string | null;
-  servings: number;
-  ingredients: { name: string; quantity: number | null; unit: string | null }[];
-};
-
-export async function getRecipe(recipeId: string): Promise<RecipeDetail | null> {
-  const householdId = await getActiveHouseholdId();
-  if (!householdId) return null;
-  const supabase = createServerSupabaseClient();
-  const [{ data: recipe }, { data: ingredients }] = await Promise.all([
-    supabase
-      .from("recipes")
-      .select("name, description, servings")
-      .eq("household_id", householdId)
-      .eq("id", recipeId)
-      .maybeSingle(),
-    supabase
-      .from("recipe_ingredients")
-      .select("name, quantity, unit")
-      .eq("household_id", householdId)
-      .eq("recipe_id", recipeId),
-  ]);
-  if (!recipe) return null;
-  return {
-    name: recipe.name,
-    description: recipe.description,
-    servings: recipe.servings,
-    ingredients: (ingredients ?? []).map((i) => ({
-      name: i.name,
-      quantity: i.quantity === null ? null : Number(i.quantity),
-      unit: i.unit,
-    })),
-  };
-}

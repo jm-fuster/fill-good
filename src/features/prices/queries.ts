@@ -6,8 +6,6 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getActiveHouseholdId } from "@/features/household/queries";
 import type { UnitType } from "@/lib/supabase/types";
 import type { UnitContent } from "@/lib/units";
-import { computeInferredChains } from "./infer-chain";
-import { computeChainSavings, type ChainSavingsTip } from "./chain-savings";
 
 export type PriceOverviewRow = {
   productId: string;
@@ -166,95 +164,6 @@ export const getLatestUnitPrices = cache(async (): Promise<
     });
   }
   return map;
-});
-
-/**
- * Cadena inferida por producto (L15, fase 2) a partir del histórico de tickets:
- * mapa productId → cadena habitual, solo para productos con señal clara (ver
- * infer-chain.ts). Es la tienda "de facto"; la preferencia manual la sobrescribe
- * en quien consume este mapa. Sin embed de products → sin ambigüedad de FK.
- *
- * Sigue existiendo para /precios y el modo compra; las pestañas (inventario /
- * lista) leen la columna materializada. Envuelto en cache() para deduplicar
- * recomputaciones dentro de un mismo render.
- */
-export const getInferredChains = cache(
-  async (): Promise<Map<string, string>> => {
-    const householdId = await getActiveHouseholdId();
-    if (!householdId) return new Map();
-    const supabase = createServerSupabaseClient();
-    const { data, error } = await supabase
-      .from("receipt_items")
-      .select("product_id, store_chain")
-      .eq("household_id", householdId)
-      .not("product_id", "is", null)
-      .not("store_chain", "is", null);
-    if (error) throw error;
-    return computeInferredChains(data ?? []);
-  },
-);
-
-/**
- * Aviso de ahorro por producto (L15, fase 3): mapa productId → tip cuando la
- * cadena donde compras el producto (efectiva = manual ?? inferida) NO es la más
- * barata de tu histórico y el ahorro es sustancial. Cruza la comparativa de
- * precios (M9) con la preferencia; sin embed de products → sin PGRST201.
- *
- * Sigue existiendo para /precios; las pestañas leen la columna materializada.
- * Envuelto en cache() para deduplicar recomputaciones dentro de un mismo render.
- */
-export const getChainSavingsTips = cache(async (): Promise<
-  Map<string, ChainSavingsTip>
-> => {
-  const householdId = await getActiveHouseholdId();
-  if (!householdId) return new Map();
-  const supabase = createServerSupabaseClient();
-  const [{ data: rows, error }, { data: products, error: prodErr }] =
-    await Promise.all([
-      supabase
-        .from("receipt_items")
-        .select("product_id, total_price, quantity, store_chain")
-        .eq("household_id", householdId)
-        .not("product_id", "is", null)
-        .not("total_price", "is", null)
-        .not("store_chain", "is", null),
-      supabase
-        .from("products")
-        .select("id, preferred_chain")
-        .eq("household_id", householdId),
-    ]);
-  if (error) throw error;
-  if (prodErr) throw prodErr;
-
-  // Cadena manual por producto e inferida del mismo histórico.
-  const manual = new Map(
-    (products ?? []).map((p) => [p.id, p.preferred_chain]),
-  );
-  const inferred = computeInferredChains(rows ?? []);
-
-  // Puntos de precio por producto (precio unitario = total / cantidad, igual que
-  // el resto de precios de la app).
-  const pointsByProduct = new Map<
-    string,
-    { unitPrice: number; storeChain: string }[]
-  >();
-  for (const r of rows ?? []) {
-    if (!r.product_id || r.total_price === null || !r.store_chain) continue;
-    const qty = Number(r.quantity) || 1;
-    const point = { unitPrice: Number(r.total_price) / qty, storeChain: r.store_chain };
-    const arr = pointsByProduct.get(r.product_id);
-    if (arr) arr.push(point);
-    else pointsByProduct.set(r.product_id, [point]);
-  }
-
-  const tips = new Map<string, ChainSavingsTip>();
-  for (const [productId, points] of pointsByProduct) {
-    const effective = manual.get(productId) ?? inferred.get(productId) ?? null;
-    if (!effective) continue;
-    const tip = computeChainSavings(points, effective);
-    if (tip) tips.set(productId, tip);
-  }
-  return tips;
 });
 
 export async function getProductPriceHistory(

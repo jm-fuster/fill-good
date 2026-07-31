@@ -93,5 +93,4 @@ export function buildReceiptSchema(chains: string[]) {
   });
 }
 
-export type ReceiptExtraction = z.infer<ReturnType<typeof buildReceiptSchema>>;
 export type ReceiptItemExtraction = z.infer<typeof receiptItemSchema>;
