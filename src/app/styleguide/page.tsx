@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, ShoppingCart, Trash2 } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -237,9 +237,9 @@ export default function StyleguidePage() {
 
       <Section
         title="Badges de estado"
-        description="Estados de inventario y caducidad, siempre con estos pares token/uso."
+        description="Estados de inventario y caducidad, siempre con estos pares token/uso. El tinte está reservado a la caducidad: los tres colores son la MISMA escala (frescura), así que lo que no es una fecha no se tiñe. «Agotado» va neutro (outline) y se distingue por forma —borde, sin relleno—; si compartiera el ámbar de «caduca pronto», una tarjeta vacía se leería como comida a punto de echarse a perder."
       >
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Badge className="border-success/30 bg-success/15 text-success">
             En stock
           </Badge>
@@ -250,7 +250,21 @@ export default function StyleguidePage() {
             Caducado
           </Badge>
           <Badge variant="secondary">Congelador</Badge>
-          <Badge variant="outline">Sin stock</Badge>
+          <Badge variant="outline">Agotado</Badge>
+        </div>
+        <p className="mt-4 text-sm text-muted-foreground">
+          Y lo que no es un estado del producto tampoco lleva pill: «está en la
+          lista de la compra» se dice con el carrito en <code>text-primary</code>{" "}
+          —el mismo icono del gesto, del interruptor de la ficha y del selector de{" "}
+          <code>/lista</code>—. Suelto a propósito: <code>primary</code> y{" "}
+          <code>success</code> son casi el mismo verde y un pill verde con
+          carrito se confundiría con el de caducidad.
+        </p>
+        <div className="mt-3 flex items-center gap-1.5 rounded-xl border bg-card p-3 text-sm">
+          <span className="font-medium">Leche entera</span>
+          <span className="text-muted-foreground">2 ud</span>
+          <ShoppingCart aria-hidden className="size-3.5 text-primary" />
+          <span className="sr-only">En la lista de la compra</span>
         </div>
       </Section>
 

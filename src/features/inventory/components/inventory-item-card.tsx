@@ -171,6 +171,21 @@ export function InventoryItemCard({
   );
   const emptied = status.out;
   const inList = listOverride ?? onList;
+  // El `aria-label` del botón SUSTITUYE a su contenido, así que todo lo que
+  // dicen los badges (y el carrito) hay que repetirlo aquí o no existe para un
+  // lector de pantalla: hasta ahora se oía «Editar leche, botón» y ni una
+  // palabra de que estaba caducada. La cantidad no entra —el stepper ya la
+  // anuncia en su propia región `aria-live`— y «en la lista» solo cuando queda
+  // algo, porque en agotado lo dice el botón del pie con su propio texto.
+  const stateLabel = [
+    emptied ? "agotado" : null,
+    expiry ? expiryLabel(expiry.days).toLowerCase() : null,
+    status.low ? "quedan pocas" : null,
+    entry.useSoon ? "consumir pronto" : null,
+    inList && !emptied ? "en la lista de la compra" : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
 
   // Deslizar la tarjeta a la DERECHA destapa el atajo a la lista, espejado
   // respecto a `/lista`, donde se arrastra a la izquierda para quitar: lo que se
@@ -232,7 +247,11 @@ export function InventoryItemCard({
               type="button"
               onClick={() => setEditing(true)}
               className="flex min-w-0 flex-1 items-start gap-3 text-left"
-              aria-label={`Editar ${entry.productName}`}
+              aria-label={
+                stateLabel
+                  ? `Editar ${entry.productName}, ${stateLabel}`
+                  : `Editar ${entry.productName}`
+              }
             >
               {/* Icono del producto: grande, dentro de la tarjeta, arriba a la
                   izquierda (sin caja). Decorativo. */}
@@ -253,10 +272,19 @@ export function InventoryItemCard({
                   {entry.productName}
                 </span>
                 <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                  {/* Agotado NO va en la escala de caducidad. El tinte de esta
+                      fila significa frescura —rojo caducado, ámbar caduca
+                      pronto, verde le quedan días—, y «agotado» no es una fecha:
+                      es que hay cero. Con el mismo ámbar que «caduca pronto» y
+                      «consumir pronto», una tarjeta vacía se leía como comida a
+                      punto de echarse a perder. Neutro (`outline`, que es lo que
+                      el styleguide fija para sin stock) lo saca de la escala: se
+                      distingue de los tres tintes por FORMA —borde y sin
+                      relleno—, no por matiz, y acompaña al icono y al nombre,
+                      que ya se apagan al vaciarse. Que hay que comprarlo lo dice
+                      el botón del pie, que además se puede tocar. */}
                   {emptied ? (
-                    <Badge className="border-transparent bg-warning/15 text-warning">
-                      Agotado
-                    </Badge>
+                    <Badge variant="outline">Agotado</Badge>
                   ) : (
                     <span className="text-sm text-muted-foreground">
                       {formatQuantity(qty, entry.unit)}
@@ -285,6 +313,29 @@ export function InventoryItemCard({
                     <Badge className="border-transparent bg-warning/15 text-warning">
                       Consumir pronto
                     </Badge>
+                  ) : null}
+                  {/* «Ya lo llevas apuntado», a la vista sin abrir la ficha.
+                      Antes solo se sabía en agotado (el botón del pie) o abriendo
+                      la ficha, así que recorriendo el inventario para hacer la
+                      compra no había manera de ver qué habías apuntado ya: o lo
+                      apuntabas dos veces (y L3 lo fusiona, o sea que acababas
+                      con «2») o te ibas a `/lista` a comprobarlo.
+                      Un carrito suelto, no un badge más, por dos motivos: esta
+                      fila habla del estado del producto y esto no es un estado
+                      suyo, y `primary` es casi el mismo verde que `success`, así
+                      que un pill verde con carrito se confundiría con el «caduca
+                      en 5 días». Un glifo junto a un pill no se confunde con él.
+                      El carrito y el verde son los mismos que dicen «en la
+                      lista» en el interruptor de la ficha y en el selector de
+                      `/lista`. En agotado no se pinta: el botón del pie ya lo
+                      dice con palabras a dos centímetros. Lo oye un lector de
+                      pantalla por `stateLabel` (el `aria-label` del botón tapa
+                      lo de dentro, un `sr-only` aquí no se leería). */}
+                  {inList && !emptied ? (
+                    <ShoppingCart
+                      aria-hidden
+                      className="size-3.5 shrink-0 text-primary"
+                    />
                   ) : null}
                 </span>
               </span>
