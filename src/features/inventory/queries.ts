@@ -500,5 +500,10 @@ export async function getInventoryItemsByIds(
         } satisfies ReviewEntry,
       ]),
   );
-  return ids.map((id) => byId.get(id)).filter((e): e is ReviewEntry => Boolean(e));
+  // Sin duplicados: el checkout y el ticket pueden repetir la misma fila de
+  // inventario (dos líneas del mismo producto+ubicación), y repetirla aquí
+  // renderizaría dos tarjetas con la misma key editando el mismo estado.
+  return [...new Set(ids)]
+    .map((id) => byId.get(id))
+    .filter((e): e is ReviewEntry => Boolean(e));
 }

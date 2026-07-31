@@ -169,6 +169,31 @@ export function convertQuantity(
 }
 
 /**
+ * LA política de reposición del repo: suma una entrada de stock a una fila de
+ * inventario existente sin inventarse nada. En la misma unidad suma directo; en
+ * unidades distintas solo si `convertQuantity` convierte honestamente (misma
+ * familia, o puente por contenido declarado), y siempre en la unidad que YA
+ * tiene la fila — la unidad del inventario no se pisa. Devuelve null cuando no
+ * hay conversión, y quien llama decide qué hacer con la negativa (avisar y no
+ * sumar, nunca sumar a ciegas: 6 ud + 1 kg no son 7 de nada).
+ *
+ * La comparten el checkout de la lista, el alta manual y la confirmación de
+ * ticket; antes cada puerta tenía su propia regla y dos de ellas sumaban
+ * magnitudes de unidades distintas pisando la unidad (auditoría 2026-07-31).
+ */
+export function addStockQuantity(
+  existingQty: number,
+  existingUnit: UnitType,
+  addQty: number,
+  addUnit: UnitType,
+  content: UnitContent = null,
+): number | null {
+  const converted = convertQuantity(addQty, addUnit, existingUnit, content);
+  if (converted === null) return null;
+  return roundQuantity(existingQty + converted);
+}
+
+/**
  * Precio comparable entre formatos: pasa un precio por unidad de compra a €/kg
  * o €/l. Es lo que permite ver que el brick de 500 ml a 1,29 € (2,58 €/l) sale
  * más caro que el de litro a 1,89 €, algo que "1,29 €/ud" esconde.

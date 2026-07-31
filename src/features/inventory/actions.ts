@@ -10,7 +10,13 @@ import { getCurrentHousehold } from "@/features/household/queries";
 import { refreshPriceInsights } from "@/features/prices/materialize";
 import { getProductCatalog } from "@/features/shopping-list/queries";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
-import { formatQuantity, LOCATION_LABELS, UNIT_LABELS } from "@/lib/units";
+import {
+  addStockQuantity,
+  formatQuantity,
+  LOCATION_LABELS,
+  UNIT_LABELS,
+  type UnitContent,
+} from "@/lib/units";
 import {
   addInventorySchema,
   editInventorySchema,
@@ -53,9 +59,10 @@ export async function addInventoryAction(
   const normalized = normalizeName(d.name);
 
   // Resolver el producto: reutilizar si ya existe en el catálogo, si no crearlo.
+  // El contenido del catálogo hace de puente ud↔medida al sumar existencias.
   const { data: existing, error: selErr } = await supabase
     .from("products")
-    .select("id")
+    .select("id, content_size, content_unit, content_is_estimate")
     .eq("household_id", household.id)
     .eq("normalized_name", normalized)
     .maybeSingle();
@@ -131,22 +138,55 @@ export async function addInventoryAction(
   // Existencias: si ya hay una fila en esa ubicación, sumar; si no, crearla.
   const { data: invExisting } = await supabase
     .from("inventory_items")
-    .select("id, quantity")
+    .select("id, quantity, unit, expiry_date")
     .eq("household_id", household.id)
     .eq("product_id", productId)
     .eq("location", d.location)
     .maybeSingle();
 
   if (invExisting) {
-    await supabase
+    // La política de reposición (addStockQuantity): sumar solo lo que se puede
+    // convertir honestamente, y siempre en la unidad que YA tiene la fila —
+    // antes «500 g» + alta de «1 kg» dejaba la fila en 501 kg.
+    const bridgeContent: UnitContent =
+      d.contentSize !== null && d.contentUnit !== null
+        ? { size: d.contentSize, unit: d.contentUnit, estimate: d.contentIsEstimate }
+        : existing?.content_size != null && existing.content_unit != null
+          ? {
+              size: Number(existing.content_size),
+              unit: existing.content_unit,
+              estimate: existing.content_is_estimate,
+            }
+          : null;
+    const merged = addStockQuantity(
+      Number(invExisting.quantity),
+      invExisting.unit,
+      d.quantity,
+      d.unit,
+      bridgeContent,
+    );
+    if (merged === null) {
+      return {
+        error: `En esa ubicación ya lo tienes en ${UNIT_LABELS[invExisting.unit]}: añade en esa unidad, o edita la fila si quieres cambiarla.`,
+      };
+    }
+    // De las caducidades, la MÁS PRÓXIMA: el aviso de «caduca pronto» no se
+    // pierde porque el lote nuevo dure más (mismo criterio que la fusión).
+    const expiry =
+      d.expiryDate && invExisting.expiry_date
+        ? d.expiryDate < invExisting.expiry_date
+          ? d.expiryDate
+          : invExisting.expiry_date
+        : (d.expiryDate ?? invExisting.expiry_date);
+    const { error: updErr } = await supabase
       .from("inventory_items")
       .update({
-        quantity: Number(invExisting.quantity) + d.quantity,
-        unit: d.unit,
+        quantity: merged,
         updated_by: userId,
-        ...(d.expiryDate ? { expiry_date: d.expiryDate } : {}),
+        expiry_date: expiry,
       })
       .eq("id", invExisting.id);
+    if (updErr) return { error: "No se pudo añadir al inventario." };
   } else {
     const { error: invErr } = await supabase.from("inventory_items").insert({
       household_id: household.id,
@@ -379,7 +419,7 @@ export async function updateInventoryAction(
   // cantidades y borramos la fila movida; si no, movemos la fila.
   const { data: occupant } = await supabase
     .from("inventory_items")
-    .select("id, quantity, unit")
+    .select("id, quantity, unit, expiry_date, use_soon")
     .eq("household_id", household.id)
     .eq("product_id", d.productId)
     .eq("location", d.location)
@@ -420,12 +460,23 @@ export async function updateInventoryAction(
   }
 
   if (target) {
+    // De las caducidades, la MÁS PRÓXIMA, y «gastar pronto» sobrevive si
+    // cualquiera de las dos filas lo tenía: fusionar no puede apagar un aviso
+    // (mismo criterio que mergeInventoryRowsAction). Antes los valores del
+    // formulario pisaban los del destino: mover una fila sin fecha encima de
+    // «caduca el sábado» borraba la fecha.
+    const expiry =
+      d.expiryDate && target.expiry_date
+        ? d.expiryDate < target.expiry_date
+          ? d.expiryDate
+          : target.expiry_date
+        : (d.expiryDate ?? target.expiry_date);
     const { error: mergeErr } = await supabase
       .from("inventory_items")
       .update({
         quantity: Number(target.quantity) + d.quantity,
-        expiry_date: d.expiryDate,
-        use_soon: d.useSoon,
+        expiry_date: expiry,
+        use_soon: d.useSoon || target.use_soon,
         updated_by: userId,
       })
       .eq("household_id", household.id)
