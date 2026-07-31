@@ -1,5 +1,6 @@
 "use client";
 
+import { ChainMark } from "@/components/chain-mark";
 import { cn } from "@/lib/utils";
 
 /**
@@ -13,10 +14,17 @@ import { cn } from "@/lib/utils";
  */
 export function ChainChip({
   label,
+  chain,
   active,
   onClick,
 }: {
   label: string;
+  /**
+   * Cadena a la que corresponde el chip, para pintar su sello de color. Se omite
+   * en los chips que NO son una tienda («General», «Todas»), y entonces el chip
+   * va solo con su texto: ahí no hay marca que reconocer.
+   */
+  chain?: string;
   active: boolean;
   onClick: () => void;
 }) {
@@ -26,12 +34,13 @@ export function ChainChip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        "flex min-h-11 shrink-0 items-center rounded-full border px-3.5 text-sm font-medium transition-colors",
+        "flex min-h-11 shrink-0 items-center gap-2 rounded-full border px-3.5 text-sm font-medium transition-colors",
         active
           ? "border-primary bg-primary text-primary-foreground"
           : "bg-background text-muted-foreground hover:bg-muted",
       )}
     >
+      {chain ? <ChainMark chain={chain} size="md" /> : null}
       {label}
     </button>
   );

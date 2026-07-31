@@ -96,6 +96,7 @@ export function AisleOrderPanel({
               <ChainChip
                 key={store}
                 label={chainLabel(store)}
+                chain={store}
                 active={target === store}
                 onClick={() => setTarget(store)}
               />

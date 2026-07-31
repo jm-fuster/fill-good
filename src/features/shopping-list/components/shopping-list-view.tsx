@@ -33,6 +33,7 @@ import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { useNavListBadge } from "@/components/layout/nav-list-count";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
+import { ChainMark } from "@/components/chain-mark";
 import { cn } from "@/lib/utils";
 import { vibrateTick } from "@/lib/haptics";
 import { useSwipeRemove } from "@/hooks/use-swipe-remove";
@@ -580,6 +581,7 @@ export function ShoppingListView({
                   <ChainChip
                     key={chain}
                     label={chainLabel(chain)}
+                    chain={chain}
                     active={activeChain === chain}
                     onClick={() => setStoredChain(chain)}
                   />
@@ -896,8 +898,8 @@ function ListRow({
 /** Pista discreta de la tienda preferida de un producto (L15). */
 function ChainBadge({ chain }: { chain: string }) {
   return (
-    <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5 align-middle text-[11px] font-medium text-muted-foreground no-underline">
-      <Store className="size-3" aria-hidden />
+    <span className="ml-1.5 inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 align-middle text-[11px] font-medium text-muted-foreground no-underline">
+      <ChainMark chain={chain} />
       {chainLabel(chain)}
     </span>
   );

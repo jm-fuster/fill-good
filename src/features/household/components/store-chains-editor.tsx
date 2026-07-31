@@ -6,6 +6,7 @@ import { Plus, Sparkles, Store, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
+import { ChainMark } from "@/components/chain-mark";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -27,10 +28,11 @@ import { addCustomChainAction, updatePreferredChainsAction } from "../actions";
  *   DEDUCIDAS de los tickets, con su distintivo. La pantalla no obliga a nada.
  * - Configurado: manda lo marcado, y "deducirlas otra vez" borra la elección.
  *
- * Las ocho cadenas conocidas son casillas (dentro/fuera de la lista). Las
- * TIENDAS PROPIAS van en su propio bloque con un botón de quitar en vez de
- * casilla: existen porque el hogar las ha escrito, así que "desmarcada" y
- * "borrada" serían el mismo estado y una casilla solo despistaría.
+ * Las cadenas conocidas son casillas (dentro/fuera de la lista) y llevan su
+ * sello de color. Las TIENDAS PROPIAS van en su propio bloque con un botón de
+ * quitar en vez de casilla: existen porque el hogar las ha escrito, así que
+ * "desmarcada" y "borrada" serían el mismo estado y una casilla solo
+ * despistaría.
  *
  * Guarda al tocar (sin botón de guardar, como el editor de orden de la tienda):
  * es un ajuste de una sola dimensión y reversible de un toque.
@@ -167,6 +169,7 @@ export function StoreChainsEditor({
                   htmlFor={id}
                   className="flex flex-1 cursor-pointer flex-wrap items-center gap-2 text-sm font-medium"
                 >
+                  <ChainMark chain={chain.value} size="md" />
                   {chain.label}
                   {isAuto && detectedSet.has(chain.value) ? (
                     <Badge variant="secondary" className="gap-1 font-normal">
@@ -215,7 +218,7 @@ export function StoreChainsEditor({
 
         <form onSubmit={addCustom} className="flex flex-col gap-2">
           <Label htmlFor="new-chain" className="px-1 text-sm font-normal">
-            Añade la tuya si no está arriba (Gadis, Ahorramás, BonÀrea…)
+            Añade la tuya si no está arriba (Gadis, Alimerka, BonÀrea…)
           </Label>
           <div className="flex items-start gap-2">
             <Input

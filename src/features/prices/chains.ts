@@ -11,9 +11,9 @@ import { normalizeName } from "@/lib/normalize";
  * `households.preferred_chains`):
  *
  * - Las de aquí abajo, con clave corta en minúsculas (`mercadona`) y etiqueta
- *   bonita. Son las ocho grandes y las conoce toda la app.
+ *   bonita. Son las que conoce toda la app de serie.
  * - Las TIENDAS PROPIAS del hogar (L15 f5), para cadenas regionales que no
- *   están en la lista (Gadis, Ahorramás, BonÀrea…). En ellas **el nombre que
+ *   están en la lista (Gadis, Alimerka, BonÀrea…). En ellas **el nombre que
  *   escribe el usuario ES la clave**: así `chainLabel` cae en la propia clave y
  *   se muestra bien en las diez pantallas que pintan cadenas sin tener que
  *   arrastrar un mapa de etiquetas por medio repo. El precio de esa decisión es
@@ -29,12 +29,18 @@ export const CHAIN_LABELS: Record<string, string> = {
   eroski: "Eroski",
   consum: "Consum",
   aldi: "Aldi",
+  ahorramas: "Ahorramás",
+  spar: "Spar",
   otro: "Otros",
 };
 
 /**
  * Cadenas ofrecibles como preferencia de compra por producto (L15), en orden.
  * Excluye "otro": como preferencia ("cómpralo siempre en…") no tiene sentido.
+ *
+ * El ORDEN es el ranking canónico de toda la app (`orderChains`), así que las
+ * cadenas nuevas se AÑADEN AL FINAL: intercalarlas movería de sitio los chips y
+ * los selectores de quien ya usa la app, que se los sabe de memoria.
  */
 export const CHAIN_OPTIONS: { value: string; label: string }[] = [
   "mercadona",
@@ -45,6 +51,8 @@ export const CHAIN_OPTIONS: { value: string; label: string }[] = [
   "eroski",
   "consum",
   "aldi",
+  "ahorramas",
+  "spar",
 ].map((value) => ({ value, label: CHAIN_LABELS[value] }));
 
 /**
@@ -56,8 +64,8 @@ export function chainLabel(chain: string): string {
 }
 
 /**
- * Claves que la app se reserva: las ocho conocidas y `otro`. Una tienda propia
- * no puede llamarse como ninguna de ellas (se canoniza a la conocida).
+ * Claves que la app se reserva: las conocidas y `otro`. Una tienda propia no
+ * puede llamarse como ninguna de ellas (se canoniza a la conocida).
  */
 export function isBuiltInChain(chain: string): boolean {
   return chain in CHAIN_LABELS;
@@ -82,14 +90,32 @@ export const CHAINS_MAX = 20;
 const RESERVED_NAMES = new Set(["otro", "otros"]);
 
 /**
+ * Grafías alternativas que también son una cadena conocida. Cada entrada FUNDE
+ * dos nombres en una clave, así que solo entran las que son literalmente la MISMA
+ * tienda escrita de otra forma. «Ahorra Más» separado lo es.
+ *
+ * Lo que NO entra: los formatos de una misma enseña (EuroSpar, Spar Express…).
+ * Son tiendas distintas con precios distintos, y juntarlas mezclaría dos
+ * historiales de precios en uno que no describe ninguna de las dos. Quien compre
+ * en una puede añadirla como tienda propia.
+ *
+ * Las claves van ya normalizadas (sin acentos ni mayúsculas).
+ */
+const CHAIN_ALIASES: Record<string, string> = {
+  "ahorra mas": "ahorramas",
+};
+
+/**
  * Si un nombre escrito a mano es en realidad una de las cadenas conocidas,
  * devuelve su clave; si no, null. Compara sin acentos ni mayúsculas contra la
- * clave y la etiqueta, así que "Día", "dia" y "DIA" acaban todas en `dia` en vez
- * de crear una tienda propia duplicada que partiría el historial de precios.
+ * clave, la etiqueta y los alias, así que "Día", "dia" y "DIA" acaban todas en
+ * `dia` —y "Ahorra Más" en `ahorramas`— en vez de crear una tienda propia
+ * duplicada que partiría el historial de precios.
  */
 export function matchBuiltInChain(name: string): string | null {
   const norm = normalizeName(name);
   if (!norm) return null;
+  if (norm in CHAIN_ALIASES) return CHAIN_ALIASES[norm];
   for (const [key, label] of Object.entries(CHAIN_LABELS)) {
     if (norm === normalizeName(key) || norm === normalizeName(label)) return key;
   }
@@ -133,8 +159,8 @@ export function canonicalizeChains(list: string[]): string[] {
 }
 
 /**
- * Cadenas ofrecibles como "tienda preferida" de un producto: las ocho conocidas
- * más las tiendas propias del hogar. Las propias van al final; el selector las
+ * Cadenas ofrecibles como "tienda preferida" de un producto: las conocidas más
+ * las tiendas propias del hogar. Las propias van al final; el selector las
  * reagrupa por "tus tiendas" / "otras".
  */
 export function chainOptions(

@@ -43,34 +43,30 @@ export const receiptItemSchema = z.object({
     ),
 });
 
-/** Las ocho cadenas que la app conoce de serie (claves de features/prices/chains). */
-export const BUILT_IN_CHAIN_KEYS = [
-  "mercadona",
-  "carrefour",
-  "lidl",
-  "dia",
-  "alcampo",
-  "eroski",
-  "consum",
-  "aldi",
-] as const;
-
 /**
  * Contrato de la extracción del ticket. `store_chain` es un ENUM construido por
- * hogar: las ocho conocidas, las tiendas propias del hogar (L15 f5) y `otro`.
+ * hogar: las cadenas conocidas, las tiendas propias del hogar (L15 f5) y `otro`.
  * Que sea enum y no texto libre es lo que impide que el modelo se invente una
  * cadena nueva por cada variante del rótulo impreso ("MERCADONA S.A.",
  * "Mercadona Alfafar") y parta el historial de precios en pedazos.
  *
+ * El vocabulario LO TRAE QUIEN LLAMA, no se declara aquí: vive en
+ * `features/prices/chains.ts` y `lib/` no importa de `features/` (mismo criterio
+ * que `buildReceiptPrompt`, que recibe las etiquetas ya resueltas). Antes había
+ * aquí una copia de las claves conocidas, y era una copia que había que acordarse
+ * de tocar cada vez que la app aprendía una cadena nueva: si se quedaba atrás, el
+ * modelo no tenía con qué responder "esto es un ticket de Ahorramás" y devolvía
+ * "otro" en silencio.
+ *
  * Al ser dinámico, el tipo inferido de `store_chain` es `string | null` en vez de
  * una unión de literales; el valor se guarda como texto, así que da igual.
+ *
+ * `chains` NO lleva valor por defecto a propósito: un enum de solo `["otro"]` es
+ * un esquema que compila, no falla por ningún sitio y deja al modelo sin poder
+ * nombrar ninguna tienda. Mejor que TypeScript avise a quien se lo deje.
  */
-export function buildReceiptSchema(customChains: string[] = []) {
-  const values = [
-    ...BUILT_IN_CHAIN_KEYS,
-    ...customChains,
-    "otro",
-  ] as unknown as [string, ...string[]];
+export function buildReceiptSchema(chains: string[]) {
+  const values = [...chains, "otro"] as unknown as [string, ...string[]];
 
   return z.object({
     store_name: z

@@ -22,6 +22,7 @@ import {
   getHouseholdChains,
 } from "@/features/household/queries";
 import {
+  CHAIN_OPTIONS,
   chainLabel,
   chainOptions,
   isCustomChain,
@@ -153,7 +154,12 @@ export async function scanReceiptAction(
     key,
     label: chainLabel(key),
   }));
-  const customChains = householdChains.filter(isCustomChain);
+
+  // El vocabulario COMPLETO del enum: las cadenas que la app conoce de serie más
+  // las tiendas propias de este hogar. Se arma aquí y no en `lib/ai` porque el
+  // vocabulario es de esta capa (ver `buildReceiptSchema`).
+  const knownChains = CHAIN_OPTIONS.map((c) => c.value);
+  const schemaChains = [...knownChains, ...householdChains.filter(isCustomChain)];
 
   // Extracción con IA (visión / documento). FilePart sirve tanto para imagen
   // como para PDF; el mediaType lo toma del propio archivo.
@@ -161,7 +167,7 @@ export async function scanReceiptAction(
   try {
     const { object } = await generateObject({
       model: getModel("receipts"),
-      schema: buildReceiptSchema(customChains),
+      schema: buildReceiptSchema(schemaChains),
       abortSignal: AbortSignal.timeout(60_000),
       messages: [
         {
@@ -169,7 +175,11 @@ export async function scanReceiptAction(
           content: [
             {
               type: "text",
-              text: buildReceiptPrompt(promptCatalog, promptChains),
+              text: buildReceiptPrompt(
+                promptCatalog,
+                promptChains,
+                knownChains,
+              ),
             },
             { type: "file", data: safeBytes, mediaType: detectedType },
           ],

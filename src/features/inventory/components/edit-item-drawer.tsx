@@ -363,8 +363,8 @@ export function EditItemDrawer({
     }
   }
 
-  // Tiendas del hogar primero (L15 f4): de ocho cadenas, las que este hogar no
-  // pisa nunca son ruido. Solo se agrupa si la separación aporta algo: sin
+  // Tiendas del hogar primero (L15 f4): de todas las cadenas, las que este hogar
+  // no pisa nunca son ruido. Solo se agrupa si la separación aporta algo: sin
   // tiendas habituales (o con todas marcadas) la lista plana se lee mejor.
   // `chainOptions` añade además las tiendas propias del hogar (f5), que por
   // definición son suyas y caen siempre en el primer grupo.

@@ -210,7 +210,7 @@ export async function updatePreferredChainsAction(
 
 /**
  * Añade una TIENDA PROPIA del hogar (L15 f5): una cadena regional que no está
- * entre las ocho conocidas. `base` es la lista que el usuario tiene delante, que
+ * entre las conocidas. `base` es la lista que el usuario tiene delante, que
  * en modo automático son las deducidas de sus tickets: añadir una tienda las
  * promociona a elección manual, que es justo lo que la pantalla promete («si
  * tocas algo, pasas a decidirlo tú»).

@@ -1,9 +1,25 @@
-const BASE_PROMPT = `Eres un asistente que extrae los datos de un ticket de compra de supermercado español (o de una factura de compra online). Te doy una imagen o un PDF del ticket.
+/**
+ * `knownChains` son las claves de cadena que la app conoce de serie. Las TRAE
+ * quien llama, igual que las etiquetas de `chainsSection`, porque el vocabulario
+ * vive en `features/prices/chains.ts` y `lib/` no importa de `features/`. Antes
+ * iban escritas a mano en esta frase, que es una copia más que se queda atrás en
+ * cuanto la app aprende una cadena nueva.
+ *
+ * Sin lista, la frase se queda sin el paréntesis en vez de abrir uno vacío: el
+ * enum del esquema ya le llega al modelo y esta enumeración solo lo refuerza.
+ */
+const chainHint = (knownChains: string[]) =>
+  knownChains.length > 0
+    ? ` (${knownChains.join(", ")}, y las tiendas propias del hogar si las hay más abajo)`
+    : "";
+
+const basePrompt = (knownChains: string[]) =>
+  `Eres un asistente que extrae los datos de un ticket de compra de supermercado español (o de una factura de compra online). Te doy una imagen o un PDF del ticket.
 
 Devuelve los datos siguiendo el esquema. Reglas importantes:
 
 - Idioma español. Los decimales en los tickets usan coma (2,35) pero tú devuelves números con punto (2.35).
-- store_name: el nombre del establecimiento. store_chain: normaliza a una de las cadenas del esquema (mercadona, carrefour, lidl, dia, alcampo, eroski, consum, aldi, y las tiendas propias del hogar si las hay más abajo) o "otro" si no es ninguna.
+- store_name: el nombre del establecimiento. store_chain: normaliza a una de las cadenas del esquema${chainHint(knownChains)} o "otro" si no es ninguna.
 - purchase_date: la fecha de la compra en formato YYYY-MM-DD.
 - total: el importe TOTAL a pagar del ticket.
 
@@ -72,6 +88,7 @@ la suya; y si no reconoces la tienda, "otro". No fuerces ninguna de esta lista.`
 export function buildReceiptPrompt(
   catalog: { id: string; name: string }[] = [],
   chains: { key: string; label: string }[] = [],
+  knownChains: string[] = [],
 ): string {
-  return `${BASE_PROMPT}${chainsSection(chains)}${catalogSection(catalog)}`;
+  return `${basePrompt(knownChains)}${chainsSection(chains)}${catalogSection(catalog)}`;
 }
