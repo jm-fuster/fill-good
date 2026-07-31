@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Check, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { Check, Minus, Plus, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -196,7 +196,10 @@ export function InventoryItemCard({
       >
         {/* Lo de detrás no es un fondo decorativo: es el botón que destapa el
             gesto, y apuntar (o quitar) es tocarlo. Rojo cuando quita, para que
-            «rojo = fuera de la lista» signifique lo mismo aquí que en `/lista`. */}
+            «rojo = fuera de la lista» signifique lo mismo aquí que en `/lista`.
+            El icono es SIEMPRE el carrito, nunca una papelera: esto no borra el
+            producto del inventario, solo lo saca de la lista de la compra, y una
+            papelera en la tarjeta de un producto se lee como «bórralo». */}
         <button
           {...actionProps}
           aria-label={
@@ -213,11 +216,7 @@ export function InventoryItemCard({
               : "bg-success text-success-foreground",
           )}
         >
-          {inList ? (
-            <Trash2 className="size-4" aria-hidden />
-          ) : (
-            <ShoppingCart className="size-4" aria-hidden />
-          )}
+          <ShoppingCart className="size-4" aria-hidden />
           {inList ? "Quitar" : "A la lista"}
         </button>
         {/* `h-full` es obligatorio, no cosmético: el ítem de la rejilla es ahora
