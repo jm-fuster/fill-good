@@ -38,10 +38,7 @@ export function PackSizeField({
 
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor={`${idPrefix}-pack`}>
-        Unidades por compra{" "}
-        <span className="text-muted-foreground">(opcional)</span>
-      </Label>
+      <Label htmlFor={`${idPrefix}-pack`}>Unidades por compra</Label>
       <Input
         id={`${idPrefix}-pack`}
         name="packSize"
@@ -62,7 +59,7 @@ export function PackSizeField({
           ? `Cada compra repondrá ${formatQuantity(pack, "ud")} en el inventario.`
           : isNoop
             ? "Con 1 no hay pack: cada compra repone una unidad."
-            : "Si lo compras en cajas (p. ej. 30 sobres), pon cuántas unidades trae cada compra."}
+            : "Si lo compras en cajas: cuántas unidades trae cada compra."}
       </p>
     </div>
   );

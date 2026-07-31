@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MEASURE_UNIT_OPTIONS } from "@/lib/units";
+import { formatContentTotal, MEASURE_UNIT_OPTIONS } from "@/lib/units";
 import type { UnitType } from "@/lib/supabase/types";
 
 /**
@@ -46,13 +46,26 @@ export function ContentPerUnitFields({
   const [unit, setUnit] = useState<UnitType | undefined>(
     defaultUnit ?? undefined,
   );
+  const [size, setSize] = useState(defaultSize?.toString() ?? "");
+  const [isEstimate, setIsEstimate] = useState(defaultIsEstimate);
+
+  const typed = size.trim() === "" ? Number.NaN : Number(size.replace(",", "."));
+  const hasSize = Number.isFinite(typed) && typed > 0;
+  const hintId = `${idPrefix}-content-hint`;
+  const estimateId = `${idPrefix}-content-estimate`;
+
+  // Mismo trato que el pack: en reposo, qué es esto; en cuanto hay un número, la
+  // consecuencia concreta. Con tamaño pero sin unidad, el pie adelanta el error
+  // que devolvería el servidor («elige la unidad») en vez de esperar al envío.
+  const hint = !hasSize
+    ? "Lo que trae cada envase (un brick de 500 ml)."
+    : unit
+      ? `Cada unidad trae ${formatContentTotal(1, typed, unit)}.`
+      : "Elige la unidad del contenido.";
 
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor={`${idPrefix}-content-size`}>
-        Contenido de cada unidad{" "}
-        <span className="text-muted-foreground">(opcional)</span>
-      </Label>
+      <Label htmlFor={`${idPrefix}-content-size`}>Contenido de cada unidad</Label>
       <div className="grid grid-cols-2 gap-3">
         <Input
           id={`${idPrefix}-content-size`}
@@ -62,7 +75,9 @@ export function ContentPerUnitFields({
           min={0}
           step="any"
           placeholder="p. ej. 500"
-          defaultValue={defaultSize ?? ""}
+          value={size}
+          onChange={(e) => setSize(e.target.value)}
+          aria-describedby={hintId}
         />
         <Select
           value={unit}
@@ -81,31 +96,30 @@ export function ContentPerUnitFields({
           </SelectContent>
         </Select>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Lo que trae cada envase (un brick de 500 ml, una bolsa de 1 kg). Sigues
-        contando unidades, pero la app sabe cuánto tienes en casa.
+      <p id={hintId} className="text-sm text-muted-foreground">
+        {hint}
       </p>
 
       {/* Fruta, carne o pescado: cuentas piezas y pagas al peso, pero la pieza no
-          pesa siempre lo mismo. Marcarlo cambia la confianza, no el dato. */}
-      <div className="flex items-start gap-2">
-        <Checkbox
-          id={`${idPrefix}-content-estimate`}
-          name="contentIsEstimate"
-          defaultChecked={defaultIsEstimate}
-          className="mt-0.5 size-5"
-        />
-        <Label
-          htmlFor={`${idPrefix}-content-estimate`}
-          className="flex flex-col items-start gap-0.5 font-normal"
-        >
-          <span>Es un peso medio aproximado</span>
-          <span className="text-sm text-muted-foreground">
-            Para fruta, carne o pescado: se mostrará con «≈» y no se usará para
-            afirmar si te llega.
-          </span>
-        </Label>
-      </div>
+          pesa siempre lo mismo. Marcarlo cambia la confianza, no el dato.
+          Solo aparece con un contenido escrito, porque es un matiz SOBRE ese
+          dato: sin contenido, la acción guarda la bandera en false de todas
+          formas (lo exige `products_content_estimate_needs_content`), así que
+          desmontarlo no pierde nada aunque el FormData salga sin el campo. */}
+      {hasSize ? (
+        <div className="flex min-h-11 items-center gap-2">
+          <Checkbox
+            id={estimateId}
+            name="contentIsEstimate"
+            checked={isEstimate}
+            onCheckedChange={(v) => setIsEstimate(v === true)}
+            className="size-5"
+          />
+          <Label htmlFor={estimateId} className="font-normal">
+            Es un peso medio (fruta, carne, pescado)
+          </Label>
+        </div>
+      ) : null}
     </div>
   );
 }

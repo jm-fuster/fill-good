@@ -67,13 +67,12 @@ export function ExpiryQuickPicker({
   onChange: (value: string | null) => void;
   label?: string;
   ariaLabel?: string;
+  /** Consejo de la fecha más próxima. Solo se ve si ya hay fecha puesta. */
   showHint?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <Label htmlFor={id}>
-        {label} <span className="text-muted-foreground">(opcional)</span>
-      </Label>
+      <Label htmlFor={id}>{label}</Label>
       <div className="flex flex-wrap items-center gap-2">
         {PRESETS.map((p) => (
           <Button
@@ -100,7 +99,10 @@ export function ExpiryQuickPicker({
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value || null)}
       />
-      {showHint ? (
+      {/* El consejo solo aparece cuando ya hay una fecha: es entonces cuando
+          existe el dilema de «tengo tres y caducan distinto». Mostrarlo siempre
+          era una línea de texto permanente para un caso que casi nunca se da. */}
+      {showHint && value ? (
         <p className="text-sm text-muted-foreground">
           Si tienes varios, pon la fecha del que caduque antes.
         </p>

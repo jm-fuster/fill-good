@@ -31,9 +31,8 @@ import { LOCATION_OPTIONS, UNIT_OPTIONS } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import type { Category } from "../queries";
 import { addInventoryAction } from "../actions";
-import { ContentPerUnitFields } from "./content-per-unit-fields";
 import { ExpiryQuickPicker } from "./expiry-quick-picker";
-import { PackSizeField } from "./pack-size-field";
+import { PackagingFields } from "./packaging-fields";
 
 export function AddProductDrawer({
   categories,
@@ -219,10 +218,12 @@ function AddProductFields({
 
       {/* Mismo reparto que en editar: a la vista lo imprescindible para dar de
           alta, y los ajustes finos plegados. Dar de alta un producto no debería
-          exigir decidir su contenido por envase. */}
+          exigir decidir su contenido por envase.
+          El «todo opcional» va aquí una vez y no campo a campo: repetirlo en
+          cada etiqueta era ruido en una sección que ya es opcional por serlo. */}
       <CollapsibleFields
         title="Ajustes adicionales"
-        hint="Caducidad, ubicación y avisos de stock"
+        hint="Todo opcional: caducidad, ubicación, envase y avisos"
       >
         <ExpiryQuickPicker
           id="add-expiry"
@@ -252,10 +253,7 @@ function AddProductFields({
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="add-min">
-            Avísame cuando queden menos de{" "}
-            <span className="text-muted-foreground">(opcional)</span>
-          </Label>
+          <Label htmlFor="add-min">Avísame cuando queden menos de</Label>
           <Input
             id="add-min"
             name="minQuantity"
@@ -267,9 +265,7 @@ function AddProductFields({
           />
         </div>
 
-        {unit === "ud" ? <ContentPerUnitFields idPrefix="add" /> : null}
-
-        {unit === "ud" ? <PackSizeField idPrefix="add" /> : null}
+        {unit === "ud" ? <PackagingFields idPrefix="add" /> : null}
       </CollapsibleFields>
     </>
   );

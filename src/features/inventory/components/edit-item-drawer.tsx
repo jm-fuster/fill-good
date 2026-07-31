@@ -52,9 +52,8 @@ import {
   getProductAliasesAction,
   type ProductAlias,
 } from "@/features/receipts/actions";
-import { ContentPerUnitFields } from "./content-per-unit-fields";
 import { ExpiryQuickPicker } from "./expiry-quick-picker";
-import { PackSizeField } from "./pack-size-field";
+import { PackagingFields } from "./packaging-fields";
 
 const NO_CATEGORY = "__none__";
 const NO_CHAIN = "__none__";
@@ -515,10 +514,12 @@ export function EditItemDrawer({
           {/* A la vista solo lo que se edita a diario (nombre, icono, categoría
               y unidades); el resto son ajustes que se ponen una vez y casi nunca
               se vuelven a tocar. Tenerlos todos desplegados dejaba las acciones
-              del panel fuera de pantalla en móvil. */}
+              del panel fuera de pantalla en móvil.
+              El «todo opcional» va aquí una vez y no campo a campo: repetirlo en
+              cada etiqueta era ruido en una sección que ya es opcional por serlo. */}
           <CollapsibleFields
             title="Ajustes adicionales"
-            hint="Caducidad, ubicación, tienda y avisos de stock"
+            hint="Todo opcional: caducidad, ubicación, tienda, envase y avisos"
           >
             <ExpiryQuickPicker
               id="edit-expiry"
@@ -550,8 +551,7 @@ export function EditItemDrawer({
             <div className="flex flex-col gap-2">
               <Label htmlFor="edit-chain" className="flex items-center gap-1.5">
                 <Store className="size-4 text-muted-foreground" aria-hidden />
-                Tienda preferida{" "}
-                <span className="text-muted-foreground">(opcional)</span>
+                Tienda preferida
               </Label>
               <Select
                 value={preferredChain === "" ? NO_CHAIN : preferredChain}
@@ -622,10 +622,7 @@ export function EditItemDrawer({
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-min">
-                Avísame cuando queden menos de{" "}
-                <span className="text-muted-foreground">(opcional)</span>
-              </Label>
+              <Label htmlFor="edit-min">Avísame cuando queden menos de</Label>
               <Input
                 id="edit-min"
                 name="minQuantity"
@@ -638,16 +635,13 @@ export function EditItemDrawer({
             </div>
 
             {unit === "ud" ? (
-              <ContentPerUnitFields
+              <PackagingFields
                 idPrefix="edit"
-                defaultSize={entry.contentSize}
-                defaultUnit={entry.contentUnit}
-                defaultIsEstimate={entry.contentIsEstimate}
+                contentSize={entry.contentSize}
+                contentUnit={entry.contentUnit}
+                contentIsEstimate={entry.contentIsEstimate}
+                packSize={entry.packSize}
               />
-            ) : null}
-
-            {unit === "ud" ? (
-              <PackSizeField idPrefix="edit" defaultValue={entry.packSize} />
             ) : null}
 
             <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
