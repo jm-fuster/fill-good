@@ -837,7 +837,9 @@ export function EditItemDrawer({
                     aria-hidden
                     className={cn(
                       "size-4",
-                      isPinned && "fill-current text-warning",
+                      // Toda estrella activa viste chart-3, como las de
+                      // valoración: warning queda para «caduca pronto».
+                      isPinned && "fill-chart-3 text-chart-3",
                     )}
                   />
                   Mis habituales

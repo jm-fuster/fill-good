@@ -224,7 +224,7 @@ export function InventoryList({
         >
           {pinnedItems.length > 0 ? (
             <InventorySection
-              icon={<Star className="size-4 fill-current text-warning" />}
+              icon={<Star className="size-4 fill-chart-3 text-chart-3" />}
               title="Mis habituales"
               count={pinnedItems.length}
               urgency={urgencyOf(countUrgency(pinnedItems))}
