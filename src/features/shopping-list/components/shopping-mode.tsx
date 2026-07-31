@@ -29,7 +29,6 @@ import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { useNavListBadge } from "@/components/layout/nav-list-count";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
-import { ChainMark } from "@/components/chain-mark";
 import { cn } from "@/lib/utils";
 import {
   usePersistedChoice,
@@ -573,7 +572,6 @@ export function ShoppingMode({
               <ChainChip
                 key={chain}
                 label={chainLabel(chain)}
-                chain={chain}
                 active={effectiveChain === chain}
                 onClick={() => setStoredChain(chain)}
               />
@@ -713,7 +711,7 @@ export function ShoppingMode({
                   {otherGroups.map((cg) => (
                     <div key={cg.chain}>
                       <h3 className="mb-1.5 flex items-center gap-1.5 text-sm font-semibold text-muted-foreground">
-                        <ChainMark chain={cg.chain} size="md" />
+                        <Store className="size-4" aria-hidden />
                         {chainLabel(cg.chain)}
                       </h3>
                       <ul className="flex flex-col gap-1">
@@ -958,8 +956,8 @@ function ShoppingModeRowItem({
               </span>
             ) : null}
             {showChain ? (
-              <span className="ml-1.5 inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 align-middle text-[11px] font-medium text-muted-foreground">
-                <ChainMark chain={item.preferredChain as string} />
+              <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-md bg-muted px-1.5 py-0.5 align-middle text-[11px] font-medium text-muted-foreground">
+                <Store className="size-3" aria-hidden />
                 {chainLabel(item.preferredChain as string)}
               </span>
             ) : null}
