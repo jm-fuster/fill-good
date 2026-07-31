@@ -187,41 +187,40 @@ export function InventoryItemCard({
     .filter(Boolean)
     .join(", ");
 
-  // Deslizar la tarjeta a la DERECHA destapa el atajo a la lista, espejado
-  // respecto a `/lista`, donde se arrastra a la izquierda para quitar: lo que se
-  // entrena comprando es el reflejo, y el mismo movimiento no puede añadir aquí y
-  // borrar allí. El atajo sirve sobre todo para lo que AÚN no se ha agotado —
-  // apuntar el café cuando ves que queda poco—, que es lo único que la tarjeta no
-  // ofrecía en ningún sitio. Con ratón no existe: en escritorio esto se hace con
-  // el interruptor de la ficha.
-  const { rootRef, swipeProps, actionProps } = useSwipeAction(
+  // Deslizar la tarjeta a la DERECHA la apunta en la lista (o la quita), y lo
+  // hace AL SOLTAR: sin botón que tocar después. Espejado respecto a `/lista`,
+  // donde se arrastra a la izquierda para quitar: lo que se entrena comprando es
+  // el reflejo, y el mismo movimiento no puede añadir aquí y borrar allí. El
+  // atajo sirve sobre todo para lo que AÚN no se ha agotado —apuntar el café
+  // cuando ves que queda poco—, y se usa en ráfaga bajando por la despensa, así
+  // que un toque de confirmación por producto era la mitad del trabajo; lo peor
+  // que puede pasar es apuntar algo de más, y eso se deshace con el mismo gesto.
+  // Con ratón no existe: en escritorio esto se hace con el interruptor de la
+  // ficha.
+  const { armed, swipeProps, actionProps } = useSwipeAction(
     inList ? removeFromList : addToList,
-    "right",
+    { direction: "right", instant: true },
   );
 
   return (
     <>
       <div
-        ref={rootRef}
         className="relative overflow-hidden rounded-xl"
         // Safari no recorta al border-radius del padre cuando un hijo usa
         // transform (bleed de las esquinas del fondo al deslizar); esta máscara
         // fuerza el clip correcto sin afectar a otros navegadores.
         style={{ WebkitMaskImage: "-webkit-radial-gradient(white, black)" }}
       >
-        {/* Lo de detrás no es un fondo decorativo: es el botón que destapa el
-            gesto, y apuntar (o quitar) es tocarlo. Rojo cuando quita, para que
+        {/* Lo de detrás no es un fondo decorativo: es lo que va a pasar cuando
+            sueltes. No se puede tocar (`inert`, lo pone el hook) ni lo anuncia un
+            lector de pantalla, porque la acción está en el gesto y, con teclado o
+            ratón, en el interruptor de la ficha. Rojo cuando quita, para que
             «rojo = fuera de la lista» signifique lo mismo aquí que en `/lista`.
             El icono es SIEMPRE el carrito, nunca una papelera: esto no borra el
             producto del inventario, solo lo saca de la lista de la compra, y una
             papelera en la tarjeta de un producto se lee como «bórralo». */}
         <button
           {...actionProps}
-          aria-label={
-            inList
-              ? `Quitar ${entry.productName} de la lista`
-              : `Añadir ${entry.productName} a la lista`
-          }
           className={cn(
             // Mismo formato que el botón de `/lista` (fila, texto e icono del
             // mismo tamaño): son el mismo gesto en dos pantallas.
@@ -231,8 +230,18 @@ export function InventoryItemCard({
               : "bg-success text-success-foreground",
           )}
         >
-          <ShoppingCart className="size-4" aria-hidden />
-          {inList ? "Quitar" : "A la lista"}
+          {/* Apagado mientras el gesto se queda corto y en tamaño completo en
+              cuanto pasa el umbral: es lo que dice «suelta ya», a la vez que el
+              tic en el dedo, para quien SÍ está mirando la pantalla. */}
+          <span
+            className={cn(
+              "flex items-center gap-1.5 transition duration-150 motion-reduce:transition-none",
+              armed ? "scale-105 opacity-100" : "scale-95 opacity-60",
+            )}
+          >
+            <ShoppingCart className="size-4" aria-hidden />
+            {inList ? "Quitar" : "A la lista"}
+          </span>
         </button>
         {/* `h-full` es obligatorio, no cosmético: el ítem de la rejilla es ahora
             el envoltorio del gesto, y se estira a la altura de la fila (ver

@@ -754,9 +754,7 @@ function ListRow({
   /** Muestra el icono de categoría delante del nombre (vista sin agrupar). */
   showIcon?: boolean;
 }) {
-  const { rootRef, swipeProps, actionProps } = useSwipeAction(() =>
-    onRemove(item),
-  );
+  const { swipeProps, actionProps } = useSwipeAction(() => onRemove(item));
 
   const total = listTotalLabel(
     item.quantity,
@@ -767,7 +765,6 @@ function ListRow({
 
   return (
     <div
-      ref={rootRef}
       className="group relative overflow-hidden rounded-lg animate-in fade-in zoom-in-95 duration-200"
       // Safari no recorta al border-radius del padre cuando un hijo usa
       // transform (bleed de las esquinas del fondo rojo al deslizar); esta

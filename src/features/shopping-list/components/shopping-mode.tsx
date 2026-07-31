@@ -885,13 +885,10 @@ function ShoppingModeRowItem({
     item.content,
     item.packSize,
   );
-  const { rootRef, swipeProps, actionProps } = useSwipeAction(() =>
-    onRemove(item),
-  );
+  const { swipeProps, actionProps } = useSwipeAction(() => onRemove(item));
 
   return (
     <li
-      ref={rootRef}
       className="group relative overflow-hidden rounded-lg"
       // Safari no recorta al border-radius del padre cuando un hijo usa
       // transform (bleed de las esquinas del fondo rojo al deslizar); esta
