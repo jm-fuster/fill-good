@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SettingsButtonRow } from "@/features/settings/components/settings-list";
 import { deleteAccountAction } from "../actions";
-import { clearLocalAppData } from "../clear-local-data";
+import { signOutToSignIn } from "../sign-out";
 
 const CONFIRM_WORD = "BORRAR";
 
@@ -29,7 +29,7 @@ const CONFIRM_WORD = "BORRAR";
  * descubrible, sin gritar en la pantalla raíz.
  */
 export function DeleteAccountRow() {
-  const { signOut } = useClerk();
+  const clerk = useClerk();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [pending, startTransition] = useTransition();
@@ -44,12 +44,12 @@ export function DeleteAccountRow() {
         toast.error(result.error);
         return;
       }
-      // Cuenta y datos borrados: purgamos la caché del SW y el localStorage del
-      // hogar antes de salir (que no quede rastro del hogar en el dispositivo),
-      // luego cerramos la sesión local. Mismo problema de navegación colgada que
-      // en LogoutRow, mismo remedio.
-      await clearLocalAppData();
-      await signOut({ redirectUrl: "/sign-in" });
+      // Cuenta y datos borrados: mismo problema de navegación colgada que en
+      // LogoutRow y mismo remedio DE VERDAD — signOutToSignIn purga la caché
+      // local y sale con navegación dura en cuanto la sesión muere. (Antes el
+      // comentario prometía el remedio pero llamaba al `signOut` a secas que
+      // sign-out.ts documenta como colgado en producción.)
+      await signOutToSignIn(clerk);
     });
   }
 

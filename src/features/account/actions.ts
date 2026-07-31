@@ -53,6 +53,36 @@ export async function exportMyDataAction(): Promise<ExportDataState> {
     supabase.from("shopping_trips").select("*").eq("household_id", hid),
   ]);
 
+  // La promesa de arriba («no los identificadores de otras personas») hay que
+  // cumplirla también en el contenido: `select("*")` arrastra los ids de Clerk
+  // de los demás convivientes en los campos de atribución (added_by,
+  // checked_by, updated_by…). El propio se conserva —es un dato del
+  // solicitante—; el ajeno se sustituye por un marcador neutro que preserva el
+  // «lo hizo otro miembro» sin el identificador (minimización, art. 5.1.c).
+  const attributionKeys = new Set([
+    "added_by",
+    "checked_by",
+    "updated_by",
+    "created_by",
+    "uploaded_by",
+    "closed_by",
+    "cooked_by",
+    "rated_by",
+    "user_id",
+  ]);
+  const sanitizeRows = (rows: unknown[] | null): unknown[] =>
+    (rows ?? []).map((row) => {
+      const out = { ...(row as Record<string, unknown>) };
+      for (const key of Object.keys(out)) {
+        if (!attributionKeys.has(key)) continue;
+        const value = out[key];
+        if (typeof value === "string" && value !== userId) {
+          out[key] = "otro-miembro";
+        }
+      }
+      return out;
+    });
+
   const data = {
     exportedAt: new Date().toISOString(),
     account: {
@@ -64,15 +94,15 @@ export async function exportMyDataAction(): Promise<ExportDataState> {
       monthlyBudget: household.monthlyBudget,
       members: members.data ?? [],
     },
-    products: products.data ?? [],
-    inventory: inventory.data ?? [],
-    shoppingListItems: listItems.data ?? [],
-    recipes: recipes.data ?? [],
-    weeklyMenus: menus.data ?? [],
-    menuEntries: menuEntries.data ?? [],
-    receipts: receipts.data ?? [],
-    receiptItems: receiptItems.data ?? [],
-    shoppingTrips: trips.data ?? [],
+    products: sanitizeRows(products.data),
+    inventory: sanitizeRows(inventory.data),
+    shoppingListItems: sanitizeRows(listItems.data),
+    recipes: sanitizeRows(recipes.data),
+    weeklyMenus: sanitizeRows(menus.data),
+    menuEntries: sanitizeRows(menuEntries.data),
+    receipts: sanitizeRows(receipts.data),
+    receiptItems: sanitizeRows(receiptItems.data),
+    shoppingTrips: sanitizeRows(trips.data),
   };
 
   return { data };
