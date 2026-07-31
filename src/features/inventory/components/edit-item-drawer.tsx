@@ -47,8 +47,9 @@ import { chainLabel, chainOptions, orderChains } from "@/features/prices/chains"
 import { relativeDaysLabel } from "@/lib/dates";
 import {
   formatQuantity,
+  LOCATION_ICONS,
   LOCATION_LABELS,
-  LOCATION_OPTIONS,
+  LOCATION_ORDER,
   UNIT_OPTIONS,
 } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
@@ -237,6 +238,13 @@ export function EditItemDrawer({
       router.refresh();
     });
   }
+
+  // Mantenimiento del catálogo (nombres de ticket + fusión). Lo anunciamos en el
+  // pie del plegable solo si de verdad hay algo dentro: en un hogar recién
+  // creado no hay nombres aprendidos ni otro producto con el que fusionar, y el
+  // bloque entero no se monta.
+  const hasCatalogMaintenance =
+    aliases.length > 0 || mergeCandidates.length > 0;
 
   // El MISMO producto en otra ubicación (nevera + despensa). Se lee al abrir la
   // ficha, como los aliases: la tarjeta solo conoce su propia fila, y el aviso
@@ -570,6 +578,48 @@ export function EditItemDrawer({
             </div>
           </div>
 
+          {/* Ubicación A LA VISTA y en un toque. Era el único campo del plegable
+              que se cambia a menudo: lo que compras fresco acaba en el
+              congelador, y lo que entra de un ticket cae todo en un sitio y
+              luego se reparte. Ahí abajo costaba dos toques y saber que estaba.
+              Radios nativos y no un Select: con cuatro opciones caben todas sin
+              desplegar nada, y el teclado, el nombre del grupo y el valor en el
+              FormData salen gratis. El orden es el de las secciones del listado
+              (LOCATION_ORDER), no el del selector: se elige mirando dónde está
+              la cosa en la lista. */}
+          <fieldset>
+            <legend className="mb-2 text-sm leading-none font-medium">
+              Ubicación
+            </legend>
+            <div className="grid grid-cols-2 gap-2">
+              {LOCATION_ORDER.map((loc) => {
+                const checked = location === loc;
+                return (
+                  <label
+                    key={loc}
+                    className={cn(
+                      "flex min-h-11 cursor-pointer items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors select-none has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
+                      checked
+                        ? "border-transparent bg-primary text-primary-foreground"
+                        : "hover:bg-muted",
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="location"
+                      value={loc}
+                      checked={checked}
+                      onChange={() => setLocation(loc)}
+                      className="sr-only"
+                    />
+                    <span aria-hidden>{LOCATION_ICONS[loc]}</span>
+                    {LOCATION_LABELS[loc]}
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+
           {/* Mismo producto en varias ubicaciones. Va A LA VISTA, no en los
               ajustes plegados: quien abre la ficha con dos «Plátano» delante
               viene justo a resolver esto, y el único sitio donde ponía «unir»
@@ -600,15 +650,31 @@ export function EditItemDrawer({
             </div>
           ) : null}
 
-          {/* A la vista solo lo que se edita a diario (nombre, icono, categoría
-              y unidades); el resto son ajustes que se ponen una vez y casi nunca
-              se vuelven a tocar. Tenerlos todos desplegados dejaba las acciones
-              del panel fuera de pantalla en móvil.
+          {/* A la vista solo lo que se edita a diario (nombre, icono, categoría,
+              unidades y ubicación); el resto son ajustes que se ponen una vez y
+              casi nunca se vuelven a tocar. Tenerlos todos desplegados dejaba
+              las acciones del panel fuera de pantalla en móvil.
+              Una sola puerta y no dos: los nombres de ticket y la fusión estaban
+              en su propio plegable justo debajo, y desde fuera dos cabeceras
+              seguidas no dicen qué hay en cada una. Van al fondo de esta, tras
+              un separador, que es lo que de verdad los distingue: se tocan una
+              vez en la vida.
               El «todo opcional» va aquí una vez y no campo a campo: repetirlo en
               cada etiqueta era ruido en una sección que ya es opcional por serlo. */}
           <CollapsibleFields
             title="Ajustes adicionales"
-            hint="Todo opcional: caducidad, ubicación, tienda, envase y avisos"
+            hint={
+              hasCatalogMaintenance
+                ? "Todo opcional: caducidad, tienda, envase, avisos y nombres en tickets"
+                : "Todo opcional: caducidad, tienda, envase y avisos"
+            }
+            badge={
+              hasSuspiciousAliases ? (
+                <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
+                  Revisa los nombres
+                </span>
+              ) : null
+            }
           >
             <ExpiryQuickPicker
               id="edit-expiry"
@@ -616,26 +682,6 @@ export function EditItemDrawer({
               value={expiryDate}
               onChange={setExpiryDate}
             />
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-location">Ubicación</Label>
-              <Select
-                value={location}
-                onValueChange={(v) => setLocation(v as LocationType)}
-                name="location"
-              >
-                <SelectTrigger id="edit-location" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LOCATION_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
 
             <div className="flex flex-col gap-2">
               <Label htmlFor="edit-chain" className="flex items-center gap-1.5">
@@ -770,125 +816,119 @@ export function EditItemDrawer({
                 disabled={pinPending}
               />
             </div>
-          </CollapsibleFields>
 
-          {/* Mantenimiento del catálogo: se toca una vez en la vida y lleva
-              texto largo, así que va en su propia sección y no mezclado con los
-              ajustes del día a día (fusionar, además, no se puede deshacer). */}
-          {aliases.length > 0 || mergeCandidates.length > 0 ? (
-            <CollapsibleFields
-              title="Nombres y duplicados"
-              hint="Cómo aparece en tus tickets y unir dos productos en uno"
-              badge={
-                hasSuspiciousAliases ? (
-                  <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
-                    Revisa los nombres
-                  </span>
-                ) : null
-              }
-            >
-              {aliases.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  <span className="text-sm font-medium">Nombres en tickets</span>
-                  <p className="text-sm text-muted-foreground">
-                    Cómo aparece en tus tickets, por tienda. Un nombre distinto
-                    en cada tienda es normal; dos en la misma suelen ser una
-                    etiqueta antigua. Bórralo si se asoció por error: no afecta a
-                    tu historial de precios.
-                  </p>
-                  <ul className="flex flex-col gap-3">
-                    {aliasGroups.map((group) => (
-                      <li
-                        key={group.chain ?? "__sin_tienda__"}
-                        className="flex flex-col gap-1.5"
-                      >
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-xs font-medium text-muted-foreground">
-                            {group.chain
-                              ? chainLabel(group.chain)
-                              : "Sin tienda identificada"}
-                          </span>
-                          {/* Solo es sospechoso dentro de una MISMA cadena: el
-                              grupo sin identificar mezcla tiendas y no prueba
-                              nada. */}
-                          {group.chain && group.aliases.length > 1 ? (
-                            <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
-                              {group.aliases.length} nombres
+            {/* Mantenimiento del catálogo, al fondo y tras un separador: es lo
+                último que se toca (fusionar, además, no se puede deshacer) y lo
+                único de aquí que no es un ajuste de ESTA fila, sino del producto
+                en todo el hogar. El aviso de nombres repetidos vive en el badge
+                de la cabecera, que es el único sitio que se ve plegado. */}
+            {hasCatalogMaintenance ? (
+              <div className="flex flex-col gap-4 border-t pt-4">
+                {aliases.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-sm font-medium">
+                      Nombres en tickets
+                    </span>
+                    <p className="text-sm text-muted-foreground">
+                      Cómo aparece en tus tickets, por tienda. Un nombre distinto
+                      en cada tienda es normal; dos en la misma suelen ser una
+                      etiqueta antigua. Bórralo si se asoció por error: no afecta
+                      a tu historial de precios.
+                    </p>
+                    <ul className="flex flex-col gap-3">
+                      {aliasGroups.map((group) => (
+                        <li
+                          key={group.chain ?? "__sin_tienda__"}
+                          className="flex flex-col gap-1.5"
+                        >
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs font-medium text-muted-foreground">
+                              {group.chain
+                                ? chainLabel(group.chain)
+                                : "Sin tienda identificada"}
                             </span>
-                          ) : null}
-                        </div>
-                        <ul className="flex flex-col gap-1.5">
-                          {group.aliases.map((a) => (
-                            <li
-                              key={a.id}
-                              className="flex items-center justify-between gap-2 rounded-lg border py-1 pr-1 pl-3"
-                            >
-                              <span className="min-w-0 flex-1 truncate text-sm">
-                                {a.alias}
-                                {a.lastSeenAt ? (
-                                  <span className="ml-1.5 text-xs text-muted-foreground">
-                                    {relativeDaysLabel(
-                                      a.lastSeenAt.slice(0, 10),
-                                    )}
-                                  </span>
-                                ) : null}
+                            {/* Solo es sospechoso dentro de una MISMA cadena: el
+                                grupo sin identificar mezcla tiendas y no prueba
+                                nada. */}
+                            {group.chain && group.aliases.length > 1 ? (
+                              <span className="rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">
+                                {group.aliases.length} nombres
                               </span>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                aria-label={`Borrar el nombre «${a.alias}»`}
-                                onClick={() => removeAlias(a.id)}
-                                disabled={removingAlias}
+                            ) : null}
+                          </div>
+                          <ul className="flex flex-col gap-1.5">
+                            {group.aliases.map((a) => (
+                              <li
+                                key={a.id}
+                                className="flex items-center justify-between gap-2 rounded-lg border py-1 pr-1 pl-3"
                               >
-                                <X aria-hidden />
-                              </Button>
-                            </li>
-                          ))}
-                        </ul>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
+                                <span className="min-w-0 flex-1 truncate text-sm">
+                                  {a.alias}
+                                  {a.lastSeenAt ? (
+                                    <span className="ml-1.5 text-xs text-muted-foreground">
+                                      {relativeDaysLabel(
+                                        a.lastSeenAt.slice(0, 10),
+                                      )}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  aria-label={`Borrar el nombre «${a.alias}»`}
+                                  onClick={() => removeAlias(a.id)}
+                                  disabled={removingAlias}
+                                >
+                                  <X aria-hidden />
+                                </Button>
+                              </li>
+                            ))}
+                          </ul>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
 
-              {mergeCandidates.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  <span className="text-sm font-medium">
-                    Fusionar con otro producto
-                  </span>
-                  <p className="text-sm text-muted-foreground">
-                    Une este producto con otro: el historial de precios de ambos
-                    se juntará en el que elijas. Esta acción no se puede
-                    deshacer.
-                  </p>
-                  <ProductCombobox
-                    products={mergeCandidates}
-                    value={mergeTarget}
-                    onChange={setMergeTarget}
-                    ariaLabel="Producto con el que fusionar"
-                    placeholder="Buscar producto…"
-                    triggerLabel="Elegir producto…"
-                  />
-                  {mergeTarget ? (
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      onClick={confirmMerge}
-                      disabled={merging}
-                    >
-                      {merging
-                        ? "Fusionando…"
-                        : `Fusionar «${entry.productName}» en «${
-                            mergeCandidates.find((p) => p.id === mergeTarget)
-                              ?.name ?? "…"
-                          }»`}
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-            </CollapsibleFields>
-          ) : null}
+                {mergeCandidates.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    <span className="text-sm font-medium">
+                      Fusionar con otro producto
+                    </span>
+                    <p className="text-sm text-muted-foreground">
+                      Une este producto con otro: el historial de precios de
+                      ambos se juntará en el que elijas. Esta acción no se puede
+                      deshacer.
+                    </p>
+                    <ProductCombobox
+                      products={mergeCandidates}
+                      value={mergeTarget}
+                      onChange={setMergeTarget}
+                      ariaLabel="Producto con el que fusionar"
+                      placeholder="Buscar producto…"
+                      triggerLabel="Elegir producto…"
+                    />
+                    {mergeTarget ? (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        onClick={confirmMerge}
+                        disabled={merging}
+                      >
+                        {merging
+                          ? "Fusionando…"
+                          : `Fusionar «${entry.productName}» en «${
+                              mergeCandidates.find((p) => p.id === mergeTarget)
+                                ?.name ?? "…"
+                            }»`}
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </CollapsibleFields>
 
           {error ? (
             <p role="alert" className="text-sm text-destructive">
