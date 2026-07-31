@@ -2,6 +2,7 @@ import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getActiveHouseholdId } from "@/features/household/queries";
+import { baseUnitFactor, unitFamily } from "@/lib/units";
 import type { UnitType } from "@/lib/supabase/types";
 
 /**
@@ -85,24 +86,40 @@ export async function getPriceAlerts(): Promise<PriceAlert[]> {
 
   const rows = (data ?? []) as unknown as Row[];
 
-  // Serie de precio por unidad por producto, en orden cronológico.
-  type Series = { name: string; unit: UnitType; prices: number[] };
-  const byProduct = new Map<string, Series>();
+  // Serie de precio por unidad BASE (g/ml/ud) por producto Y familia de unidad,
+  // en orden cronológico: comparar una compra en kg con otra en g exige
+  // normalizar, y una serie en ud no se mezcla con una a peso — la misma regla
+  // que la hucha (savings.ts). Sin esto, «500 g → 2 €» seguido de «1 kg → 3,80 €»
+  // parecía una subida de precio absurda.
+  type Series = { productId: string; name: string; unit: UnitType; prices: number[] };
+  const byKey = new Map<string, Series>();
   for (const r of rows) {
     if (!r.product_id || r.total_price === null) continue;
-    const qty = Number(r.quantity) || 1;
-    const unitPrice = Number(r.total_price) / qty;
-    if (!(unitPrice > 0)) continue;
-    const s = byProduct.get(r.product_id);
+    const qty = Number(r.quantity);
+    const price = Number(r.total_price);
+    if (!(qty > 0) || !(price > 0)) continue;
+    const unitPrice = price / (qty * baseUnitFactor(r.unit));
+    const key = `${r.product_id}::${unitFamily(r.unit)}`;
+    const s = byKey.get(key);
     if (s) {
       s.prices.push(unitPrice);
       s.unit = r.unit;
     } else {
-      byProduct.set(r.product_id, {
+      byKey.set(key, {
+        productId: r.product_id,
         name: r.product?.name ?? "Producto",
         unit: r.unit,
         prices: [unitPrice],
       });
+    }
+  }
+  // Con líneas en ud Y a peso habría dos series del mismo producto: se evalúa
+  // solo la dominante (más compras), para no emitir dos avisos por producto.
+  const byProduct = new Map<string, Series>();
+  for (const s of byKey.values()) {
+    const cur = byProduct.get(s.productId);
+    if (!cur || s.prices.length > cur.prices.length) {
+      byProduct.set(s.productId, s);
     }
   }
 
