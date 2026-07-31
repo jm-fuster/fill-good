@@ -12,11 +12,11 @@ const REVEAL_WIDTH = 96;
 const MAX_DRAG = Math.round(REVEAL_WIDTH * 1.4);
 
 /**
- * Deslizar una fila hacia la izquierda para destapar su botón de quitar, en DOS
- * pasos: el gesto solo aparta la fila y deja el botón a la vista, y quitar exige
+ * Deslizar una fila para destapar su botón de acción, en DOS pasos: el gesto
+ * solo aparta la fila y deja el botón a la vista, y ejecutar la acción exige
  * tocarlo.
  *
- * Que el arrastre no borre por sí solo es el punto de todo esto. Comprando no
+ * Que el arrastre no ejecute por sí solo es el punto de todo esto. Comprando no
  * miras la pantalla —miras el estante—, así que un roce mientras desplazas la
  * lista con el pulgar borraba un artículo y el aviso de «Deshacer» se iba en
  * cinco segundos sin que nadie lo viera: te enterabas en casa, al no tener la
@@ -32,12 +32,23 @@ const MAX_DRAG = Math.round(REVEAL_WIDTH * 1.4);
  * en horizontal. Solo gesto táctil o de lápiz: con ratón hay botón visible, que
  * es lo que se descubre en escritorio.
  *
- * Lo usan la lista (`/lista`) y el modo compra, que son la misma fila en dos
- * momentos distintos de la compra.
+ * Ojo con esa última frase al añadir una pantalla nueva: el gesto NO es la única
+ * vía de nada. Con ratón no existe, así que la acción tiene que estar además en
+ * un botón normal (la papelera de la fila en `/lista`, el interruptor de la ficha
+ * en el inventario) o en escritorio no habría manera de hacerla.
  *
- * @param onRemove Se llama al tocar el botón destapado, nunca al soltar el dedo.
+ * @param onAction Se llama al tocar el botón destapado, nunca al soltar el dedo.
+ * @param direction Hacia dónde se arrastra la fila. `"left"` (por defecto) deja
+ *   el botón a la DERECHA y es el gesto de quitar de la lista, en `/lista` y en
+ *   el modo compra. `"right"` deja el botón a la IZQUIERDA y lo usa el inventario
+ *   para apuntar en la lista. Están espejados a propósito: lo que se entrena
+ *   comprando es el reflejo, no la pantalla, y el mismo movimiento no puede
+ *   añadir en un sitio y borrar en el otro.
  */
-export function useSwipeRemove(onRemove: () => void) {
+export function useSwipeAction(
+  onAction: () => void,
+  direction: "left" | "right" = "left",
+) {
   const [dx, setDx] = React.useState(0);
   const [dragging, setDragging] = React.useState(false);
   const [open, setOpen] = React.useState(false);
@@ -52,6 +63,8 @@ export function useSwipeRemove(onRemove: () => void) {
   // Suprime el "click" que sigue a un deslizamiento o al toque que cierra (p. ej.
   // para no abrir el editor ni marcar el artículo de rebote).
   const swiped = React.useRef(false);
+  // +1 arrastra a la derecha, -1 a la izquierda.
+  const sign = direction === "right" ? 1 : -1;
 
   const close = React.useCallback(() => {
     setOpen(false);
@@ -104,11 +117,16 @@ export function useSwipeRemove(onRemove: () => void) {
       }
     }
     if (g.axis === "h") {
-      const clamped = Math.max(-MAX_DRAG, Math.min(0, deltaX));
+      // Solo en el sentido del gesto: al otro lado de la fila no hay nada que
+      // destapar, y dejarla irse igualmente parecería un botón que no llega.
+      const clamped =
+        sign < 0
+          ? Math.max(-MAX_DRAG, Math.min(0, deltaX))
+          : Math.min(MAX_DRAG, Math.max(0, deltaX));
       g.dx = clamped;
       setDx(clamped);
       setDragging(true);
-      if (clamped <= -8) swiped.current = true;
+      if (Math.abs(clamped) >= 8) swiped.current = true;
     }
   }
 
@@ -116,10 +134,10 @@ export function useSwipeRemove(onRemove: () => void) {
     const g = gesture.current;
     g.active = false;
     setDragging(false);
-    if (g.axis === "h" && g.dx <= -REVEAL_THRESHOLD) {
+    if (g.axis === "h" && Math.abs(g.dx) >= REVEAL_THRESHOLD) {
       // Se queda abierta en el ancho exacto del botón, no donde quedó el dedo.
       setOpen(true);
-      setDx(-REVEAL_WIDTH);
+      setDx(sign * REVEAL_WIDTH);
       // Que se NOTE, porque puede haber pasado sin mirar.
       vibrateTick();
     } else {
@@ -134,7 +152,7 @@ export function useSwipeRemove(onRemove: () => void) {
     rootRef: React.useCallback((el: HTMLElement | null) => {
       root.current = el;
     }, []),
-    /** true = el botón de quitar está a la vista. */
+    /** true = el botón de la acción está a la vista. */
     open,
     /** Props del elemento que se desliza (incluye su propio `style`). */
     swipeProps: {
@@ -156,16 +174,17 @@ export function useSwipeRemove(onRemove: () => void) {
       },
     } satisfies React.ComponentProps<"div">,
     /**
-     * Props del botón que queda detrás. `inert` mientras está tapado: ahí no se
-     * puede tocar ni recibir foco, y no lo anuncia el lector de pantalla —es la
-     * misma acción que ya ofrece la papelera de la fila.
+     * Props del botón que queda detrás; el lado (`left-0` o `right-0`, el
+     * contrario al arrastre) lo pone quien lo pinta. `inert` mientras está
+     * tapado: ahí no se puede tocar ni recibir foco, y no lo anuncia el lector de
+     * pantalla —es la misma acción que ya ofrece un botón visible de la fila.
      */
     actionProps: {
       type: "button",
       inert: !open,
       onClick: () => {
         close();
-        onRemove();
+        onAction();
       },
       style: { width: REVEAL_WIDTH },
     } satisfies React.ComponentProps<"button">,

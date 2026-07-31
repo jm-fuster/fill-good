@@ -249,6 +249,78 @@ export async function addProductToListAction(
   return { ok: true, itemId: inserted.id };
 }
 
+/**
+ * Quita de la lista activa lo apuntado de un producto: el otro medio giro de
+ * `addProductToListAction`. Hace falta porque en el inventario «En la lista» es
+ * el MISMO botón con el que se apuntó, y hasta ahora un añadido por error solo
+ * se podía arreglar yéndose a `/lista` a buscar el artículo.
+ *
+ * Nunca toca una fila ya MARCADA: eso no sería quitar de la lista, sino borrar
+ * una compra a medias —el checkout dejaría de reponer ese producto al inventario
+ * y nadie se enteraría—, así que se contesta que ya está en el carro y la lista
+ * se queda como está.
+ *
+ * Devuelve la instantánea de la fila para el «Deshacer» de quien llama
+ * (`restoreListItemAction`). Volver a añadir NO equivale a deshacer: la fila
+ * pudo llegar a cuatro unidades por fusión (L3) o venir del otro móvil con su
+ * cantidad, y un alta nueva traería una.
+ */
+export async function removeProductFromListAction(
+  productId: string,
+): Promise<ActionState & { deleted?: DeletedListItem }> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  // Solo lectura, a diferencia de `getActiveList`: si el hogar no tiene lista
+  // activa no hay nada que quitar, y crearla para borrar de ella sería absurdo.
+  const { data: list } = await supabase
+    .from("shopping_lists")
+    .select("id")
+    .eq("household_id", household.id)
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  // Sin lista, el producto ya no está apuntado en ninguna parte: es el estado
+  // que pedía el usuario, no un fallo.
+  if (!list) return { ok: true };
+
+  const { data: rows } = await supabase
+    .from("shopping_list_items")
+    .select(
+      "id, list_id, household_id, product_id, name, quantity, unit, is_checked, checked_by, checked_at, added_by, position, created_at",
+    )
+    .eq("household_id", household.id)
+    .eq("list_id", list.id)
+    .eq("product_id", productId);
+
+  const pending = (rows ?? []).find((r) => !r.is_checked);
+  if (!pending) {
+    // Solo queda lo ya marcado: «En la lista» sigue siendo verdad, y quitarlo
+    // desde aquí sería justo lo que este action no hace.
+    return (rows ?? []).length > 0
+      ? { error: "Ya está marcado en la compra: quítalo desde la lista." }
+      : { ok: true };
+  }
+
+  const { error } = await supabase
+    .from("shopping_list_items")
+    .delete()
+    .eq("id", pending.id)
+    .eq("household_id", household.id);
+  if (error) return { error: "No se pudo quitar de la lista." };
+
+  revalidatePath("/lista");
+  return {
+    ok: true,
+    deleted: {
+      ...pending,
+      quantity: pending.quantity === null ? null : Number(pending.quantity),
+    },
+  };
+}
+
 /** Resultado del alta múltiple: qué se creó y qué se sumó a lo que ya había. */
 export type BulkAddState = {
   error?: string;

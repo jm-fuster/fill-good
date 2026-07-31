@@ -34,7 +34,7 @@ import {
   usePersistedChoice,
   usePersistedFlag,
 } from "@/hooks/use-persisted-flag";
-import { useSwipeRemove } from "@/hooks/use-swipe-remove";
+import { useSwipeAction } from "@/hooks/use-swipe-action";
 import { AisleOrderPanel } from "@/features/categories/components/aisle-order-panel";
 import {
   aisleSort,
@@ -885,7 +885,7 @@ function ShoppingModeRowItem({
     item.content,
     item.packSize,
   );
-  const { rootRef, swipeProps, actionProps } = useSwipeRemove(() =>
+  const { rootRef, swipeProps, actionProps } = useSwipeAction(() =>
     onRemove(item),
   );
 
@@ -901,7 +901,7 @@ function ShoppingModeRowItem({
       {/* Lo que hay detrás de la fila NO es un fondo decorativo: es el botón que
           destapa el deslizamiento, y quitar es tocarlo. Deslizar no borra —en el
           pasillo no miras la pantalla, y un borrado al soltar se perdía con el
-          aviso de «Deshacer» (ver `useSwipeRemove`). */}
+          aviso de «Deshacer» (ver `useSwipeAction`). */}
       <button
         {...actionProps}
         aria-label={`Quitar ${item.name}`}

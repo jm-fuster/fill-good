@@ -6,6 +6,7 @@ import {
   ChefHat,
   Merge,
   Pencil,
+  ShoppingCart,
   Star,
   Store,
   TrendingDown,
@@ -83,6 +84,9 @@ export function EditItemDrawer({
   open,
   onOpenChange,
   pinned = false,
+  onList,
+  onToggleList,
+  listBusy,
 }: {
   entry: InventoryEntry;
   categories: Category[];
@@ -92,6 +96,15 @@ export function EditItemDrawer({
   onOpenChange: (open: boolean) => void;
   /** El producto está en "Mis habituales" del usuario actual (E5). */
   pinned?: boolean;
+  /**
+   * El producto está en la lista de la compra activa. El estado y las escrituras
+   * viven en la tarjeta, que es quien lo pinta también en su botón y en el gesto:
+   * duplicarlos aquí daría dos verdades para lo mismo.
+   */
+  onList: boolean;
+  onToggleList: (next: boolean) => void;
+  /** Hay un cambio de lista viajando al servidor. */
+  listBusy: boolean;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -780,14 +793,17 @@ export function EditItemDrawer({
               />
             ) : null}
 
-            {/* Los dos interruptores llevan `items-start`: `Label` trae
+            {/* Los tres interruptores llevan `items-start`: `Label` trae
                 `items-center` de base para alinear icono y texto en una fila, y
                 al pasarlo a columna eso centra las dos líneas en horizontal (el
                 título quedaba flotando 69 px dentro de su propia descripción).
-                Y los dos llevan icono, que es lo que los hace leerse como
-                pareja: el gorro cuando entra antes en los menús, la estrella
-                cuando se ancla arriba. Se tiñen de `warning` al activarse, como
-                el distintivo que sale luego en la tarjeta. */}
+                Y los tres llevan icono, que es lo que los hace leerse como
+                grupo: el gorro cuando entra antes en los menús, la estrella
+                cuando se ancla arriba, el carro cuando está apuntado. Los dos
+                primeros se tiñen de `warning` al activarse, como el distintivo
+                que sale luego en la tarjeta; el carro va de `primary` porque no
+                es un aviso sobre este producto, es la lista de la compra (mismo
+                color que en el selector de altas). */}
             <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
               <Label
                 htmlFor="edit-use-soon"
@@ -835,6 +851,34 @@ export function EditItemDrawer({
                 checked={isPinned}
                 onCheckedChange={togglePin}
                 disabled={pinPending}
+              />
+            </div>
+
+            {/* La lista de la compra, desde la ficha. En móvil esto se hace
+                deslizando la tarjeta, pero el gesto no existe con ratón (ver
+                `useSwipeAction`), así que sin este interruptor en escritorio no
+                habría manera de apuntar algo que aún no se ha agotado. */}
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <Label
+                htmlFor="edit-on-list"
+                className="flex flex-col items-start gap-0.5"
+              >
+                <span className="flex items-center gap-1.5">
+                  <ShoppingCart
+                    aria-hidden
+                    className={cn("size-4", onList && "text-primary")}
+                  />
+                  En la lista de la compra
+                </span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  Apúntalo aunque no se haya agotado
+                </span>
+              </Label>
+              <Switch
+                id="edit-on-list"
+                checked={onList}
+                onCheckedChange={onToggleList}
+                disabled={listBusy}
               />
             </div>
 

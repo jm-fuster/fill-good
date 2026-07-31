@@ -35,7 +35,7 @@ import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
 import { cn } from "@/lib/utils";
 import { vibrateTick } from "@/lib/haptics";
-import { useSwipeRemove } from "@/hooks/use-swipe-remove";
+import { useSwipeAction } from "@/hooks/use-swipe-action";
 import { AisleOrderPanel } from "@/features/categories/components/aisle-order-panel";
 import type { ChainAisleOrders } from "@/features/categories/aisle-order";
 import type { StoreCategory } from "@/features/categories/queries";
@@ -754,7 +754,7 @@ function ListRow({
   /** Muestra el icono de categoría delante del nombre (vista sin agrupar). */
   showIcon?: boolean;
 }) {
-  const { rootRef, swipeProps, actionProps } = useSwipeRemove(() =>
+  const { rootRef, swipeProps, actionProps } = useSwipeAction(() =>
     onRemove(item),
   );
 
@@ -776,7 +776,7 @@ function ListRow({
     >
       {/* Lo que hay detrás de la fila NO es un fondo decorativo: es el botón que
           destapa el deslizamiento, y quitar es tocarlo. Deslizar no borra (ver
-          `useSwipeRemove`). */}
+          `useSwipeAction`). */}
       <button
         {...actionProps}
         aria-label={`Quitar ${item.name}`}
