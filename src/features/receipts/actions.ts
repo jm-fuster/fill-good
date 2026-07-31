@@ -12,7 +12,13 @@ import type { ReceiptItemExtraction } from "@/lib/ai/receipt-schema";
 import { buildReceiptPrompt } from "@/lib/ai/receipt-prompt";
 import { loadHouseholdMatchData, matchLineExact } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
-import { formatQuantity, UNIT_LABELS } from "@/lib/units";
+import {
+  addStockQuantity,
+  formatQuantity,
+  roundQuantity,
+  UNIT_LABELS,
+  type UnitContent,
+} from "@/lib/units";
 import { sniffUploadType, stripImageMetadata } from "@/lib/image-metadata";
 import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -200,6 +206,15 @@ export async function scanReceiptAction(
     };
   }
 
+  // El esquema zod garantiza la ESTRUCTURA de lo que devuelve Gemini, pero no
+  // los valores: una fecha que no sea YYYY-MM-DD tumbaría el insert entero (la
+  // columna es `date`) con la llamada de IA ya pagada — mejor sin fecha, que la
+  // revisión permite corregir y la confirmación siempre completa.
+  const purchaseDate =
+    extraction.purchase_date && /^\d{4}-\d{2}-\d{2}$/.test(extraction.purchase_date)
+      ? extraction.purchase_date
+      : null;
+
   const { data: receipt, error: recErr } = await supabase
     .from("receipts")
     .insert({
@@ -207,7 +222,7 @@ export async function scanReceiptAction(
       uploaded_by: userId,
       store_name: extraction.store_name,
       store_chain: extraction.store_chain,
-      purchased_at: extraction.purchase_date,
+      purchased_at: purchaseDate,
       total_amount: extraction.total,
       status: "needs_review",
       raw_extraction: extraction,
@@ -242,7 +257,8 @@ export async function scanReceiptAction(
       household_id: household.id,
       raw_text: item.raw_text,
       description: item.description,
-      quantity: item.quantity || 1,
+      // El `|| 1` corregía el 0 pero dejaba pasar negativos del modelo.
+      quantity: item.quantity > 0 ? item.quantity : 1,
       unit: item.unit ?? "ud",
       is_weighted: item.is_weighted ?? false,
       total_price: item.total_price,
@@ -410,14 +426,30 @@ export async function confirmReceiptAction(
 
   const { data: receipt } = await supabase
     .from("receipts")
-    .select("id, household_id, store_chain, purchased_at, raw_extraction")
+    .select(
+      "id, household_id, status, store_chain, purchased_at, raw_extraction, created_at",
+    )
     .eq("id", payload.receiptId)
     .maybeSingle();
   if (!receipt || receipt.household_id !== household.id) {
     return { error: "Ticket no encontrado." };
   }
+  // Un ticket cerrado no se re-confirma: el stock no se duplicaría (idempotencia
+  // por added_to_inventory), pero el cierre re-escribiría descuentos y hucha a
+  // cero, porque raw_extraction ya se vació. Alcanzable con una pantalla de
+  // revisión obsoleta (router cache, o dos dispositivos con el mismo ticket).
+  if (receipt.status === "confirmed") {
+    return { error: "Este ticket ya está confirmado." };
+  }
 
-  const purchasedAt = payload.purchaseDate ?? receipt.purchased_at;
+  // Nunca sin fecha: los agregados mensuales (gasto, hucha, resumen) filtran
+  // por purchased_at y un NULL desaparecería de todas las cifras. Si ni la IA
+  // ni la revisión la aportaron, vale la fecha de subida (se escanea al llegar
+  // a casa; el error posible es de horas, no de mes).
+  const purchasedAt =
+    payload.purchaseDate ??
+    receipt.purchased_at ??
+    receipt.created_at.slice(0, 10);
 
   // Cadena corregida en la revisión (L15 f5). Solo se acepta si es una de las
   // que se le ofrecieron —conocidas, tiendas del hogar u "otro"—: el valor entra
@@ -474,7 +506,9 @@ export async function confirmReceiptAction(
       .eq("receipt_id", payload.receiptId),
     supabase
       .from("products")
-      .select("id, normalized_name, default_location, pack_size")
+      .select(
+        "id, normalized_name, default_location, pack_size, content_size, content_unit, content_is_estimate",
+      )
       .eq("household_id", household.id),
     supabase
       .from("inventory_items")
@@ -490,6 +524,19 @@ export async function confirmReceiptAction(
   // Pack (F4): unidades por compra por producto (solo aplica a movimientos en ud).
   const packByProduct = new Map<string, number | null>(
     (productRows ?? []).map((p) => [p.id, p.pack_size]),
+  );
+  // Contenido declarado: el puente ud↔medida de la política de reposición.
+  const contentByProduct = new Map<string, UnitContent>(
+    (productRows ?? []).map((p) => [
+      p.id,
+      p.content_size !== null && p.content_unit !== null
+        ? {
+            size: Number(p.content_size),
+            unit: p.content_unit,
+            estimate: p.content_is_estimate,
+          }
+        : null,
+    ]),
   );
   const invKey = (pid: string, loc: LocationType) => `${pid}::${loc}`;
   const invByKey = new Map(
@@ -641,7 +688,9 @@ export async function confirmReceiptAction(
           default_location: "pantry" as LocationType,
         })),
       )
-      .select("id, normalized_name, default_location, pack_size");
+      .select(
+        "id, normalized_name, default_location, pack_size, content_size, content_unit, content_is_estimate",
+      );
     // Primera escritura de la pasada 2: abortar aquí es seguro (nada parcial).
     if (createErr) {
       console.error("Error al crear los productos nuevos del ticket:", createErr);
@@ -901,11 +950,26 @@ export async function confirmReceiptAction(
     }
 
     let addedToInventory = false;
+    // Lo que entra de verdad, en la unidad de la fila (para el historial).
+    let enteredQty = invQty;
+    let enteredUnit: UnitType = r.stockUnit;
     if (inv) {
-      // NO sumar magnitudes de unidades distintas (ud + l = disparate).
-      if (inv.unit === r.stockUnit) {
-        inv.quantity += invQty;
+      // Política de reposición compartida (addStockQuantity): suma solo lo
+      // convertible honestamente (misma familia, o puente por contenido) y
+      // nunca pisa la unidad de la fila.
+      const prevQty = Number(inv.quantity);
+      const mergedQty = addStockQuantity(
+        prevQty,
+        inv.unit,
+        invQty,
+        r.stockUnit,
+        contentByProduct.get(r.productId) ?? null,
+      );
+      if (mergedQty !== null) {
+        inv.quantity = mergedQty;
         inv.dirty = true;
+        enteredQty = roundQuantity(mergedQty - prevQty);
+        enteredUnit = inv.unit;
         addedToInventory = true;
       } else {
         warnings.push(
@@ -931,12 +995,12 @@ export async function confirmReceiptAction(
     lineKeys.push(addedToInventory ? key : null);
     // Historial (F5): evento "repuesto" solo por línea realmente sumada, con la
     // cantidad ya convertida por pack (mismo criterio que recordStockEvent).
-    if (addedToInventory && invQty > 0) {
+    if (addedToInventory && enteredQty > 0) {
       events.push({
         household_id: household.id,
         product_id: r.productId,
-        quantity: invQty,
-        unit: r.stockUnit,
+        quantity: enteredQty,
+        unit: enteredUnit,
         kind: "restocked",
         created_by: userId ?? null,
       });
@@ -1034,6 +1098,7 @@ export async function confirmReceiptAction(
   //      por procesar, porque las ya marcadas no entran en `processable`.
   const savings = await computeSavingsForReceipt(supabase, {
     receiptId: payload.receiptId,
+    householdId: household.id,
     purchasedAt,
     paid: processable.map((r) => ({
       productId: r.productId,

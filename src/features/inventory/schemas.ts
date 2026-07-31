@@ -161,5 +161,7 @@ export const expiryReviewSchema = z.object({
         useSoon: z.boolean(),
       }),
     )
-    .min(1, "No hay nada que guardar."),
+    .min(1, "No hay nada que guardar.")
+    // Cada elemento es un UPDATE: mismo tope (y motivo) que el resto de lotes.
+    .max(200, "Demasiados productos a la vez."),
 });

@@ -4,6 +4,7 @@ import { format, subDays } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/types";
+import { baseUnitFactor, unitFamily } from "@/lib/units";
 import { computeInferredChains } from "./infer-chain";
 import { computeChainSavings, type ChainSavingsTip } from "./chain-savings";
 import {
@@ -40,7 +41,8 @@ export async function refreshPriceInsights(
     const [{ data: rows }, { data: products }] = await Promise.all([
       supabase
         .from("receipt_items")
-        .select("product_id, total_price, quantity, store_chain")
+        .select("product_id, total_price, quantity, unit, store_chain")
+        .eq("household_id", householdId)
         .in("product_id", ids)
         .not("product_id", "is", null)
         .not("total_price", "is", null)
@@ -48,6 +50,7 @@ export async function refreshPriceInsights(
       supabase
         .from("products")
         .select("id, preferred_chain")
+        .eq("household_id", householdId)
         .in("id", ids),
     ]);
 
@@ -57,38 +60,54 @@ export async function refreshPriceInsights(
     );
     const inferred = computeInferredChains(rows ?? []);
 
-    // Puntos de precio por producto (precio unitario = total / cantidad).
+    // Puntos de precio por unidad BASE (g/ml/ud), por producto Y familia de
+    // unidad — la misma normalización que la hucha (savings.ts): total/cantidad
+    // a secas mezclaba compras en g con compras en kg y el consejo de cadena se
+    // materializaba a partir de un disparate.
     const pointsByProduct = new Map<
       string,
-      { unitPrice: number; storeChain: string }[]
+      Map<string, { unitPrice: number; storeChain: string }[]>
     >();
     for (const r of rows ?? []) {
       if (!r.product_id || r.total_price === null || !r.store_chain) continue;
-      const qty = Number(r.quantity) || 1;
+      const qty = Number(r.quantity);
+      const price = Number(r.total_price);
+      if (!(qty > 0) || !(price > 0)) continue;
       const point = {
-        unitPrice: Number(r.total_price) / qty,
+        unitPrice: price / (qty * baseUnitFactor(r.unit)),
         storeChain: r.store_chain,
       };
-      const arr = pointsByProduct.get(r.product_id);
+      const family = unitFamily(r.unit);
+      const families =
+        pointsByProduct.get(r.product_id) ??
+        new Map<string, { unitPrice: number; storeChain: string }[]>();
+      const arr = families.get(family);
       if (arr) arr.push(point);
-      else pointsByProduct.set(r.product_id, [point]);
+      else families.set(family, [point]);
+      pointsByProduct.set(r.product_id, families);
     }
 
-    // Persistir por producto: cadena efectiva = manual ?? inferida (igual que
-    // getChainSavingsTips). Escribimos TODOS los ids pedidos (incluidos los que
-    // se quedan sin señal → null), para limpiar señales obsoletas.
+    // Persistir por producto: cadena efectiva = manual ?? inferida. Escribimos
+    // TODOS los ids pedidos (incluidos los que se quedan sin señal → null),
+    // para limpiar señales obsoletas.
     await Promise.all(
       ids.map((productId) => {
         const inferredChain = inferred.get(productId) ?? null;
         const effective = manual.get(productId) ?? inferredChain ?? null;
         let savingsTip: ChainSavingsTip | null = null;
-        const points = pointsByProduct.get(productId);
+        // Con líneas en ud Y a peso hay varias series: manda la dominante
+        // (más compras), igual que en los avisos de precio.
+        let points: { unitPrice: number; storeChain: string }[] | undefined;
+        for (const arr of pointsByProduct.get(productId)?.values() ?? []) {
+          if (!points || arr.length > points.length) points = arr;
+        }
         if (effective && points) {
           savingsTip = computeChainSavings(points, effective);
         }
         return supabase
           .from("products")
           .update({ inferred_chain: inferredChain, savings_tip: savingsTip })
+          .eq("household_id", householdId)
           .eq("id", productId);
       }),
     );
@@ -118,9 +137,15 @@ export async function computeSavingsForReceipt(
   supabase: Supabase,
   {
     receiptId,
+    householdId,
     purchasedAt,
     paid,
-  }: { receiptId: string; purchasedAt: string | null; paid: PricedLine[] },
+  }: {
+    receiptId: string;
+    householdId: string;
+    purchasedAt: string | null;
+    paid: PricedLine[];
+  },
 ): Promise<ReceiptSavings> {
   const productIds = [...new Set(paid.map((l) => l.productId))];
   if (productIds.length === 0) return NO_SAVINGS;
@@ -138,6 +163,7 @@ export async function computeSavingsForReceipt(
     const { data, error } = await supabase
       .from("receipt_items")
       .select("product_id, total_price, quantity, unit")
+      .eq("household_id", householdId)
       .in("product_id", productIds)
       .neq("receipt_id", receiptId)
       .not("total_price", "is", null)
