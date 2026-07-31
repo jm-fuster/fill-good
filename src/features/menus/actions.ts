@@ -22,6 +22,7 @@ import {
   getExpiryStatus,
   getWeekDays,
   getWeekStart,
+  hourInSpain,
   relativeDaysLabel,
   shiftWeek,
   todayLocalISO,
@@ -63,6 +64,7 @@ import {
 import {
   addMenuEntrySchema,
   addRecipeToSlotSchema,
+  cookedDeductionsSchema,
   menuPrefsInputSchema,
   menuRuleInputSchema,
   slotTargetSchema,
@@ -1427,12 +1429,14 @@ export async function confirmCookedDeductionsAction(
 ): Promise<{ error?: string; ok?: boolean; deducted?: number }> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
+  // Venía del cliente sin esquema: tipos a mano y sin tope de tamaño.
+  const parsed = cookedDeductionsSchema.safeParse(deductions);
+  if (!parsed.success) return { error: "Los descuentos no son válidos." };
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
 
   let deducted = 0;
-  for (const d of deductions) {
-    if (!Number.isFinite(d.quantity) || d.quantity <= 0) continue;
+  for (const d of parsed.data) {
 
     // Lotes del producto en esa unidad, del que antes caduca al que después
     // (nulls al final). Cada "lote" es una fila (ubicación) del mismo producto.
@@ -1601,7 +1605,9 @@ export async function addRecipeToMenuAction(
   if (!menuId) return { error: "No se pudo crear el menú." };
 
   const date = todayLocalISO();
-  const slot = new Date().getHours() < 16 ? "lunch" : "dinner";
+  // Hora ESPAÑOLA, no la del proceso: en Vercel (UTC) el corte de las 16:00
+  // eran las 18:00 en España y «¿qué hago hoy?» metía la cena en la comida.
+  const slot = hourInSpain() < 16 ? "lunch" : "dinner";
 
   const position = await nextPosition(
     supabase,

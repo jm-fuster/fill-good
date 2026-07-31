@@ -102,3 +102,18 @@ export const updateMenuEntrySchema = z.object({
   entryId: z.string().uuid(),
   freeText: z.string().trim().max(200, "Nombre demasiado largo."),
 });
+
+/**
+ * Descuentos confirmados del modal «hemos cocinado» (M2, fase 2). Cada elemento
+ * son 2+ queries: mismo tope (y motivo) que el resto de escrituras en lote.
+ */
+export const cookedDeductionsSchema = z
+  .array(
+    z.object({
+      productId: z.string().uuid(),
+      unit: z.enum(["ud", "g", "kg", "ml", "l"]),
+      quantity: z.number().positive().finite().max(1_000_000),
+    }),
+  )
+  .min(1)
+  .max(100, "Demasiados ingredientes de una vez.");

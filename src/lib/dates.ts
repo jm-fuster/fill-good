@@ -53,6 +53,24 @@ export function todayLocalISO(): string {
   return toISODate(new Date());
 }
 
+/**
+ * Hora del día (0–23) en España (Europe/Madrid). Para decisiones de franja
+ * («¿comida o cena?») tomadas en SERVIDOR: Vercel corre en UTC y su reloj va
+ * 1–2 horas por detrás — a las 17:30 españolas `getHours()` decía 15 y la
+ * receta de «hoy» caía en la comida en vez de en la cena, todos los días de
+ * verano. La app es de mercado español, así que la zona va fija. El desfase de
+ * FECHA (00:00–02:00) sigue asumido tal y como documenta `todayLocalISO`.
+ */
+export function hourInSpain(date: Date = new Date()): number {
+  return Number(
+    new Intl.DateTimeFormat("es-ES", {
+      hour: "numeric",
+      hour12: false,
+      timeZone: "Europe/Madrid",
+    }).format(date),
+  );
+}
+
 /** Desplaza una fecha YYYY-MM-DD N días (negativo = hacia atrás). */
 export function shiftDays(dateISO: string, days: number): string {
   const d = new Date(`${dateISO}T00:00:00`);
