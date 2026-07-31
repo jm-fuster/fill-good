@@ -27,6 +27,9 @@ export function useCheckout(exitTo?: string) {
         toast.error(r.error);
         return;
       }
+      // Conflictos de unidad o líneas que no llegaron al inventario: la compra
+      // se cierra igual, pero esto no puede pasar en silencio.
+      if (r.warning) toast.warning(r.warning, { duration: 8000 });
       toast.success(
         `${r.added} producto${r.added === 1 ? "" : "s"} añadido${
           r.added === 1 ? "" : "s"

@@ -466,7 +466,9 @@ function suggestedQuantityFor(
     }
     return deficit > 0 ? Math.max(1, Math.ceil(deficit)) : 1;
   }
-  return deficit > 0 ? Math.round(deficit * 10) / 10 : 1;
+  // Un déficit a granel minúsculo (mín 1,04 kg, stock 1,0) redondeaba a 0 y la
+  // sugerencia se añadía «sin cantidad»: nunca menos de 0,1.
+  return deficit > 0 ? Math.max(0.1, Math.round(deficit * 10) / 10) : 1;
 }
 
 /**
@@ -481,7 +483,9 @@ function suggestedQuantityFor(
  *  · "out_of_stock" — sin existencias y con al menos una compra a la espalda
  *    (algo que nunca has comprado no es que "se te haya acabado").
  *  · "restock" — ≥3 compras cuya cadencia habitual (mediana de intervalos) ya se
- *    ha cumplido. Cadencias > 60 días se descartan.
+ *    ha cumplido. Cadencias > 60 días se descartan. Solo para productos SIN
+ *    mínimo definido: quien escribió un mínimo ya dijo cuándo avisarle (fuente
+ *    1), y sugerirle con el mínimo cubierto sería llevarle la contraria.
  *
  * Nunca se sugiere algo que ya esté en la lista, ni un producto silenciado con
  * «Descartar» cuyo plazo siga vigente (`suggestions_snoozed_until`).
@@ -634,9 +638,13 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
     if (median <= 0 || median > RESTOCK_MAX_MEDIAN_DAYS) continue;
 
     const daysSinceLast = daysBetween(dates[dates.length - 1], todayISO);
-    const belowMin = min !== null && stock < min;
-    const noStock = stock <= 0;
-    if (daysSinceLast >= median && (noStock || belowMin)) {
+    // Ojo con exigir aquí «agotado o bajo mínimo»: ambos casos ya salieron por
+    // las fuentes 1 y 3 (continue), así que la condición era inalcanzable y
+    // esta fuente estaba muerta. Su valor propio es justo el resto: stock que
+    // nadie descuenta (o que no se rastrea) pero cuya cadencia de compra ya se
+    // cumplió. Con mínimo definido y cubierto, la regla del usuario manda y no
+    // se sugiere.
+    if (daysSinceLast >= median && min === null) {
       suggestions.push({
         productId: p.id,
         name: p.name,

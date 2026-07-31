@@ -82,8 +82,14 @@ import { QuantityStepper } from "./quantity-stepper";
 import { useCheckout } from "./use-checkout";
 import { EditListItemDrawer } from "./edit-list-item-drawer";
 
-/** Alta optimista pendiente de confirmar contra el servidor. */
-type PendingAdd = { tempId: string; realId: string | null; item: ListItem };
+/**
+ * Alta optimista pendiente de confirmar contra el servidor. Vive SOLO hasta la
+ * confirmación: en cuanto la fila real entra en la lista sincronizada (con la
+ * gracia de `list-sync` protegiéndola de lecturas rezagadas), la entrada se
+ * elimina. Conservarla «por si acaso» con el id real era el bug de la fila
+ * fantasma: quitar el artículo dejaba la entrada viva y el filtro la resucitaba.
+ */
+type PendingAdd = { tempId: string; item: ListItem };
 
 export function ShoppingListView({
   listId,
@@ -296,10 +302,7 @@ export function ShoppingListView({
       // servidor por nombre normalizado, así que llega con la cura (igual que el
       // contenido y el aviso de ahorro, que no están en el catálogo ligero).
     };
-    setPendingAdds((prev) => [
-      ...prev,
-      { tempId, realId: null, item: optimistic },
-    ]);
+    setPendingAdds((prev) => [...prev, { tempId, item: optimistic }]);
 
     let result: Awaited<ReturnType<typeof runAddAction>>;
     try {
@@ -320,12 +323,11 @@ export function ShoppingListView({
     showAddResultToast(result);
     if (result.itemId) {
       const realId = result.itemId;
-      setPendingAdds((prev) =>
-        prev.map((p) => (p.tempId === tempId ? { ...p, realId } : p)),
-      );
       // Fila nueva confirmada: entra ya con su id de verdad (si fue una fusión
-      // L3, la fila que había ya está en la lista y solo cambia su cantidad).
+      // L3, la fila que había ya está en la lista y solo cambia su cantidad) y
+      // la optimista se retira en el mismo lote de render.
       if (!result.merged) list.add({ ...optimistic, id: realId });
+      setPendingAdds((prev) => prev.filter((p) => p.tempId !== tempId));
     }
     // Y la cura completa lo que el catálogo ligero no trae (contenido, aviso de
     // ahorro, el pasillo de un alta de texto libre).
@@ -367,10 +369,9 @@ export function ShoppingListView({
     });
   }
 
-  // Ítems optimistas aún no presentes en los datos del servidor.
-  const optimisticItems = pendingAdds
-    .filter((p) => !(p.realId && list.items.some((i) => i.id === p.realId)))
-    .map((p) => p.item);
+  // Ítems optimistas aún sin confirmar contra el servidor (los confirmados ya
+  // viven en `list.items` con su id real y las salvaguardas de `list-sync`).
+  const optimisticItems = pendingAdds.map((p) => p.item);
   const allItems = [...list.items, ...optimisticItems];
 
   const pending = allItems.filter((i) => !i.isChecked);

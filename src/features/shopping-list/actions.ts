@@ -5,7 +5,14 @@ import { revalidatePath } from "next/cache";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
-import { defaultListQuantity, formatQuantity } from "@/lib/units";
+import {
+  addStockQuantity,
+  defaultListQuantity,
+  formatQuantity,
+  roundQuantity,
+  UNIT_LABELS,
+  type UnitContent,
+} from "@/lib/units";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { recordStockEvent } from "@/features/inventory/events";
 import type { UnitType } from "@/lib/supabase/types";
@@ -26,6 +33,8 @@ import {
 import {
   addListItemSchema,
   addListItemsSchema,
+  reorderListItemsSchema,
+  restoreListItemSchema,
   updateListItemSchema,
   type AddListItemsInput,
 } from "./schemas";
@@ -118,17 +127,26 @@ export async function addListItemAction(
     .eq("normalized_name", normalized)
     .maybeSingle();
 
-  // Aviso si ya tienes existencias de ese producto.
+  // Aviso si ya tienes existencias de ese producto. Un total POR UNIDAD: los
+  // lotes pueden estar en unidades distintas, y sumarlos a lo bruto decía
+  // «501 g» con 500 g en la despensa y 1 kg en la nevera.
   let warning: string | undefined;
   if (product) {
     const { data: inv } = await supabase
       .from("inventory_items")
       .select("quantity, unit")
-      .eq("product_id", product.id);
-    const total = (inv ?? []).reduce((s, r) => s + Number(r.quantity), 0);
-    if (total > 0) {
-      const unit = inv?.[0]?.unit ?? product.default_unit;
-      warning = `Ya tienes ${formatQuantity(total, unit)} en el inventario`;
+      .eq("household_id", household.id)
+      .eq("product_id", product.id)
+      .gt("quantity", 0);
+    const byUnit = new Map<UnitType, number>();
+    for (const r of inv ?? []) {
+      byUnit.set(r.unit, (byUnit.get(r.unit) ?? 0) + Number(r.quantity));
+    }
+    const parts = [...byUnit.entries()]
+      .filter(([, t]) => t > 0)
+      .map(([u, t]) => formatQuantity(t, u));
+    if (parts.length > 0) {
+      warning = `Ya tienes ${parts.join(" y ")} en el inventario`;
     }
   }
 
@@ -604,12 +622,11 @@ export async function reorderListItemsAction(
 ): Promise<ActionState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
-  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
-    return { error: "Datos no válidos." };
-  }
+  const parsedIds = reorderListItemsSchema.safeParse(orderedIds);
+  if (!parsedIds.success) return { error: "Datos no válidos." };
   const supabase = createServerSupabaseClient();
   const results = await Promise.all(
-    orderedIds.map((id, index) =>
+    parsedIds.data.map((id, index) =>
       supabase
         .from("shopping_list_items")
         .update({ position: index })
@@ -717,23 +734,59 @@ export async function restoreListItemAction(
 ): Promise<ActionState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
+  // La instantánea hizo ida y vuelta por el cliente: se re-valida entera. La
+  // forma con zod, y las referencias contra la base — sin esto, un cliente
+  // manipulado podía reinsertar la fila en una lista de OTRO de sus hogares
+  // (fila híbrida invisible) o firmarla con la atribución de otro conviviente.
+  const parsed = restoreListItemSchema.safeParse(item);
+  if (!parsed.success) return { error: "No se pudo restaurar." };
+  const d = parsed.data;
   const supabase = createServerSupabaseClient();
+
+  const [{ data: listRow }, { data: members }] = await Promise.all([
+    supabase
+      .from("shopping_lists")
+      .select("id")
+      .eq("household_id", household.id)
+      .eq("id", d.list_id)
+      .maybeSingle(),
+    supabase
+      .from("household_members")
+      .select("user_id")
+      .eq("household_id", household.id),
+  ]);
+  if (!listRow) return { error: "No se pudo restaurar." };
+  const memberIds = new Set((members ?? []).map((m) => m.user_id));
+  const attributionOk =
+    (d.added_by === null || memberIds.has(d.added_by)) &&
+    (d.checked_by === null || memberIds.has(d.checked_by));
+  if (!attributionOk) return { error: "No se pudo restaurar." };
+  if (d.product_id) {
+    const { data: product } = await supabase
+      .from("products")
+      .select("id")
+      .eq("household_id", household.id)
+      .eq("id", d.product_id)
+      .maybeSingle();
+    if (!product) return { error: "No se pudo restaurar." };
+  }
+
   const { error } = await supabase.from("shopping_list_items").insert({
-    id: item.id,
-    list_id: item.list_id,
+    id: d.id,
+    list_id: d.list_id,
     // Forzamos el hogar activo en lugar de fiarnos del payload del cliente: no se
     // puede reinsertar la fila con un household_id fabricado.
     household_id: household.id,
-    product_id: item.product_id,
-    name: item.name,
-    quantity: item.quantity,
-    unit: item.unit,
-    is_checked: item.is_checked,
-    checked_by: item.checked_by,
-    checked_at: item.checked_at,
-    added_by: item.added_by,
-    position: item.position,
-    created_at: item.created_at,
+    product_id: d.product_id,
+    name: d.name,
+    quantity: d.quantity,
+    unit: d.unit,
+    is_checked: d.is_checked,
+    checked_by: d.checked_by,
+    checked_at: d.checked_at,
+    added_by: d.added_by,
+    position: d.position,
+    created_at: d.created_at,
   });
   if (error) return { error: "No se pudo restaurar." };
   revalidatePath("/lista");
@@ -758,6 +811,7 @@ export async function checkoutAction(): Promise<
   const { data: checked, error: fetchErr } = await supabase
     .from("shopping_list_items")
     .select("id, name, quantity, unit, product_id")
+    .eq("household_id", household.id)
     .eq("list_id", list.id)
     .eq("is_checked", true);
   if (fetchErr) return { error: "No se pudieron leer los productos." };
@@ -770,6 +824,13 @@ export async function checkoutAction(): Promise<
   // resueltos. Se acumula durante el bucle porque los items de texto libre no
   // tienen product_id hasta que se crean aquí.
   const tripProductIds: string[] = [];
+  // Solo salen de la lista las líneas RESUELTAS: si una escritura falla (red,
+  // BD), la línea se queda marcada y reintentable, en vez de esfumarse con la
+  // compra a medio pasar y sin dejar rastro.
+  const doneIds: string[] = [];
+  const unitConflicts: string[] = [];
+  let added = 0;
+  let failures = 0;
 
   for (const item of checked) {
     // Resolver producto: enlazado, o resolver/crear por nombre normalizado.
@@ -777,11 +838,14 @@ export async function checkoutAction(): Promise<
     let defaultUnit = item.unit ?? "ud";
     let location: "pantry" | "fridge" | "freezer" | "other" = "pantry";
     let packSize: number | null = null;
+    let content: UnitContent = null;
 
     if (productId) {
       const { data: p } = await supabase
         .from("products")
-        .select("default_unit, default_location, pack_size")
+        .select(
+          "default_unit, default_location, pack_size, content_size, content_unit, content_is_estimate",
+        )
         .eq("household_id", household.id)
         .eq("id", productId)
         .maybeSingle();
@@ -789,12 +853,21 @@ export async function checkoutAction(): Promise<
         defaultUnit = item.unit ?? p.default_unit;
         location = p.default_location;
         packSize = p.pack_size;
+        if (p.content_size !== null && p.content_unit !== null) {
+          content = {
+            size: Number(p.content_size),
+            unit: p.content_unit,
+            estimate: p.content_is_estimate,
+          };
+        }
       }
     } else {
       const normalized = normalizeName(item.name);
       const { data: existing } = await supabase
         .from("products")
-        .select("id, default_unit, default_location, pack_size")
+        .select(
+          "id, default_unit, default_location, pack_size, content_size, content_unit, content_is_estimate",
+        )
         .eq("household_id", household.id)
         .eq("normalized_name", normalized)
         .maybeSingle();
@@ -803,6 +876,13 @@ export async function checkoutAction(): Promise<
         defaultUnit = item.unit ?? existing.default_unit;
         location = existing.default_location;
         packSize = existing.pack_size;
+        if (existing.content_size !== null && existing.content_unit !== null) {
+          content = {
+            size: Number(existing.content_size),
+            unit: existing.content_unit,
+            estimate: existing.content_is_estimate,
+          };
+        }
       } else {
         const { data: created } = await supabase
           .from("products")
@@ -815,9 +895,16 @@ export async function checkoutAction(): Promise<
           })
           .select("id")
           .single();
-        if (!created) continue;
+        if (!created) {
+          failures += 1;
+          continue;
+        }
         productId = created.id;
       }
+    }
+    if (!productId) {
+      failures += 1;
+      continue;
     }
 
     // Pack (F4): con pack y movimiento en ud, entran `cantidad × pack` unidades.
@@ -826,24 +913,48 @@ export async function checkoutAction(): Promise<
 
     const { data: inv } = await supabase
       .from("inventory_items")
-      .select("id, quantity")
+      .select("id, quantity, unit")
       .eq("household_id", household.id)
       .eq("product_id", productId)
       .eq("location", location)
       .maybeSingle();
 
+    // Lo que REALMENTE entra en la fila, en la unidad de la fila: la política
+    // de reposición es addStockQuantity y la unidad del inventario no se pisa.
+    let storedQty = qty;
+    let storedUnit: UnitType = defaultUnit;
+    let addedToInventory = false;
+
     if (inv) {
-      await supabase
-        .from("inventory_items")
-        .update({
-          quantity: Number(inv.quantity) + qty,
-          unit: defaultUnit,
-          updated_by: userId,
-        })
-        .eq("id", inv.id);
-      inventoryItemIds.push(inv.id);
+      const merged = addStockQuantity(
+        Number(inv.quantity),
+        inv.unit,
+        qty,
+        defaultUnit,
+        content,
+      );
+      if (merged === null) {
+        // Unidades incompatibles: la compra cuenta (habitualidad, snapshot),
+        // pero el stock no se suma a ciegas — mismo aviso que el ticket.
+        unitConflicts.push(
+          `«${item.name}»: compraste ${formatQuantity(qty, defaultUnit)} pero en tu inventario está en ${UNIT_LABELS[inv.unit]}. No se sumó automáticamente; ajústalo a mano.`,
+        );
+      } else {
+        const { error: invErr } = await supabase
+          .from("inventory_items")
+          .update({ quantity: merged, updated_by: userId })
+          .eq("id", inv.id);
+        if (invErr) {
+          failures += 1;
+          continue;
+        }
+        storedQty = roundQuantity(merged - Number(inv.quantity));
+        storedUnit = inv.unit;
+        inventoryItemIds.push(inv.id);
+        addedToInventory = true;
+      }
     } else {
-      const { data: created } = await supabase
+      const { data: created, error: invErr } = await supabase
         .from("inventory_items")
         .insert({
           household_id: household.id,
@@ -855,27 +966,33 @@ export async function checkoutAction(): Promise<
         })
         .select("id")
         .single();
-      if (created) inventoryItemIds.push(created.id);
+      if (invErr || !created) {
+        failures += 1;
+        continue;
+      }
+      inventoryItemIds.push(created.id);
+      addedToInventory = true;
     }
+    if (addedToInventory) added += 1;
 
-    // Historial (F5): un evento "repuesto" por producto añadido, con la cantidad
-    // ya convertida por pack. Sin folding (es una compra puntual, no el stepper).
-    if (productId) {
+    // Historial (F5): un evento "repuesto" por lo que entró de verdad, en la
+    // unidad de la fila. Sin folding (es una compra puntual, no el stepper).
+    if (addedToInventory && storedQty > 0) {
       await recordStockEvent(supabase, {
         householdId: household.id,
         productId,
-        quantity: qty,
-        unit: defaultUnit,
+        quantity: storedQty,
+        unit: storedUnit,
         kind: "restocked",
         userId,
       });
     }
 
-    // Memoria de habitualidad: este producto se ha comprado.
-    if (productId) {
-      await supabase.rpc("bump_product_purchase", { pid: productId });
-      tripProductIds.push(productId);
-    }
+    // Memoria de habitualidad: este producto se ha comprado (también con
+    // conflicto de unidad: la compra ocurrió aunque el stock no se sumara).
+    await supabase.rpc("bump_product_purchase", { pid: productId });
+    tripProductIds.push(productId);
+    doneIds.push(item.id);
   }
 
   // Snapshot de la compra (G2) ANTES del borrado: es el único instante en que
@@ -890,7 +1007,7 @@ export async function checkoutAction(): Promise<
       household_id: household.id,
       closed_by: userId,
       product_ids: [...new Set(tripProductIds)],
-      item_count: checked.length,
+      item_count: doneIds.length,
     });
     if (tripErr) {
       console.error("Snapshot de compra falló (best-effort):", tripErr);
@@ -899,10 +1016,30 @@ export async function checkoutAction(): Promise<
     console.error("Snapshot de compra falló (best-effort):", err);
   }
 
-  const ids = checked.map((c) => c.id);
-  await supabase.from("shopping_list_items").delete().in("id", ids);
+  if (doneIds.length > 0) {
+    await supabase
+      .from("shopping_list_items")
+      .delete()
+      .eq("household_id", household.id)
+      .in("id", doneIds);
+  }
 
   revalidatePath("/lista");
   revalidatePath("/inventario");
-  return { ok: true, added: checked.length, inventoryItemIds };
+
+  if (doneIds.length === 0) {
+    return { error: "No se pudo pasar la compra al inventario. Inténtalo de nuevo." };
+  }
+
+  const failureNote =
+    failures === 0
+      ? []
+      : [
+          failures === 1
+            ? "1 producto no se pudo pasar al inventario; sigue marcado en la lista para reintentar."
+            : `${failures} productos no se pudieron pasar al inventario; siguen marcados en la lista para reintentar.`,
+        ];
+  const warning = [...unitConflicts, ...failureNote].join(" ") || undefined;
+
+  return { ok: true, added, inventoryItemIds, warning };
 }

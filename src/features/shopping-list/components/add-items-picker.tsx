@@ -311,13 +311,16 @@ export function AddItemsPicker({
                       {formatPurchaseQuantity(item.quantity, item.unit, null)}
                     </span>
                   ) : null}
+                  {/* 44px de área táctil (era un blanco de 24px en pleno flujo
+                      móvil); los márgenes negativos lo funden con el padding
+                      del chip para que el alto visual no cambie. */}
                   <button
                     type="button"
                     aria-label={`Quitar ${item.name}`}
                     onClick={() =>
                       setNewItems((prev) => prev.filter((_, i) => i !== index))
                     }
-                    className="-mr-1 flex size-6 items-center justify-center rounded-md hover:bg-primary-foreground/20"
+                    className="-my-2 -mr-3 flex size-11 shrink-0 items-center justify-center rounded-lg hover:bg-primary-foreground/20"
                   >
                     <X className="size-4" aria-hidden />
                   </button>
