@@ -73,9 +73,15 @@ export function PushCard() {
       if (!active || !sub) return;
       const saved = await getMyPushPrefsAction(sub.endpoint);
       if (!active) return;
+      // Sin fila en el servidor (salida del hogar, purga por endpoint muerto),
+      // el navegador conserva la suscripción pero ya no llega nada: mostrarla
+      // como activa dejaba «Recibiendo avisos aquí» y unos toggles que
+      // escribían sobre 0 filas. Se ofrece «Activar», que re-registra este
+      // mismo endpoint.
+      if (!saved) return;
       setEndpoint(sub.endpoint);
       setEnabled(true);
-      if (saved) setPrefs(saved);
+      setPrefs(saved);
     }
     init();
     return () => {
@@ -143,7 +149,9 @@ export function PushCard() {
       const res = await updatePushPrefsAction(endpoint, next);
       if (res.error) {
         toast.error(res.error);
-        setPrefs(prefs);
+        // Revierte SOLO este toggle sobre el estado vigente: restaurar el
+        // `prefs` del closure podía pisar otro cambio posterior.
+        setPrefs((current) => ({ ...current, [key]: !value }));
       }
     });
   }
