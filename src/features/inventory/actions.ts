@@ -536,6 +536,145 @@ export async function getMergeCandidatesAction(
     }));
 }
 
+/** Fila del MISMO producto viviendo en otra ubicación. */
+export type SameProductRow = {
+  id: string;
+  location: LocationType;
+  quantity: number;
+  unit: UnitType;
+};
+
+/**
+ * Otras filas del mismo producto, en otras ubicaciones.
+ *
+ * El inventario es POR ubicación (unique household_id, product_id, location),
+ * así que ver «Plátano» dos veces en la lista no significa que haya dos
+ * productos en el catálogo: casi siempre es uno solo repartido entre la nevera
+ * y la despensa. Y esa lectura no se puede hacer desde la ficha, porque el
+ * combobox de «Fusionar con otro producto» —que arregla el otro problema, el
+ * del catálogo duplicado— excluye precisamente el producto que se está mirando.
+ * El resultado era un callejón sin salida: dos filas idénticas y un buscador
+ * que nunca encuentra la de al lado.
+ */
+export async function getSameProductRowsAction(
+  productId: string,
+  excludeInventoryId: string,
+): Promise<SameProductRow[]> {
+  const household = await getCurrentHousehold();
+  if (!household) return [];
+  const supabase = createServerSupabaseClient();
+  const { data } = await supabase
+    .from("inventory_items")
+    .select("id, location, quantity, unit")
+    .eq("household_id", household.id)
+    .eq("product_id", productId)
+    .neq("id", excludeInventoryId);
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    location: r.location,
+    quantity: Number(r.quantity),
+    unit: r.unit,
+  }));
+}
+
+/**
+ * Junta en UNA sola fila el mismo producto repartido por varias ubicaciones:
+ * todo se acumula en la de `targetInventoryId` y las demás desaparecen. No es
+ * una fusión de catálogo (el producto siempre fue uno), así que no toca precios
+ * ni aliases; tampoco anota un evento de stock, porque el total del hogar no
+ * cambia — solo deja de estar en dos sitios.
+ */
+export async function mergeInventoryRowsAction(
+  targetInventoryId: string,
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+  const supabase = createServerSupabaseClient();
+
+  const { data: target } = await supabase
+    .from("inventory_items")
+    .select("id, product_id, location, quantity, unit, expiry_date, use_soon")
+    .eq("household_id", household.id)
+    .eq("id", targetInventoryId)
+    .maybeSingle();
+  if (!target) return { error: "Producto no encontrado." };
+
+  const { data: othersData, error: othersErr } = await supabase
+    .from("inventory_items")
+    .select("id, location, quantity, unit, expiry_date, use_soon")
+    .eq("household_id", household.id)
+    .eq("product_id", target.product_id)
+    .neq("id", target.id);
+  if (othersErr) return { error: "No se pudo juntar el producto." };
+  const others = othersData ?? [];
+  if (others.length === 0) return { ok: true };
+
+  // Sumar magnitudes de unidades distintas (2 ud + 0,7 kg) daría un número sin
+  // significado. Pero solo hay conflicto REAL entre filas CON stock: una a cero
+  // no aporta magnitud, así que se absorbe sin mirar su unidad (su historial
+  // vive en inventory_events, no se pierde). Ese detalle importa porque la fila
+  // agotada es justo el residuo que dejan las compras y los ajustes.
+  const stocked = [target, ...others].filter((r) => Number(r.quantity) > 0);
+  const units = new Set(stocked.map((r) => r.unit));
+  if (units.size > 1) {
+    const detail = stocked
+      .map(
+        (r) =>
+          `${formatQuantity(Number(r.quantity), r.unit)} en ${LOCATION_LABELS[
+            r.location
+          ].toLowerCase()}`,
+      )
+      .join(" y ");
+    return {
+      error: `No se pueden sumar unidades distintas (${detail}). Unifica las unidades antes de juntarlo.`,
+    };
+  }
+
+  // Caducidad y avisos los ponen SOLO las filas con stock: la fecha de una fila
+  // agotada describe un lote que ya no existe, y heredarla dejaría 10 plátanos
+  // recién comprados marcados como caducados. Con todo a cero no hay nada que
+  // heredar y sobrevive lo que ya tenía el destino.
+  const contributing = stocked.length > 0 ? stocked : [target];
+  // La unidad la manda el stock, que puede no ser la del destino: absorber 2 kg
+  // en una fila vacía marcada en «ud» la dejaría mintiendo.
+  const mergedUnit = contributing[0].unit;
+  const mergedQuantity = stocked.reduce((sum, r) => sum + Number(r.quantity), 0);
+  // De las fechas, la MÁS PRÓXIMA: quedarse la del destino escondería el lote
+  // que caduca esta semana, que es el aviso por el que existe la pantalla.
+  const mergedExpiry = contributing
+    .map((r) => r.expiry_date)
+    .filter((d): d is string => d !== null)
+    .sort()[0];
+  const mergedUseSoon = contributing.some((r) => r.use_soon);
+
+  const { error: updErr } = await supabase
+    .from("inventory_items")
+    .update({
+      quantity: mergedQuantity,
+      unit: mergedUnit,
+      expiry_date: mergedExpiry ?? null,
+      use_soon: mergedUseSoon,
+      updated_by: userId,
+    })
+    .eq("household_id", household.id)
+    .eq("id", target.id);
+  if (updErr) return { error: "No se pudo juntar el producto." };
+
+  const { error: delErr } = await supabase
+    .from("inventory_items")
+    .delete()
+    .eq("household_id", household.id)
+    .in(
+      "id",
+      others.map((r) => r.id),
+    );
+  if (delErr) return { error: "No se pudo juntar el producto." };
+
+  revalidatePath("/inventario");
+  return { ok: true };
+}
+
 /**
  * Fusiona un producto (origen) en otro (destino) vía el RPC transaccional
  * `merge_products` (E9): repunta historial de precios, inventario, aliases,

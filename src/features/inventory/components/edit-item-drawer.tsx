@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Star, Store, TrendingDown, Trash2, X } from "lucide-react";
+import {
+  Merge,
+  Pencil,
+  Star,
+  Store,
+  TrendingDown,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -37,15 +45,23 @@ import {
 import { cn } from "@/lib/utils";
 import { chainLabel, chainOptions, orderChains } from "@/features/prices/chains";
 import { relativeDaysLabel } from "@/lib/dates";
-import { formatQuantity, LOCATION_OPTIONS, UNIT_OPTIONS } from "@/lib/units";
+import {
+  formatQuantity,
+  LOCATION_LABELS,
+  LOCATION_OPTIONS,
+  UNIT_OPTIONS,
+} from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import type { Category, InventoryEntry } from "../queries";
 import {
   deleteInventoryAction,
   getMergeCandidatesAction,
+  getSameProductRowsAction,
+  mergeInventoryRowsAction,
   mergeProductsAction,
   togglePinAction,
   updateInventoryAction,
+  type SameProductRow,
 } from "../actions";
 import {
   deleteAliasAction,
@@ -217,6 +233,49 @@ export function EditItemDrawer({
         return;
       }
       toast.success("Productos fusionados");
+      onOpenChange(false);
+      router.refresh();
+    });
+  }
+
+  // El MISMO producto en otra ubicación (nevera + despensa). Se lee al abrir la
+  // ficha, como los aliases: la tarjeta solo conoce su propia fila, y el aviso
+  // tiene que salir en la que el usuario abrió, sea cual sea de las dos.
+  const [sameRows, setSameRows] = useState<SameProductRow[]>([]);
+  const [joining, startJoin] = useTransition();
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    getSameProductRowsAction(entry.productId, entry.id).then((rows) => {
+      if (active) setSameRows(rows);
+    });
+    return () => {
+      active = false;
+    };
+  }, [open, entry.productId, entry.id]);
+
+  // «Despensa (1 ud)» o «Despensa (1 ud), Congelador (2 ud) y Otros (3 ud)»:
+  // con la cantidad a la vista se decide sin salir de la ficha si toca juntarlo
+  // o si la otra fila es un residuo a cero que da igual.
+  const sameRowsLabel = (() => {
+    const parts = sameRows.map(
+      (r) =>
+        `${LOCATION_LABELS[r.location]} (${formatQuantity(r.quantity, r.unit)})`,
+    );
+    if (parts.length < 2) return parts.join("");
+    return `${parts.slice(0, -1).join(", ")} y ${parts[parts.length - 1]}`;
+  })();
+
+  function joinLocations() {
+    startJoin(async () => {
+      const res = await mergeInventoryRowsAction(entry.id);
+      if (res.error) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(
+        `${entry.productName}: todo junto en ${LOCATION_LABELS[entry.location]}`,
+      );
       onOpenChange(false);
       router.refresh();
     });
@@ -510,6 +569,36 @@ export function EditItemDrawer({
               </Select>
             </div>
           </div>
+
+          {/* Mismo producto en varias ubicaciones. Va A LA VISTA, no en los
+              ajustes plegados: quien abre la ficha con dos «Plátano» delante
+              viene justo a resolver esto, y el único sitio donde ponía «unir»
+              era el combobox de duplicados del catálogo, que nunca puede
+              ofrecer la fila de al lado (es el mismo producto, y se excluye). */}
+          {sameRows.length > 0 ? (
+            <div className="flex flex-col gap-2 rounded-xl border bg-muted/50 p-3">
+              <span className="flex items-center gap-1.5 text-sm font-medium">
+                <Merge className="size-4 text-muted-foreground" aria-hidden />
+                Este producto está en más de un sitio
+              </span>
+              {/* «Hay otra línea» y no «también lo tienes»: la otra fila puede
+                  estar a 0 (el residuo que dejan las compras), y ahí «tienes»
+                  sería mentira. Juntarlo la borra igual. */}
+              <p className="text-sm text-muted-foreground">
+                {sameRows.length === 1 ? "Hay otra línea en " : "Hay más líneas en "}
+                {sameRowsLabel}. Es el mismo producto repartido, no productos
+                distintos: por eso no sale en «Fusionar con otro producto».
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={joinLocations}
+                loading={joining}
+              >
+                Juntarlo todo en {LOCATION_LABELS[entry.location].toLowerCase()}
+              </Button>
+            </div>
+          ) : null}
 
           {/* A la vista solo lo que se edita a diario (nombre, icono, categoría
               y unidades); el resto son ajustes que se ponen una vez y casi nunca
