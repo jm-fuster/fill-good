@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  ChefHat,
   Merge,
   Pencil,
   Star,
@@ -779,9 +780,26 @@ export function EditItemDrawer({
               />
             ) : null}
 
+            {/* Los dos interruptores llevan `items-start`: `Label` trae
+                `items-center` de base para alinear icono y texto en una fila, y
+                al pasarlo a columna eso centra las dos líneas en horizontal (el
+                título quedaba flotando 69 px dentro de su propia descripción).
+                Y los dos llevan icono, que es lo que los hace leerse como
+                pareja: el gorro cuando entra antes en los menús, la estrella
+                cuando se ancla arriba. Se tiñen de `warning` al activarse, como
+                el distintivo que sale luego en la tarjeta. */}
             <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
-              <Label htmlFor="edit-use-soon" className="flex flex-col gap-0.5">
-                <span>Consumir pronto</span>
+              <Label
+                htmlFor="edit-use-soon"
+                className="flex flex-col items-start gap-0.5"
+              >
+                <span className="flex items-center gap-1.5">
+                  <ChefHat
+                    aria-hidden
+                    className={cn("size-4", useSoon && "text-warning")}
+                  />
+                  Consumir pronto
+                </span>
                 <span className="text-sm font-normal text-muted-foreground">
                   Priorízalo en los menús aunque no caduque
                 </span>
@@ -794,7 +812,10 @@ export function EditItemDrawer({
             </div>
 
             <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
-              <Label htmlFor="edit-pin" className="flex flex-col gap-0.5">
+              <Label
+                htmlFor="edit-pin"
+                className="flex flex-col items-start gap-0.5"
+              >
                 <span className="flex items-center gap-1.5">
                   <Star
                     aria-hidden
