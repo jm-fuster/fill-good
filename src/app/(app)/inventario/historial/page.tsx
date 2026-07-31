@@ -9,8 +9,15 @@ import { getInventoryHistory } from "@/features/inventory/queries";
 
 export const metadata: Metadata = { title: "Historial de movimientos" };
 
-export default async function HistorialPage() {
-  const { events, nowMs } = await getInventoryHistory();
+export default async function HistorialPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const [{ events, nowMs }, { q }] = await Promise.all([
+    getInventoryHistory(),
+    searchParams,
+  ]);
 
   return (
     <PageContainer>
@@ -27,7 +34,7 @@ export default async function HistorialPage() {
           description="Cuando gastes, tires o repongas productos, verás aquí el registro con la fecha y quién lo hizo."
         />
       ) : (
-        <InventoryHistory events={events} nowMs={nowMs} />
+        <InventoryHistory events={events} nowMs={nowMs} initialQuery={q ?? ""} />
       )}
     </PageContainer>
   );
