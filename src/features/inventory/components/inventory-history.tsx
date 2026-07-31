@@ -18,7 +18,7 @@ const OUT = {
   label: "Consumido",
   sign: "−",
   icon: ArrowDown,
-  tone: "bg-muted text-muted-foreground",
+  tone: "bg-destructive/15 text-destructive",
 };
 
 /**
