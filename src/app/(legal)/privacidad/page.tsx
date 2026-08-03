@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function PrivacidadPage() {
   return (
-    <LegalPage title="Política de privacidad" updated="29 de julio de 2026">
+    <LegalPage title="Política de privacidad" updated="3 de agosto de 2026">
       <p>
         Esta política explica qué datos personales tratamos cuando usas{" "}
         <strong>Fill Good</strong>, con qué finalidad, con qué base legal y qué
@@ -186,8 +186,10 @@ export default function PrivacidadPage() {
           Dos funciones usan IA: la lectura de tickets y la generación de
           menús. Para la primera se envía a Google (API de Gemini) el archivo
           del ticket junto con los nombres de productos de tu catálogo, para
-          casar las líneas; para la segunda, la información de tu despensa y
-          las preferencias que indiques. El archivo del ticket no se conserva
+          casar las líneas; para la segunda, la información de tu despensa, tus
+          recetas, lo que tengas apuntado en la lista de la compra, los platos
+          de las dos semanas anteriores y las preferencias y reglas que
+          indiques. El archivo del ticket no se conserva
           después del procesado. Antes de que la imagen salga, eliminamos sus
           metadatos técnicos (por ejemplo, la geolocalización que algunas
           cámaras incrustan en la foto).

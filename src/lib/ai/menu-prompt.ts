@@ -6,6 +6,19 @@ export type MenuInventoryLine = {
   useSoon: boolean;
 };
 
+/**
+ * Reparto de los ingredientes de una receta entre lo que hay en casa, lo que ya
+ * está apuntado en la lista y lo que habría que comprar. Lo calcula
+ * `summarizeAvailability` (features/menus/prompt-context.ts) con el mismo
+ * emparejado que «añadir a la lista lo que falte».
+ */
+export type MenuRecipeAvailability = {
+  total: number;
+  inStock: number;
+  inList: number;
+  missing: string[];
+};
+
 /** Una receta del recetario tal como se presenta al modelo. */
 export type MenuRecipeLine = {
   id: string;
@@ -16,7 +29,22 @@ export type MenuRecipeLine = {
   timesCooked: number;
   /** Etiqueta relativa de la última vez que se cocinó ("hace 12 días") o null. */
   lastCookedLabel: string | null;
-  ingredients: { name: string; inStock: boolean }[];
+  /** Minutos de preparación declarados; null = sin dato. */
+  prepMinutes: number | null;
+  /** Coste estimado POR RACIÓN en euros; null = ningún ingrediente con precio. */
+  costPerServing: number | null;
+  /** El coste sale de precios PARCIALES: es un suelo, no el importe real. */
+  costPartial: boolean;
+  availability: MenuRecipeAvailability;
+  /** Nombres de los ingredientes, sin cantidades. */
+  ingredients: string[];
+};
+
+/** Un plato de las semanas anteriores, para no repetirlo. */
+export type MenuRecentDish = {
+  name: string;
+  /** Se marcó como cocinado (frente a solo planificado). */
+  cooked: boolean;
 };
 
 export type MenuRuleLine =
@@ -95,6 +123,10 @@ export type MenuPromptContext = {
   pinned?: MenuPinnedLine[];
   /** Perfil del hogar; si se omite, se usan los defaults (comportamiento previo). */
   prefs?: MenuPrefs;
+  /** Apuntado en la lista de la compra: se comprará antes de cocinar la semana. */
+  shoppingList?: string[];
+  /** Platos de las semanas anteriores, para no repetir tan pronto. */
+  recentDishes?: MenuRecentDish[];
 };
 
 const SEASON_LABEL: Record<"winter" | "summer", string> = {
@@ -126,16 +158,87 @@ function cookedLabel(timesCooked: number, lastCookedLabel: string | null): strin
   return lastCookedLabel ? `${base} (última vez ${lastCookedLabel})` : base;
 }
 
+/** Nº de faltantes que se nombran antes de resumir el resto en "y N más". */
+const MAX_MISSING_NAMES = 4;
+/** Tope de artículos de la lista de la compra que se enumeran. */
+const MAX_LIST_NAMES = 40;
+/** Tope de platos recientes que se enumeran. */
+const MAX_RECENT_DISHES = 30;
+
+function euros(amount: number): string {
+  return `${amount.toFixed(2).replace(".", ",")} €`;
+}
+
+/**
+ * Coste por ración. Con precios incompletos se dice "desde": presentar una suma
+ * parcial como si fuera el importe real haría barata la receta a la que le
+ * faltan precios, que es justo al revés de lo que interesa.
+ */
+function costLabel(r: MenuRecipeLine): string | null {
+  if (r.costPerServing === null) return null;
+  const amount = euros(r.costPerServing);
+  return r.costPartial ? `desde ${amount}/ración` : `~${amount}/ración`;
+}
+
+function availabilityLabel(a: MenuRecipeAvailability): string {
+  if (a.total === 0) return "sin ingredientes detallados";
+  if (a.missing.length === 0 && a.inList === 0) {
+    return `tienes en casa los ${a.total} ingredientes`;
+  }
+  if (a.missing.length === 0) {
+    return `tienes en casa ${a.inStock} de ${a.total} y el resto ya está en la lista de la compra: no hay que comprar nada más`;
+  }
+  const shown = a.missing.slice(0, MAX_MISSING_NAMES).join(", ");
+  const rest = a.missing.length - Math.min(a.missing.length, MAX_MISSING_NAMES);
+  const more = rest > 0 ? ` y ${rest} más` : "";
+  const onList = a.inList > 0 ? `, ${a.inList} ya en la lista` : "";
+  return `tienes en casa ${a.inStock} de ${a.total}${onList}, hay que comprar: ${shown}${more}`;
+}
+
 function recipeLine(r: MenuRecipeLine): string {
-  const ings =
-    r.ingredients.length > 0
-      ? r.ingredients
-          .map((i) => (i.inStock ? `${i.name} (en casa)` : i.name))
-          .join(", ")
-      : "(sin ingredientes)";
-  return `- id ${r.id} · "${r.name}" (${mealTypesLabel(r.mealTypes)}) · ${ratingLabel(
-    r.avgRating,
-  )} · ${cookedLabel(r.timesCooked, r.lastCookedLabel)} · ingredientes: ${ings}`;
+  const parts = [`id ${r.id}`, `"${r.name}"`, mealTypesLabel(r.mealTypes)];
+  if (r.prepMinutes !== null) parts.push(`${r.prepMinutes} min`);
+  parts.push(ratingLabel(r.avgRating));
+  parts.push(cookedLabel(r.timesCooked, r.lastCookedLabel));
+  const cost = costLabel(r);
+  if (cost) parts.push(cost);
+  parts.push(availabilityLabel(r.availability));
+  if (r.ingredients.length > 0) {
+    parts.push(`ingredientes: ${r.ingredients.join(", ")}`);
+  }
+  return `- ${parts.join(" · ")}`;
+}
+
+/** Lista con tope: lo que no cabe se resume en vez de desaparecer sin decirlo. */
+function cappedLines(items: string[], max: number): string {
+  const shown = items.slice(0, max);
+  const rest = items.length - shown.length;
+  const lines = shown.map((i) => `- ${i}`);
+  if (rest > 0) lines.push(`- (y ${rest} más)`);
+  return lines.join("\n");
+}
+
+/**
+ * Lo apuntado en la lista de la compra. Va DESPUÉS del inventario y con la
+ * instrucción explícita de contarlo como disponible: es lo que separa "esta
+ * receta te obliga a comprar tres cosas" de "esta receta usa lo que ya ibas a
+ * comprar de todas formas".
+ */
+function shoppingListSection(names: string[]): string {
+  if (names.length === 0) return "";
+  return `\nYa apuntado en la lista de la compra (se comprará estos días: cuéntalo como disponible):
+${cappedLines(names, MAX_LIST_NAMES)}
+`;
+}
+
+function recentDishesSection(dishes: MenuRecentDish[]): string {
+  if (dishes.length === 0) return "";
+  const lines = dishes.map(
+    (d) => `"${d.name}"${d.cooked ? " (se cocinó)" : " (estaba planificado)"}`,
+  );
+  return `\nPlatos de las dos semanas anteriores (NO los repitas esta semana salvo que una regla lo exija):
+${cappedLines(lines, MAX_RECENT_DISHES)}
+`;
 }
 
 function ruleLine(rule: MenuRuleLine): string {
@@ -218,14 +321,16 @@ Genera un menú para 7 días (de lunes a domingo), con ${mealsText}.
 Objetivos, POR ORDEN DE PRIORIDAD:
 1. Cumplir SIEMPRE las reglas obligatorias del hogar (más abajo).
 2. Respetar el OBJETIVO DEL HOGAR (más abajo): es la guía principal del estilo del menú.
-3. Aprovechar lo que ya hay en el inventario, especialmente lo que caduca pronto o está marcado como "consumir pronto".
-4. Preferir recetas del recetario del hogar cuando encajen, sobre todo las mejor valoradas que hace tiempo que no se cocinan. Respeta el tipo de comida de cada receta: una receta "solo cena" no puede ir en la comida, ni una "solo comida" en la cena. No repitas la misma receta durante la semana salvo que una regla lo exija.
-5. Completar con platos nuevos (de temporada, propios de ${SEASON_LABEL[season]}) cuando el recetario no baste para los 7 días.
+3. Aprovechar lo que ya hay en casa, especialmente lo que caduca pronto o está marcado como "consumir pronto". Lo que ya está apuntado en la lista de la compra también cuenta como disponible.
+4. Hacer que la semana salga barata: a igualdad de lo demás, elige el plato que obligue a comprar MENOS cosas nuevas y, si eso empata, el más barato por ración. De cada receta se te dice cuántos ingredientes tienes y cuáles habría que comprar.
+5. Preferir recetas del recetario del hogar cuando encajen, sobre todo las mejor valoradas que hace tiempo que no se cocinan. Respeta el tipo de comida de cada receta: una receta "solo cena" no puede ir en la comida, ni una "solo comida" en la cena. No repitas la misma receta durante la semana salvo que una regla lo exija, y evita también los platos de las dos semanas anteriores (más abajo).
+6. Ajustar el esfuerzo al día: de lunes a viernes, platos rápidos (30 minutos o menos); deja los más elaborados para el sábado y el domingo.
+7. Completar con platos nuevos (de temporada, propios de ${SEASON_LABEL[season]}) cuando el recetario no baste para los 7 días.
 
 Inventario actual del hogar:
 ${inventoryText}
-
-Recetario del hogar (solo recetas de la temporada actual):
+${shoppingListSection(context.shoppingList ?? [])}
+Recetario del hogar (solo recetas de la temporada actual, de más a menos recomendable):
 ${recipesText}
 Si un plato es una de estas recetas, copia su id EXACTO en el campo saved_recipe_id. Si inventas un plato nuevo, deja saved_recipe_id en null.
 
@@ -234,7 +339,7 @@ ${rulesText}
 
 Objetivo del hogar (PRIORITARIO):
 ${goalBlock}
-${pinnedSection}
+${recentDishesSection(context.recentDishes ?? [])}${pinnedSection}
 Cada comida es una lista de platos. La comida (lunch) puede llevar 1 o 2 platos (por ejemplo un primero ligero y un segundo) cuando tenga sentido; la cena (dinner) normalmente 1 plato.${breakfastLine} Nunca más de 2 platos por hueco.
 
 Para cada plato indica: nombre claro en español, saved_recipe_id (id del recetario o null), una descripción breve y la lista de ingredientes con cantidad y unidad aproximadas (para ${rations}). Usa ingredientes comunes; puedes proponer ingredientes que no estén en el inventario (se añadirán a la lista de la compra).
@@ -261,6 +366,10 @@ export type RerollPromptContext = {
   otherDishes: string[];
   /** Perfil del hogar (N3); si se omite, se usan los defaults. */
   prefs?: MenuPrefs;
+  /** Apuntado en la lista de la compra: cuenta como disponible. */
+  shoppingList?: string[];
+  /** Platos de las semanas anteriores, para no repetir tan pronto. */
+  recentDishes?: MenuRecentDish[];
 };
 
 /**
@@ -332,14 +441,15 @@ ${askLine}
 Objetivos, POR ORDEN DE PRIORIDAD:
 1. Respetar las reglas del hogar (más abajo).
 2. Respetar el OBJETIVO DEL HOGAR (más abajo).
-3. Aprovechar el inventario, sobre todo lo que caduca pronto o hay que consumir pronto.
-4. Preferir una receta del recetario si encaja con la ${slotLabel}; si no, inventa un plato de temporada.
-5. NO repetir ninguno de los otros platos ya planificados esta semana.
+3. Aprovechar lo que hay en casa, sobre todo lo que caduca pronto o hay que consumir pronto. Lo apuntado en la lista de la compra también cuenta como disponible.
+4. Que salga barato: entre dos platos parecidos, el que obligue a comprar menos cosas nuevas y, si empatan, el más barato por ración.
+5. Preferir una receta del recetario si encaja con la ${slotLabel}; si no, inventa un plato de temporada.
+6. NO repetir ninguno de los otros platos ya planificados esta semana ni los de las dos semanas anteriores.
 
 Inventario actual del hogar:
 ${inventoryText}
-
-Recetario del hogar (solo recetas de la temporada actual):
+${shoppingListSection(context.shoppingList ?? [])}
+Recetario del hogar (solo recetas de la temporada actual, de más a menos recomendable):
 ${recipesText}
 Si el plato es una de estas recetas, copia su id EXACTO en saved_recipe_id; si lo inventas, deja saved_recipe_id en null.
 
@@ -348,7 +458,7 @@ ${rulesText}
 
 Objetivo del hogar (PRIORITARIO):
 ${goalBlock}
-
+${recentDishesSection(context.recentDishes ?? [])}
 Otros platos de la semana (NO los repitas):
 ${otherText}
 

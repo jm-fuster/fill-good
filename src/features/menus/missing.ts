@@ -77,31 +77,92 @@ export type MissingCandidate = {
   /** Unidad del ingrediente en la receta. */
   unit: UnitType | null;
   /** Producto del catálogo emparejado, o null si es texto libre sin match. */
-  match: {
-    productId: string;
-    productName: string;
-    defaultUnit: UnitType;
-    kind: MatchKind;
-  } | null;
+  match: ResolvedMatch | null;
 };
 
-type ResolvedMatch = {
+export type ResolvedMatch = {
   productId: string;
   productName: string;
   defaultUnit: UnitType;
   kind: MatchKind;
 };
 
+/**
+ * Catálogo preparado para resolver ingredientes: los niveles 1 y 2 son búsquedas
+ * directas y el 3 recorre las entradas en su orden original (el primer mejor
+ * score gana). Se construye una vez por cálculo, no una por ingrediente.
+ */
+export type CatalogIndex = {
+  entries: readonly CatalogEntry[];
+  byId: ReadonlyMap<string, CatalogEntry>;
+  byNorm: ReadonlyMap<string, CatalogEntry>;
+};
+
+export function buildCatalogIndex(
+  catalog: readonly CatalogEntry[],
+): CatalogIndex {
+  const byId = new Map<string, CatalogEntry>();
+  const byNorm = new Map<string, CatalogEntry>();
+  for (const c of catalog) {
+    byId.set(c.id, c);
+    // Primer nombre normalizado que llega gana: dos productos con el mismo
+    // nombre son una fusión pendiente, no un empate que haya que resolver aquí.
+    if (!byNorm.has(c.normalizedName)) byNorm.set(c.normalizedName, c);
+  }
+  return { entries: catalog, byId, byNorm };
+}
+
+/**
+ * Empareja UN ingrediente con el catálogo por los tres niveles descritos arriba.
+ *
+ * Vive aquí y no en cada llamante a propósito: el generador de menús usa esta
+ * misma resolución para contarle a la IA qué falta de cada receta, y si las dos
+ * no coincidieran, el menú diría "tienes todo" y «añadir a la lista lo que
+ * falte» acto seguido apuntaría tres cosas.
+ */
+export function resolveIngredient(
+  norm: string,
+  productId: string | null,
+  index: CatalogIndex,
+  threshold: number = DEFAULT_FUZZY_THRESHOLD,
+): ResolvedMatch | null {
+  const asMatch = (c: CatalogEntry, kind: MatchKind): ResolvedMatch => ({
+    productId: c.id,
+    productName: c.name,
+    defaultUnit: c.defaultUnit,
+    kind,
+  });
+
+  // Nivel 1: product_id explícito del ingrediente.
+  if (productId) {
+    const c = index.byId.get(productId);
+    if (c) return asMatch(c, "product_id");
+  }
+
+  // Nivel 2: nombre normalizado exacto.
+  const exact = index.byNorm.get(norm);
+  if (exact) return asMatch(exact, "exact");
+
+  // Nivel 3: fuzzy por trigramas (mejor score por encima del umbral).
+  if (norm.length >= MIN_FUZZY_LENGTH) {
+    let best: { entry: CatalogEntry; score: number } | null = null;
+    for (const c of index.entries) {
+      const score = trigramSimilarity(norm, c.normalizedName);
+      if (score >= threshold && (best === null || score > best.score)) {
+        best = { entry: c, score };
+      }
+    }
+    if (best) return asMatch(best.entry, "fuzzy");
+  }
+
+  return null;
+}
+
 export function computeMissingIngredients(
   input: MissingComputationInput,
 ): MissingCandidate[] {
   const threshold = input.fuzzyThreshold ?? DEFAULT_FUZZY_THRESHOLD;
-
-  const catalogById = new Map(input.catalog.map((c) => [c.id, c]));
-  const catalogByNorm = new Map<string, CatalogEntry>();
-  for (const c of input.catalog) {
-    if (!catalogByNorm.has(c.normalizedName)) catalogByNorm.set(c.normalizedName, c);
-  }
+  const index = buildCatalogIndex(input.catalog);
 
   const result: MissingCandidate[] = [];
   const seen = new Set<string>();
@@ -110,40 +171,7 @@ export function computeMissingIngredients(
     const norm = normalizeName(ing.name);
     if (!norm) continue;
 
-    let match: ResolvedMatch | null = null;
-
-    // Nivel 1: product_id explícito del ingrediente.
-    if (ing.productId && catalogById.has(ing.productId)) {
-      const c = catalogById.get(ing.productId)!;
-      match = { productId: c.id, productName: c.name, defaultUnit: c.defaultUnit, kind: "product_id" };
-    }
-
-    // Nivel 2: nombre normalizado exacto.
-    if (!match) {
-      const c = catalogByNorm.get(norm);
-      if (c) {
-        match = { productId: c.id, productName: c.name, defaultUnit: c.defaultUnit, kind: "exact" };
-      }
-    }
-
-    // Nivel 3: fuzzy por trigramas (mejor score por encima del umbral).
-    if (!match && norm.length >= MIN_FUZZY_LENGTH) {
-      let best: { entry: CatalogEntry; score: number } | null = null;
-      for (const c of input.catalog) {
-        const score = trigramSimilarity(norm, c.normalizedName);
-        if (score >= threshold && (best === null || score > best.score)) {
-          best = { entry: c, score };
-        }
-      }
-      if (best) {
-        match = {
-          productId: best.entry.id,
-          productName: best.entry.name,
-          defaultUnit: best.entry.defaultUnit,
-          kind: "fuzzy",
-        };
-      }
-    }
+    const match = resolveIngredient(norm, ing.productId, index, threshold);
 
     // Ya en stock (por producto emparejado o por nombre): no falta.
     const inStock =

@@ -130,6 +130,10 @@ export type SavedRecipeForMenu = {
   name: string;
   mealTypes: string[];
   seasons: string[];
+  /** Raciones para las que están escritas las cantidades (y el coste, M7). */
+  servings: number;
+  /** Minutos de preparación declarados; null = sin dato. */
+  prepMinutes: number | null;
   ingredients: { name: string; productId: string | null }[];
 };
 
@@ -138,6 +142,8 @@ type SavedRecipeForMenuRow = {
   name: string;
   meal_types: string[] | null;
   seasons: string[] | null;
+  servings: number | null;
+  prep_minutes: number | null;
   recipe_ingredients: { name: string; product_id: string | null }[];
 };
 
@@ -145,6 +151,11 @@ type SavedRecipeForMenuRow = {
  * Recetas guardadas del hogar con sus ingredientes (nombre + product_id), para
  * el generador de menús 2.0. El `product_id` permite saber qué ingredientes hay
  * en stock.
+ *
+ * `servings` viaja porque el coste (M7) está calculado para las raciones de la
+ * receta: comparar dos recetas por su total sin dividir haría cara una para seis
+ * y barata una para uno. `prepMinutes`, para poder dejar lo elaborado al fin de
+ * semana.
  */
 export async function getSavedRecipesForMenu(): Promise<SavedRecipeForMenu[]> {
   const householdId = await getActiveHouseholdId();
@@ -152,7 +163,9 @@ export async function getSavedRecipesForMenu(): Promise<SavedRecipeForMenu[]> {
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("recipes")
-    .select("id, name, meal_types, seasons, recipe_ingredients(name, product_id)")
+    .select(
+      "id, name, meal_types, seasons, servings, prep_minutes, recipe_ingredients(name, product_id)",
+    )
     .eq("household_id", householdId)
     .eq("is_saved", true);
   if (error) throw error;
@@ -163,6 +176,8 @@ export async function getSavedRecipesForMenu(): Promise<SavedRecipeForMenu[]> {
     name: r.name,
     mealTypes: r.meal_types ?? [],
     seasons: r.seasons ?? ["all"],
+    servings: r.servings && r.servings > 0 ? r.servings : 1,
+    prepMinutes: r.prep_minutes,
     ingredients: (r.recipe_ingredients ?? []).map((i) => ({
       name: i.name,
       productId: i.product_id,

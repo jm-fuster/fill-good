@@ -50,7 +50,8 @@ export function AiConsentCard({
       <div className="flex flex-col gap-2 text-sm text-muted-foreground">
         <p>
           Para leer tickets y generar menús enviamos esos datos (la imagen del
-          ticket, tu despensa y las preferencias que indiques) a la{" "}
+          ticket, tu despensa, tus recetas, la lista de la compra, los platos de
+          las dos semanas anteriores y las preferencias que indiques) a la{" "}
           <strong className="text-foreground">IA de Google (Gemini)</strong>.
         </p>
         <p>

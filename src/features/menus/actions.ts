@@ -14,7 +14,10 @@ import { menuSchema, singleDishSchema } from "@/lib/ai/menu-schema";
 import {
   buildMenuPrompt,
   buildRerollPrompt,
+  type MenuInventoryLine,
   type MenuPinnedLine,
+  type MenuRecentDish,
+  type MenuRecipeLine,
   type MenuRuleLine,
 } from "@/lib/ai/menu-prompt";
 import {
@@ -40,17 +43,33 @@ import { getInventory } from "@/features/inventory/queries";
 import { getInventoryStatus } from "@/features/inventory/status";
 import {
   getActiveList,
+  getActiveListContents,
   getProductCatalog,
   getRestockCandidates,
   type RestockCandidate,
 } from "@/features/shopping-list/queries";
 import {
+  getRecipeCostsForIds,
   getRecipeSignals,
   getSavedRecipesForMenu,
+  type SavedRecipeForMenu,
 } from "@/features/recipes/queries";
 import { rankTonight, type TonightCard, type TonightSoonInfo } from "./tonight";
-import { getMenuEntries, getMenuPrefs, getMenuRules } from "./queries";
+import {
+  getMenuEntries,
+  getMenuPrefs,
+  getMenuRules,
+  getWeekMenusWithEntries,
+  type MenuPrefs,
+  type MenuRule,
+} from "./queries";
 import { activeSlots } from "./slots";
+import {
+  buildCatalogIndex,
+  selectRecipesForPrompt,
+  summarizeAvailability,
+  type RecipeAvailability,
+} from "./prompt-context";
 import {
   computeMissingIngredients,
   type MissingCandidate,
@@ -179,6 +198,253 @@ async function cleanupOrphanEphemeralRecipes(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Contexto del hogar que ven los prompts de menú
+// ---------------------------------------------------------------------------
+
+/** Lo que la IA sabe del hogar al proponer platos, ya cocinado para el prompt. */
+type HouseholdMenuContext = {
+  season: "winter" | "summer";
+  inventory: MenuInventoryLine[];
+  /** Recetario de temporada, de más a menos recomendable y con el tope aplicado. */
+  recipes: MenuRecipeLine[];
+  rules: MenuRuleLine[];
+  /** Nombres apuntados en la lista de la compra activa. */
+  shoppingList: string[];
+  /** Platos de las dos semanas anteriores, sin repetidos. */
+  recentDishes: MenuRecentDish[];
+  prefs: MenuPrefs;
+  /** Reglas ACTIVAS, para la validación determinista posterior (`rules.ts`). */
+  activeRules: MenuRule[];
+  /** Recetario COMPLETO (sin filtrar por temporada ni recortar): resuelve ids. */
+  savedRecipes: SavedRecipeForMenu[];
+};
+
+/** Semanas hacia atrás de las que se arrastran platos para no repetirlos. */
+const RECENT_WEEKS = 2;
+
+/**
+ * Reúne el contexto que ven los DOS prompts de menú —la semana entera y el plato
+ * suelto de «otra idea»/«+»—, para que los dos decidan con la misma información.
+ * Antes cada uno se lo montaba por su cuenta con las mismas cinco consultas
+ * copiadas, y cualquier señal nueva había que acordarse de añadirla dos veces.
+ *
+ * Lo que aporta sobre las señales de siempre (inventario, recetario, reglas y
+ * perfil):
+ *   · La LISTA DE LA COMPRA. Lo apuntado se compra en los próximos días, así que
+ *     al planificar una semana cuenta como disponible; sin esto, una receta a la
+ *     que solo le faltaba lo que ya ibas a comprar parecía igual de cara que una
+ *     que obliga a comprar cuatro cosas nuevas.
+ *   · Qué ingredientes faltan DE VERDAD, con el mismo emparejado que «añadir a
+ *     la lista lo que falte» (ver `prompt-context.ts`). El modelo ya no tiene
+ *     que contar marcas de "(en casa)" ingrediente a ingrediente.
+ *   · El COSTE por ración (M7) y los minutos de preparación, que ya existían en
+ *     la ficha de cada receta y no llegaban al generador.
+ *   · Los platos de las DOS SEMANAS ANTERIORES: la variedad era solo dentro de
+ *     la semana, así que dos generaciones seguidas salían casi calcadas.
+ */
+async function loadHouseholdMenuContext(
+  householdId: string,
+  weekStart: string,
+): Promise<HouseholdMenuContext> {
+  const previousWeekStarts = Array.from({ length: RECENT_WEEKS }, (_, i) =>
+    shiftWeek(weekStart, -(i + 1)),
+  );
+
+  const [
+    inventory,
+    recipesAndCosts,
+    signals,
+    allRules,
+    prefs,
+    catalog,
+    listContents,
+    previousWeeks,
+  ] = await Promise.all([
+    getInventory(),
+    // El coste necesita los ids del recetario, así que son dos consultas
+    // encadenadas; encadenarlas AQUÍ las deja corriendo en paralelo con las
+    // demás en vez de añadir una tanda secuencial más.
+    (async () => {
+      const saved = await getSavedRecipesForMenu();
+      const costs = await getRecipeCostsForIds(saved.map((r) => r.id));
+      return { saved, costs };
+    })(),
+    getRecipeSignals(householdId),
+    getMenuRules(),
+    getMenuPrefs(),
+    getProductCatalog(),
+    getActiveListContents(),
+    getWeekMenusWithEntries(previousWeekStarts),
+  ]);
+
+  const { saved: savedRecipes, costs } = recipesAndCosts;
+  const season = getCurrentSeason();
+  const activeRules = allRules.filter((r) => r.active);
+
+  // Existencias reales: suma por producto > 0, el mismo criterio que D3 (una
+  // fila a cero es un producto agotado, no uno disponible).
+  const stockByProduct = new Map<string, number>();
+  for (const i of inventory) {
+    stockByProduct.set(
+      i.productId,
+      (stockByProduct.get(i.productId) ?? 0) + i.quantity,
+    );
+  }
+  const stockProductIds = new Set<string>();
+  for (const [productId, qty] of stockByProduct) {
+    if (qty > 0) stockProductIds.add(productId);
+  }
+  const stockNames = new Set<string>();
+  for (const i of inventory) {
+    if (i.quantity > 0) stockNames.add(normalizeName(i.productName));
+  }
+
+  const catalogIndex = buildCatalogIndex(
+    catalog.map((c) => ({
+      id: c.id,
+      name: c.name,
+      normalizedName: c.normalizedName,
+      defaultUnit: c.defaultUnit,
+    })),
+  );
+
+  const signalsById = new Map(signals.map((s) => [s.recipeId, s]));
+  const ruleRecipeIds = new Set(
+    activeRules
+      .map((r) => r.recipeId)
+      .filter((id): id is string => id !== null),
+  );
+
+  const seasonalRecipes = savedRecipes.filter(
+    (r) => r.seasons.includes("all") || r.seasons.includes(season),
+  );
+  const availabilityById = new Map<string, RecipeAvailability>();
+  for (const r of seasonalRecipes) {
+    availabilityById.set(
+      r.id,
+      summarizeAvailability({
+        ingredients: r.ingredients,
+        index: catalogIndex,
+        stockProductIds,
+        stockNames,
+        listProductIds: listContents.productIds,
+        listNames: listContents.names,
+      }),
+    );
+  }
+
+  const chosenIds = selectRecipesForPrompt(
+    seasonalRecipes.map((r) => ({
+      id: r.id,
+      availability: availabilityById.get(r.id)!,
+      avgRating: signalsById.get(r.id)?.avgRating ?? null,
+      lastCookedAt: signalsById.get(r.id)?.lastCookedAt ?? null,
+      requiredByRule: ruleRecipeIds.has(r.id),
+    })),
+    { todayISO: todayLocalISO() },
+  );
+
+  const seasonalById = new Map(seasonalRecipes.map((r) => [r.id, r]));
+  const recipeLines: MenuRecipeLine[] = chosenIds.map((id) => {
+    const recipe = seasonalById.get(id)!;
+    const sig = signalsById.get(id);
+    const cost = costs.get(id);
+    return {
+      id,
+      name: recipe.name,
+      mealTypes: recipe.mealTypes,
+      avgRating: sig?.avgRating ?? null,
+      timesCooked: sig?.timesCooked ?? 0,
+      lastCookedLabel: sig?.lastCookedAt
+        ? relativeDaysLabel(sig.lastCookedAt)
+        : null,
+      prepMinutes: recipe.prepMinutes,
+      // El coste de M7 es el de la receta ENTERA, escrita para sus raciones:
+      // sin dividir, una receta para seis parecería el plato caro de la semana.
+      costPerServing:
+        cost && cost.pricedCount > 0 ? cost.total / recipe.servings : null,
+      costPartial: cost ? !cost.complete : false,
+      availability: availabilityById.get(id)!,
+      ingredients: recipe.ingredients.map((i) => i.name),
+    };
+  });
+
+  const invLines: MenuInventoryLine[] = inventory.map((i) => {
+    const exp = getExpiryStatus(i.expiryDate, 7);
+    return {
+      name: i.productName,
+      quantity: i.quantity,
+      unit: i.unit as string,
+      expiresInDays: exp ? exp.days : null,
+      useSoon: i.useSoon,
+    };
+  });
+
+  const ruleLines: MenuRuleLine[] = activeRules.flatMap((r): MenuRuleLine[] => {
+    if (r.kind === "free_text") {
+      return r.textRule ? [{ kind: "free_text", text: r.textRule }] : [];
+    }
+    if (r.recipeName && r.value != null) {
+      return [{ kind: r.kind, recipeName: r.recipeName, value: r.value }];
+    }
+    return [];
+  });
+
+  // Platos recientes sin repetidos. Lo marcado como "no se hizo" (R2) se cae: no
+  // llegó a comerse, así que volver a proponerlo no es repetir, es recuperarlo.
+  const recentByName = new Map<string, MenuRecentDish>();
+  for (const week of previousWeekStarts) {
+    for (const entry of previousWeeks.get(week)?.entries ?? []) {
+      if (entry.skippedAt) continue;
+      const name = entry.recipeName ?? entry.freeText ?? "";
+      const norm = normalizeName(name);
+      if (!norm) continue;
+      const seen = recentByName.get(norm);
+      if (seen) {
+        seen.cooked = seen.cooked || entry.cookedAt !== null;
+        continue;
+      }
+      recentByName.set(norm, { name, cooked: entry.cookedAt !== null });
+    }
+  }
+
+  return {
+    season,
+    inventory: invLines,
+    recipes: recipeLines,
+    rules: ruleLines,
+    shoppingList: listContents.labels,
+    recentDishes: [...recentByName.values()],
+    prefs,
+    activeRules,
+    savedRecipes,
+  };
+}
+
+/**
+ * Resuelve a qué receta guardada se refiere un plato propuesto por la IA: el id
+ * explícito si existe y, si no cuadra, el nombre normalizado. Trabaja sobre el
+ * recetario COMPLETO, no sobre el recortado del prompt: el modelo puede nombrar
+ * de memoria una receta que no vio listada, y enlazarla es mejor que crear un
+ * duplicado efímero con el mismo nombre.
+ */
+function makeSavedRecipeResolver(savedRecipes: SavedRecipeForMenu[]) {
+  const byId = new Map(savedRecipes.map((r) => [r.id, r]));
+  const byNormalizedName = new Map<string, string>();
+  for (const r of savedRecipes) {
+    const norm = normalizeName(r.name);
+    if (norm && !byNormalizedName.has(norm)) byNormalizedName.set(norm, r.id);
+  }
+  return {
+    byId,
+    resolve(savedRecipeId: string | null, recipeName: string): string | null {
+      if (savedRecipeId && byId.has(savedRecipeId)) return savedRecipeId;
+      return byNormalizedName.get(normalizeName(recipeName)) ?? null;
+    },
+  };
+}
+
 /**
  * Genera el menú de la semana (C3 + N2). Dos modos:
  *   - "fill" (por defecto): regeneración RESPETUOSA. Conserva las entradas
@@ -196,8 +462,10 @@ export async function generateMenuAction(
   if (!household) return { error: "No perteneces a ningún hogar." };
   const { userId } = await auth();
 
-  // El contexto del hogar (inventario, recetario, preferencias) se envía a la IA
-  // de Google: sin consentimiento no generamos.
+  // El contexto del hogar (inventario, recetario, lista de la compra, platos de
+  // las semanas anteriores y preferencias) se envía a la IA de Google: sin
+  // consentimiento no generamos. Al ampliar lo que viaja hay que repasar el
+  // aviso de `ai-consent` y subir `AI_CONSENT_VERSION`.
   const consent = await getAiConsent();
   if (!consent.consented) {
     return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
@@ -231,77 +499,9 @@ export async function generateMenuAction(
     })
     .filter((l): l is MenuPinnedLine => l !== null && l.name !== "");
 
-  // --- Contexto completo para el prompt ---
-  const [inventory, savedRecipes, signals, allRules, prefs] =
-    await Promise.all([
-      getInventory(),
-      getSavedRecipesForMenu(),
-      getRecipeSignals(household.id),
-      getMenuRules(),
-      getMenuPrefs(),
-    ]);
-
-  const season = getCurrentSeason();
-  const activeRules = allRules.filter((r) => r.active);
+  const context = await loadHouseholdMenuContext(household.id, weekStart);
+  const { prefs, savedRecipes, activeRules } = context;
   const slotKeys = activeSlots(prefs.planBreakfast).map((s) => s.key);
-
-  // Ingredientes "en stock": por product_id o por nombre normalizado (cantidad > 0).
-  const inStockProductIds = new Set(
-    inventory.filter((i) => i.quantity > 0).map((i) => i.productId),
-  );
-  const inStockNames = new Set(
-    inventory
-      .filter((i) => i.quantity > 0)
-      .map((i) => normalizeName(i.productName)),
-  );
-  const isIngredientInStock = (name: string, productId: string | null) =>
-    (productId != null && inStockProductIds.has(productId)) ||
-    inStockNames.has(normalizeName(name));
-
-  const signalsById = new Map(signals.map((s) => [s.recipeId, s]));
-
-  // Recetario filtrado por la temporada actual (all o la estación de hoy).
-  const seasonalRecipes = savedRecipes.filter(
-    (r) => r.seasons.includes("all") || r.seasons.includes(season),
-  );
-  const recipeLines = seasonalRecipes.map((r) => {
-    const sig = signalsById.get(r.id);
-    return {
-      id: r.id,
-      name: r.name,
-      mealTypes: r.mealTypes,
-      avgRating: sig?.avgRating ?? null,
-      timesCooked: sig?.timesCooked ?? 0,
-      lastCookedLabel: sig?.lastCookedAt
-        ? relativeDaysLabel(sig.lastCookedAt)
-        : null,
-      ingredients: r.ingredients.map((ing) => ({
-        name: ing.name,
-        inStock: isIngredientInStock(ing.name, ing.productId),
-      })),
-    };
-  });
-
-  const invLines = inventory.map((i) => {
-    const exp = getExpiryStatus(i.expiryDate, 7);
-    return {
-      name: i.productName,
-      quantity: i.quantity,
-      unit: i.unit as string,
-      expiresInDays: exp ? exp.days : null,
-      useSoon: i.useSoon,
-    };
-  });
-
-  const ruleLines: MenuRuleLine[] = activeRules.flatMap((r): MenuRuleLine[] => {
-    if (r.kind === "free_text") {
-      return r.textRule ? [{ kind: "free_text", text: r.textRule }] : [];
-    }
-    if (r.recipeName && r.value != null) {
-      return [{ kind: r.kind, recipeName: r.recipeName, value: r.value }];
-    }
-    return [];
-  });
 
   let generated;
   try {
@@ -311,10 +511,12 @@ export async function generateMenuAction(
       abortSignal: AbortSignal.timeout(60_000),
       prompt: buildMenuPrompt({
         today: todayLocalISO(),
-        season,
-        inventory: invLines,
-        recipes: recipeLines,
-        rules: ruleLines,
+        season: context.season,
+        inventory: context.inventory,
+        recipes: context.recipes,
+        rules: context.rules,
+        shoppingList: context.shoppingList,
+        recentDishes: context.recentDishes,
         pinned: pinnedLines,
         prefs: {
           goal: prefs.goal,
@@ -340,23 +542,7 @@ export async function generateMenuAction(
   }
 
   // --- Construir la estructura para validar reglas ---
-  // Resolución de saved_recipe_id contra TODO el recetario (no solo el de
-  // temporada): el id explícito o, como fallback, por nombre normalizado.
-  const savedById = new Map(savedRecipes.map((r) => [r.id, r]));
-  const savedByNorm = new Map<string, string>();
-  for (const r of savedRecipes) {
-    const norm = normalizeName(r.name);
-    if (norm && !savedByNorm.has(norm)) savedByNorm.set(norm, r.id);
-  }
-  const resolveSavedId = (dish: {
-    saved_recipe_id: string | null;
-    recipe_name: string;
-  }): string | null => {
-    if (dish.saved_recipe_id && savedById.has(dish.saved_recipe_id)) {
-      return dish.saved_recipe_id;
-    }
-    return savedByNorm.get(normalizeName(dish.recipe_name)) ?? null;
-  };
+  const savedResolver = makeSavedRecipeResolver(savedRecipes);
 
   // Cada día lleva SIEMPRE comida y cena (aunque vacías) para que las reglas de
   // mínimo puedan colocar platos en cualquiera de los dos huecos. En modo "fill",
@@ -391,7 +577,10 @@ export async function generateMenuAction(
           })),
         };
         return {
-          savedRecipeId: resolveSavedId(dish),
+          savedRecipeId: savedResolver.resolve(
+            dish.saved_recipe_id,
+            dish.recipe_name,
+          ),
           name: dish.recipe_name,
           payload,
         };
@@ -403,7 +592,7 @@ export async function generateMenuAction(
 
   // Reglas de frecuencia enriquecidas con los metadatos de su receta.
   const validatable: ValidatableRule[] = activeRules.map((r) => {
-    const meta = r.recipeId ? savedById.get(r.recipeId) : null;
+    const meta = r.recipeId ? savedResolver.byId.get(r.recipeId) : null;
     return {
       kind: r.kind,
       recipeId: r.recipeId,
@@ -863,6 +1052,7 @@ async function generateDishForSlot({
   householdId,
   userId,
   menuId,
+  weekStart,
   slot,
   currentEntryId,
   what,
@@ -871,79 +1061,19 @@ async function generateDishForSlot({
   householdId: string;
   userId: string | null;
   menuId: string;
+  /** Lunes de la semana del hueco: acota qué platos cuentan como recientes. */
+  weekStart: string;
   slot: string;
   /** Entrada que se va a sustituir, o null si el hueco está vacío. */
   currentEntryId: string | null;
   /** Qué se genera, para el mensaje de error ("otra idea", "el plato"). */
   what: string;
 }): Promise<{ recipeId?: string; error?: string }> {
-  const [inventory, savedRecipes, signals, allRules, menuEntries, prefs] =
-    await Promise.all([
-      getInventory(),
-      getSavedRecipesForMenu(),
-      getRecipeSignals(householdId),
-      getMenuRules(),
-      getMenuEntries(menuId),
-      getMenuPrefs(),
-    ]);
-
-  const season = getCurrentSeason();
-  const activeRules = allRules.filter((r) => r.active);
-
-  const inStockProductIds = new Set(
-    inventory.filter((i) => i.quantity > 0).map((i) => i.productId),
-  );
-  const inStockNames = new Set(
-    inventory
-      .filter((i) => i.quantity > 0)
-      .map((i) => normalizeName(i.productName)),
-  );
-  const isIngredientInStock = (name: string, productId: string | null) =>
-    (productId != null && inStockProductIds.has(productId)) ||
-    inStockNames.has(normalizeName(name));
-
-  const signalsById = new Map(signals.map((s) => [s.recipeId, s]));
-  const seasonalRecipes = savedRecipes.filter(
-    (r) => r.seasons.includes("all") || r.seasons.includes(season),
-  );
-  const recipeLines = seasonalRecipes.map((r) => {
-    const sig = signalsById.get(r.id);
-    return {
-      id: r.id,
-      name: r.name,
-      mealTypes: r.mealTypes,
-      avgRating: sig?.avgRating ?? null,
-      timesCooked: sig?.timesCooked ?? 0,
-      lastCookedLabel: sig?.lastCookedAt
-        ? relativeDaysLabel(sig.lastCookedAt)
-        : null,
-      ingredients: r.ingredients.map((ing) => ({
-        name: ing.name,
-        inStock: isIngredientInStock(ing.name, ing.productId),
-      })),
-    };
-  });
-
-  const invLines = inventory.map((i) => {
-    const exp = getExpiryStatus(i.expiryDate, 7);
-    return {
-      name: i.productName,
-      quantity: i.quantity,
-      unit: i.unit as string,
-      expiresInDays: exp ? exp.days : null,
-      useSoon: i.useSoon,
-    };
-  });
-
-  const ruleLines: MenuRuleLine[] = activeRules.flatMap((r): MenuRuleLine[] => {
-    if (r.kind === "free_text") {
-      return r.textRule ? [{ kind: "free_text", text: r.textRule }] : [];
-    }
-    if (r.recipeName && r.value != null) {
-      return [{ kind: r.kind, recipeName: r.recipeName, value: r.value }];
-    }
-    return [];
-  });
+  const [context, menuEntries] = await Promise.all([
+    loadHouseholdMenuContext(householdId, weekStart),
+    getMenuEntries(menuId),
+  ]);
+  const { prefs, savedRecipes } = context;
 
   // El plato actual (a cambiar; null si el hueco está vacío) y el resto de la
   // semana, para no repetir. Sin `currentEntryId` no se excluye ninguno.
@@ -966,12 +1096,14 @@ async function generateDishForSlot({
       abortSignal: AbortSignal.timeout(60_000),
       prompt: buildRerollPrompt({
         today: todayLocalISO(),
-        season,
+        season: context.season,
         slot,
         currentDish,
-        inventory: invLines,
-        recipes: recipeLines,
-        rules: ruleLines,
+        inventory: context.inventory,
+        recipes: context.recipes,
+        rules: context.rules,
+        shoppingList: context.shoppingList,
+        recentDishes: context.recentDishes,
         otherDishes,
         prefs: {
           goal: prefs.goal,
@@ -996,17 +1128,10 @@ async function generateDishForSlot({
     };
   }
 
-  // Resolución de saved_recipe_id: id explícito o, como fallback, por nombre.
-  const savedById = new Map(savedRecipes.map((r) => [r.id, r]));
-  const savedByNorm = new Map<string, string>();
-  for (const r of savedRecipes) {
-    const norm = normalizeName(r.name);
-    if (norm && !savedByNorm.has(norm)) savedByNorm.set(norm, r.id);
-  }
-  const savedId =
-    dish.saved_recipe_id && savedById.has(dish.saved_recipe_id)
-      ? dish.saved_recipe_id
-      : (savedByNorm.get(normalizeName(dish.recipe_name)) ?? null);
+  const savedId = makeSavedRecipeResolver(savedRecipes).resolve(
+    dish.saved_recipe_id,
+    dish.recipe_name,
+  );
 
   // Determina el recipe_id destino: receta guardada o receta efímera nueva.
   if (savedId) return { recipeId: savedId };
@@ -1066,9 +1191,11 @@ export async function rerollMenuEntryAction(
   const rateError = await enforceAiRateLimit(supabase, "menu");
   if (rateError) return { error: rateError };
 
+  // El `week_start` del menú viaja con la entrada: es lo que fija qué platos
+  // cuentan como "de las semanas anteriores" al pedir la alternativa.
   const { data: entry } = await supabase
     .from("menu_entries")
-    .select("menu_id, meal_slot")
+    .select("menu_id, meal_slot, menu:weekly_menus(week_start)")
     .eq("household_id", household.id)
     .eq("id", entryId)
     .maybeSingle();
@@ -1079,6 +1206,9 @@ export async function rerollMenuEntryAction(
     householdId: household.id,
     userId,
     menuId: entry.menu_id,
+    weekStart:
+      (entry as { menu: { week_start: string } | null }).menu?.week_start ??
+      getWeekStart(),
     slot: entry.meal_slot,
     currentEntryId: entryId,
     what: "otra idea",
@@ -1149,6 +1279,7 @@ export async function generateSlotEntryAction(
     householdId: household.id,
     userId,
     menuId,
+    weekStart,
     slot,
     currentEntryId: null,
     what: "el plato",

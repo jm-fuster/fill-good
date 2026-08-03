@@ -9,6 +9,7 @@ import {
   getCurrentHousehold,
 } from "@/features/household/queries";
 import { getLatestUnitPrices } from "@/features/prices/queries";
+import { normalizeName } from "@/lib/normalize";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
 import type { UnitContent } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
@@ -219,6 +220,71 @@ export async function getActiveListProductIds(): Promise<Set<string>> {
       .map((i) => i.product_id)
       .filter((id): id is string => Boolean(id)),
   );
+}
+
+/** Lo que hay apuntado en la lista activa, tal como lo necesita el menú (N6). */
+export type ActiveListContents = {
+  /** Ids de producto apuntados. */
+  productIds: Set<string>;
+  /** Nombres normalizados, para casar con los ingredientes de una receta. */
+  names: Set<string>;
+  /** Nombres tal cual, para enseñárselos al generador de menús. */
+  labels: string[];
+};
+
+/**
+ * Contenido de la lista activa para el generador de menús: lo que está apuntado
+ * se va a comprar en los próximos días, así que a la hora de planificar una
+ * semana cuenta como disponible.
+ *
+ * Solo LEE (a diferencia de `getActiveList`, no crea lista activa): el menú se
+ * genera sin que el usuario haya pasado por /lista, y crearle una lista vacía de
+ * rebote sería un efecto secundario que nadie ha pedido.
+ *
+ * Incluye también lo ya marcado en el carrito: comprado pero sin finalizar la
+ * compra sigue siendo algo que entrará en casa antes de cocinar.
+ *
+ * Se usa `shopping_list_items.name` —no el nombre vivo del producto— porque es
+ * el mismo campo con el que «añadir a la lista lo que falte» decide si algo ya
+ * está apuntado, y las dos respuestas tienen que ser la misma.
+ */
+export async function getActiveListContents(): Promise<ActiveListContents> {
+  const empty: ActiveListContents = {
+    productIds: new Set(),
+    names: new Set(),
+    labels: [],
+  };
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return empty;
+  const supabase = createServerSupabaseClient();
+  const { data: list } = await supabase
+    .from("shopping_lists")
+    .select("id")
+    .eq("household_id", householdId)
+    .eq("status", "active")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!list) return empty;
+
+  const { data } = await supabase
+    .from("shopping_list_items")
+    .select("name, product_id")
+    .eq("household_id", householdId)
+    .eq("list_id", list.id)
+    .order("position", { ascending: true });
+
+  const productIds = new Set<string>();
+  const names = new Set<string>();
+  const labels: string[] = [];
+  for (const item of data ?? []) {
+    if (item.product_id) productIds.add(item.product_id);
+    const norm = normalizeName(item.name);
+    if (!norm || names.has(norm)) continue;
+    names.add(norm);
+    labels.push(item.name);
+  }
+  return { productIds, names, labels };
 }
 
 /** Ítem de la lista enriquecido para el modo compra (M4). */
