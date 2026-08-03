@@ -14,6 +14,13 @@ export type ItemUnitPrice = {
   price: number;
   unit: UnitType;
   content: UnitContent;
+  /**
+   * Viaja pero NO se usa aquí, y está declarado justo para que se vea: el pack ya
+   * está dentro de `price` (ver abajo). Lo aplica el coste de recetas, que cuenta
+   * unidades sueltas; aplicarlo también aquí dividiría el precio de la caja para
+   * multiplicarlo por un número de cajas.
+   */
+  packSize?: number | null;
 };
 
 /**
@@ -30,7 +37,9 @@ export type ItemUnitPrice = {
  *
  * El pack NO multiplica aquí a propósito: el precio es el de una unidad de
  * compra (un pack entero, tal como se pagó en el ticket), así que "2" × precio
- * ya es lo que va a costar.
+ * ya es lo que va a costar. El coste de recetas (`computeRecipeCost`) SÍ divide
+ * por el pack, y no es una contradicción: allí la cantidad es lo que se echa a la
+ * olla (dos sobres) y aquí es lo que se mete en el carro (dos cajas).
  */
 export function lineCostOf(
   unitPrice: ItemUnitPrice | null,

@@ -1767,13 +1767,18 @@ gastándolos de uno en uno.
 > trae 30 ud». 20 asserts en un arnés esbuild+node (scratchpad) cubren pack sin contenido,
 > contenido sin pack, los dos juntos, granel, pack de 1 y `NaN` a medio teclear.
 >
-> **OJO — mismo fallo, sin arreglar, fuera de `/precios`:** `computeRecipeCost`
-> (`src/features/recipes/cost.ts`) multiplica el precio POR COMPRA por una cantidad de
-> ingrediente que está en unidades reales, así que el coste de una receta con un producto en
-> pack sale multiplicado por el pack. `lineCostOf` (`shopping-list/line-cost.ts`) NO tiene el
-> fallo y su comentario explica por qué: ahí la cantidad de la línea cuenta packs. Las dos
-> superficies quieren precios distintos del mismo `getLatestUnitPrices`, así que arreglarlo
-> exige decidir por consumidor — no es una corrección mecánica.
+> **El mismo fallo en el coste de recetas — CORREGIDO el 2026-08-03.** `computeRecipeCost`
+> (`src/features/recipes/cost.ts`) multiplicaba el precio POR COMPRA por una cantidad de
+> ingrediente que está en unidades reales: dos sobres de una caja de 30 a 6,00 € costaban
+> 12,00 € en vez de 0,40 €. Ahora baja el precio a la unidad con `pricePerPackUnit` antes de
+> multiplicar. `LatestUnitPrice` lleva `packSize` y **cada consumidor decide**, porque no
+> quieren lo mismo: la receta cuenta lo que se echa a la olla (divide por el pack) y la línea
+> de la lista cuenta lo que se mete en el carro (no divide). `lineCostOf`
+> (`shopping-list/line-cost.ts`) sigue intacto a propósito y su comentario ahora nombra la
+> asimetría; `ItemUnitPrice` declara `packSize` sin usarlo justo para que se vea que no
+> aplicarlo es una decisión. 14 asserts en un arnés esbuild+node (scratchpad) cubren las dos
+> cuentas a la vez: pack en receta, pack a granel, pack de 1, la parcialidad del total y que
+> la cuenta de la lista no se ha movido.
 
 **Criterios de aceptación**
 - Con "Croquetas" configurado a pack 30: confirmar un ticket con 1 ud añade 30 ud al

@@ -27,9 +27,18 @@ export type PriceOverviewRow = {
 
 /** Último precio conocido por producto, con el contenido de su envase. */
 export type LatestUnitPrice = {
+  /**
+   * Importe de una unidad DE COMPRA (lo que costó una línea del ticket): con
+   * pack, el de la caja. Cada consumidor decide si lo baja a la unidad, porque
+   * NO quieren lo mismo: el coste de una receta cuenta lo que se echa a la olla
+   * y sí divide por el pack (`computeRecipeCost`), mientras que una línea de la
+   * lista cuenta cajas en el carro y no debe dividir (`lineCostOf`).
+   */
   price: number;
   unit: UnitType;
   content: UnitContent;
+  /** `products.pack_size`; null = sin pack. */
+  packSize: number | null;
 };
 
 /** Columnas de contenido tal como llegan del embed de products. */
@@ -44,7 +53,9 @@ type LatestPriceRow = {
   total_price: number | null;
   quantity: number;
   unit: UnitType;
-  product: ContentColumns;
+  product:
+    | ({ pack_size: number | null } & NonNullable<ContentColumns>)
+    | null;
 };
 
 /** Normaliza las dos columnas a `UnitContent` (van en pareja o no van). */
@@ -152,7 +163,7 @@ export const getLatestUnitPrices = cache(async (): Promise<
     // caldo" contra un precio por brick sería imposible. Hay DOS FKs a products,
     // así que la relación va nombrada (PGRST201).
     .select(
-      "product_id, total_price, quantity, unit, purchased_at, product:products!receipt_items_product_id_fkey(content_size, content_unit, content_is_estimate)",
+      "product_id, total_price, quantity, unit, purchased_at, product:products!receipt_items_product_id_fkey(pack_size, content_size, content_unit, content_is_estimate)",
     )
     .eq("household_id", householdId)
     .not("product_id", "is", null)
@@ -171,6 +182,8 @@ export const getLatestUnitPrices = cache(async (): Promise<
       price: Number(r.total_price) / qty,
       unit: r.unit,
       content: contentOf(r.product),
+      packSize:
+        r.product?.pack_size == null ? null : Number(r.product.pack_size),
     });
   }
   return map;
