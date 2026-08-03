@@ -70,7 +70,7 @@ import {
   restockPayload,
   restockToastMessage,
 } from "./cooked-restock-fields";
-import { AiGenerateButton } from "./ai-generate-button";
+import { AiGenerateButton, SLOT_GENERATION_STEPS } from "./ai-generate-button";
 import { EntryActionTile } from "./entry-action-tile";
 import { SlotPickerGrid } from "./slot-picker-grid";
 import {
@@ -1178,16 +1178,17 @@ function EditEntryDrawer({
             resto de la semana). Es la vía rápida; debajo quedan las manuales.
           */}
           {isNew ? (
-            <Button
+            <AiGenerateButton
               type="button"
               size="lg"
               onClick={generateSlot}
               loading={generatingSlot}
               disabled={addBusy && !generatingSlot}
+              steps={SLOT_GENERATION_STEPS}
+              busyLabel="Generando el plato con IA"
             >
-              <Sparkles aria-hidden />
-              {generatingSlot ? "Generando plato…" : "Generar este hueco con IA"}
-            </Button>
+              Generar este hueco con IA
+            </AiGenerateButton>
           ) : null}
 
           <div className="flex flex-col gap-2">

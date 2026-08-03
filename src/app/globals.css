@@ -115,14 +115,14 @@
     }
   }
 
-  /* Firma de IA: el botón de generar el menú late, borde (`--ai-glow`) y relleno
-     (`--ai-fill`) a la vez y en fase, porque comparten esta misma utilidad.
+  /* Firma de IA: el relleno del botón de generar el menú late (`--ai-fill`).
      Es la única animación que late de forma PERMANENTE en la app —el pulso de
      navegación de arriba también es infinito, pero solo mientras una navegación
      está en curso—, y por eso se justifica así:
-     vive en un solo botón de una sola pantalla, anima SOLO `opacity` (el
-     compositor la resuelve sin repintar ni recalcular layout) y no mueve
-     nada, así que no arrastra la vista mientras lees la semana. El bucle es
+     late solo donde se entra a la IA (el botón de la semana en `/menus` y el de
+     un hueco suelto, que además solo existe con el alta abierta), anima SOLO
+     `opacity` (el compositor la resuelve sin repintar ni recalcular layout) y no
+     mueve nada, así que no arrastra la vista mientras lees la semana. El bucle es
      el punto: un destello único se lo pierde quien llega dos segundos tarde,
      y lo que se busca es que el botón siga diciendo "aquí hay IA" cuando
      vuelves a la pantalla. Latido lento (3,5s) a propósito: por debajo de
@@ -190,29 +190,18 @@
   --chart-4: oklch(0.55 0.17 305);
   --chart-5: oklch(0.55 0.11 195);
   /*
-    Firma de IA: el degradado del borde del botón de generar (verde de marca →
+    Firma de IA: el degradado del relleno del botón de generar (verde de marca →
     ámbar cálido). Es un token de IMAGEN, no de color: se consume entero con
-    `bg-[image:var(--ai-glow)]` y así el componente no escribe ni un oklch.
+    `bg-[image:var(--ai-fill)]` y así el componente no escribe ni un oklch.
 
     Valores propios y no `--chart-3` a pesar de que el ámbar se le parezca:
     chart-3 es el acento de PRECIOS y retocarlo por motivos de gráfica no debe
     cambiar el brillo de la IA (ni al revés). Duplicar un ámbar parecido es el
     precio de que los dos conceptos puedan moverse por separado.
 
-    Las dos paradas son MÁS luminosas que `--primary` (0.5) porque el botón es
-    `bg-primary`: un verde igual de oscuro alrededor de un botón verde no se ve.
-  */
-  --ai-glow: linear-gradient(
-    115deg,
-    oklch(0.62 0.16 158),
-    oklch(0.7 0.16 62)
-  );
-  /*
-    El MISMO degradado para el relleno del botón, pero con las luminosidades del
-    botón y no las del borde, porque aquí encima va TEXTO. `--ai-glow` llega a un
-    ámbar de L 0.7 que a este lado dejaría el texto claro en ~1,8:1 (hace falta
-    4,5:1): lucir en un filo de 2px y sostener una etiqueta legible son dos
-    trabajos distintos y no los hace el mismo color.
+    Las dos paradas se mueven en la luminosidad del BOTÓN, no en la de un adorno,
+    porque encima va TEXTO: subir el ámbar a L 0.7 —que es lo que luciría en un
+    filo de 2px— dejaría la etiqueta en ~1,8:1 cuando hacen falta 4,5:1.
 
     Arranca en el verde exacto de `--primary` a propósito: así el tinte cálido
     entra progresivamente hacia la derecha en vez de teñir el botón entero, y el
@@ -265,18 +254,10 @@
   --chart-3: oklch(0.72 0.14 60);
   --chart-4: oklch(0.68 0.15 305);
   --chart-5: oklch(0.7 0.11 195);
-  /* En oscuro el primario ya es claro (0.72), así que el borde sube por encima
-     para seguir despegándose del botón; contra el fondo oscuro además se lee
-     como luz, que es justo el efecto que se busca. */
-  --ai-glow: linear-gradient(
-    115deg,
-    oklch(0.78 0.15 158),
-    oklch(0.83 0.15 68)
-  );
-  /* Y el relleno se invierte respecto al tema claro: aquí el texto del botón es
-     OSCURO (`--primary-foreground`), así que el degradado tiene que mantenerse
-     claro de punta a punta. Un ámbar apagado dejaría el texto oscuro sin
-     contraste, que es el fallo simétrico al del tema claro. */
+  /* En oscuro el degradado se invierte respecto al tema claro: aquí el texto del
+     botón es OSCURO (`--primary-foreground`), así que tiene que mantenerse claro
+     de punta a punta. Un ámbar apagado dejaría el texto oscuro sin contraste,
+     que es el fallo simétrico al del tema claro. */
   --ai-fill: linear-gradient(
     115deg,
     oklch(0.72 0.14 155),
