@@ -12,8 +12,8 @@ import { SpendingPanel } from "@/features/prices/components/spending-panel";
 import { PriceAlerts } from "@/features/prices/components/price-alerts";
 import { formatEuro } from "@/lib/money";
 import {
-  pricePerMeasureLabel,
-  UNIT_LABELS,
+  comparablePriceLabel,
+  formatPurchasePriceLabel,
   type UnitContent,
 } from "@/lib/units";
 import type { UnitType } from "@/lib/supabase/types";
@@ -21,20 +21,22 @@ import type { UnitType } from "@/lib/supabase/types";
 export const metadata: Metadata = { title: "Precios" };
 
 /**
- * Equivalencia en €/kg o €/l cuando el producto declara el contenido de su
- * envase. No se muestra nada cuando no aporta (sin contenido, o el precio ya
- * viene por kilo o litro): un renglón vacío es peor que ninguno.
+ * Lo que hace comparable el precio: el de la unidad suelta cuando viene en pack,
+ * y el €/kg o €/l cuando el envase declara contenido. No se muestra nada cuando
+ * no aporta ninguno de los dos: un renglón vacío es peor que ninguno.
  */
-function PerMeasure({
+function Comparable({
   unitPrice,
   unit,
   content,
+  packSize,
 }: {
   unitPrice: number;
   unit: UnitType;
   content: UnitContent;
+  packSize: number | null;
 }) {
-  const label = pricePerMeasureLabel(unitPrice, unit, content);
+  const label = comparablePriceLabel(unitPrice, unit, content, packSize);
   if (!label) return null;
   return <p className="text-sm text-chart-3">{label}</p>;
 }
@@ -86,14 +88,19 @@ export default async function PreciosPage({
                   <p className="text-sm text-muted-foreground">
                     {r.purchases}{" "}
                     {r.purchases === 1 ? "compra" : "compras"} · último{" "}
-                    {formatEuro(r.lastUnitPrice)}/{UNIT_LABELS[r.unit]}
+                    {formatPurchasePriceLabel(
+                      r.lastUnitPrice,
+                      r.unit,
+                      r.packSize,
+                    )}
                   </p>
                   {/* Precio comparable entre formatos: es lo que "1,29 €/ud"
                       esconde cuando cada envase trae una cantidad distinta. */}
-                  <PerMeasure
+                  <Comparable
                     unitPrice={r.lastUnitPrice}
                     unit={r.unit}
                     content={r.content}
+                    packSize={r.packSize}
                   />
                 </div>
                 <div className="flex items-center gap-1 text-right">

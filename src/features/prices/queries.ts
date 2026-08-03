@@ -17,6 +17,12 @@ export type PriceOverviewRow = {
   lastDate: string;
   /** Contenido del envase; con él el precio se puede dar en €/kg o €/l. */
   content: UnitContent;
+  /**
+   * `products.pack_size` (F4). El precio de aquí es el de la COMPRA, así que con
+   * pack es el de la caja: sin este dato la pantalla lo llamaría «€/ud» y sería
+   * el precio de 30 sobres presentado como el de uno.
+   */
+  packSize: number | null;
 };
 
 /** Último precio conocido por producto, con el contenido de su envase. */
@@ -70,7 +76,7 @@ type Row = {
   purchased_at: string | null;
   store_chain: string | null;
   product:
-    | ({ name: string } & NonNullable<ContentColumns>)
+    | ({ name: string; pack_size: number | null } & NonNullable<ContentColumns>)
     | null;
 };
 
@@ -84,7 +90,7 @@ export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
     .select(
       // receipt_items tiene DOS FKs a products (product_id y suggested_product_id,
       // esta última de E7): hay que nombrar la relación o PostgREST da PGRST201.
-      "product_id, total_price, quantity, unit, purchased_at, store_chain, product:products!receipt_items_product_id_fkey(name, content_size, content_unit, content_is_estimate)",
+      "product_id, total_price, quantity, unit, purchased_at, store_chain, product:products!receipt_items_product_id_fkey(name, pack_size, content_size, content_unit, content_is_estimate)",
     )
     .eq("household_id", householdId)
     .not("product_id", "is", null)
@@ -118,6 +124,10 @@ export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
         unit: r.unit,
         lastDate: r.purchased_at,
         content: contentOf(r.product),
+        packSize:
+          r.product?.pack_size === null || r.product?.pack_size === undefined
+            ? null
+            : Number(r.product.pack_size),
       });
     }
   }
@@ -172,6 +182,8 @@ export async function getProductPriceHistory(
   name: string;
   points: PricePoint[];
   content: UnitContent;
+  /** Ver `packSize` en {@link PriceOverviewRow}: el precio es el de la compra. */
+  packSize: number | null;
 } | null> {
   const householdId = await getActiveHouseholdId();
   if (!householdId) return null;
@@ -180,7 +192,9 @@ export async function getProductPriceHistory(
   const [{ data: product }, { data, error }] = await Promise.all([
     supabase
       .from("products")
-      .select("name, content_size, content_unit, content_is_estimate")
+      .select(
+        "name, pack_size, content_size, content_unit, content_is_estimate",
+      )
       .eq("household_id", householdId)
       .eq("id", productId)
       .maybeSingle(),
@@ -208,5 +222,10 @@ export async function getProductPriceHistory(
     };
   });
 
-  return { name: product.name, points, content: contentOf(product) };
+  return {
+    name: product.name,
+    points,
+    content: contentOf(product),
+    packSize: product.pack_size === null ? null : Number(product.pack_size),
+  };
 }

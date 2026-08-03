@@ -1725,8 +1725,9 @@ gastándolos de uno en uno.
 - [x] Campo "Unidades por compra" en los dos drawers (solo `ud`, con hint).
 - [x] Multiplicador en `confirmReceiptAction` y `checkoutAction` + aviso de conversión
       visible en la revisión del ticket.
-- [ ] (Opcional) €/unidad en `/precios` cuando hay pack. — NO implementado (opcional; se
-      dejó fuera para no ampliar alcance, el resto de F4 no lo necesita).
+- [x] (Opcional) €/unidad en `/precios` cuando hay pack. — HECHO el 2026-08-03. Al
+      implementarlo se vio que no era solo un dato que faltaba: el que había era FALSO.
+      Ver la nota de abajo.
 - [x] `npx tsc --noEmit` y `npx eslint .` limpios.
 
 > **Nota de implementación (F4):** migración `supabase/migrations/20260722120000_products_pack_size.sql`
@@ -1750,6 +1751,29 @@ gastándolos de uno en uno.
 > `CatalogProduct`). `InventoryEntry.packSize` añadido a `getInventory`. `npx tsc --noEmit` y
 > `npx eslint .` limpios. Verificación interactiva en preview pendiente (login de Clerk no
 > verificable en headless). €/unidad en `/precios` queda como mejora opcional futura.
+>
+> **Cierre del punto opcional (2026-08-03) — era un número FALSO, no un dato que faltaba.**
+> `/precios` no sabía nada de `pack_size`, y el histórico guarda el precio de la COMPRA (una
+> caja), así que las dos pantallas llamaban «€/ud» al precio de la caja entera: en un pack de
+> 30, el precio de 30 sobres presentado como el de uno. Peor aún, el €/kg–€/l de
+> `pricePerMeasureLabel` combinaba las dos cosas mal: el contenido declarado es el de UNA
+> unidad, así que una caja de 6 bricks de litro a 6,00 € salía como **6,00 €/l** en vez de
+> 1,00 €/l. Corregido en `src/lib/units.ts` (única sede de conversiones):
+> `pricePerMeasure`/`pricePerMeasureLabel` aceptan `packSize` y bajan el precio a la unidad
+> antes de convertir; nuevas `formatPurchasePriceLabel` (nombra el precio por lo que se paga:
+> «6,00 €/pack»), `pricePerPackUnit` y `comparablePriceLabel` (acumula «0,20 €/ud · 2,00 €/l»).
+> `getPriceOverview` y `getProductPriceHistory` traen `pack_size`; las dos pantallas de
+> `/precios` hablan de packs en el precio, la tabla, la media por cadena y la frase «Cada pack
+> trae 30 ud». 20 asserts en un arnés esbuild+node (scratchpad) cubren pack sin contenido,
+> contenido sin pack, los dos juntos, granel, pack de 1 y `NaN` a medio teclear.
+>
+> **OJO — mismo fallo, sin arreglar, fuera de `/precios`:** `computeRecipeCost`
+> (`src/features/recipes/cost.ts`) multiplica el precio POR COMPRA por una cantidad de
+> ingrediente que está en unidades reales, así que el coste de una receta con un producto en
+> pack sale multiplicado por el pack. `lineCostOf` (`shopping-list/line-cost.ts`) NO tiene el
+> fallo y su comentario explica por qué: ahí la cantidad de la línea cuenta packs. Las dos
+> superficies quieren precios distintos del mismo `getLatestUnitPrices`, así que arreglarlo
+> exige decidir por consumidor — no es una corrección mecánica.
 
 **Criterios de aceptación**
 - Con "Croquetas" configurado a pack 30: confirmar un ticket con 1 ud añade 30 ud al

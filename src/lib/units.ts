@@ -205,6 +205,7 @@ export function pricePerMeasure(
   unitPrice: number,
   priceUnit: UnitType,
   content: UnitContent,
+  packSize: number | null = null,
 ): { price: number; unit: UnitType } | null {
   const target =
     priceUnit === "ud"
@@ -215,7 +216,14 @@ export function pricePerMeasure(
   if (!target || target === priceUnit) return null;
   const perUnit = convertQuantity(1, priceUnit, target, content);
   if (perUnit === null || perUnit <= 0) return null;
-  return { price: unitPrice / perUnit, unit: target };
+  // El contenido declarado es el de UNA unidad de las de casa, pero el precio
+  // del histórico es el de la COMPRA (F4: la línea del ticket conserva la
+  // cantidad de cajas). En un pack hay que bajar el precio a la unidad antes de
+  // convertir: una caja de 6 bricks de litro a 6,00 € es 1,00 €/l, y sin esto
+  // salía 6,00 €/l — el pack entero disfrazado de litro.
+  const pack = effectivePackSize(priceUnit, packSize);
+  const price = pack ? unitPrice / pack : unitPrice;
+  return { price: price / perUnit, unit: target };
 }
 
 /**
@@ -229,8 +237,9 @@ export function pricePerMeasureLabel(
   unitPrice: number,
   priceUnit: UnitType,
   content: UnitContent,
+  packSize: number | null = null,
 ): string | null {
-  const perMeasure = pricePerMeasure(unitPrice, priceUnit, content);
+  const perMeasure = pricePerMeasure(unitPrice, priceUnit, content, packSize);
   if (!perMeasure) return null;
   // El «≈» solo aplica si la conversión ha USADO el contenido estimado: un precio
   // que ya venía por gramo se pasa a €/kg con exactitud.
@@ -333,6 +342,67 @@ export function formatPurchaseQuantity(
     return formatQuantity(qty, unit ?? "ud");
   }
   return `${formatQuantityValue(qty)} ${qty === 1 ? "pack" : "packs"}`;
+}
+
+/**
+ * Precio de una compra nombrado por lo que de verdad se paga: "6,00 €/pack" en
+ * lo que viene en caja, "1,29 €/ud" o "2,50 €/kg" en el resto. Hermano de
+ * {@link formatPurchaseQuantity}: el histórico de precios guarda el importe de la
+ * COMPRA, así que si la cantidad se cuenta en packs el precio también es del
+ * pack, y llamarlo «/ud» al lado de un stepper que cuenta sobres es dar un
+ * precio que no existe.
+ */
+export function formatPurchasePriceLabel(
+  unitPrice: number,
+  unit: UnitType,
+  packSize: number | null,
+): string {
+  const per = effectivePackSize(unit, packSize) ? "pack" : UNIT_LABELS[unit];
+  return `${formatEuro(unitPrice)}/${per}`;
+}
+
+/**
+ * Precio de UNA de las unidades que se cuentan en casa, cuando el producto se
+ * compra en pack: la caja de 30 sobres a 6,00 € son 0,20 € el sobre, y el sobre
+ * es lo que gasta el stepper. null cuando no hay pack que aplicar.
+ */
+export function pricePerPackUnit(
+  unitPrice: number,
+  priceUnit: UnitType,
+  packSize: number | null,
+): number | null {
+  const pack = effectivePackSize(priceUnit, packSize);
+  return pack ? unitPrice / pack : null;
+}
+
+/**
+ * Todo lo que hace comparable el precio de una compra, en una línea: el precio
+ * de la unidad suelta cuando viene en pack, y el €/kg o €/l cuando el envase
+ * declara contenido. Une con « · » lo que aporte cada uno; null si no aporta
+ * ninguno.
+ *
+ * Vive aquí y no en las plantillas porque son dos reglas que se ACUMULAN (pack =
+ * conteo→conteo, contenido = conteo→medida) y las dos pantallas de `/precios`
+ * tienen que decir lo mismo: repartirlas por el JSX era pedir que una se
+ * olvidara en una de las dos.
+ */
+export function comparablePriceLabel(
+  unitPrice: number,
+  priceUnit: UnitType,
+  content: UnitContent,
+  packSize: number | null,
+): string | null {
+  const parts: string[] = [];
+  const perUnit = pricePerPackUnit(unitPrice, priceUnit, packSize);
+  if (perUnit !== null) parts.push(`${formatEuro(perUnit)}/${UNIT_LABELS.ud}`);
+  const perMeasure = pricePerMeasureLabel(
+    unitPrice,
+    priceUnit,
+    content,
+    packSize,
+  );
+  if (perMeasure) parts.push(perMeasure);
+  return parts.length > 0 ? parts.join(" · ") : null;
 }
 
 /**

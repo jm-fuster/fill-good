@@ -14,12 +14,38 @@ import { formatEuro } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import {
   APPROX,
+  comparablePriceLabel,
+  effectivePackSize,
+  formatPurchasePriceLabel,
   formatQuantity,
-  pricePerMeasureLabel,
   UNIT_LABELS,
+  type UnitContent,
 } from "@/lib/units";
+import type { UnitType } from "@/lib/supabase/types";
 
 export const metadata: Metadata = { title: "Precio" };
+
+/**
+ * Qué trae cada compra, en palabras: "Cada pack trae 30 ud de ≈ 200 g de media".
+ * Con pack la frase habla de packs porque el precio del histórico es el de la
+ * caja; sin pack ni contenido no hay nada que contar y no se dice nada.
+ */
+function contentSentence(
+  unit: UnitType,
+  content: UnitContent,
+  pack: number | null,
+): string | null {
+  const measure = content
+    ? `${content.estimate ? `${APPROX} ` : ""}${formatQuantity(content.size, content.unit)}${content.estimate ? " de media" : ""}`
+    : null;
+  if (pack) {
+    const units = formatQuantity(pack, "ud");
+    return measure
+      ? `Cada pack trae ${units} de ${measure}.`
+      : `Cada pack trae ${units}.`;
+  }
+  return measure ? `Cada ${UNIT_LABELS[unit]} trae ${measure}.` : null;
+}
 
 export default async function PrecioDetallePage({
   params,
@@ -30,8 +56,13 @@ export default async function PrecioDetallePage({
   const history = await getProductPriceHistory(productId);
   if (!history) notFound();
 
-  const { name, points, content } = history;
+  const { name, points, content, packSize } = history;
   const unit = points[0]?.unit ?? "ud";
+  // Con pack, lo que el histórico guarda es el precio de la CAJA: la pantalla
+  // entera habla de packs y deja el precio por unidad como equivalencia.
+  const pack = effectivePackSize(unit, packSize);
+  const perLabel = pack ? "pack" : UNIT_LABELS[unit];
+  const brings = contentSentence(unit, content, pack);
   const prices = points.map((p) => p.unitPrice);
   const min = prices.length ? Math.min(...prices) : 0;
   const max = prices.length ? Math.max(...prices) : 0;
@@ -52,10 +83,8 @@ export default async function PrecioDetallePage({
         {name}
       </h1>
       <p className="mt-1 mb-6 text-sm text-muted-foreground">
-        Evolución del precio por {UNIT_LABELS[unit]}.
-        {content
-          ? ` Cada ${UNIT_LABELS[unit]} trae ${content.estimate ? `${APPROX} ` : ""}${formatQuantity(content.size, content.unit)}${content.estimate ? " de media" : ""}.`
-          : null}
+        Evolución del precio por {perLabel}.
+        {brings ? ` ${brings}` : null}
       </p>
 
       {points.length === 0 ? (
@@ -69,18 +98,18 @@ export default async function PrecioDetallePage({
               label="Mínimo"
               value={formatEuro(min)}
               accent="success"
-              perMeasure={pricePerMeasureLabel(min, unit, content)}
+              perMeasure={comparablePriceLabel(min, unit, content, packSize)}
             />
             <Stat
               label="Último"
               value={formatEuro(last)}
-              perMeasure={pricePerMeasureLabel(last, unit, content)}
+              perMeasure={comparablePriceLabel(last, unit, content, packSize)}
             />
             <Stat
               label="Máximo"
               value={formatEuro(max)}
               accent="warning"
-              perMeasure={pricePerMeasureLabel(max, unit, content)}
+              perMeasure={comparablePriceLabel(max, unit, content, packSize)}
             />
           </div>
 
@@ -110,7 +139,8 @@ export default async function PrecioDetallePage({
                     <div className="min-w-0">
                       <p className="font-medium">{c.label}</p>
                       <p className="text-xs text-muted-foreground">
-                        media {formatEuro(c.avgPrice)}/{UNIT_LABELS[unit]} ·{" "}
+                        media{" "}
+                        {formatPurchasePriceLabel(c.avgPrice, unit, packSize)} ·{" "}
                         {c.count} compras
                       </p>
                     </div>
@@ -141,7 +171,7 @@ export default async function PrecioDetallePage({
                       Tienda
                     </th>
                     <th scope="col" className="py-2 text-right font-medium">
-                      Precio/ud
+                      Precio/{perLabel}
                     </th>
                   </tr>
                 </thead>
@@ -159,7 +189,11 @@ export default async function PrecioDetallePage({
                           {CHAIN_LABELS[p.storeChain] ?? p.storeChain}
                         </td>
                         <td className="py-2 text-right font-mono tabular-nums">
-                          {formatEuro(p.unitPrice)}/{UNIT_LABELS[p.unit]}
+                          {formatPurchasePriceLabel(
+                            p.unitPrice,
+                            p.unit,
+                            packSize,
+                          )}
                         </td>
                       </tr>
                     ))}
