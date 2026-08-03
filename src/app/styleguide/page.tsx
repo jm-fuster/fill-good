@@ -268,17 +268,29 @@ export default function StyleguidePage() {
           <Badge variant="outline">Agotado</Badge>
         </div>
         <p className="mt-4 text-sm text-muted-foreground">
-          Y lo que no es un estado del producto tampoco lleva pill: «está en la
-          lista de la compra» se dice con el carrito en <code>text-primary</code>{" "}
-          —el mismo icono del gesto, del interruptor de la ficha y del selector de{" "}
-          <code>/lista</code>—. Suelto a propósito: <code>primary</code> y{" "}
-          <code>success</code> son casi el mismo verde y un pill verde con
-          carrito se confundiría con el de caducidad.
+          Y lo que no es un estado del producto no va en esta fila ni lleva pill:
+          «está en la lista de la compra» se dice con un chip de carrito anclado
+          al icono del producto —el mismo icono del gesto, del interruptor de la
+          ficha y del selector de <code>/lista</code>—. En la esquina del icono y
+          no al final de la fila de badges, porque esa fila cambia de longitud en
+          cada tarjeta y el indicador cambiaba de sitio con ella. Relleno sólido
+          (<code>bg-primary</code>) y no un contorno fino, que entre badges de
+          color no se veía. Pill no: <code>primary</code> y <code>success</code>{" "}
+          son casi el mismo verde y un pill verde con carrito se confundiría con
+          el de caducidad. El anillo va en <code>ring-card</code>, el token de la
+          superficie que lo sostiene, no el de la página.
         </p>
-        <div className="mt-3 flex items-center gap-1.5 rounded-xl border bg-card p-3 text-sm">
-          <span className="font-medium">Leche entera</span>
-          <span className="text-muted-foreground">2 ud</span>
-          <ShoppingCart aria-hidden className="size-3.5 text-primary" />
+        <div className="mt-3 flex items-center gap-3 rounded-xl border bg-card p-3 text-sm">
+          <span className="relative flex shrink-0">
+            <ProductIcon slug="leche" size={32} />
+            <span className="absolute -right-1 -bottom-1 flex size-[18px] items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-card">
+              <ShoppingCart className="size-3" aria-hidden />
+            </span>
+          </span>
+          <span className="min-w-0">
+            <span className="block font-medium">Leche entera</span>
+            <span className="text-muted-foreground">2 ud · 2 l</span>
+          </span>
           <span className="sr-only">En la lista de la compra</span>
         </div>
       </Section>

@@ -264,13 +264,52 @@ export function InventoryItemCard({
             >
               {/* Icono del producto: grande, dentro de la tarjeta, arriba a la
                   izquierda (sin caja). Decorativo. */}
-              <ProductIcon
-                slug={entry.productIcon}
-                name={entry.productName}
-                categoryIcon={entry.categoryIcon}
-                size={32}
-                className={cn("shrink-0", emptied && "opacity-50")}
-              />
+              <span className="relative flex shrink-0">
+                <ProductIcon
+                  slug={entry.productIcon}
+                  name={entry.productName}
+                  categoryIcon={entry.categoryIcon}
+                  size={32}
+                  className={cn(emptied && "opacity-50")}
+                />
+                {/* «Ya lo llevas apuntado», a la vista sin abrir la ficha.
+                    Antes solo se sabía en agotado (el botón del pie) o abriendo
+                    la ficha, así que recorriendo el inventario para hacer la
+                    compra no había manera de ver qué habías apuntado ya: o lo
+                    apuntabas dos veces (y L3 lo fusiona, o sea que acababas con
+                    «2») o te ibas a `/lista` a comprobarlo.
+                    Va anclado al icono, no en la fila de badges de abajo, por
+                    dos motivos. Uno: ahí iba al FINAL de una fila de longitud
+                    variable —cantidad, caducidad, quedan pocas, consumir
+                    pronto—, así que cambiaba de sitio en cada tarjeta y bajando
+                    por la rejilla no había dónde fijar la vista; en la esquina
+                    del icono está siempre en el mismo punto. Y dos: esa fila
+                    habla del estado del producto y estar en la lista no es un
+                    estado suyo.
+                    Relleno sólido (`bg-primary`), no un glifo a trazo de 14px,
+                    que era lo de antes: entre badges de color y un icono de
+                    producto a color, un contorno fino no se veía. Pero NO un
+                    pill: `primary` es casi el mismo verde que `success`, así que
+                    un pill verde con carrito se confundiría con el «caduca en 5
+                    días» de al lado; un disco pegado al icono no se lee como uno
+                    de esos.
+                    El anillo lo separa de los colores del icono, y va en
+                    `ring-card` —no `ring-background`—: la tarjeta no es del
+                    color de la página, es más clara que ella en los dos temas
+                    (y la diferencia se ve más en oscuro), así que con el token
+                    de la página el anillo se notaría como un halo.
+                    El carrito y el verde son los mismos que dicen «en la lista»
+                    en el interruptor de la ficha y en el selector de `/lista`.
+                    En agotado no se pinta: el botón del pie ya lo dice con
+                    palabras a dos centímetros. Lo oye un lector de pantalla por
+                    `stateLabel` (el `aria-label` del botón tapa lo de dentro, un
+                    `sr-only` aquí no se leería). */}
+                {inList && !emptied ? (
+                  <span className="absolute -right-1 -bottom-1 flex size-[18px] items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-card">
+                    <ShoppingCart className="size-3" aria-hidden />
+                  </span>
+                ) : null}
+              </span>
               <span className="min-w-0 flex-1">
                 <span
                   className={cn(
@@ -323,29 +362,8 @@ export function InventoryItemCard({
                       Consumir pronto
                     </Badge>
                   ) : null}
-                  {/* «Ya lo llevas apuntado», a la vista sin abrir la ficha.
-                      Antes solo se sabía en agotado (el botón del pie) o abriendo
-                      la ficha, así que recorriendo el inventario para hacer la
-                      compra no había manera de ver qué habías apuntado ya: o lo
-                      apuntabas dos veces (y L3 lo fusiona, o sea que acababas
-                      con «2») o te ibas a `/lista` a comprobarlo.
-                      Un carrito suelto, no un badge más, por dos motivos: esta
-                      fila habla del estado del producto y esto no es un estado
-                      suyo, y `primary` es casi el mismo verde que `success`, así
-                      que un pill verde con carrito se confundiría con el «caduca
-                      en 5 días». Un glifo junto a un pill no se confunde con él.
-                      El carrito y el verde son los mismos que dicen «en la
-                      lista» en el interruptor de la ficha y en el selector de
-                      `/lista`. En agotado no se pinta: el botón del pie ya lo
-                      dice con palabras a dos centímetros. Lo oye un lector de
-                      pantalla por `stateLabel` (el `aria-label` del botón tapa
-                      lo de dentro, un `sr-only` aquí no se leería). */}
-                  {inList && !emptied ? (
-                    <ShoppingCart
-                      aria-hidden
-                      className="size-3.5 shrink-0 text-primary"
-                    />
-                  ) : null}
+                  {/* «En la lista» NO va aquí: es un chip anclado al icono del
+                      producto (arriba). El porqué, allí. */}
                 </span>
               </span>
             </button>
