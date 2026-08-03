@@ -4,6 +4,8 @@ import { z } from "zod";
  * Alta de una regla del menú. Unión discriminada por `kind`:
  *   · recipe_min_week / recipe_max_week → receta guardada + veces/semana (1–7).
  *   · free_text                         → texto libre.
+ *   · skip_slot                         → día de la semana + hueco que no se
+ *     planifica («los miércoles no planifiques cena»).
  */
 export const menuRuleInputSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -31,6 +33,18 @@ export const menuRuleInputSchema = z.discriminatedUnion("kind", [
       .trim()
       .min(1, "Escribe la regla.")
       .max(300, "Regla demasiado larga."),
+  }),
+  z.object({
+    kind: z.literal("skip_slot"),
+    // 0 = lunes … 6 = domingo, el mismo orden que `getWeekDays`.
+    weekday: z
+      .number()
+      .int()
+      .min(0, "Elige un día de la semana.")
+      .max(6, "Elige un día de la semana."),
+    mealSlot: z.enum(["breakfast", "lunch", "dinner"], {
+      message: "Elige comida o cena.",
+    }),
   }),
 ]);
 

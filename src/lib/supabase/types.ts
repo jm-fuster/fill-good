@@ -960,6 +960,10 @@ export type Database = {
           recipe_id: string | null;
           value: number | null;
           text_rule: string | null;
+          /** Solo en 'skip_slot': 0 = lunes … 6 = domingo. */
+          weekday: number | null;
+          /** Solo en 'skip_slot': 'breakfast' | 'lunch' | 'dinner'. */
+          meal_slot: string | null;
           active: boolean;
           created_at: string;
         };
@@ -970,6 +974,8 @@ export type Database = {
           recipe_id?: string | null;
           value?: number | null;
           text_rule?: string | null;
+          weekday?: number | null;
+          meal_slot?: string | null;
           active?: boolean;
           created_at?: string;
         };
@@ -980,6 +986,8 @@ export type Database = {
           recipe_id?: string | null;
           value?: number | null;
           text_rule?: string | null;
+          weekday?: number | null;
+          meal_slot?: string | null;
           active?: boolean;
           created_at?: string;
         };

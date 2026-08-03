@@ -94,7 +94,16 @@ export function MenuSettings({
         <div className="flex flex-col gap-4 px-4">
           <PrefsFields state={state} onChange={setState} />
           <Separator />
-          <MenuRulesFields rules={rules} recipes={recipes} />
+          {/*
+            Los huecos que se ofrecen salen de las preferencias GUARDADAS, no de
+            las que se estén editando arriba: las reglas se guardan solas y no
+            deben depender de un desayuno que aún no se ha confirmado.
+          */}
+          <MenuRulesFields
+            rules={rules}
+            recipes={recipes}
+            planBreakfast={prefs.planBreakfast}
+          />
         </div>
 
         <ResponsiveModalFooter className="gap-2">

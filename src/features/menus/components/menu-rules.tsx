@@ -21,15 +21,33 @@ import { cn } from "@/lib/utils";
 import type { SavedRecipe } from "@/features/recipes/queries";
 import type { MenuRule } from "../queries";
 import type { MenuRuleInput } from "../schemas";
+import { activeSlots, slotLabel } from "../slots";
 import {
   createRuleAction,
   deleteRuleAction,
   toggleRuleAction,
 } from "../actions";
 
+/** Días de la semana en el orden de la app: 0 = lunes … 6 = domingo. */
+const WEEKDAYS = [
+  "Lunes",
+  "Martes",
+  "Miércoles",
+  "Jueves",
+  "Viernes",
+  "Sábado",
+  "Domingo",
+];
+
 /** Frase legible de una regla para la lista. */
 function describeRule(rule: MenuRule): string {
   if (rule.kind === "free_text") return rule.textRule ?? "";
+  if (rule.kind === "skip_slot") {
+    const day = WEEKDAYS[rule.weekday ?? 0] ?? "";
+    return `${day} · no planificar la ${slotLabel(
+      rule.mealSlot ?? "",
+    ).toLowerCase()}`;
+  }
   const name = rule.recipeName ?? "Receta";
   const freq = rule.kind === "recipe_min_week" ? "al menos" : "como mucho";
   const times = rule.value === 1 ? "vez" : "veces";
@@ -37,7 +55,7 @@ function describeRule(rule: MenuRule): string {
 }
 
 type FreqBound = "recipe_min_week" | "recipe_max_week";
-type Mode = "recipe" | "free_text";
+type Mode = "recipe" | "free_text" | "skip_slot";
 
 /**
  * Bloque de reglas dentro de «Ajustes del menú» (ver `MenuSettings`). Antes era
@@ -49,9 +67,12 @@ type Mode = "recipe" | "free_text";
 export function MenuRulesFields({
   rules,
   recipes,
+  planBreakfast,
 }: {
   rules: MenuRule[];
   recipes: SavedRecipe[];
+  /** Si el hogar planifica desayuno, para ofrecerlo entre los huecos. */
+  planBreakfast: boolean;
 }) {
   const [adding, setAdding] = useState(false);
 
@@ -66,7 +87,8 @@ export function MenuRulesFields({
           Reglas del menú
         </h3>
         <p className="text-xs text-muted-foreground">
-          Cada cuánto quieres una receta, o instrucciones libres.
+          Cada cuánto quieres una receta, huecos que no se planifican o
+          instrucciones libres.
         </p>
       </div>
 
@@ -83,7 +105,11 @@ export function MenuRulesFields({
       )}
 
       {adding ? (
-        <AddRuleForm recipes={recipes} onDone={() => setAdding(false)} />
+        <AddRuleForm
+          recipes={recipes}
+          planBreakfast={planBreakfast}
+          onDone={() => setAdding(false)}
+        />
       ) : (
         <Button
           type="button"
@@ -158,21 +184,26 @@ function RuleRow({ rule }: { rule: MenuRule }) {
 
 function AddRuleForm({
   recipes,
+  planBreakfast,
   onDone,
 }: {
   recipes: SavedRecipe[];
+  planBreakfast: boolean;
   onDone: () => void;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   const noRecipes = recipes.length === 0;
+  const slots = activeSlots(planBreakfast);
 
   const [mode, setMode] = useState<Mode>(noRecipes ? "free_text" : "recipe");
   const [recipeId, setRecipeId] = useState("");
   const [bound, setBound] = useState<FreqBound>("recipe_min_week");
   const [times, setTimes] = useState("1");
   const [text, setText] = useState("");
+  const [weekday, setWeekday] = useState("");
+  const [mealSlot, setMealSlot] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function submit() {
@@ -185,6 +216,16 @@ function AddRuleForm({
         return;
       }
       input = { kind: "free_text", textRule: trimmed };
+    } else if (mode === "skip_slot") {
+      if (!weekday || !mealSlot) {
+        setError("Elige el día y el hueco.");
+        return;
+      }
+      input = {
+        kind: "skip_slot",
+        weekday: Number(weekday),
+        mealSlot: mealSlot as "breakfast" | "lunch" | "dinner",
+      };
     } else {
       if (!recipeId) {
         setError("Elige una receta.");
@@ -215,24 +256,40 @@ function AddRuleForm({
       <p className="text-sm font-medium">Nueva regla</p>
 
       <div className="flex flex-col gap-4">
-          {/* Selector de modo */}
-          <div role="group" aria-label="Tipo de regla" className="flex gap-2">
+          {/*
+            Tres modos ya no caben en una fila de bottom sheet: `flex-wrap` con
+            una base mínima los reparte solos (2+1 en móvil, 3 en escritorio).
+          */}
+          <div
+            role="group"
+            aria-label="Tipo de regla"
+            className="flex flex-wrap gap-2"
+          >
             <Button
               type="button"
               variant={mode === "recipe" ? "default" : "outline"}
               aria-pressed={mode === "recipe"}
               onClick={() => setMode("recipe")}
               disabled={noRecipes}
-              className="flex-1"
+              className="flex-1 basis-32"
             >
-              Frecuencia de receta
+              Frecuencia
+            </Button>
+            <Button
+              type="button"
+              variant={mode === "skip_slot" ? "default" : "outline"}
+              aria-pressed={mode === "skip_slot"}
+              onClick={() => setMode("skip_slot")}
+              className="flex-1 basis-32"
+            >
+              No planificar
             </Button>
             <Button
               type="button"
               variant={mode === "free_text" ? "default" : "outline"}
               aria-pressed={mode === "free_text"}
               onClick={() => setMode("free_text")}
-              className="flex-1"
+              className="flex-1 basis-32"
             >
               Regla libre
             </Button>
@@ -308,6 +365,44 @@ function AddRuleForm({
                 </div>
               </>
             )
+          ) : mode === "skip_slot" ? (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Ese hueco se queda libre todas las semanas (coméis fuera, cena de
+                sobras…). No borra lo que ya tengas puesto ni te impide añadir
+                algo a mano.
+              </p>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="rule-weekday">Día</Label>
+                <Select value={weekday} onValueChange={setWeekday}>
+                  <SelectTrigger id="rule-weekday">
+                    <SelectValue placeholder="Elige el día" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {WEEKDAYS.map((day, index) => (
+                      <SelectItem key={day} value={String(index)}>
+                        {day}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="rule-slot">Hueco</Label>
+                <Select value={mealSlot} onValueChange={setMealSlot}>
+                  <SelectTrigger id="rule-slot">
+                    <SelectValue placeholder="Elige el hueco" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {slots.map((s) => (
+                      <SelectItem key={s.key} value={s.key}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
           ) : (
             <div className="flex flex-col gap-2">
               <Label htmlFor="rule-text">Regla</Label>

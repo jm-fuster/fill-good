@@ -7,7 +7,12 @@
  * recibir la respuesta de la IA y antes de insertar las entradas.
  */
 
-export type MenuRuleKind = "recipe_min_week" | "recipe_max_week" | "free_text";
+export type MenuRuleKind =
+  | "recipe_min_week"
+  | "recipe_max_week"
+  | "free_text"
+  /** «Los miércoles no planifiques cena»: hueco recurrente que no se rellena. */
+  | "skip_slot";
 
 /** Máximo de platos por hueco (comida/cena), heredado de C1. */
 export const MAX_DISHES_PER_SLOT = 2;

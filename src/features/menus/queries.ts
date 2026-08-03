@@ -236,6 +236,10 @@ export type MenuRule = {
   recipeName: string | null;
   value: number | null;
   textRule: string | null;
+  /** Solo en 'skip_slot': 0 = lunes … 6 = domingo. */
+  weekday: number | null;
+  /** Solo en 'skip_slot': el hueco que no se planifica. */
+  mealSlot: string | null;
   active: boolean;
   createdAt: string;
 };
@@ -246,6 +250,8 @@ type MenuRuleRow = {
   recipe_id: string | null;
   value: number | null;
   text_rule: string | null;
+  weekday: number | null;
+  meal_slot: string | null;
   active: boolean;
   created_at: string;
   recipe: { name: string } | null;
@@ -262,7 +268,7 @@ export async function getMenuRules(): Promise<MenuRule[]> {
   const { data, error } = await supabase
     .from("menu_rules")
     .select(
-      "id, kind, recipe_id, value, text_rule, active, created_at, recipe:recipes(name)",
+      "id, kind, recipe_id, value, text_rule, weekday, meal_slot, active, created_at, recipe:recipes(name)",
     )
     .eq("household_id", householdId)
     .order("active", { ascending: false })
@@ -277,6 +283,8 @@ export async function getMenuRules(): Promise<MenuRule[]> {
     recipeName: r.recipe?.name ?? null,
     value: r.value,
     textRule: r.text_rule,
+    weekday: r.weekday,
+    mealSlot: r.meal_slot,
     active: r.active,
     createdAt: r.created_at,
   }));

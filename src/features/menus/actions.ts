@@ -63,7 +63,7 @@ import {
   type MenuPrefs,
   type MenuRule,
 } from "./queries";
-import { activeSlots } from "./slots";
+import { activeSlots, slotLabel } from "./slots";
 import {
   buildCatalogIndex,
   selectRecipesForPrompt,
@@ -388,12 +388,16 @@ async function loadHouseholdMenuContext(
     };
   });
 
+  // `skip_slot` NO entra aquí: viaja al prompt en su propia sección, con el día
+  // y el hueco ya en palabras (ver `skippedSlotsSection`).
   const ruleLines: MenuRuleLine[] = activeRules.flatMap((r): MenuRuleLine[] => {
     if (r.kind === "free_text") {
       return r.textRule ? [{ kind: "free_text", text: r.textRule }] : [];
     }
-    if (r.recipeName && r.value != null) {
-      return [{ kind: r.kind, recipeName: r.recipeName, value: r.value }];
+    if (r.kind === "recipe_min_week" || r.kind === "recipe_max_week") {
+      if (r.recipeName && r.value != null) {
+        return [{ kind: r.kind, recipeName: r.recipeName, value: r.value }];
+      }
     }
     return [];
   });
@@ -535,6 +539,28 @@ export async function generateMenuAction(
   const { prefs, savedRecipes, activeRules } = context;
   const slotKeys = activeSlots(prefs.planBreakfast).map((s) => s.key);
 
+  // Huecos que el hogar ha dicho que no se planifiquen («los miércoles no
+  // planifiques cena»). Se cierran igual que los días pasados: la IA no los
+  // rellena y el validador de reglas no coloca nada en ellos. Lo que ya hubiera
+  // ahí NO se toca: la regla dice "no me lo planifiques", no "bórralo".
+  const skippedSlots = new Set(
+    activeRules
+      .filter((r) => r.kind === "skip_slot" && r.weekday !== null && r.mealSlot)
+      .map((r) => `${r.weekday}|${r.mealSlot}`),
+  );
+  const isSkipped = (dayIndex: number, slot: string) =>
+    skippedSlots.has(`${dayIndex}|${slot}`);
+  const skippedLines = weekDays.flatMap((date, dayIndex) =>
+    slotKeys
+      .filter((slot) => isSkipped(dayIndex, slot))
+      .map(
+        (slot) =>
+          `${format(parseISO(date), "EEEE", { locale: es })}: ${slotLabel(
+            slot,
+          ).toLowerCase()}`,
+      ),
+  );
+
   let generated;
   try {
     const { object } = await generateObject({
@@ -550,6 +576,7 @@ export async function generateMenuAction(
         shoppingList: context.shoppingList,
         recentDishes: context.recentDishes,
         weeklyBudget: context.weeklyBudget,
+        skippedSlots: skippedLines,
         pinned: pinnedLines,
         prefs: {
           goal: prefs.goal,
@@ -593,9 +620,11 @@ export async function generateMenuAction(
     const locked = isPast(date);
     const genDay = generatedByIndex.get(dayIndex);
     const meals: MenuMeal[] = slotKeys.map((slot) => {
-      // Hueco conservado o ya pasado: sus platos son inmutables; ignoramos la
+      // Cerrado por pasado o porque el hogar no quiere que se planifique.
+      const closed = locked || isSkipped(dayIndex, slot);
+      // Hueco conservado o cerrado: sus platos son inmutables; ignoramos la
       // propuesta de la IA para ese hueco.
-      if (locked || occupiedSlots.has(`${date}|${slot}`)) {
+      if (closed || occupiedSlots.has(`${date}|${slot}`)) {
         const dishes: MenuDish[] = preserved
           .filter((e) => e.date === date && e.slot === slot)
           .map((e) => ({
@@ -603,7 +632,7 @@ export async function generateMenuAction(
             name: e.recipeName ?? e.freeText ?? "",
             immutable: true,
           }));
-        return { slot, dishes, locked };
+        return { slot, dishes, locked: closed };
       }
       const m = genDay?.meals.find((x) => x.slot === slot);
       const dishes: MenuDish[] = (m?.dishes ?? []).slice(0, 2).map((dish) => {
@@ -2086,6 +2115,18 @@ export async function createRuleAction(
       text_rule: d.textRule,
     });
     if (error) return { error: "No se pudo crear la regla." };
+  } else if (d.kind === "skip_slot") {
+    const { error } = await supabase.from("menu_rules").insert({
+      household_id: household.id,
+      kind: d.kind,
+      weekday: d.weekday,
+      meal_slot: d.mealSlot,
+    });
+    // El índice único (hogar + día + hueco) hace idempotente decir dos veces lo
+    // mismo: no es un fallo que enseñarle a nadie, ya está dicho.
+    if (error && error.code !== "23505") {
+      return { error: "No se pudo crear la regla." };
+    }
   } else {
     // La receta debe existir, pertenecer al hogar y estar guardada.
     const { data: recipe } = await supabase

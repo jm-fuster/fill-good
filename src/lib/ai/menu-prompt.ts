@@ -121,6 +121,8 @@ export type MenuPromptContext = {
   rules: MenuRuleLine[];
   /** Platos que la regeneración conserva (fijados o manuales); vacío al rehacer. */
   pinned?: MenuPinnedLine[];
+  /** Huecos que el hogar no planifica, ya en palabras ("miércoles: cena"). */
+  skippedSlots?: string[];
   /** Perfil del hogar; si se omite, se usan los defaults (comportamiento previo). */
   prefs?: MenuPrefs;
   /** Apuntado en la lista de la compra: se comprará antes de cocinar la semana. */
@@ -251,6 +253,19 @@ function budgetSection(weeklyBudget: number | null | undefined): string {
 `;
 }
 
+/**
+ * Huecos que el hogar no quiere planificar. La app ya los descarta al insertar,
+ * pero decírselo al modelo evita que gaste la cena del miércoles en un plato que
+ * se va a tirar y, sobre todo, que reparta la variedad de la semana contando con
+ * un hueco que no existe.
+ */
+function skippedSlotsSection(slots: string[]): string {
+  if (slots.length === 0) return "";
+  return `\nHuecos que este hogar NO planifica (déjalos vacíos, no propongas nada para ellos):
+${slots.map((s) => `- ${s}`).join("\n")}
+`;
+}
+
 function recentDishesSection(dishes: MenuRecentDish[]): string {
   if (dishes.length === 0) return "";
   const lines = dishes.map(
@@ -359,7 +374,9 @@ ${rulesText}
 
 Objetivo del hogar (PRIORITARIO):
 ${goalBlock}
-${budgetSection(context.weeklyBudget)}${recentDishesSection(context.recentDishes ?? [])}${pinnedSection}
+${budgetSection(context.weeklyBudget)}${skippedSlotsSection(
+    context.skippedSlots ?? [],
+  )}${recentDishesSection(context.recentDishes ?? [])}${pinnedSection}
 Cada comida es una lista de platos. La comida (lunch) puede llevar 1 o 2 platos (por ejemplo un primero ligero y un segundo) cuando tenga sentido; la cena (dinner) normalmente 1 plato.${breakfastLine} Nunca más de 2 platos por hueco.
 
 Para cada plato indica: nombre claro en español, saved_recipe_id (id del recetario o null), una descripción breve y la lista de ingredientes con cantidad y unidad aproximadas (para ${rations}). Usa ingredientes comunes; puedes proponer ingredientes que no estén en el inventario (se añadirán a la lista de la compra).
