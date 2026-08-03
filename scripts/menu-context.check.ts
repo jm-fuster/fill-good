@@ -21,11 +21,21 @@
  *     después, con el validador de reglas colocando a la fuerza un plato que el
  *     modelo no sabía que existía.
  *
- * Cubre además el contrato de HUECO CERRADO de `rules.ts` (`MenuMeal.locked`),
- * que es lo que impide que la regeneración replanifique un día ya vivido. No
- * está en `prompt-context.ts`, pero se comprueba aquí porque es la otra mitad de
- * la misma promesa: lo que ya comiste cuenta para las reglas de la semana y no
- * se toca.
+ * Cubre además `rules.ts` entero, que es la mitad DETERMINISTA del generador: la
+ * que existe justamente para no fiarse del modelo. Dos cosas:
+ *
+ *   · El HUECO CERRADO (`MenuMeal.locked`), que impide replanificar un día ya
+ *     vivido o uno que el hogar ha dicho que no se planifique.
+ *
+ *   · Las REGLAS DE FRECUENCIA (`enforceMin` / `enforceMax`), que reescriben la
+ *     semana en silencio: meten un plato donde ven sitio y convierten en
+ *     «(elegir plato)» lo que sobra. Un error ahí no rompe nada visible —tu
+ *     regla no se cumple, o te desaparece un plato— y se lee como que la IA hizo
+ *     lo que le dio la gana. Lo que más se vigila: que el máximo recorte solo el
+ *     exceso y nunca lo fijado, que el mínimo respete el tipo de comida y el
+ *     tope de platos por hueco, que no sustituya una receta protegida por su
+ *     propio mínimo y que una configuración imposible se rinda en vez de
+ *     colgarse (el bucle de `enforceMin` corre dentro de una Server Action).
  *
  * Lo que NO se prueba: la redacción del prompt (eso es `menu-prompt.ts`, texto),
  * ni qué contesta Gemini, ni las consultas que reúnen el contexto (viven en la
@@ -46,6 +56,8 @@ import {
 } from "@/features/menus/missing";
 import {
   validateAndPatchRules,
+  MAX_DISHES_PER_SLOT,
+  PLACEHOLDER_DISH_TEXT,
   type MenuDay,
   type MenuDish,
   type MenuStructure,
@@ -563,6 +575,289 @@ function platosDe(menu: MenuStructure): { dayIndex: number; name: string }[] {
   check(
     "sin días pasados el mínimo se cumple como siempre",
     platosDe(patched).length === 1,
+    platosDe(patched),
+  );
+}
+
+// ---------------------------------------------------------------------------
+seccion("Reglas de frecuencia: lo que el validador reescribe de tu semana");
+// ---------------------------------------------------------------------------
+
+const guardada = (id: string): MenuDish => ({ savedRecipeId: id, name: id });
+const inventado = (name: string): MenuDish => ({ savedRecipeId: null, name });
+const fijado = (id: string | null, name: string): MenuDish => ({
+  savedRecipeId: id,
+  name,
+  immutable: true,
+});
+
+function minimo(
+  id: string,
+  value: number,
+  mealTypes: string[] = [],
+): ValidatableRule {
+  return {
+    kind: "recipe_min_week",
+    recipeId: id,
+    value,
+    recipe: { name: id, mealTypes },
+  };
+}
+
+function maximo(id: string, value: number): ValidatableRule {
+  return {
+    kind: "recipe_max_week",
+    recipeId: id,
+    value,
+    recipe: { name: id, mealTypes: [] },
+  };
+}
+
+function cuenta(menu: MenuStructure, id: string): number {
+  return menu.days.reduce(
+    (n, d) =>
+      n +
+      d.meals.reduce(
+        (m, meal) =>
+          m + meal.dishes.filter((x) => x.savedRecipeId === id).length,
+        0,
+      ),
+    0,
+  );
+}
+
+function marcadores(menu: MenuStructure): number {
+  return menu.days.reduce(
+    (n, d) =>
+      n +
+      d.meals.reduce(
+        (m, meal) => m + meal.dishes.filter((x) => x.placeholder).length,
+        0,
+      ),
+    0,
+  );
+}
+
+{
+  const entrada: MenuStructure = { days: [dia(0), dia(1)] };
+  const antes = JSON.stringify(entrada);
+  validateAndPatchRules(entrada, [minimo("A", 1)]);
+  check(
+    "no muta el menú que recibe (devuelve una copia)",
+    JSON.stringify(entrada) === antes,
+    entrada,
+  );
+}
+
+{
+  const menu: MenuStructure = {
+    days: [
+      dia(0, { comida: [guardada("A")] }),
+      dia(1, { comida: [guardada("A")] }),
+      dia(2, { comida: [guardada("A")] }),
+    ],
+  };
+  const patched = validateAndPatchRules(menu, [maximo("A", 1)]);
+  check(
+    "el máximo recorta solo el EXCESO, no todas las apariciones",
+    cuenta(patched, "A") === 1,
+    cuenta(patched, "A"),
+  );
+  check(
+    "y lo recortado queda como marcador, no como hueco vacío",
+    marcadores(patched) === 2,
+    marcadores(patched),
+  );
+  check(
+    "el marcador lleva el texto que la inserción sabe leer",
+    patched.days[2]!.meals[0]!.dishes[0]!.name === PLACEHOLDER_DISH_TEXT,
+    patched.days[2]!.meals[0]!.dishes[0],
+  );
+  check(
+    "sobrevive la PRIMERA aparición: se recorta de atrás hacia delante",
+    patched.days[0]!.meals[0]!.dishes[0]!.savedRecipeId === "A",
+    patched.days[0]!.meals[0]!.dishes[0],
+  );
+}
+
+{
+  // Un plato fijado o manual cuenta para el máximo pero no se puede recortar:
+  // el usuario lo puso a mano y la regeneración respetuosa no lo toca.
+  const menu: MenuStructure = {
+    days: [
+      dia(0, { comida: [fijado("A", "A")] }),
+      dia(1, { comida: [guardada("A")] }),
+    ],
+  };
+  const patched = validateAndPatchRules(menu, [maximo("A", 1)]);
+  check(
+    "el máximo no recorta un plato fijado",
+    patched.days[0]!.meals[0]!.dishes[0]!.savedRecipeId === "A",
+    patched.days[0]!.meals[0]!.dishes[0],
+  );
+  check(
+    "recorta el que sí puede tocar",
+    patched.days[1]!.meals[0]!.dishes[0]!.placeholder === true,
+    patched.days[1]!.meals[0]!.dishes[0],
+  );
+}
+
+{
+  const menu: MenuStructure = { days: [dia(0), dia(1)] };
+  const patched = validateAndPatchRules(menu, [minimo("A", 2)]);
+  check(
+    "el mínimo coloca tantos platos como falten",
+    cuenta(patched, "A") === 2,
+    cuenta(patched, "A"),
+  );
+}
+
+{
+  // El tipo de comida de la receta manda: una «solo cena» no puede caer en la
+  // comida por mucho que ahí hubiera sitio antes.
+  const menu: MenuStructure = { days: [dia(0)] };
+  const patched = validateAndPatchRules(menu, [minimo("A", 1, ["dinner"])]);
+  check(
+    "una receta de solo cena no aterriza en la comida",
+    patched.days[0]!.meals[0]!.dishes.length === 0,
+    patched.days[0]!.meals[0],
+  );
+  check(
+    "sino en la cena",
+    patched.days[0]!.meals[1]!.dishes[0]!.savedRecipeId === "A",
+    patched.days[0]!.meals[1],
+  );
+}
+
+{
+  const menu: MenuStructure = {
+    days: [dia(0, { comida: [inventado("X"), inventado("Y")] })],
+  };
+  const patched = validateAndPatchRules(menu, [minimo("A", 1, ["lunch"])]);
+  const comida = patched.days[0]!.meals[0]!;
+  check(
+    "sin sitio libre SUSTITUYE en vez de amontonar un tercer plato",
+    comida.dishes.length === MAX_DISHES_PER_SLOT,
+    comida.dishes,
+  );
+  check(
+    "y la receta requerida acaba en el hueco",
+    cuenta(patched, "A") === 1,
+    comida.dishes,
+  );
+}
+
+{
+  // Un hueco con un plato fijado está RESERVADO: no se amplía aunque quepa.
+  const menu: MenuStructure = {
+    days: [dia(0, { comida: [fijado(null, "Lo que puso el usuario")] })],
+  };
+  const patched = validateAndPatchRules(menu, [minimo("A", 1, ["lunch"])]);
+  check(
+    "no se cuela un plato en un hueco con algo fijado, aunque quede sitio",
+    cuenta(patched, "A") === 0,
+    patched.days[0]!.meals[0]!.dishes,
+  );
+}
+
+{
+  const menu: MenuStructure = {
+    days: [dia(0, { comida: [fijado("A", "A")] }), dia(1)],
+  };
+  const patched = validateAndPatchRules(menu, [minimo("A", 1)]);
+  check(
+    "un plato fijado CUENTA para el mínimo (no se duplica la receta)",
+    cuenta(patched, "A") === 1,
+    platosDe(patched),
+  );
+}
+
+{
+  // B está justo en su mínimo: sustituirlo para colocar A rompería su regla, así
+  // que no se toca y A se queda sin colocar. Config imposible, no cuelgue.
+  const menu: MenuStructure = {
+    days: [dia(0, { comida: [guardada("B"), guardada("B")] })],
+  };
+  const patched = validateAndPatchRules(menu, [
+    minimo("A", 1, ["lunch"]),
+    minimo("B", 2),
+  ]);
+  check(
+    "no sustituye una receta protegida por su propio mínimo",
+    cuenta(patched, "B") === 2,
+    patched.days[0]!.meals[0]!.dishes,
+  );
+  check(
+    "y si no hay dónde colocarla, se rinde en vez de colgarse",
+    cuenta(patched, "A") === 0,
+    patched.days[0]!.meals[0]!.dishes,
+  );
+}
+
+{
+  // Con B por ENCIMA de su mínimo, una de sus apariciones sí es sustituible.
+  const menu: MenuStructure = {
+    days: [dia(0, { comida: [guardada("B"), guardada("B")] })],
+  };
+  const patched = validateAndPatchRules(menu, [
+    minimo("A", 1, ["lunch"]),
+    minimo("B", 1),
+  ]);
+  check(
+    "una receta que sobrepasa su mínimo sí cede un hueco",
+    cuenta(patched, "A") === 1 && cuenta(patched, "B") === 1,
+    patched.days[0]!.meals[0]!.dishes,
+  );
+}
+
+{
+  // El orden importa: los máximos se aplican ANTES que los mínimos, porque
+  // recortar excesos libera los huecos donde luego cabe lo que falta. Si se
+  // invirtiera, B no encontraría sitio y su regla quedaría incumplida.
+  const menu: MenuStructure = {
+    days: [
+      dia(0, {
+        comida: [guardada("A"), guardada("A")],
+        cena: [guardada("A"), guardada("A")],
+      }),
+    ],
+  };
+  const patched = validateAndPatchRules(menu, [maximo("A", 1), minimo("B", 1)]);
+  check(
+    "tras aplicar máximos y mínimos, las DOS reglas se cumplen",
+    cuenta(patched, "A") <= 1 && cuenta(patched, "B") >= 1,
+    { a: cuenta(patched, "A"), b: cuenta(patched, "B") },
+  );
+}
+
+{
+  // Se compara el CONTENIDO, no el JSON: `cloneMenu` reconstruye cada hueco y
+  // sus claves salen en otro orden, así que dos menús idénticos no serializan
+  // igual. Se parte de un menú CON plato para que "no se toca" signifique algo.
+  const menu: MenuStructure = { days: [dia(0, { comida: [guardada("A")] })] };
+  const patched = validateAndPatchRules(menu, [
+    { kind: "free_text", recipeId: null, value: null, recipe: null },
+    { kind: "skip_slot", recipeId: null, value: null, recipe: null },
+  ]);
+  check(
+    "las reglas libres y los huecos sin planificar no se validan aquí",
+    platosDe(patched).length === 1 &&
+      cuenta(patched, "A") === 1 &&
+      marcadores(patched) === 0,
+    platosDe(patched),
+  );
+}
+
+{
+  // Una regla de frecuencia sin los metadatos de su receta (borrada, o de otro
+  // hogar) no puede colocar nada: no se sabe ni cómo se llama ni si es cena.
+  const menu: MenuStructure = { days: [dia(0)] };
+  const patched = validateAndPatchRules(menu, [
+    { kind: "recipe_min_week", recipeId: "A", value: 1, recipe: null },
+  ]);
+  check(
+    "un mínimo sin datos de la receta no inventa un plato",
+    platosDe(patched).length === 0,
     platosDe(patched),
   );
 }
