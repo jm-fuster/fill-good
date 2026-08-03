@@ -47,6 +47,18 @@ export type MenuMeal = {
   /** "lunch" | "dinner" (u otro slot que la app soporte). */
   slot: string;
   dishes: MenuDish[];
+  /**
+   * El hueco ya ha pasado: sus platos CUENTAN para los mínimos y los máximos
+   * —si el lunes comiste lentejas, la regla "lentejas al menos una vez" ya está
+   * cumplida— pero no se puede poner ni quitar nada en él.
+   *
+   * Es distinto de un hueco lleno de platos `immutable`: un hueco pasado está
+   * cerrado aunque esté VACÍO. Sin esto, `enforceMin` colocaba el plato que
+   * faltaba en el martes de una semana que va por el jueves, la inserción lo
+   * descartaba por pasado y la regla se daba por cumplida sin que el plato
+   * existiera en ninguna parte.
+   */
+  locked?: boolean;
 };
 
 export type MenuDay = {
@@ -83,6 +95,10 @@ function cloneMenu(menu: MenuStructure): MenuStructure {
       dayIndex: day.dayIndex,
       meals: day.meals.map((meal) => ({
         slot: meal.slot,
+        // `locked` viaja: reconstruir el hueco campo a campo lo perdía, y un
+        // hueco pasado que llega al validador sin su marca vuelve a admitir
+        // platos, que es justo lo que la marca existe para impedir.
+        locked: meal.locked,
         // Copia superficial de cada plato; `immutable`/`placeholder` se copian.
         dishes: meal.dishes.map((dish) => ({ ...dish })),
       })),
@@ -122,6 +138,8 @@ function enforceMax(menu: MenuStructure, recipeId: string, max: number): void {
     const day = menu.days[d];
     for (let m = day.meals.length - 1; m >= 0 && excess > 0; m -= 1) {
       const meal = day.meals[m];
+      // Un hueco pasado no se toca: lo que ya se comió no se puede recortar.
+      if (meal.locked) continue;
       for (let i = meal.dishes.length - 1; i >= 0 && excess > 0; i -= 1) {
         // Los platos fijados/manuales cuentan pero no se recortan.
         if (meal.dishes[i].immutable) continue;
@@ -173,6 +191,8 @@ function enforceMin(
       if (placed) break;
       for (const meal of day.meals) {
         if (!slotAcceptsRecipe(meal.slot, recipe.mealTypes)) continue;
+        // Un día que ya ha pasado no admite platos nuevos, ni estando vacío.
+        if (meal.locked) continue;
         // Un hueco con un plato fijado/manual está reservado: no se amplía.
         if (meal.dishes.some((x) => x.immutable)) continue;
         const alreadyHas = meal.dishes.some((x) => x.savedRecipeId === recipeId);
@@ -192,6 +212,7 @@ function enforceMin(
       if (placed) break;
       for (const meal of day.meals) {
         if (!slotAcceptsRecipe(meal.slot, recipe.mealTypes)) continue;
+        if (meal.locked) continue;
         if (meal.dishes.some((x) => x.immutable)) continue;
         if (meal.dishes.some((x) => x.savedRecipeId === recipeId)) continue;
         const idx = meal.dishes.findIndex((dish) =>

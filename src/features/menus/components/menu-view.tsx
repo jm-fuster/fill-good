@@ -500,9 +500,10 @@ export function MenuView({
           <ResponsiveModalHeader>
             <ResponsiveModalTitle>Rehacer todo el menú</ResponsiveModalTitle>
             <ResponsiveModalDescription>
-              Se borrará toda la semana —incluidos tus platos fijados y los que
-              has editado o añadido a mano— y se generará un menú nuevo. Esta
-              acción no se puede deshacer.
+              Se borrará lo que queda de semana —incluidos tus platos fijados y
+              los que has editado o añadido a mano— y se generará un menú nuevo.
+              Los días que ya han pasado se quedan como están. Esta acción no se
+              puede deshacer.
             </ResponsiveModalDescription>
           </ResponsiveModalHeader>
           <ResponsiveModalFooter className="gap-2">

@@ -471,6 +471,30 @@ export async function generateMenuAction(
     return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
   }
 
+  const weekDays = getWeekDays(weekStart);
+  const today = todayLocalISO();
+  /**
+   * Un día que YA HA PASADO no se replanifica, en ninguno de los dos modos.
+   *
+   * No es una sutileza: al regenerar un jueves, el borrado se llevaba por
+   * delante el lunes, el martes y el miércoles con su `cooked_at` dentro, que es
+   * de donde salen `timesCooked` y `lastCookedAt` (`getRecipeSignals`). O sea que
+   * rehacer la semana borraba la prueba de que cocinaste algo, el generador
+   * volvía a creer que no lo habías hecho nunca y te lo proponía otra vez —
+   * justo lo contrario de lo que buscan las señales—. Y encima metía platos
+   * inventados en días ya vividos, que luego el repaso preguntaba uno a uno
+   * («¿cocinasteis esto el lunes?») sin que nadie los hubiera planificado.
+   *
+   * Solo afecta a la regeneración en bloque: el «+» de un hueco suelto sigue
+   * pudiendo poner algo en un día pasado, porque ahí lo pide el usuario a mano.
+   */
+  const isPast = (date: string) => date < today;
+  if (weekDays.every(isPast)) {
+    return {
+      error: "Esa semana ya ha pasado: no se puede volver a planificar.",
+    };
+  }
+
   const supabase = createServerSupabaseClient();
 
   const rateError = await enforceAiRateLimit(supabase, "menu");
@@ -479,13 +503,13 @@ export async function generateMenuAction(
   const menuId = await ensureMenu(supabase, household.id, weekStart);
   if (!menuId) return { error: "No se pudo crear el menú." };
 
-  const weekDays = getWeekDays(weekStart);
-
-  // Entradas conservadas (solo en modo "fill"): fijadas o manuales. La
-  // regeneración no las toca; se cuentan para las reglas y se listan en el prompt.
-  const existingEntries = mode === "fill" ? await getMenuEntries(menuId) : [];
+  // Entradas que la regeneración conserva: las de días pasados SIEMPRE, y en
+  // modo "fill" además las fijadas y las manuales. Se cuentan para las reglas y
+  // se listan en el prompt para que la IA no las repita.
+  const existingEntries = await getMenuEntries(menuId);
   const preserved = existingEntries.filter(
-    (e) => e.pinned || e.source === "manual",
+    (e) =>
+      isPast(e.date) || (mode === "fill" && (e.pinned || e.source === "manual")),
   );
   const occupiedSlots = new Set(preserved.map((e) => `${e.date}|${e.slot}`));
   const pinnedLines: MenuPinnedLine[] = preserved
@@ -549,14 +573,20 @@ export async function generateMenuAction(
   // un hueco ocupado por platos conservados se rellena con esos platos marcados
   // como `immutable` (el validador los cuenta pero no los toca) y se ignoran los
   // platos que la IA haya propuesto para ese mismo hueco.
+  //
+  // Los días pasados entran igualmente en la estructura —lo que ya comiste
+  // CUENTA para los mínimos y los máximos de la semana— pero con el hueco
+  // marcado `locked`, que además cierra los que quedaron vacíos.
   const generatedByIndex = new Map(generated.days.map((d) => [d.day_index, d]));
   const structDays: MenuDay[] = [];
   for (let dayIndex = 0; dayIndex < weekDays.length; dayIndex += 1) {
     const date = weekDays[dayIndex];
+    const locked = isPast(date);
     const genDay = generatedByIndex.get(dayIndex);
     const meals: MenuMeal[] = slotKeys.map((slot) => {
-      // Hueco conservado: sus platos son inmutables; ignoramos la propuesta IA.
-      if (occupiedSlots.has(`${date}|${slot}`)) {
+      // Hueco conservado o ya pasado: sus platos son inmutables; ignoramos la
+      // propuesta de la IA para ese hueco.
+      if (locked || occupiedSlots.has(`${date}|${slot}`)) {
         const dishes: MenuDish[] = preserved
           .filter((e) => e.date === date && e.slot === slot)
           .map((e) => ({
@@ -564,7 +594,7 @@ export async function generateMenuAction(
             name: e.recipeName ?? e.freeText ?? "",
             immutable: true,
           }));
-        return { slot, dishes };
+        return { slot, dishes, locked };
       }
       const m = genDay?.meals.find((x) => x.slot === slot);
       const dishes: MenuDish[] = (m?.dishes ?? []).slice(0, 2).map((dish) => {
@@ -604,27 +634,28 @@ export async function generateMenuAction(
   const patched = validateAndPatchRules({ days: structDays }, validatable);
 
   // --- Inserción sin contaminar la tabla recipes ---
-  // "replace" arrasa toda la semana; "fill" borra solo lo generado por IA que no
-  // esté fijado y deja intactas las entradas conservadas.
+  // "replace" arrasa el resto de la semana; "fill" borra solo lo generado por IA
+  // que no esté fijado y deja intactas las entradas conservadas. El `gte` de la
+  // fecha es lo que salva los días ya vividos —y el "lo cocinamos" que llevan
+  // dentro— del borrado de las dos ramas.
+  const deleteFromToday = supabase
+    .from("menu_entries")
+    .delete()
+    .eq("household_id", household.id)
+    .eq("menu_id", menuId)
+    .gte("date", today);
   if (mode === "replace") {
-    await supabase
-      .from("menu_entries")
-      .delete()
-      .eq("household_id", household.id)
-      .eq("menu_id", menuId);
+    await deleteFromToday;
   } else {
-    await supabase
-      .from("menu_entries")
-      .delete()
-      .eq("household_id", household.id)
-      .eq("menu_id", menuId)
-      .eq("source", "ai")
-      .eq("pinned", false);
+    await deleteFromToday.eq("source", "ai").eq("pinned", false);
   }
 
   for (const day of patched.days) {
     const date = weekDays[day.dayIndex];
     if (!date) continue;
+    // Un día pasado no recibe platos nuevos. El validador ya no coloca nada en
+    // él (`locked`), así que esto es el cinturón sobre los tirantes.
+    if (isPast(date)) continue;
     for (const meal of day.meals) {
       // Los huecos conservados ya están en la BD: no se tocan.
       if (occupiedSlots.has(`${date}|${meal.slot}`)) continue;

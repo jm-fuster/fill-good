@@ -21,6 +21,12 @@
  *     después, con el validador de reglas colocando a la fuerza un plato que el
  *     modelo no sabía que existía.
  *
+ * Cubre además el contrato de HUECO CERRADO de `rules.ts` (`MenuMeal.locked`),
+ * que es lo que impide que la regeneración replanifique un día ya vivido. No
+ * está en `prompt-context.ts`, pero se comprueba aquí porque es la otra mitad de
+ * la misma promesa: lo que ya comiste cuenta para las reglas de la semana y no
+ * se toca.
+ *
  * Lo que NO se prueba: la redacción del prompt (eso es `menu-prompt.ts`, texto),
  * ni qué contesta Gemini, ni las consultas que reúnen el contexto (viven en la
  * Server Action, contra la base). Aquí solo las cuentas.
@@ -38,6 +44,13 @@ import {
   computeMissingIngredients,
   type CatalogEntry,
 } from "@/features/menus/missing";
+import {
+  validateAndPatchRules,
+  type MenuDay,
+  type MenuDish,
+  type MenuStructure,
+  type ValidatableRule,
+} from "@/features/menus/rules";
 import { normalizeName } from "@/lib/normalize";
 
 let fallos = 0;
@@ -414,6 +427,138 @@ function candidata(
     "una receta sin ingredientes no puntúa por despensa (y no rompe la división)",
     Number.isFinite(promptRecipeScore(sinIngredientes, HOY)),
     promptRecipeScore(sinIngredientes, HOY),
+  );
+}
+
+// ---------------------------------------------------------------------------
+seccion("Días ya pasados: el validador no los replanifica");
+// ---------------------------------------------------------------------------
+
+const LENTEJAS_ID = "r-lentejas";
+const REGLA_MINIMO: ValidatableRule = {
+  kind: "recipe_min_week",
+  recipeId: LENTEJAS_ID,
+  value: 1,
+  recipe: { name: "Lentejas", mealTypes: [] },
+};
+
+/** Un día de la estructura del menú: dos huecos, con o sin candado. */
+function dia(
+  dayIndex: number,
+  opciones: {
+    locked?: boolean;
+    comida?: MenuDish[];
+    cena?: MenuDish[];
+  } = {},
+): MenuDay {
+  const locked = opciones.locked ?? false;
+  return {
+    dayIndex,
+    meals: [
+      { slot: "lunch", dishes: opciones.comida ?? [], locked },
+      { slot: "dinner", dishes: opciones.cena ?? [], locked },
+    ],
+  };
+}
+
+function platosDe(menu: MenuStructure): { dayIndex: number; name: string }[] {
+  return menu.days.flatMap((d) =>
+    d.meals.flatMap((m) => m.dishes.map((x) => ({ dayIndex: d.dayIndex, name: x.name }))),
+  );
+}
+
+{
+  // Jueves de una semana en curso: lunes y martes cerrados y VACÍOS.
+  const menu: MenuStructure = {
+    days: [dia(0, { locked: true }), dia(1, { locked: true }), dia(2), dia(3)],
+  };
+  const patched = validateAndPatchRules(menu, [REGLA_MINIMO]);
+  const colocados = platosDe(patched);
+  check(
+    "el plato que falta NO cae en un hueco pasado vacío",
+    colocados.every((p) => p.dayIndex >= 2),
+    colocados,
+  );
+  check(
+    "pero sí se coloca en un día que aún no ha llegado",
+    colocados.length === 1 && colocados[0]!.dayIndex === 2,
+    colocados,
+  );
+}
+
+{
+  // Lo comido el lunes cuenta: la regla ya está cumplida y no se añade otra vez.
+  const menu: MenuStructure = {
+    days: [
+      dia(0, {
+        locked: true,
+        comida: [{ savedRecipeId: LENTEJAS_ID, name: "Lentejas", immutable: true }],
+      }),
+      dia(1),
+    ],
+  };
+  const patched = validateAndPatchRules(menu, [REGLA_MINIMO]);
+  check(
+    "lo comido en un día pasado cuenta para el mínimo (no se repite)",
+    platosDe(patched).length === 1,
+    platosDe(patched),
+  );
+}
+
+{
+  // Máximo de 1 con dos apariciones, una de ellas en un día ya vivido: se
+  // recorta la futura, nunca la pasada.
+  const menu: MenuStructure = {
+    days: [
+      dia(0, {
+        locked: true,
+        comida: [{ savedRecipeId: LENTEJAS_ID, name: "Lentejas", immutable: true }],
+      }),
+      dia(1, { comida: [{ savedRecipeId: LENTEJAS_ID, name: "Lentejas" }] }),
+    ],
+  };
+  const patched = validateAndPatchRules(menu, [
+    { ...REGLA_MINIMO, kind: "recipe_max_week", value: 1 },
+  ]);
+  const pasado = patched.days[0]!.meals[0]!.dishes[0]!;
+  const futuro = patched.days[1]!.meals[0]!.dishes[0]!;
+  check(
+    "el máximo no recorta lo que ya se comió",
+    pasado.savedRecipeId === LENTEJAS_ID,
+    pasado,
+  );
+  check(
+    "recorta la aparición futura, que sí se puede cambiar",
+    futuro.placeholder === true,
+    futuro,
+  );
+}
+
+{
+  // El candado tiene que sobrevivir al clonado interno del validador: si se
+  // perdiera, el hueco pasado volvería a admitir platos y el fallo sería mudo.
+  const menu: MenuStructure = { days: [dia(0, { locked: true })] };
+  const patched = validateAndPatchRules(menu, [REGLA_MINIMO]);
+  check(
+    "el candado sobrevive a la copia interna del validador",
+    patched.days[0]!.meals.every((m) => m.locked === true),
+    patched.days[0]!.meals,
+  );
+  check(
+    "y sin ningún hueco abierto no se coloca nada en ninguna parte",
+    platosDe(patched).length === 0,
+    platosDe(patched),
+  );
+}
+
+{
+  // Sin candados, el comportamiento de siempre: la regla se cumple.
+  const menu: MenuStructure = { days: [dia(0), dia(1)] };
+  const patched = validateAndPatchRules(menu, [REGLA_MINIMO]);
+  check(
+    "sin días pasados el mínimo se cumple como siempre",
+    platosDe(patched).length === 1,
+    platosDe(patched),
   );
 }
 
