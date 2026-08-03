@@ -37,7 +37,15 @@ const clerkFapiOrigin = (() => {
 // Único interruptor para promocionar la CSP a enforcing: cambia a `true` y pasan
 // a la vez la cabecera (a `Content-Security-Policy`) y las directivas que solo
 // tienen efecto enforcing.
-const cspEnforce = false;
+// Activada el 2026-08-03 tras recorrer producción en Report-Only sin una sola
+// violación: rutas públicas (landing, legales y /sign-in con el widget de Clerk
+// montado de verdad) verificadas desde aquí, y el resto de la app —incluidas
+// /lista con el wss de Realtime y /perfil con el avatar— por el usuario con
+// sesión. El avatar externo llega reproxeado por img.clerk.com (el identificador
+// dice `{"type":"proxy"}`), así que googleusercontent NO hace falta en img-src.
+// Rollback: volver a `false` y redesplegar; `report-uri` sigue activo en enforce,
+// o sea que una violación nueva se ve igual en los logs.
+const cspEnforce = true;
 
 const csp = [
   `default-src 'self'`,
