@@ -70,6 +70,7 @@ import {
   restockPayload,
   restockToastMessage,
 } from "./cooked-restock-fields";
+import { AiGenerateButton } from "./ai-generate-button";
 import { EntryActionTile } from "./entry-action-tile";
 import { SlotPickerGrid } from "./slot-picker-grid";
 import {
@@ -265,6 +266,18 @@ export function MenuView({
   const hasPreservable = entries.some((e) => e.pinned || e.source === "manual");
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [copying, startCopy] = useTransition();
+  /*
+    Cascada de entrada de los días (E). Cambiar esta clave remonta la semana y
+    con ella vuelven a correr las animaciones CSS de cada tarjeta; es el patrón
+    que ya usamos para animar listas con estado.
+
+    Empieza en 0 y la animación solo se aplica cuando ya ha subido: así la carga
+    normal de la página pinta la semana de golpe (nada de retener el contenido
+    tras un escalonado en el primer render) y la cascada queda reservada al
+    momento en que la semana LLEGA —generada o copiada—, que es cuando de verdad
+    hay algo nuevo que mirar.
+  */
+  const [revealKey, setRevealKey] = useState(0);
   // Acción de IA a reintentar tras aceptar el consentimiento (null ⇒ modal cerrado).
   const [aiConsentRetry, setAiConsentRetry] = useState<null | (() => void)>(null);
 
@@ -274,6 +287,7 @@ export function MenuView({
       if (r.error) toast.error(r.error);
       else {
         toast.success("Semana copiada de la anterior");
+        setRevealKey((k) => k + 1);
         router.refresh();
       }
     });
@@ -293,6 +307,7 @@ export function MenuView({
       if (r.error) toast.error(r.error);
       else {
         toast.success(mode === "replace" ? "Menú rehecho" : "Menú generado");
+        setRevealKey((k) => k + 1);
         router.refresh();
       }
     });
@@ -473,19 +488,19 @@ export function MenuView({
       */}
       <div className="flex flex-col gap-2 print:hidden">
         <div className="flex items-center gap-2">
-          <Button
+          <AiGenerateButton
             onClick={() => generate("fill")}
             loading={generating}
+            busyLabel={
+              hasPreservable
+                ? "Completando el menú con IA"
+                : "Generando el menú con IA"
+            }
             size="lg"
             className="flex-1"
           >
-            <Sparkles aria-hidden />
-            {generating
-              ? "Generando menú…"
-              : hasPreservable
-                ? "Completar menú con IA"
-                : "Generar menú con IA"}
-          </Button>
+            {hasPreservable ? "Completar menú con IA" : "Generar menú con IA"}
+          </AiGenerateButton>
           {settingsSlot}
         </div>
         {/*
@@ -569,10 +584,24 @@ export function MenuView({
         altas que reparten los huecos a lo alto del folio (queda sitio para
         apuntar a mano). Solo cambia el CSS; el DOM y la lógica son los mismos.
       */}
-      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 xl:grid-cols-3 2xl:grid-cols-7 2xl:gap-2 print:!grid print:!grid-cols-7 print:!gap-2">
+      <div
+        key={revealKey}
+        className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 xl:grid-cols-3 2xl:grid-cols-7 2xl:gap-2 print:!grid print:!grid-cols-7 print:!gap-2"
+      >
         {days.map((date, dayIndex) => (
           <div
             key={date}
+            /*
+              Escalón de 60ms por día: los siete entran en ~0.7s contando la
+              duración. Va inline porque son siete valores distintos calculados
+              del índice; `prefers-reduced-motion` lo neutraliza igual, porque la
+              regla global de globals.css pisa el retardo con `!important`.
+            */
+            style={
+              revealKey > 0
+                ? { animationDelay: `${dayIndex * 60}ms` }
+                : undefined
+            }
             // 120mm de alto por columna llenan la hoja (≈160mm de los 186mm
             // útiles de un A4 horizontal) dejando holgura para las impresoras
             // que imponen un margen mayor que el `@page` que pedimos.
@@ -582,6 +611,18 @@ export function MenuView({
             className={cn(
               "rounded-xl border p-3 print:flex print:min-h-[120mm] print:break-inside-avoid print:flex-col print:rounded-md print:p-2.5",
               date === today && "border-primary print:border-border",
+              // `fill-mode-both` NO es decorativo y no sobra: `animate-in` deja
+              // el fill-mode en `none`, y entonces cada día se vería normal
+              // durante su retardo, desaparecería de golpe al arrancar su turno
+              // y entraría — un parpadeo, no una cascada. Con `both` el día
+              // espera ya invisible. (La utilidad tiene que ser esta: un
+              // `[animation-fill-mode:both]` arbitrario lo pisa `animate-in`.)
+              //
+              // Y por eso mismo `print:animate-none`: si la entrada empieza en
+              // opacidad 0, imprimir mientras corre dejaría días en blanco en el
+              // papel. Sin animación el día vuelve a su estado natural, visible.
+              revealKey > 0 &&
+                "animate-in fade-in slide-in-from-bottom-2 fill-mode-both duration-300 print:animate-none",
             )}
           >
             <div className="mb-2 flex items-center gap-2">
