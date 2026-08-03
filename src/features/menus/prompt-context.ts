@@ -125,9 +125,21 @@ export function summarizeAvailability(
 
 /**
  * Tope de recetas del recetario que viajan al prompt. Está por encima de lo que
- * tiene un hogar normal a propósito: es un seguro para que un recetario que
- * crece sin parar no acabe ahogando al modelo (ni al rate limit del free tier),
- * no una selección que deba notarse en el uso diario.
+ * tiene un hogar normal a propósito: no es una criba que deba notarse en el uso
+ * diario, sino un seguro contra un recetario que crece sin parar.
+ *
+ * Contra qué protege, medido (agosto 2026, con el propio `buildMenuPrompt`):
+ * cada receta cuesta ~62 tokens, y el prompt entero va de ~2.000 tokens en un
+ * hogar que empieza a ~8.700 en el tope, con el recetario ocupando el 57-65%.
+ * Un recetario de 150 recetas sin tope serían ~16.700.
+ *
+ * O sea que el tope NO protege el límite del free tier: cualquiera de esas
+ * cifras es diminuta frente a la ventana de contexto de un Flash, y lo que se
+ * agota en el free tier son PETICIONES por minuto, no tokens (de eso se encarga
+ * `enforceAiRateLimit`). Lo que protege es la ATENCIÓN del modelo: elegir 14
+ * platos entre 150 candidatos descritos con todo detalle es un problema peor que
+ * elegirlos entre 60 ya ordenados por relevancia. Por eso subirlo es barato en
+ * coste y discutible en calidad — y la calidad solo se sabe generando.
  */
 export const MAX_PROMPT_RECIPES = 60;
 
