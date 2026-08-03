@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   MoveRight,
   PartyPopper,
+  ShoppingCart,
   Trash2,
 } from "lucide-react";
 
@@ -31,6 +32,8 @@ import {
   todayLocalISO,
 } from "@/lib/dates";
 import { vibrateTick } from "@/lib/haptics";
+import { addListItemsAction } from "@/features/shopping-list/actions";
+import type { RestockCandidate } from "@/features/shopping-list/queries";
 import {
   computeCookedDeductionsAction,
   confirmCookedDeductionsAction,
@@ -39,7 +42,7 @@ import {
   toggleEntryCookedAction,
   toggleEntrySkippedAction,
 } from "../actions";
-import type { CookedDeduction } from "../cooked";
+import { noDeductionsReason, type CookedDeduction } from "../cooked";
 import type { PendingCheckinEntry } from "../queries";
 import { slotLabel, type SlotDef } from "../slots";
 import {
@@ -48,6 +51,12 @@ import {
   deductionPayload,
   initialDeductionQty,
 } from "./cooked-deductions-fields";
+import {
+  CookedRestockFields,
+  initialRestockSelection,
+  restockPayload,
+  restockToastMessage,
+} from "./cooked-restock-fields";
 import { EntryActionTile } from "./entry-action-tile";
 import { SlotPickerGrid } from "./slot-picker-grid";
 
@@ -60,7 +69,7 @@ function dayLabel(date: string): string {
 
 type Busy = {
   id: string;
-  kind: "cook" | "skip" | "remove" | "move" | "deduct";
+  kind: "cook" | "skip" | "remove" | "move" | "deduct" | "restock";
 };
 
 /**
@@ -109,10 +118,24 @@ export function CookedCheckinModal({
     items: CookedDeduction[];
   } | null>(null);
   const [qty, setQty] = useState<Record<string, string>>({});
+  // Fila con la oferta de apuntar en la lista lo que el descuento dejó a cero.
+  const [restock, setRestock] = useState<{
+    entryId: string;
+    candidates: RestockCandidate[];
+  } | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   // Vista de "Mover a…" (sustituye a la lista): entrada que se está moviendo.
   const [moving, setMoving] = useState<PendingCheckinEntry | null>(null);
   const [busy, setBusy] = useState<Busy | null>(null);
   const [, startAction] = useTransition();
+  /*
+    Hay escritura sin avisar al host todavía. Una fila que se queda a medio
+    despachar (cocinada y esperando en la revisión del descuento, o en la oferta
+    de apuntar) ya ha cambiado la base, así que si el modal se cierra por ahí hay
+    que refrescar igual: sin esto el plato aparece como no cocinado en la semana
+    hasta la siguiente navegación, que es exactamente lo que se lee como un fallo.
+  */
+  const [dirty, setDirty] = useState(false);
 
   const remaining = entries.filter((e) => !resolved.has(e.id));
   const isBusy = (id: string, kind: Busy["kind"]) =>
@@ -128,8 +151,10 @@ export function CookedCheckinModal({
     setResolved((prev) => new Set(prev).add(id));
     setNoFor(null);
     setDeduct(null);
+    setRestock(null);
     setMoving(null);
     setBusy(null);
+    setDirty(false);
     onResolved?.();
   }
 
@@ -145,6 +170,7 @@ export function CookedCheckinModal({
         return;
       }
       toast.success("Marcado como cocinado");
+      setDirty(true);
       // Texto libre: no hay inventario que tocar.
       if (!entry.recipeId) {
         resolve(entry.id);
@@ -160,6 +186,9 @@ export function CookedCheckinModal({
         setDeduct({ entryId: entry.id, items });
         setQty(initialDeductionQty(items));
       } else {
+        // Nada que descontar: se dice por qué (ver `noDeductionsReason`).
+        const why = noDeductionsReason(items);
+        if (why) toast.info(why);
         resolve(entry.id);
       }
     });
@@ -187,6 +216,33 @@ export function CookedCheckinModal({
             ? "Descontado 1 ingrediente"
             : `Descontados ${n} ingredientes`,
       );
+      // Si algo se ha quedado a cero, la fila da un paso más en vez de
+      // retirarse: apuntarlo ahora ahorra el viaje de volver por ello.
+      const ranOut = r.restock ?? [];
+      if (ranOut.length > 0) {
+        setBusy(null);
+        setDeduct(null);
+        setRestock({ entryId, candidates: ranOut });
+        setSelected(initialRestockSelection(ranOut));
+        return;
+      }
+      resolve(entryId);
+    });
+  }
+
+  /** Apunta en la lista lo marcado de la fila que se ha quedado sin existencias. */
+  function addRestockToList() {
+    if (!restock) return;
+    const { entryId, candidates } = restock;
+    setBusy({ id: entryId, kind: "restock" });
+    startAction(async () => {
+      const r = await addListItemsAction(restockPayload(candidates, selected));
+      if (r.error) {
+        setBusy(null);
+        toast.error(r.error);
+        return;
+      }
+      toast.success(restockToastMessage(r));
       resolve(entryId);
     });
   }
@@ -246,7 +302,16 @@ export function CookedCheckinModal({
   }
 
   return (
-    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(o) => {
+        if (!o && dirty) {
+          setDirty(false);
+          onResolved?.();
+        }
+        onOpenChange(o);
+      }}
+    >
       <ResponsiveModalContent>
         <ResponsiveModalHeader>
           <ResponsiveModalTitle>
@@ -312,6 +377,9 @@ export function CookedCheckinModal({
                     const toDeduct = review
                       ? deductionCount(review.items, qty)
                       : 0;
+                    // Paso siguiente: apuntar lo que quedó a cero al descontar.
+                    const restocking =
+                      restock?.entryId === e.id ? restock : null;
                     return (
                       <li
                         key={e.id}
@@ -324,7 +392,48 @@ export function CookedCheckinModal({
                           <p className="font-medium break-words">{e.name}</p>
                         </div>
 
-                        {review ? (
+                        {restocking ? (
+                          <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <p className="text-xs text-muted-foreground">
+                              Se te ha terminado esto. Desmarca lo que no
+                              quieras apuntar.
+                            </p>
+                            <CookedRestockFields
+                              candidates={restocking.candidates}
+                              selected={selected}
+                              onToggle={(productId, on) =>
+                                setSelected((prev) => {
+                                  const next = new Set(prev);
+                                  if (on) next.add(productId);
+                                  else next.delete(productId);
+                                  return next;
+                                })
+                              }
+                              idPrefix={`restock-${e.id}`}
+                            />
+                            <div className="flex flex-col gap-2">
+                              <Button
+                                type="button"
+                                onClick={addRestockToList}
+                                loading={isBusy(e.id, "restock")}
+                                disabled={selected.size === 0}
+                              >
+                                <ShoppingCart aria-hidden />
+                                {selected.size <= 1
+                                  ? "Apuntar 1 en la lista"
+                                  : `Apuntar ${selected.size} en la lista`}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                onClick={() => resolve(e.id)}
+                                disabled={isBusy(e.id, "restock")}
+                              >
+                                Ahora no
+                              </Button>
+                            </div>
+                          </div>
+                        ) : review ? (
                           <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
                             <p className="text-xs text-muted-foreground">
                               Ajusta lo que has gastado. Se descuenta del lote

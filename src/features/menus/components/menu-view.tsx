@@ -20,6 +20,7 @@ import {
   PinOff,
   Plus,
   RefreshCw,
+  ShoppingCart,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -48,10 +49,12 @@ import { normalizeName } from "@/lib/normalize";
 import { cn } from "@/lib/utils";
 import { saveGeneratedRecipeAction } from "@/features/recipes/actions";
 import type { SavedRecipe } from "@/features/recipes/queries";
+import { addListItemsAction } from "@/features/shopping-list/actions";
+import type { RestockCandidate } from "@/features/shopping-list/queries";
 import type { MenuEntry, PendingCheckinEntry } from "../queries";
 import type { SlotDef } from "../slots";
 import type { MissingCandidate } from "../missing";
-import type { CookedDeduction } from "../cooked";
+import { noDeductionsReason, type CookedDeduction } from "../cooked";
 import type { TonightCard } from "../tonight";
 import { CookedCheckinModal } from "./cooked-checkin-modal";
 import {
@@ -60,6 +63,12 @@ import {
   deductionPayload,
   initialDeductionQty,
 } from "./cooked-deductions-fields";
+import {
+  CookedRestockFields,
+  initialRestockSelection,
+  restockPayload,
+  restockToastMessage,
+} from "./cooked-restock-fields";
 import { EntryActionTile } from "./entry-action-tile";
 import { SlotPickerGrid } from "./slot-picker-grid";
 import {
@@ -127,8 +136,15 @@ async function runToggleCooked({
   toast.success("Marcado como cocinado");
   const d = await computeCookedDeductionsAction(recipeId);
   const items = d.deductions ?? [];
-  if (items.some((it) => it.deductible)) onProposeDeductions(recipeName, items);
-  else onResolved(date);
+  if (items.some((it) => it.deductible)) {
+    onProposeDeductions(recipeName, items);
+    return;
+  }
+  // Nada que descontar: se DICE por qué. Callarse aquí era indistinguible de que
+  // la app no hubiera intentado nada, y encima tenía el motivo calculado.
+  const why = noDeductionsReason(items);
+  if (why) toast.info(why);
+  onResolved(date);
 }
 
 /** Estado de edición del drawer. `entryId === null` ⇒ añadir un plato nuevo. */
@@ -1390,6 +1406,12 @@ function MissingReviewDrawer({
  * no se pueden descontar (sin match, sin stock o unidad incompatible). Confirmar
  * ejecuta el descuento FIFO por caducidad. Es opt-out por gesto: el plato ya
  * quedó cocinado; "No descontar" cierra sin tocar el inventario.
+ *
+ * Si el descuento deja algo a cero o bajo mínimo, el modal NO se cierra: pasa a
+ * un segundo paso que ofrece apuntarlo en la lista. Cerrar el círculo aquí es lo
+ * que evita el viaje al supermercado sin lo que se acabó anteayer. Es un paso
+ * dentro del MISMO modal —vista que sustituye a la anterior, como el "Mover a…"
+ * del repaso— porque anidar `ResponsiveModal` hace que el segundo se cierre solo.
  */
 function CookedDeductionsDrawer({
   data,
@@ -1402,6 +1424,13 @@ function CookedDeductionsDrawer({
 }) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
+  /*
+    Segundo paso: lo que se ha quedado sin existencias al descontar. Que no sea
+    null significa además que el descuento YA está aplicado, así que a partir de
+    ahí cerrar de cualquier forma (botón o gesto) tiene que refrescar los datos.
+  */
+  const [restock, setRestock] = useState<RestockCandidate[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Al abrir con un conjunto nuevo, prellenar cantidades de los descontables.
   const [lastKey, setLastKey] = useState<string | null>(null);
@@ -1409,6 +1438,8 @@ function CookedDeductionsDrawer({
   if (key !== lastKey) {
     setLastKey(key);
     setQty(initialDeductionQty(data?.items ?? []));
+    setRestock(null);
+    setSelected(new Set());
   }
 
   const items = data?.items ?? [];
@@ -1432,51 +1463,120 @@ function CookedDeductionsDrawer({
             ? "Descontado 1 ingrediente"
             : `Descontados ${n} ingredientes`,
       );
+      const ranOut = r.restock ?? [];
+      if (ranOut.length > 0) {
+        setRestock(ranOut);
+        setSelected(initialRestockSelection(ranOut));
+        return;
+      }
+      onDone();
+    });
+  }
+
+  function addToList() {
+    if (!restock) return;
+    startTransition(async () => {
+      const r = await addListItemsAction(restockPayload(restock, selected));
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      toast.success(restockToastMessage(r));
       onDone();
     });
   }
 
   return (
-    <ResponsiveModal open={data !== null} onOpenChange={(o) => !o && onClose()}>
+    <ResponsiveModal
+      open={data !== null}
+      // Con el descuento ya aplicado, cerrar sin apuntar sigue necesitando
+      // refresco: el inventario cambió aunque no se apunte nada.
+      onOpenChange={(o) => !o && (restock ? onDone() : onClose())}
+    >
       <ResponsiveModalContent>
         <ResponsiveModalHeader>
-          <ResponsiveModalTitle>Descontar del inventario</ResponsiveModalTitle>
+          <ResponsiveModalTitle>
+            {restock ? "¿Lo apuntamos?" : "Descontar del inventario"}
+          </ResponsiveModalTitle>
           <ResponsiveModalDescription>
-            Ajusta lo que has gastado de «{data?.recipeName}». Se descuenta del
-            lote que caduca antes. Desmarcar «cocinado» no repone el stock.
+            {restock
+              ? "Al cocinar se te ha terminado esto. Desmarca lo que no quieras apuntar."
+              : `Ajusta lo que has gastado de «${data?.recipeName}». Se descuenta del lote que caduca antes. Desmarcar «cocinado» no repone el stock.`}
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
 
         <div className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto px-4">
-          <CookedDeductionsFields
-            items={items}
-            qty={qty}
-            onQtyChange={(k, value) =>
-              setQty((prev) => ({ ...prev, [k]: value }))
-            }
-          />
+          {restock ? (
+            <CookedRestockFields
+              candidates={restock}
+              selected={selected}
+              onToggle={(productId, on) =>
+                setSelected((prev) => {
+                  const next = new Set(prev);
+                  if (on) next.add(productId);
+                  else next.delete(productId);
+                  return next;
+                })
+              }
+            />
+          ) : (
+            <CookedDeductionsFields
+              items={items}
+              qty={qty}
+              onQtyChange={(k, value) =>
+                setQty((prev) => ({ ...prev, [k]: value }))
+              }
+            />
+          )}
         </div>
 
         <ResponsiveModalFooter className="gap-2">
-          <Button
-            type="button"
-            size="lg"
-            onClick={confirm}
-            disabled={count === 0}
-            loading={pending}
-          >
-            <Check aria-hidden />
-            {pending
-              ? "Descontando…"
-              : count <= 1
-                ? "Descontar 1 ingrediente"
-                : `Descontar ${count} ingredientes`}
-          </Button>
-          <ResponsiveModalClose asChild>
-            <Button type="button" variant="ghost">
-              No descontar
-            </Button>
-          </ResponsiveModalClose>
+          {restock ? (
+            <>
+              <Button
+                type="button"
+                size="lg"
+                onClick={addToList}
+                disabled={selected.size === 0}
+                loading={pending}
+              >
+                <ShoppingCart aria-hidden />
+                {selected.size <= 1
+                  ? "Apuntar 1 en la lista"
+                  : `Apuntar ${selected.size} en la lista`}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onDone}
+                disabled={pending}
+              >
+                Ahora no
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                type="button"
+                size="lg"
+                onClick={confirm}
+                disabled={count === 0}
+                loading={pending}
+              >
+                <Check aria-hidden />
+                {pending
+                  ? "Descontando…"
+                  : count <= 1
+                    ? "Descontar 1 ingrediente"
+                    : `Descontar ${count} ingredientes`}
+              </Button>
+              <ResponsiveModalClose asChild>
+                <Button type="button" variant="ghost">
+                  No descontar
+                </Button>
+              </ResponsiveModalClose>
+            </>
+          )}
         </ResponsiveModalFooter>
       </ResponsiveModalContent>
     </ResponsiveModal>

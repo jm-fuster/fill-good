@@ -12,6 +12,8 @@
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "check:alexa": "node scripts/check-alexa.mjs",
     "check:lista": "node scripts/check-list-sync.mjs",
+    "check:motivos": "node scripts/check-suggestion-reason.mjs",
+    "check:cocinado": "node scripts/check-cooked.mjs",
     "build:check": "node scripts/check-legal-config.mjs && next build && node scripts/check-bundle-budget.mjs",
     "typecheck": "tsc --noEmit"
   },

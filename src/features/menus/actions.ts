@@ -30,7 +30,7 @@ import {
 import { normalizeName } from "@/lib/normalize";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, UnitType } from "@/lib/supabase/types";
-import { roundQuantity } from "@/lib/units";
+import { convertQuantity, roundQuantity, type UnitContent } from "@/lib/units";
 import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { getAiConsent } from "@/features/ai-consent/queries";
@@ -38,7 +38,12 @@ import { AI_CONSENT_REQUIRED_ERROR } from "@/features/ai-consent/version";
 import { recordStockEvent } from "@/features/inventory/events";
 import { getInventory } from "@/features/inventory/queries";
 import { getInventoryStatus } from "@/features/inventory/status";
-import { getActiveList, getProductCatalog } from "@/features/shopping-list/queries";
+import {
+  getActiveList,
+  getProductCatalog,
+  getRestockCandidates,
+  type RestockCandidate,
+} from "@/features/shopping-list/queries";
 import {
   getRecipeSignals,
   getSavedRecipesForMenu,
@@ -52,6 +57,7 @@ import {
 } from "./missing";
 import {
   computeCookedDeductions,
+  resolveStockTarget,
   type CookedDeduction,
 } from "./cooked";
 import {
@@ -1375,9 +1381,23 @@ export async function computeCookedDeductionsAction(
     getProductCatalog(),
   ]);
 
-  // Stock (cantidad > 0) por producto y unidad, para el matching por unidad exacta.
+  // Stock (cantidad > 0) por producto y unidad, y el contenido declarado de cada
+  // producto: con él, una receta en gramos puede salir de un bote contado en ud.
   const stockByProductUnit = new Map<string, Map<UnitType, number>>();
+  const contentByProduct = new Map<string, UnitContent>();
   for (const i of inventory) {
+    if (!contentByProduct.has(i.productId)) {
+      contentByProduct.set(
+        i.productId,
+        i.contentSize === null || i.contentUnit === null
+          ? null
+          : {
+              size: i.contentSize,
+              unit: i.contentUnit,
+              estimate: i.contentIsEstimate,
+            },
+      );
+    }
     if (i.quantity <= 0) continue;
     let byUnit = stockByProductUnit.get(i.productId);
     if (!byUnit) {
@@ -1401,6 +1421,7 @@ export async function computeCookedDeductionsAction(
       defaultUnit: c.defaultUnit,
     })),
     stockByProductUnit,
+    contentByProduct,
   });
 
   return { deductions };
@@ -1416,17 +1437,33 @@ export type CookedDeductionInput = {
  * M2, fase 2: descuenta del inventario las cantidades confirmadas. Consumo FIFO
  * por caducidad (el lote que caduca antes primero; nulls al final), en cascada
  * si un lote no cubre la cantidad. Nunca deja stock negativo (clamp a 0; el lote
- * a 0 se conserva como agotado, igual que `setInventoryQuantityAction`). No hay
- * conversión de unidades: se descuenta solo de lotes en la misma unidad.
+ * a 0 se conserva como agotado, igual que `setInventoryQuantityAction`).
+ *
+ * Las cantidades llegan en la unidad de la RECETA y se restan en la del
+ * INVENTARIO: de qué unidad y con qué factor lo decide `resolveStockTarget`, el
+ * mismo que calculó la propuesta que vio el usuario. Resolverlo aquí por separado
+ * restaría de una fila distinta de la prometida, así que la regla vive en un solo
+ * sitio (`cooked.ts`) y esta acción la consume.
  *
  * Cada producto descontado deja su movimiento en el historial (F5). Sin esto,
  * cocinar era la ÚNICA forma de gastar stock que no dejaba rastro: la nevera se
  * vaciaba y los movimientos del inventario no se enteraban, así que la lista no
  * cuadraba con las existencias y lo primero que se piensa es que la app falla.
+ *
+ * Devuelve además lo que se ha quedado a cero o bajo mínimo (`restock`), para
+ * ofrecer apuntarlo en el mismo gesto. Cocinar es justo el momento en que nace la
+ * necesidad de comprar: hasta ahora el aviso existía —las sugerencias de /lista
+ * cubren "agotado" y "bajo mínimo"— pero solo aparecía cuando alguien abría esa
+ * pantalla, que puede ser tres días después y ya en la puerta del supermercado.
  */
 export async function confirmCookedDeductionsAction(
   deductions: CookedDeductionInput[],
-): Promise<{ error?: string; ok?: boolean; deducted?: number }> {
+): Promise<{
+  error?: string;
+  ok?: boolean;
+  deducted?: number;
+  restock?: RestockCandidate[];
+}> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
   // Venía del cliente sin esquema: tipos a mano y sin tope de tamaño.
@@ -1435,60 +1472,121 @@ export async function confirmCookedDeductionsAction(
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
 
-  let deducted = 0;
-  for (const d of parsed.data) {
+  // El contenido declarado de los productos implicados, en UNA consulta: es el
+  // factor con el que 160 g de receta salen de un bote que se cuenta en ud.
+  // Acotado al hogar activo porque los ids los manda el cliente.
+  const productIds = [...new Set(parsed.data.map((d) => d.productId))];
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, content_size, content_unit, content_is_estimate")
+    .eq("household_id", household.id)
+    .in("id", productIds);
+  const contentById = new Map<string, UnitContent>();
+  for (const p of products ?? []) {
+    contentById.set(
+      p.id,
+      p.content_size === null || p.content_unit === null
+        ? null
+        : {
+            size: Number(p.content_size),
+            unit: p.content_unit,
+            estimate: p.content_is_estimate,
+          },
+    );
+  }
 
-    // Lotes del producto en esa unidad, del que antes caduca al que después
-    // (nulls al final). Cada "lote" es una fila (ubicación) del mismo producto.
+  let deducted = 0;
+  // Productos de los que se ha gastado algo DE VERDAD: los únicos que pueden
+  // haberse quedado a cero por este consumo.
+  const touchedProductIds: string[] = [];
+  for (const d of parsed.data) {
+    // Un id que no sea del hogar activo no aparece aquí: se ignora en silencio y
+    // el resto entra, igual que hace el alta múltiple de la lista.
+    if (!contentById.has(d.productId)) continue;
+    const content = contentById.get(d.productId) ?? null;
+
+    // Lotes del producto en TODAS las unidades, del que antes caduca al que
+    // después (nulls al final). Cada "lote" es una fila (ubicación) del mismo
+    // producto. La unidad de la que se resta NO la decide la receta.
     const { data: lots } = await supabase
       .from("inventory_items")
-      .select("id, quantity, expiry_date")
+      .select("id, quantity, unit, expiry_date")
       .eq("household_id", household.id)
       .eq("product_id", d.productId)
-      .eq("unit", d.unit)
       .gt("quantity", 0)
       .order("expiry_date", { ascending: true, nullsFirst: false });
 
-    let remaining = d.quantity;
+    const stockByUnit = new Map<UnitType, number>();
+    for (const lot of lots ?? []) {
+      stockByUnit.set(
+        lot.unit,
+        (stockByUnit.get(lot.unit) ?? 0) + Number(lot.quantity),
+      );
+    }
+
+    const target = resolveStockTarget(d.unit, stockByUnit, content);
+    if (!target) continue;
+    const wanted = convertQuantity(
+      d.quantity,
+      d.unit,
+      target.stockUnit,
+      content,
+    );
+    if (wanted === null || wanted <= 0) continue;
+
+    let remaining = wanted;
+    // Lo que de VERDAD ha salido de las filas, sumando fila a fila. No se deduce
+    // de `remaining`: la cantidad guardada se redondea a 2 decimales, así que
+    // pedir 1 g de un lote en kg (0,001) no mueve la fila, y anotar ese consumo
+    // sería apuntar un gasto que el inventario no refleja.
+    let takenReal = 0;
     for (const lot of lots ?? []) {
       if (remaining <= 0) break;
+      if (lot.unit !== target.stockUnit) continue;
       const current = Number(lot.quantity);
       const take = Math.min(current, remaining);
-      const newQty = Math.max(0, current - take);
+      const newQty = roundQuantity(Math.max(0, current - take));
+      // Cambio invisible tras redondear: no se escribe (bumpear `updated_by`
+      // diría que alguien tocó la fila) y se prueba con el lote siguiente.
+      if (newQty === current) continue;
       const { error } = await supabase
         .from("inventory_items")
         .update({ quantity: newQty, updated_by: userId })
         .eq("household_id", household.id)
         .eq("id", lot.id);
       if (error) return { error: "No se pudo actualizar el inventario." };
+      takenReal += current - newQty;
       remaining -= take;
     }
 
-    // Se anota lo que se descontó DE VERDAD, no lo que pedía la receta: el bucle
-    // para cuando se acaban los lotes, así que con stock insuficiente `remaining`
-    // se queda por encima de cero y registrar `d.quantity` inflaría el consumo
-    // justo en el caso en que te has quedado corto.
-    const taken = roundQuantity(d.quantity - remaining);
+    const taken = roundQuantity(takenReal);
     if (taken <= 0) continue;
     deducted += 1;
+    touchedProductIds.push(d.productId);
     // `fold` agrupa con un movimiento reciente del mismo producto y autor, igual
     // que el stepper: cocinar dos recetas que comparten tomate deja una línea de
-    // «4 ud», no dos de dos. La unidad ya es única por línea (la consulta filtra
-    // por `d.unit`), así que no hay que agrupar nada aquí.
+    // «4 ud», no dos de dos. La unidad del movimiento es la del INVENTARIO (de
+    // donde ha salido), no la de la receta: el historial cuenta lo que se movió
+    // en la despensa.
     await recordStockEvent(supabase, {
       householdId: household.id,
       productId: d.productId,
       quantity: taken,
-      unit: d.unit,
+      unit: target.stockUnit,
       kind: "consumed",
       userId,
       fold: true,
     });
   }
 
+  // El stock ha cambiado, así que las sugerencias de /lista también: sin
+  // revalidarla, el usuario que acepte apuntar lo agotado vería la lista vieja.
   revalidatePath("/inventario");
   revalidatePath("/menus");
-  return { ok: true, deducted };
+  revalidatePath("/lista");
+
+  const restock = await getRestockCandidates(touchedProductIds);
+  return { ok: true, deducted, restock };
 }
 
 export type TonightState = { error?: string; cards?: TonightCard[] };

@@ -1,7 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { formatQuantity, UNIT_LABELS } from "@/lib/units";
+import { APPROX, formatQuantity, UNIT_LABELS } from "@/lib/units";
 import type { CookedDeduction } from "../cooked";
 import type { CookedDeductionInput } from "../actions";
 
@@ -70,37 +70,56 @@ export function CookedDeductionsFields({
     <>
       {deductibles.length > 0 ? (
         <ul className="flex flex-col gap-2">
-          {deductibles.map((it) => (
-            <li
-              key={it.key}
-              className="flex items-center justify-between gap-3 rounded-xl border p-3"
-            >
-              <div className="min-w-0">
-                <p className="text-sm font-medium break-words line-clamp-2">
-                  {it.productName}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Tienes {formatQuantity(it.availableQty, it.unit!)}
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5">
-                <Input
-                  type="number"
-                  inputMode="decimal"
-                  aria-label={`Cantidad a descontar de ${it.productName}`}
-                  min={0}
-                  max={it.availableQty}
-                  step={it.unit === "ud" ? 1 : 0.01}
-                  value={qty[it.key] ?? ""}
-                  onChange={(e) => onQtyChange(it.key, e.target.value)}
-                  className="w-20 text-right"
-                />
-                <span className="w-7 text-sm text-muted-foreground">
-                  {UNIT_LABELS[it.unit!]}
-                </span>
-              </div>
-            </li>
-          ))}
+          {deductibles.map((it) => {
+            /*
+              Cuánto hay, en la unidad que se edita (la de la receta), y entre
+              paréntesis cómo está guardado cuando no coinciden: «Tienes 500 g
+              (1 ud)». Sin ese paréntesis, ver gramos de algo que en el inventario
+              son paquetes parece que la app se ha inventado el dato. El «≈» solo
+              aparece si el puente usó un peso MEDIO declarado, no un envase.
+            */
+            const available = [
+              it.conversion?.approx ? `${APPROX} ` : "",
+              formatQuantity(it.availableQty, it.unit!),
+              it.conversion
+                ? ` (${formatQuantity(
+                    it.conversion.stockQty,
+                    it.conversion.stockUnit,
+                  )})`
+                : "",
+            ].join("");
+            return (
+              <li
+                key={it.key}
+                className="flex items-center justify-between gap-3 rounded-xl border p-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium break-words line-clamp-2">
+                    {it.productName}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Tienes {available}
+                  </p>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    aria-label={`Cantidad a descontar de ${it.productName}`}
+                    min={0}
+                    max={it.availableQty}
+                    step={it.unit === "ud" ? 1 : 0.01}
+                    value={qty[it.key] ?? ""}
+                    onChange={(e) => onQtyChange(it.key, e.target.value)}
+                    className="w-20 text-right"
+                  />
+                  <span className="w-7 text-sm text-muted-foreground">
+                    {UNIT_LABELS[it.unit!]}
+                  </span>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
 

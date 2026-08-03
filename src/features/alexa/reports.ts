@@ -229,7 +229,9 @@ export type CookedPlan = {
 /**
  * Qué se puede descontar de una receta cocinada. El cálculo es el MISMO que usa
  * el modal de la app (`computeCookedDeductions`): así la voz no puede inventarse
- * una regla propia sobre unidades o emparejados.
+ * una regla propia sobre unidades o emparejados. Con una diferencia deliberada en
+ * los DATOS que se le pasan, no en las reglas: sin contenidos declarados, la voz
+ * no usa el puente ud↔medida (ver el comentario en la llamada).
  *
  * Se queda solo con lo descontable y cuenta el resto. Los motivos de cada
  * descarte —«no está en tu catálogo», «está en otra unidad»— son valiosos en una
@@ -281,6 +283,19 @@ export async function planCooked(
       defaultUnit: row.default_unit,
     })),
     stockByProductUnit,
+    /*
+      A propósito SIN contenidos declarados, o sea sin el puente ud↔medida que sí
+      usa la app. Aquí quien escribe es `planDeduction` (`resolve.ts`), que conoce
+      la conversión dentro de la misma familia (g↔kg, ml↔l) pero no ese puente: si
+      el plan contara como descontable un ingrediente que luego no puede tocar, la
+      skill diría en voz alta «descuento tres» y descontaría dos. Mejor que la voz
+      se quede corta que no que mienta.
+
+      Darle paridad con la app es cambiar `planDeduction`, que además sostiene la
+      conversación de «gasta dos tomates» (`ask_unit` / `unit_mismatch`) y está
+      cubierto por `check:alexa`: es una decisión aparte, no un olvido.
+    */
+    contentByProduct: new Map(),
   });
 
   const lines: CookedLine[] = [];

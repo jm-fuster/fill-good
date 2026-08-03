@@ -89,6 +89,16 @@ export type Suggestion = {
   /** Cadencia habitual en días (solo en reason "restock"). */
   intervalDays?: number;
   /**
+   * Existencias totales en el momento de calcular la sugerencia.
+   *
+   * Viaja porque `reason` dice qué REGLA se ha disparado, no si queda algo, y son
+   * dos hechos distintos: un producto con mínimo definido y cero existencias sale
+   * por la fuente "low_stock" —la regla que el usuario escribió manda en la
+   * precedencia y en el orden— así que sin este dato el rótulo anunciaba que
+   * «quedan pocas» de algo que no queda ninguna.
+   */
+  stock: number;
+  /**
    * Cantidad sugerida a añadir a la lista (en unidades de lista). Para "low_stock"
    * cubre el déficit hasta el mínimo; para "restock" es una compra estándar.
    */
@@ -475,7 +485,11 @@ function suggestedQuantityFor(
  * Sugerencias de compra (M5), en una sola consulta agregada (sin N+1). Fuentes,
  * en orden de precedencia (la primera que casa gana; un producto sale una vez):
  *  · "low_stock" — mínimo definido y stock total por debajo. Va primero porque
- *    es la única regla que el usuario ha escrito explícitamente.
+ *    es la única regla que el usuario ha escrito explícitamente. Ojo: por eso
+ *    absorbe también lo que está a CERO teniendo mínimo. `reason` dice qué regla
+ *    manda, no si queda algo; de decirlo en palabras se encarga el rótulo con
+ *    `stock` (ver `suggestion-reason.ts`), que en ese caso anuncia «Se ha
+ *    agotado». La precedencia es de la regla; la verdad, del stock.
  *  · "expired" — hay algún lote caducado. OJO: el stock caducado SIGUE contando
  *    como stock en el resto de fuentes (no se descuenta), justo por eso hace
  *    falta esta: un bote caducado bloquearía "agotado" y "reposición" y el
@@ -578,6 +592,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
         name: p.name,
         unit: p.default_unit,
         reason: "low_stock",
+        stock,
         suggestedQuantity: suggestedQuantityFor(
           p.default_unit,
           stock,
@@ -596,6 +611,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
         name: p.name,
         unit: p.default_unit,
         reason: "expired",
+        stock,
         suggestedQuantity: suggestedQuantityFor(
           p.default_unit,
           stock,
@@ -614,6 +630,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
         name: p.name,
         unit: p.default_unit,
         reason: "out_of_stock",
+        stock,
         suggestedQuantity: suggestedQuantityFor(
           p.default_unit,
           stock,
@@ -651,6 +668,7 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
         unit: p.default_unit,
         reason: "restock",
         intervalDays: Math.round(median),
+        stock,
         suggestedQuantity: suggestedQuantityFor(
           p.default_unit,
           stock,
@@ -682,6 +700,123 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
   );
 
   return suggestions;
+}
+
+/**
+ * Producto que hay que reponer tras un consumo. Cumple el `ReasonSource` de
+ * `suggestion-reason.ts` (reason + stock), que es lo que le permite compartir
+ * rótulo con las sugerencias de /lista sin copiar la forma de {@link Suggestion}.
+ */
+export type RestockCandidate = {
+  productId: string;
+  name: string;
+  unit: UnitType;
+  reason: "out_of_stock" | "low_stock";
+  /** Existencias restantes; ver el campo homónimo de {@link Suggestion}. */
+  stock: number;
+  suggestedQuantity: number;
+  packSize: number | null;
+};
+
+/**
+ * De los productos que se acaban de gastar, los que se han quedado sin
+ * existencias o por debajo del mínimo. Es la mitad EMPUJADA de `getSuggestions`:
+ * mismas dos fuentes, misma precedencia, misma cantidad sugerida y mismo rótulo,
+ * pero acotada a lo que se acaba de consumir y resuelta en el momento, sin
+ * esperar a que alguien abra /lista.
+ *
+ * Una sola divergencia deliberada con `getSuggestions`: no exige
+ * `purchase_count > 0` para "agotado". Allí hace falta porque algo que nunca
+ * compraste no es que "se te haya acabado"; aquí hay prueba directa de que estaba
+ * en casa y se ha gastado ahora mismo, que es señal más fuerte que el historial
+ * de compras (un alta manual no deja compras a su espalda).
+ *
+ * Respeta el silencio de «Descartar» (`suggestions_snoozed_until`) y omite lo que
+ * ya esté en la lista activa: ofrecer apuntar algo que ya está apuntado es justo
+ * lo que se lee como un fallo de la app.
+ */
+export async function getRestockCandidates(
+  productIds: string[],
+): Promise<RestockCandidate[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
+  const ids = [...new Set(productIds)];
+  if (ids.length === 0) return [];
+  const supabase = createServerSupabaseClient();
+
+  const [{ data: products }, { data: inventory }, onList] = await Promise.all([
+    supabase
+      .from("products")
+      .select(
+        "id, name, min_quantity, default_unit, pack_size, suggestions_snoozed_until",
+      )
+      .eq("household_id", householdId)
+      .in("id", ids),
+    supabase
+      .from("inventory_items")
+      .select("product_id, quantity")
+      .eq("household_id", householdId)
+      .in("product_id", ids),
+    getActiveListProductIds(),
+  ]);
+
+  // Stock total por producto SUMANDO todas las unidades, igual que
+  // `getSuggestions`: es la misma simplificación (un mínimo se compara contra ese
+  // total) y las dos deben coincidir o el mismo producto saldría aquí y no allí.
+  const stockByProduct = new Map<string, number>();
+  for (const row of inventory ?? []) {
+    stockByProduct.set(
+      row.product_id,
+      (stockByProduct.get(row.product_id) ?? 0) + Number(row.quantity),
+    );
+  }
+
+  const nowISO = new Date().toISOString();
+  const candidates: RestockCandidate[] = [];
+  for (const p of products ?? []) {
+    if (onList.has(p.id)) continue;
+    if (p.suggestions_snoozed_until && p.suggestions_snoozed_until > nowISO) {
+      continue;
+    }
+    const stock = stockByProduct.get(p.id) ?? 0;
+    const min = p.min_quantity === null ? null : Number(p.min_quantity);
+    const packSize = p.pack_size === null ? null : Number(p.pack_size);
+    // Misma precedencia que `getSuggestions`: manda la regla que escribió el
+    // usuario. Que un producto a cero con mínimo salga como "low_stock" no lo
+    // anuncia mal — el rótulo mira `stock` y dice «Se ha agotado».
+    const reason =
+      min !== null && stock < min
+        ? ("low_stock" as const)
+        : stock <= 0
+          ? ("out_of_stock" as const)
+          : null;
+    if (!reason) continue;
+    candidates.push({
+      productId: p.id,
+      name: p.name,
+      unit: p.default_unit,
+      reason,
+      stock,
+      suggestedQuantity: suggestedQuantityFor(
+        p.default_unit,
+        stock,
+        min,
+        packSize,
+      ),
+      packSize,
+    });
+  }
+
+  // Lo que falta del todo antes de lo que va escaso; alfabético como desempate.
+  // Se ordena por el STOCK, no por `reason`: con la precedencia de la regla, lo
+  // que está a cero teniendo mínimo sale como "low_stock" y ordenar por el motivo
+  // lo mandaría detrás de algo de lo que todavía queda.
+  candidates.sort(
+    (a, b) =>
+      (a.stock <= 0 ? 0 : 1) - (b.stock <= 0 ? 0 : 1) ||
+      a.name.localeCompare(b.name, "es"),
+  );
+  return candidates;
 }
 
 type CatalogRow = {
