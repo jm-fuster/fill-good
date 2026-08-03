@@ -115,7 +115,8 @@
     }
   }
 
-  /* Firma de IA (`--ai-glow`): el borde del botón de generar el menú late.
+  /* Firma de IA: el botón de generar el menú late, borde (`--ai-glow`) y relleno
+     (`--ai-fill`) a la vez y en fase, porque comparten esta misma utilidad.
      Es la única animación que late de forma PERMANENTE en la app —el pulso de
      navegación de arriba también es infinito, pero solo mientras una navegación
      está en curso—, y por eso se justifica así:
@@ -206,6 +207,23 @@
     oklch(0.62 0.16 158),
     oklch(0.7 0.16 62)
   );
+  /*
+    El MISMO degradado para el relleno del botón, pero con las luminosidades del
+    botón y no las del borde, porque aquí encima va TEXTO. `--ai-glow` llega a un
+    ámbar de L 0.7 que a este lado dejaría el texto claro en ~1,8:1 (hace falta
+    4,5:1): lucir en un filo de 2px y sostener una etiqueta legible son dos
+    trabajos distintos y no los hace el mismo color.
+
+    Arranca en el verde exacto de `--primary` a propósito: así el tinte cálido
+    entra progresivamente hacia la derecha en vez de teñir el botón entero, y el
+    extremo izquierdo se funde con el fondo sólido que hay debajo. El ámbar es el
+    de `--warning`, ya verificado AA contra texto claro en este tema.
+  */
+  --ai-fill: linear-gradient(
+    115deg,
+    oklch(0.5 0.13 155),
+    oklch(0.52 0.12 68)
+  );
   --radius: 0.75rem;
   --sidebar: oklch(0.985 0.005 150);
   --sidebar-foreground: oklch(0.19 0.02 155);
@@ -254,6 +272,15 @@
     115deg,
     oklch(0.78 0.15 158),
     oklch(0.83 0.15 68)
+  );
+  /* Y el relleno se invierte respecto al tema claro: aquí el texto del botón es
+     OSCURO (`--primary-foreground`), así que el degradado tiene que mantenerse
+     claro de punta a punta. Un ámbar apagado dejaría el texto oscuro sin
+     contraste, que es el fallo simétrico al del tema claro. */
+  --ai-fill: linear-gradient(
+    115deg,
+    oklch(0.72 0.14 155),
+    oklch(0.78 0.14 72)
   );
   --sidebar: oklch(0.21 0.015 155);
   --sidebar-foreground: oklch(0.96 0.008 150);

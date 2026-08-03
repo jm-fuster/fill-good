@@ -64,8 +64,11 @@ function GenerationStep({ steps }: { steps: readonly string[] }) {
  *
  * Tres estados encadenados, que son el ciclo completo de la acción:
  *
- *  1. **En reposo** el borde late con `--ai-glow` (la firma de IA de la app).
- *     Es la única animación permanente del repo, justificada en `globals.css`.
+ *  1. **En reposo** late entero: el borde con `--ai-glow` y el relleno con
+ *     `--ai-fill` (la firma de IA de la app), los dos en fase. Es la única
+ *     animación permanente del repo, y está justificada en `globals.css`.
+ *     Son dos tokens y no uno porque encima del relleno va texto: los tonos
+ *     que lucen en un filo de 2px dejarían la etiqueta por debajo de AA.
  *  2. **Generando** el latido se queda fijo —el movimiento pasa al spinner de
  *     `Button loading`— y el texto cuenta por dónde va (`MENU_GENERATION_STEPS`).
  *  3. **Al terminar** la recompensa la da la semana, no el botón: los días
@@ -109,7 +112,31 @@ export function AiGenerateButton({
           loading ? "opacity-100" : "animate-ai-breathe",
         )}
       />
-      <Button loading={loading} className="relative w-full" {...props}>
+      {/*
+        El mismo degradado, ahora también en el relleno: sin esto solo se teñía
+        el filo de 2px y el botón seguía siendo verde plano por dentro.
+
+        Va en un `::before` y no en el `background` del botón porque lo que late
+        es la opacidad, y latir el fondo del propio botón lo haría desaparecer a
+        ratos (se leería como deshabilitado). Debajo del pseudo sigue estando el
+        `bg-primary` sólido, así que lo que respira es el TINTE cálido y el botón
+        nunca se queda sin fondo.
+
+        `isolate` + `-z-10` es lo que coloca la capa entre el fondo del botón y
+        su texto: dentro de un contexto de apilamiento se pinta primero el fondo
+        del elemento, luego los descendientes con z-index negativo y solo después
+        el contenido. Sin `isolate` la capa se escaparía por detrás del botón
+        (hasta el contexto del ancestro) y no se vería nada.
+      */}
+      <Button
+        loading={loading}
+        className={cn(
+          "relative isolate w-full",
+          "before:absolute before:inset-0 before:-z-10 before:rounded-[inherit] before:bg-[image:var(--ai-fill)] before:content-['']",
+          loading ? "before:opacity-100" : "before:animate-ai-breathe",
+        )}
+        {...props}
+      >
         {/* En `loading` el propio Button esconde este icono y saca el spinner. */}
         <Sparkles aria-hidden />
         {loading ? (
