@@ -1,5 +1,14 @@
 # Plan — Higiene de datos en Supabase (free tier)
 
+> **⚠️ EJECUTADO Y CERRADO — no vuelvas a aplicarlo.** Todo este plan está en `main` desde
+> el 2026-07-23 (`ddbbedc`, PR #6), con la migración `20260723160000_data_retention.sql`
+> aplicada en remoto. Queda aquí como registro del diagnóstico y de las retenciones
+> acordadas, NO como trabajo por hacer.
+>
+> Ojo: `cleanup_retention` se ha **recreado** después (`20260728130000_ai_rate_limit.sql`
+> añadió la purga de `ai_usage`), así que el cuerpo de la función que se lee aquí ya no es el
+> que está en la base. La versión vigente es la de la migración más reciente que la toque.
+
 > **Objetivo:** que la base de datos no acumule datos que ya no aportan nada, con
 > retenciones claras y automáticas. Supabase free tier = 500 MB de Postgres; el
 > proyecto NO usa Storage (los tickets se envían a la IA sin guardarse), así que

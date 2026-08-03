@@ -126,17 +126,6 @@ export function mergeDeltaInto<T extends SyncedItem>(
   };
 }
 
-/** Campos que un cambio de Realtime alcanza sin ayuda del servidor. */
-export function syncedFieldsOf(row: ListItemRealtimeRow) {
-  return {
-    quantity: quantityOf(row.quantity),
-    unit: row.unit,
-    isChecked: row.is_checked,
-    position: row.position,
-    createdAt: row.created_at,
-  };
-}
-
 /** Memoria de lo que ha pasado aquí y que ninguna instantánea puede deshacer. */
 export type SyncGuards = {
   /**

@@ -1,8 +1,14 @@
 # Plan de rendimiento — navegación entre pestañas y confirmación de tickets
 
-> **Para el agente ejecutor:** este plan es autocontenido. Lee primero `AGENTS.md` (raíz del repo)
-> y la sección [Reglas innegociables](#reglas-innegociables) antes de tocar nada. Ejecuta las fases
-> en orden; cada fase es un commit (o PR) independiente y deja la app funcional.
+> **⚠️ EJECUTADO Y CERRADO — no vuelvas a aplicarlo.** Todo este plan está en `main` desde
+> el 2026-07-23 (`8de843d`, PR #5). Queda aquí como registro del diagnóstico y del porqué de
+> las decisiones, NO como trabajo por hacer. Volver a ejecutarlo desharía lo hecho.
+>
+> Lo que hay hoy en el repo: `staleTimes: { dynamic: 30 }` en `next.config.ts`, las señales de
+> precio materializadas en `products` (`src/features/prices/materialize.ts`, `refreshPriceInsights`
+> al confirmar ticket / checkout / mover stock) y las escrituras del ticket por lotes.
+> `getInferredChains` y `getChainSavingsTips` **ya no existen** — se borraron al materializar.
+> Si necesitas cambiar algo de rendimiento, parte del código actual, no de este documento.
 
 ## Contexto y diagnóstico
 
@@ -243,6 +249,9 @@ Nuevo `src/features/prices/materialize.ts` con
 - Verifica que tras esto **nadie más** importa `getInferredChains`/`getChainSavingsTips` en
   renders de pestañas (`grep -rn "getInferredChains\|getChainSavingsTips" src/`). Consérvalas
   exportadas si `/precios` u otros las usan.
+  > **Desenlace:** nadie las usaba, así que **se borraron**. Ni `/precios` ni ningún otro sitio
+  > las importa ya; el histórico se agrega donde toca y las señales salen materializadas de
+  > `products`. No las recrees «porque el plan las menciona».
 
 ### 2.4 Backfill (script, NO migración)
 

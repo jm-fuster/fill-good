@@ -1,9 +1,13 @@
 # Plan de mejoras — honestidad del flujo de tickets, UX móvil y PWA
 
-> **Para el agente ejecutor:** este plan es autocontenido. Lee primero `AGENTS.md` (raíz del repo)
-> y la sección [Reglas innegociables](#reglas-innegociables) antes de tocar nada. Ejecuta las fases
-> en orden; cada fase es un commit independiente y deja la app funcional. Las referencias a líneas
-> son orientativas (código vivo): **verifica cada punto con grep/lectura antes de editar**.
+> **⚠️ EJECUTADO Y CERRADO — no vuelvas a aplicarlo.** Todo este plan está en `main` desde
+> el 2026-07-24 (`431a940`, PR #7). Queda aquí como registro del diagnóstico y del porqué de
+> las decisiones, NO como trabajo por hacer.
+>
+> Varias piezas han evolucionado desde entonces (el ancho único de `PageContainer`, el
+> responsive E11, la reescritura de la sincronización de `/lista`), así que los fragmentos de
+> código y las referencias a líneas de este documento están desfasados. Para tocar cualquiera
+> de estas zonas parte del código actual y de `AGENTS.md`, no de aquí.
 
 ## Contexto y diagnóstico
 
