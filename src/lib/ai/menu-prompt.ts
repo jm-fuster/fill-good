@@ -127,6 +127,12 @@ export type MenuPromptContext = {
   shoppingList?: string[];
   /** Platos de las semanas anteriores, para no repetir tan pronto. */
   recentDishes?: MenuRecentDish[];
+  /**
+   * Objetivo de gasto de la semana en euros (derivado del presupuesto mensual
+   * del hogar), o null si no hay ninguno fijado. Es una guía para el modelo: la
+   * cuenta de verdad la hace la app sumando los costes de M7 después.
+   */
+  weeklyBudget?: number | null;
 };
 
 const SEASON_LABEL: Record<"winter" | "summer", string> = {
@@ -228,6 +234,20 @@ function shoppingListSection(names: string[]): string {
   if (names.length === 0) return "";
   return `\nYa apuntado en la lista de la compra (se comprará estos días: cuéntalo como disponible):
 ${cappedLines(names, MAX_LIST_NAMES)}
+`;
+}
+
+/**
+ * Objetivo de gasto de la semana. Se le da al modelo como guía —tiene el coste
+ * por ración de cada receta, así que puede orientarse—, nunca como una cuenta
+ * que deba cuadrar: sumar precios es justo lo que peor hace un modelo de
+ * lenguaje, y la suma real la hace la app después con los precios de M7.
+ */
+function budgetSection(weeklyBudget: number | null | undefined): string {
+  if (weeklyBudget == null || weeklyBudget <= 0) return "";
+  return `\nPresupuesto orientativo de la semana: unos ${euros(
+    weeklyBudget,
+  )} en ingredientes para todos los platos. Si ves que te pasas, cambia los platos más caros (carne roja, pescado, marisco) por legumbres, huevo, pollo o verdura de temporada, que es donde más se ahorra sin empeorar la comida.
 `;
 }
 
@@ -339,7 +359,7 @@ ${rulesText}
 
 Objetivo del hogar (PRIORITARIO):
 ${goalBlock}
-${recentDishesSection(context.recentDishes ?? [])}${pinnedSection}
+${budgetSection(context.weeklyBudget)}${recentDishesSection(context.recentDishes ?? [])}${pinnedSection}
 Cada comida es una lista de platos. La comida (lunch) puede llevar 1 o 2 platos (por ejemplo un primero ligero y un segundo) cuando tenga sentido; la cena (dinner) normalmente 1 plato.${breakfastLine} Nunca más de 2 platos por hueco.
 
 Para cada plato indica: nombre claro en español, saved_recipe_id (id del recetario o null), una descripción breve y la lista de ingredientes con cantidad y unidad aproximadas (para ${rations}). Usa ingredientes comunes; puedes proponer ingredientes que no estén en el inventario (se añadirán a la lista de la compra).

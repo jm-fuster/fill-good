@@ -70,6 +70,7 @@ import {
   summarizeAvailability,
   type RecipeAvailability,
 } from "./prompt-context";
+import { weeklyBudgetTarget } from "./week-budget";
 import {
   computeMissingIngredients,
   type MissingCandidate,
@@ -213,6 +214,8 @@ type HouseholdMenuContext = {
   shoppingList: string[];
   /** Platos de las dos semanas anteriores, sin repetidos. */
   recentDishes: MenuRecentDish[];
+  /** Objetivo de gasto semanal en € (del presupuesto mensual), o null. */
+  weeklyBudget: number | null;
   prefs: MenuPrefs;
   /** Reglas ACTIVAS, para la validación determinista posterior (`rules.ts`). */
   activeRules: MenuRule[];
@@ -260,6 +263,7 @@ async function loadHouseholdMenuContext(
     catalog,
     listContents,
     previousWeeks,
+    household,
   ] = await Promise.all([
     getInventory(),
     // El coste necesita los ids del recetario, así que son dos consultas
@@ -276,6 +280,9 @@ async function loadHouseholdMenuContext(
     getProductCatalog(),
     getActiveListContents(),
     getWeekMenusWithEntries(previousWeekStarts),
+    // Va en `cache()` y este request ya la ha llamado: sale gratis, y trae el
+    // presupuesto mensual del que se deriva el objetivo de la semana.
+    getCurrentHousehold(),
   ]);
 
   const { saved: savedRecipes, costs } = recipesAndCosts;
@@ -416,6 +423,7 @@ async function loadHouseholdMenuContext(
     rules: ruleLines,
     shoppingList: listContents.labels,
     recentDishes: [...recentByName.values()],
+    weeklyBudget: weeklyBudgetTarget(household?.monthlyBudget ?? null),
     prefs,
     activeRules,
     savedRecipes,
@@ -541,6 +549,7 @@ export async function generateMenuAction(
         rules: context.rules,
         shoppingList: context.shoppingList,
         recentDishes: context.recentDishes,
+        weeklyBudget: context.weeklyBudget,
         pinned: pinnedLines,
         prefs: {
           goal: prefs.goal,

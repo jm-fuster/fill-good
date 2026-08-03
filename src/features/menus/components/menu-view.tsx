@@ -53,6 +53,7 @@ import { addListItemsAction } from "@/features/shopping-list/actions";
 import type { RestockCandidate } from "@/features/shopping-list/queries";
 import type { MenuEntry, PendingCheckinEntry } from "../queries";
 import type { SlotDef } from "../slots";
+import type { WeekBudgetWarning } from "../week-budget";
 import type { MissingCandidate } from "../missing";
 import { noDeductionsReason, type CookedDeduction } from "../cooked";
 import type { TonightCard } from "../tonight";
@@ -167,6 +168,7 @@ export function MenuView({
   entries,
   pendingCheckin,
   weekCost,
+  budgetWarning,
   slots,
   canCopyPrevious,
   recipes,
@@ -183,6 +185,12 @@ export function MenuView({
    */
   pendingCheckin: PendingCheckinEntry[];
   weekCost: { total: number; complete: boolean } | null;
+  /**
+   * Aviso de que el menú ya se pasa del objetivo semanal, o null. Solo llega
+   * cuando se pasa: el presupuesto cubre TODA la compra y el coste solo los
+   * platos, así que caber dentro no demuestra nada (ver `week-budget.ts`).
+   */
+  budgetWarning: WeekBudgetWarning | null;
   slots: SlotDef[];
   canCopyPrevious: boolean;
   /**
@@ -424,14 +432,29 @@ export function MenuView({
       ) : null}
 
       {weekCost ? (
-        <p className="-mt-2 text-center text-xs text-muted-foreground print:hidden">
-          Coste estimado de la semana:{" "}
-          <span className="font-medium text-chart-3">
-            {weekCost.complete ? "≈ " : "≥ "}
-            {formatEuro(weekCost.total)}
-          </span>
-          {weekCost.complete ? "" : " (parcial)"}
-        </p>
+        <div className="-mt-2 flex flex-col gap-1 print:hidden">
+          <p className="text-center text-xs text-muted-foreground">
+            Coste estimado de la semana:{" "}
+            <span className="font-medium text-chart-3">
+              {weekCost.complete ? "≈ " : "≥ "}
+              {formatEuro(weekCost.total)}
+            </span>
+            {weekCost.complete ? "" : " (parcial)"}
+          </p>
+          {/*
+            `warning` y no `destructive`: esto es un plan, no un gasto ya hecho.
+            Nada ha salido mal todavía y la semana se puede cambiar entera —de
+            hecho el aviso está justo encima del botón de generar—.
+          */}
+          {budgetWarning ? (
+            <p className="text-center text-xs font-medium text-warning">
+              {budgetWarning.partial ? "Ya se pasa " : "Se pasa "}
+              {formatEuro(budgetWarning.overBy)} de lo que te toca gastar esta
+              semana ({formatEuro(budgetWarning.target)})
+              {budgetWarning.partial ? ", y aún hay platos sin precio." : "."}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       {/*

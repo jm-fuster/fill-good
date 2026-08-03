@@ -14,6 +14,7 @@ import {
   getWeekMenusWithEntries,
 } from "@/features/menus/queries";
 import { activeSlots } from "@/features/menus/slots";
+import { assessWeekBudget } from "@/features/menus/week-budget";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { getRecipeCostsForIds, getSavedRecipes } from "@/features/recipes/queries";
 import { getWeekStart, shiftWeek } from "@/lib/dates";
@@ -85,6 +86,14 @@ export default async function MenusPage({
     ? { total: weekCostTotal, complete: weekCostComplete }
     : null;
 
+  // La suma la hace la app, nunca la IA: el prompt lleva el objetivo como guía,
+  // pero quien dice si la semana se pasa es esta cuenta, con los precios reales
+  // del histórico. Solo avisa cuando se pasa; ver `week-budget.ts`.
+  const budgetWarning = assessWeekBudget(
+    weekCost,
+    household?.monthlyBudget ?? null,
+  );
+
   return (
     <PageContainer>
       {/* Al imprimir, la cabecera de la hoja la pone MenuView (D5). */}
@@ -108,6 +117,7 @@ export default async function MenusPage({
           entries={entries}
           pendingCheckin={pendingCheckin}
           weekCost={weekCost}
+          budgetWarning={budgetWarning}
           slots={slots}
           canCopyPrevious={canCopyPrevious}
           // El mismo recetario que usan las reglas: sirve al buscador del «+».

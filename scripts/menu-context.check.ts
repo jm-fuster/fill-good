@@ -51,6 +51,10 @@ import {
   type MenuStructure,
   type ValidatableRule,
 } from "@/features/menus/rules";
+import {
+  assessWeekBudget,
+  weeklyBudgetTarget,
+} from "@/features/menus/week-budget";
 import { normalizeName } from "@/lib/normalize";
 
 let fallos = 0;
@@ -559,6 +563,80 @@ function platosDe(menu: MenuStructure): { dayIndex: number; name: string }[] {
     "sin días pasados el mínimo se cumple como siempre",
     platosDe(patched).length === 1,
     platosDe(patched),
+  );
+}
+
+// ---------------------------------------------------------------------------
+seccion("Presupuesto de la semana: avisar sí, tranquilizar no");
+// ---------------------------------------------------------------------------
+
+{
+  // 400 € al mes ÷ 4,33 semanas = 92,31 €/semana.
+  const objetivo = weeklyBudgetTarget(400);
+  check(
+    "el objetivo semanal sale del mensual repartido en 4,33 semanas",
+    objetivo !== null && Math.abs(objetivo - 92.31) < 0.01,
+    objetivo,
+  );
+  check(
+    "dividir entre 4 daría un objetivo más flojo (y dejaría pasar semanas caras)",
+    objetivo !== null && objetivo < 400 / 4,
+    objetivo,
+  );
+}
+
+check("sin presupuesto fijado no hay objetivo", weeklyBudgetTarget(null) === null);
+check("un presupuesto de 0 no es un objetivo", weeklyBudgetTarget(0) === null);
+check("ni uno negativo", weeklyBudgetTarget(-50) === null);
+
+{
+  const aviso = assessWeekBudget({ total: 120, complete: true }, 400);
+  check("una semana que se pasa avisa", aviso !== null, aviso);
+  check(
+    "y dice exactamente cuánto se pasa",
+    aviso !== null && Math.abs(aviso.overBy - (120 - 92.31)) < 0.01,
+    aviso,
+  );
+}
+
+{
+  // El corazón del módulo: caber dentro NO se comunica. El presupuesto cubre
+  // toda la compra (detergente incluido) y el coste solo los platos, así que un
+  // «vas bien» sería una promesa que la app no puede sostener.
+  check(
+    "una semana que cabe dentro NO dice nada",
+    assessWeekBudget({ total: 50, complete: true }, 400) === null,
+  );
+  check(
+    "clavarla en el objetivo tampoco avisa",
+    assessWeekBudget({ total: 92.31, complete: true }, 400) === null,
+  );
+}
+
+{
+  // Un SUELO que ya se pasa sigue siendo concluyente: lo que falta por contar
+  // solo puede sumar.
+  const aviso = assessWeekBudget({ total: 120, complete: false }, 400);
+  check("un total parcial que ya se pasa también avisa", aviso !== null, aviso);
+  check(
+    "y se marca como parcial, para decirlo con otras palabras",
+    aviso?.partial === true,
+    aviso,
+  );
+}
+
+{
+  check(
+    "un total parcial por debajo NO avisa (podría subir, pero no se sabe)",
+    assessWeekBudget({ total: 50, complete: false }, 400) === null,
+  );
+  check(
+    "sin presupuesto del hogar no se avisa aunque el menú sea carísimo",
+    assessWeekBudget({ total: 9999, complete: true }, null) === null,
+  );
+  check(
+    "sin ningún plato con precio no hay nada que comparar",
+    assessWeekBudget(null, 400) === null,
   );
 }
 
