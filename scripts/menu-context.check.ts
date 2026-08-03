@@ -53,6 +53,7 @@ import {
 } from "@/features/menus/rules";
 import {
   assessWeekBudget,
+  servingsFactor,
   weeklyBudgetTarget,
 } from "@/features/menus/week-budget";
 import { normalizeName } from "@/lib/normalize";
@@ -588,6 +589,30 @@ seccion("Presupuesto de la semana: avisar sí, tranquilizar no");
 check("sin presupuesto fijado no hay objetivo", weeklyBudgetTarget(null) === null);
 check("un presupuesto de 0 no es un objetivo", weeklyBudgetTarget(0) === null);
 check("ni uno negativo", weeklyBudgetTarget(-50) === null);
+
+{
+  // Las 43 recetas del pack inicial vienen escritas para 2 raciones: una casa de
+  // cuatro veía TODAS sus semanas a mitad de precio y el aviso no saltaba nunca.
+  check(
+    "una receta para 2 en una casa de 4 cuesta el doble",
+    servingsFactor(2, 4) === 2,
+    servingsFactor(2, 4),
+  );
+  check(
+    "a igual número de raciones no se toca nada",
+    servingsFactor(2, 2) === 1,
+    servingsFactor(2, 2),
+  );
+  check(
+    "una receta para 4 en una casa de 2 NO se parte por la mitad (se hace la olla entera)",
+    servingsFactor(4, 2) === 1,
+    servingsFactor(4, 2),
+  );
+  check(
+    "unas raciones a cero no rompen la división",
+    servingsFactor(0, 4) === 1 && servingsFactor(2, 0) === 1,
+  );
+}
 
 {
   const aviso = assessWeekBudget({ total: 120, complete: true }, 400);

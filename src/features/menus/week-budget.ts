@@ -33,6 +33,30 @@ import { roundCents } from "@/lib/money";
  */
 const WEEKS_PER_MONTH = 52 / 12;
 
+/**
+ * Cuánto multiplicar el coste de una receta para saber qué costará en ESTE
+ * hogar. Solo escala HACIA ARRIBA, y la asimetría es deliberada:
+ *
+ *   · Si sois más de los que da la receta, hay que cocinar más y se compra más:
+ *     una receta para 2 en una casa de 4 cuesta el doble, sin discusión. Sin
+ *     esto, una casa de cuatro veía TODAS sus semanas a mitad de precio —las 43
+ *     recetas del pack inicial vienen escritas para 2— y el aviso de presupuesto
+ *     no saltaba nunca. Un aviso que no salta se lee como que vas bien.
+ *
+ *   · Si sois menos, NO se divide. Una receta para 4 en una casa de 2 no se
+ *     compra a la mitad: se hace la olla entera y se come dos días. La app no
+ *     tiene modelo de sobras, así que dividir prometería un ahorro que no ocurre
+ *     — y como el aviso es de una sola dirección, quedarse corto significa
+ *     callarse ante una semana que sí se pasa.
+ */
+export function servingsFactor(
+  recipeServings: number,
+  householdServings: number,
+): number {
+  if (!(recipeServings > 0) || !(householdServings > 0)) return 1;
+  return Math.max(1, householdServings / recipeServings);
+}
+
 /** Objetivo semanal derivado del mensual; null si el hogar no ha fijado ninguno. */
 export function weeklyBudgetTarget(monthlyBudget: number | null): number | null {
   if (monthlyBudget === null || !Number.isFinite(monthlyBudget)) return null;

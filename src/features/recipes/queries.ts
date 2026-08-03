@@ -206,14 +206,24 @@ export async function getRecipeCostsForIds(
   const householdId = await getActiveHouseholdId();
   if (!householdId) return new Map();
   const supabase = createServerSupabaseClient();
-  const [{ data: ings }, prices] = await Promise.all([
+  // Las raciones van en la misma tanda: el importe se calcula para las
+  // cantidades de la receta, así que sin ellas no se sabe para cuántos es.
+  const [{ data: ings }, { data: recipeRows }, prices] = await Promise.all([
     supabase
       .from("recipe_ingredients")
       .select("recipe_id, product_id, quantity, unit")
       .eq("household_id", householdId)
       .in("recipe_id", uniqueIds),
+    supabase
+      .from("recipes")
+      .select("id, servings")
+      .eq("household_id", householdId)
+      .in("id", uniqueIds),
     getLatestUnitPrices(),
   ]);
+  const servingsById = new Map(
+    (recipeRows ?? []).map((r) => [r.id, r.servings ?? 1]),
+  );
 
   const byRecipe = new Map<string, CostIngredient[]>();
   for (const i of (ings ?? []) as CostIngredientRow[]) {
@@ -228,7 +238,14 @@ export async function getRecipeCostsForIds(
 
   const map = new Map<string, RecipeCost>();
   for (const id of uniqueIds) {
-    map.set(id, computeRecipeCost(byRecipe.get(id) ?? [], prices));
+    map.set(
+      id,
+      computeRecipeCost(
+        byRecipe.get(id) ?? [],
+        prices,
+        servingsById.get(id) ?? 1,
+      ),
+    );
   }
   return map;
 }
@@ -242,6 +259,7 @@ export async function getRecipeCost(recipeId: string): Promise<RecipeCost> {
       pricedCount: 0,
       totalCount: 0,
       complete: false,
+      servings: 1,
     }
   );
 }

@@ -50,11 +50,19 @@ export type RecipeCost = {
   totalCount: number;
   /** true solo si TODOS los ingredientes tienen precio (total = total real). */
   complete: boolean;
+  /**
+   * Raciones a las que corresponde `total`: las de la receta, que son las de sus
+   * cantidades. Viaja con el importe porque un coste sin saber para cuántos es
+   * no se puede comparar con nada —ni con otra receta, ni con el presupuesto de
+   * la semana—.
+   */
+  servings: number;
 };
 
 export function computeRecipeCost(
   ingredients: CostIngredient[],
   priceByProduct: ReadonlyMap<string, PriceInfo>,
+  servings: number,
 ): RecipeCost {
   let total = 0;
   let pricedCount = 0;
@@ -92,5 +100,7 @@ export function computeRecipeCost(
     pricedCount,
     totalCount,
     complete: totalCount > 0 && pricedCount === totalCount,
+    // Una receta sin raciones declaradas no puede dividir por cero: cuenta como 1.
+    servings: servings > 0 ? servings : 1,
   };
 }

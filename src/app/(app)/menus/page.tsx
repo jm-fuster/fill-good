@@ -14,7 +14,10 @@ import {
   getWeekMenusWithEntries,
 } from "@/features/menus/queries";
 import { activeSlots } from "@/features/menus/slots";
-import { assessWeekBudget } from "@/features/menus/week-budget";
+import {
+  assessWeekBudget,
+  servingsFactor,
+} from "@/features/menus/week-budget";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { getRecipeCostsForIds, getSavedRecipes } from "@/features/recipes/queries";
 import { getWeekStart, shiftWeek } from "@/lib/dates";
@@ -59,8 +62,10 @@ export default async function MenusPage({
     entries.length === 0 &&
     (menusByWeek.get(prevWeekStart)?.entries.length ?? 0) > 0;
 
-  // Coste estimado de la semana (M7): suma de los platos con receta. Es parcial
-  // si algún plato no tiene precio de todos sus ingredientes o no tiene receta.
+  // Coste estimado de la semana (M7): suma de los platos con receta, escalado a
+  // las raciones del hogar (`servingsFactor`: una receta para 2 en una casa de 4
+  // cuesta el doble). Es parcial si algún plato no tiene precio de todos sus
+  // ingredientes o no tiene receta.
   const recipeIds = entries
     .map((e) => e.recipeId)
     .filter((id): id is string => Boolean(id));
@@ -75,7 +80,7 @@ export default async function MenusPage({
     }
     const c = costMap.get(e.recipeId);
     if (c && c.pricedCount > 0) {
-      weekCostTotal += c.total;
+      weekCostTotal += c.total * servingsFactor(c.servings, prefs.servings);
       weekCostAny = true;
       if (!c.complete) weekCostComplete = false;
     } else {
