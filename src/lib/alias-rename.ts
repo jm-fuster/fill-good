@@ -13,7 +13,7 @@
  * Sin IA, por trigramas, como el resto del matching difuso del proyecto.
  */
 
-import { normalizeName } from "@/lib/normalize";
+import { aliasKeyFor } from "@/lib/receipt-label";
 import { MIN_FUZZY_LENGTH, trigramSimilarity } from "@/lib/similarity";
 
 /**
@@ -61,7 +61,11 @@ export function findRenameCandidate(
   }: { productId: string; storeChain: string | null; rawName: string },
 ): AliasSighting | null {
   if (!storeChain) return null;
-  const norm = normalizeName(rawName);
+  // Se compara RÓTULO contra RÓTULO: `rawName` es la línea impresa, con el peso
+  // y el importe de esta compra dentro. Sin recortarlos, la misma etiqueta
+  // comprada dos veces se parecía a sí misma un 0,8 y el aviso proponía borrar
+  // el nombre bueno en casi todas las compras repetidas (ver `receipt-label.ts`).
+  const norm = aliasKeyFor(rawName);
   if (norm.length < MIN_FUZZY_LENGTH) return null;
 
   let best: { alias: AliasSighting; score: number } | null = null;

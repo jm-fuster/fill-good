@@ -12,6 +12,7 @@ import type { ReceiptItemExtraction } from "@/lib/ai/receipt-schema";
 import { buildReceiptPrompt } from "@/lib/ai/receipt-prompt";
 import { loadHouseholdMatchData, matchLineExact } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
+import { aliasKeyFor, cleanReceiptLabel } from "@/lib/receipt-label";
 import {
   addStockQuantity,
   formatQuantity,
@@ -742,8 +743,16 @@ export async function confirmReceiptAction(
     }
   >();
   for (const r of processable) {
-    const alias = r.rawText || r.description;
-    const aliasKey = normalizeName(alias);
+    // Se aprende el RÓTULO, no la línea impresa entera: el peso y el importe
+    // cambian en cada compra, así que guardarlos dentro convertía cada nombre en
+    // un nombre de un solo uso —nunca volvía a coincidir— y hacía que dos
+    // compras del mismo artículo parecieran dos etiquetas distintas en la misma
+    // cadena, que es lo que dispara el aviso de renombrado (`receipt-label.ts`).
+    // El recorte va también en `alias` porque ese es el texto que se le muestra
+    // al usuario (gestor de nombres del producto y aviso de renombrado).
+    const printed = r.rawText || r.description;
+    const alias = cleanReceiptLabel(printed);
+    const aliasKey = aliasKeyFor(printed);
     if (aliasKey && !aliasByNorm.has(aliasKey)) {
       aliasByNorm.set(aliasKey, {
         household_id: household.id,

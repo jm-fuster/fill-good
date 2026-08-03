@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { normalizeName } from "@/lib/normalize";
+import { aliasKeyFor } from "@/lib/receipt-label";
 import {
   DEFAULT_FUZZY_THRESHOLD,
   MIN_FUZZY_LENGTH,
@@ -69,7 +70,11 @@ export function matchLineExact(
   rawText: string | null,
   description: string,
 ): MatchResult {
-  const aliasKey = normalizeName(rawText || description);
+  // `aliasKeyFor` y no `normalizeName`: el texto impreso trae el peso y el
+  // importe de ESA compra, y con ellos dentro la clave nunca vuelve a coincidir
+  // (ver `lib/receipt-label.ts`). Tiene que ser la misma función con la que se
+  // guardó el alias al confirmar el ticket.
+  const aliasKey = aliasKeyFor(rawText || description);
   if (aliasKey) {
     const alias = data.aliases.find((a) => a.aliasNormalized === aliasKey);
     if (alias) return { productId: alias.productId, matchStatus: "auto" };
@@ -100,7 +105,10 @@ export function suggestCandidates(
   description: string,
   { threshold = SUGGEST_THRESHOLD, topN = 3 }: { threshold?: number; topN?: number } = {},
 ): ProductCandidate[] {
-  const keys = [normalizeName(rawText || ""), normalizeName(description)].filter(
+  // El texto impreso entra recortado (sin peso ni importe): comparar
+  // "platano canario 0,990 kg x 2,29 €/kg c 2,27 €" contra "platano canario"
+  // hundía la similitud de trigramas con ruido que no dice nada del producto.
+  const keys = [aliasKeyFor(rawText || ""), normalizeName(description)].filter(
     (k) => k.length >= MIN_FUZZY_LENGTH,
   );
   if (keys.length === 0) return [];
