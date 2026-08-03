@@ -169,6 +169,7 @@ export function MenuView({
   pendingCheckin,
   weekCost,
   budgetWarning,
+  skippedSlots,
   slots,
   canCopyPrevious,
   recipes,
@@ -191,6 +192,12 @@ export function MenuView({
    * platos, así que caber dentro no demuestra nada (ver `week-budget.ts`).
    */
   budgetWarning: WeekBudgetWarning | null;
+  /**
+   * Huecos que el hogar no planifica, como claves `díaDeLaSemana|hueco`
+   * (0 = lunes). Vienen ya resueltos de las reglas activas: la vista solo los
+   * pinta.
+   */
+  skippedSlots: string[];
   slots: SlotDef[];
   canCopyPrevious: boolean;
   /**
@@ -252,6 +259,7 @@ export function MenuView({
   const weekRange = `${format(parseISO(days[0]!), "d 'de' MMMM", {
     locale: es,
   })} – ${format(parseISO(days[6]!), "d 'de' MMMM", { locale: es })}`;
+  const skipped = new Set(skippedSlots);
   // Hay trabajo que la regeneración respetuosa conservaría (fijado o manual):
   // solo entonces tiene sentido ofrecer el "Rehacer todo" destructivo.
   const hasPreservable = entries.some((e) => e.pinned || e.source === "manual");
@@ -562,7 +570,7 @@ export function MenuView({
         apuntar a mano). Solo cambia el CSS; el DOM y la lógica son los mismos.
       */}
       <div className="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3 xl:grid-cols-3 2xl:grid-cols-7 2xl:gap-2 print:!grid print:!grid-cols-7 print:!gap-2">
-        {days.map((date) => (
+        {days.map((date, dayIndex) => (
           <div
             key={date}
             // 120mm de alto por columna llenan la hoja (≈160mm de los 186mm
@@ -590,6 +598,12 @@ export function MenuView({
             >
               {slots.map((slot) => {
                 const slotEntries = bySlot.get(`${date}|${slot.key}`) ?? [];
+                // Hueco que el hogar ha dicho que no se planifique. Solo se
+                // anuncia si está VACÍO: sobre un plato ya puesto, el rótulo
+                // contradiría lo que se está viendo.
+                const notPlanned =
+                  slotEntries.length === 0 &&
+                  skipped.has(`${dayIndex}|${slot.key}`);
                 return (
                   <div
                     key={slot.key}
@@ -677,27 +691,45 @@ export function MenuView({
                       cada hueco había más botones que platos y la semana se
                       leía como interfaz, no como menú. El nombre completo vive
                       en el aria-label y el target sigue siendo de 44px.
+
+                      Si el hogar no planifica ese hueco, el mismo botón lo DICE
+                      en vez de enseñar un «+» mudo: un hueco vacío sin más se
+                      lee como que a la IA se le olvidó. Sigue abriendo el alta,
+                      porque la regla es una preferencia, no una prohibición.
                     */}
                     <button
                       type="button"
                       onClick={() => openAdd(date, slot)}
-                      aria-label={`Añadir plato · ${slot.label} del ${format(
-                        parseISO(date),
-                        "EEEE d",
-                        { locale: es },
-                      )}`}
+                      aria-label={
+                        notPlanned
+                          ? `${slot.label} del ${format(parseISO(date), "EEEE d", {
+                              locale: es,
+                            })}: no se planifica. Añadir plato igualmente`
+                          : `Añadir plato · ${slot.label} del ${format(
+                              parseISO(date),
+                              "EEEE d",
+                              { locale: es },
+                            )}`
+                      }
                       className="flex min-h-11 items-center justify-center rounded-lg border border-dashed text-muted-foreground transition-colors hover:bg-muted hover:text-foreground print:hidden"
                     >
-                      <Plus className="size-4" aria-hidden />
+                      {notPlanned ? (
+                        <span className="px-2 text-center text-xs text-balance">
+                          No se planifica
+                        </span>
+                      ) : (
+                        <Plus className="size-4" aria-hidden />
+                      )}
                     </button>
                     {/* En papel el hueco vacío no puede quedar mudo (el «+» no
-                        se imprime): una raya, como en la imagen de compartir. */}
+                        se imprime): una raya, como en la imagen de compartir; o
+                        el motivo, si es que ese hueco no se planifica. */}
                     {slotEntries.length === 0 ? (
                       <span
                         aria-hidden
                         className="hidden text-muted-foreground print:block print:text-[10pt]"
                       >
-                        —
+                        {notPlanned ? "No se planifica" : "—"}
                       </span>
                     ) : null}
                   </div>

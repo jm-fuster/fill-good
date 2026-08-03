@@ -99,6 +99,19 @@ export default async function MenusPage({
     household?.monthlyBudget ?? null,
   );
 
+  // Huecos que el hogar no planifica, resueltos aquí a claves `día|hueco` para
+  // que la vista solo tenga que pintarlos. Solo las reglas ACTIVAS: desactivar
+  // una sin borrarla tiene que devolver el hueco a la normalidad.
+  const skippedSlots = rules
+    .filter(
+      (r) =>
+        r.active &&
+        r.kind === "skip_slot" &&
+        r.weekday !== null &&
+        r.mealSlot !== null,
+    )
+    .map((r) => `${r.weekday}|${r.mealSlot}`);
+
   return (
     <PageContainer>
       {/* Al imprimir, la cabecera de la hoja la pone MenuView (D5). */}
@@ -123,6 +136,7 @@ export default async function MenusPage({
           pendingCheckin={pendingCheckin}
           weekCost={weekCost}
           budgetWarning={budgetWarning}
+          skippedSlots={skippedSlots}
           slots={slots}
           canCopyPrevious={canCopyPrevious}
           // El mismo recetario que usan las reglas: sirve al buscador del «+».
