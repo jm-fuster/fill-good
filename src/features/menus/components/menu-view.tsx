@@ -297,6 +297,25 @@ export function MenuView({
   });
   const ctaOnTop = freeSlots > 0;
   /*
+    Semana ENTERA en el pasado (se llega con «‹»). Ahí esta pantalla es un
+    registro, no un plan, y las tres acciones de planificar no pintan nada:
+
+     - generar/completar y rehacer los rechaza ya el servidor
+       (`generateMenuAction`), así que el botón prometía lo que la app iba a negar
+       con un error;
+     - copiar la semana anterior sí funcionaba, y era peor que no funcionar:
+       sembraba platos en días ya vividos que el repaso preguntaba uno a uno
+       (vetado también en la action, que es donde tiene que estar);
+     - comprar lo que falta para una semana que ya se comió no lleva a ningún
+       sitio.
+
+    Lo que sí sigue teniendo sentido y se queda: la semana, el repaso, lo que
+    costó, «¿Qué hago hoy?» —que habla de hoy, no de la semana mirada— y el «+» de
+    cada hueco, porque apuntar a mano lo que cocinaste es justo para lo que
+    existe (y por eso la action del hueco suelto NO lleva este veto).
+  */
+  const isPastWeek = days.every((date) => date < today);
+  /*
     La tira de hoy (`TodayStrip`) solo tiene sentido en la semana que contiene
     hoy. Los platos se sacan de `bySlot` y no filtrando `entries`, porque el
     orden tiene que ser el de los HUECOS (desayuno → comida → cena) y el de la
@@ -463,42 +482,54 @@ export function MenuView({
   */
   const generateBlock = (
     <div className="flex flex-col gap-2 print:hidden">
-      <div className="flex items-center gap-2">
-        <AiGenerateButton
-          onClick={() => generate("fill")}
-          loading={generating}
-          busyLabel={
-            hasPreservable
-              ? "Completando el menú con IA"
-              : "Generando el menú con IA"
-          }
-          // Grande cuando manda arriba; del tamaño normal cuando acompaña abajo.
-          size={ctaOnTop ? "lg" : "default"}
-          className="flex-1"
-        >
-          {hasPreservable ? "Completar menú con IA" : "Generar menú con IA"}
-        </AiGenerateButton>
-        {/*
-          «Rehacer todo desde cero» vive en el menú de este icono, no en una
-          línea suelta debajo del botón: es una acción de una vez al mes que
-          ocupaba, con su frase de aviso, dos líneas permanentes entre el botón
-          de generar y la semana.
-        */}
-        <MenuSettings
-          prefs={prefs}
-          rules={rules}
-          recipes={recipes}
-          onReplaceAll={
-            hasPreservable ? () => setConfirmReplace(true) : undefined
-          }
-        />
-      </div>
+      {isPastWeek ? (
+        /*
+          La ausencia de los botones se explica: sin una palabra se lee como que
+          la app está rota. Y se dice de paso qué SÍ se puede hacer aquí, que es
+          la razón por la que uno vuelve a una semana pasada.
+        */
+        <p className="text-center text-xs text-muted-foreground">
+          Esta semana ya ha pasado: no se puede planificar. Con el «+» de cada
+          hueco puedes apuntar lo que cocinaste.
+        </p>
+      ) : (
+        <div className="flex items-center gap-2">
+          <AiGenerateButton
+            onClick={() => generate("fill")}
+            loading={generating}
+            busyLabel={
+              hasPreservable
+                ? "Completando el menú con IA"
+                : "Generando el menú con IA"
+            }
+            // Grande cuando manda arriba; del tamaño normal cuando acompaña abajo.
+            size={ctaOnTop ? "lg" : "default"}
+            className="flex-1"
+          >
+            {hasPreservable ? "Completar menú con IA" : "Generar menú con IA"}
+          </AiGenerateButton>
+          {/*
+            «Rehacer todo desde cero» vive en el menú de este icono, no en una
+            línea suelta debajo del botón: es una acción de una vez al mes que
+            ocupaba, con su frase de aviso, dos líneas permanentes entre el botón
+            de generar y la semana.
+          */}
+          <MenuSettings
+            prefs={prefs}
+            rules={rules}
+            recipes={recipes}
+            onReplaceAll={
+              hasPreservable ? () => setConfirmReplace(true) : undefined
+            }
+          />
+        </div>
+      )}
       {/*
         Solo existe en semanas vacías (`canCopyPrevious` lo exige), así que
         nunca compite con un menú ya puesto: ahí es la alternativa natural a
         generar con IA.
       */}
-      {canCopyPrevious ? (
+      {canCopyPrevious && !isPastWeek ? (
         <Button onClick={copyPrevious} loading={copying} variant="outline">
           <CalendarDays aria-hidden />
           {copying ? "Copiando…" : "Copiar la semana anterior"}
@@ -891,7 +922,9 @@ export function MenuView({
         </div>
       ) : null}
 
-      {hasRecipes ? (
+      {/* En una semana pasada no: comprar los ingredientes de lo que ya se comió
+          no lleva a ningún sitio (ver `isPastWeek`). */}
+      {hasRecipes && !isPastWeek ? (
         <Button
           variant="outline"
           size="lg"

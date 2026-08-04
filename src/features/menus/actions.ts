@@ -1047,6 +1047,20 @@ export async function copyPreviousWeekAction(
 ): Promise<MenuState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
+
+  /*
+    Mismo veto que en `generateMenuAction`, y por el mismo motivo: sembrar platos
+    en días que ya han ocurrido crea entradas sin `cooked_at` que el repaso (R2)
+    pregunta una a una («¿cocinaste esto el lunes?») sin que nadie las haya
+    planificado nunca. Allí el veto se escribió para el borrado; aquí faltaba, así
+    que copiar era la puerta de atrás al mismo destrozo — y encima la abría un
+    botón que solo aparece en semanas VACÍAS, que es justo lo que es una semana
+    pasada que nunca se planificó.
+  */
+  if (getWeekDays(weekStart).every((date) => date < todayLocalISO())) {
+    return { error: "Esa semana ya ha pasado: no se puede planificar." };
+  }
+
   const supabase = createServerSupabaseClient();
 
   const prevWeekStart = shiftWeek(weekStart, -1);
