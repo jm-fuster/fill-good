@@ -23,6 +23,7 @@ import {
   ShoppingCart,
   Sparkles,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
@@ -582,31 +583,6 @@ export function MenuView({
         </Button>
       </div>
 
-      {weekCost ? (
-        <div className="-mt-2 flex flex-col gap-1 print:hidden">
-          <p className="text-center text-xs text-muted-foreground">
-            Coste estimado de la semana:{" "}
-            <span className="font-medium text-chart-3">
-              {weekCost.complete ? "≈ " : "≥ "}
-              {formatEuro(weekCost.total)}
-            </span>
-            {weekCost.complete ? "" : " (parcial)"}
-          </p>
-          {/*
-            `warning` y no `destructive`: esto es un plan, no un gasto ya hecho.
-            Nada ha salido mal todavía y la semana entera se puede rehacer.
-          */}
-          {budgetWarning ? (
-            <p className="text-center text-xs font-medium text-warning">
-              {budgetWarning.partial ? "Ya se pasa " : "Se pasa "}
-              {formatEuro(budgetWarning.overBy)} de lo que te toca gastar esta
-              semana ({formatEuro(budgetWarning.target)})
-              {budgetWarning.partial ? ", y aún hay platos sin precio." : "."}
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-
       {/*
         Lo de hoy va ANTES del botón de generar: es contenido, y el generador es
         una herramienta. Con la tira delante, lo primero que se lee al entrar es
@@ -872,6 +848,48 @@ export function MenuView({
           </div>
         ))}
       </div>
+
+      {/*
+        Coste de la semana y aviso de presupuesto, DEBAJO de la semana y pegados a
+        la compra. Estaban entre el selector de semana y el contenido, que es el
+        sitio más caro de la pantalla, y son metadatos: dos líneas de texto
+        pequeño que había que saltar para llegar al menú. Aquí llegan en el
+        momento en que sirven de algo —justo antes de decidir qué se compra— y en
+        una semana completa acompañan al resto de acciones, que ya bajan también.
+      */}
+      {weekCost ? (
+        <div className="flex flex-col gap-1 print:hidden">
+          <p className="text-center text-xs text-muted-foreground">
+            Coste estimado de la semana:{" "}
+            <span className="font-medium text-chart-3">
+              {weekCost.complete ? "≈ " : "≥ "}
+              {formatEuro(weekCost.total)}
+            </span>
+            {weekCost.complete ? "" : " (parcial)"}
+          </p>
+          {/*
+            `warning` y no `destructive`: esto es un plan, no un gasto ya hecho.
+            Nada ha salido mal todavía y la semana entera se puede rehacer.
+
+            El icono no es adorno: sin él, lo único que separaba este aviso del
+            pie de coste que tiene encima era el color, y un aviso que se
+            distingue solo por el color no se distingue para quien no percibe ese
+            color (WCAG 1.4.1). Va en línea para que envuelva como texto.
+          */}
+          {budgetWarning ? (
+            <p className="text-center text-xs font-medium text-warning">
+              <TriangleAlert
+                aria-hidden
+                className="mr-1 inline size-4 align-[-3px]"
+              />
+              {budgetWarning.partial ? "Ya se pasa " : "Se pasa "}
+              {formatEuro(budgetWarning.overBy)} de lo que te toca gastar esta
+              semana ({formatEuro(budgetWarning.target)})
+              {budgetWarning.partial ? ", y aún hay platos sin precio." : "."}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {hasRecipes ? (
         <Button
