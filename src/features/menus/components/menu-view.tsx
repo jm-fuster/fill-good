@@ -232,7 +232,18 @@ export function MenuView({
   const [generating, startGenerate] = useTransition();
   const [addingList, startAddList] = useTransition();
   const [editing, setEditing] = useState<Editing | null>(null);
-  const [missing, setMissing] = useState<MissingCandidate[] | null>(null);
+  /*
+    Candidatos a añadir a la lista, con el menú al que pertenecen. El id viaja
+    JUNTO a ellos en vez de leerse del prop al confirmar porque el repaso se abre
+    también desde el toast de «Menú generado», y ahí el menú puede acabar de
+    crearse: el prop seguiría en null hasta que aterrice el `router.refresh()` y
+    confirmar no habría escrito nada (sin error, además: la guarda `if (!menuId)`
+    del drawer se limitaba a no hacer nada).
+  */
+  const [missing, setMissing] = useState<{
+    menuId: string;
+    candidates: MissingCandidate[];
+  } | null>(null);
   const [cookedDeductions, setCookedDeductions] = useState<{
     recipeName: string;
     items: CookedDeduction[];
@@ -378,7 +389,28 @@ export function MenuView({
       }
       if (r.error) toast.error(r.error);
       else {
-        toast.success(mode === "replace" ? "Menú rehecho" : "Menú generado");
+        toast.success(mode === "replace" ? "Menú rehecho" : "Menú generado", {
+          /*
+            El siguiente paso de una semana recién generada es comprar lo que
+            falta, y su botón vive al final de la página, debajo de los siete
+            días: mientras hay huecos el generador está ARRIBA (`ctaOnTop`), así
+            que se genera desde arriba y la acción que viene después queda a una
+            semana entera de scroll. Aquí llega a un toque, en el momento exacto
+            en que sirve de algo. El botón de abajo se queda donde está: esto es
+            un atajo mientras el toast vive, no su sitio.
+
+            Lo que NO hacemos es abrir el repaso solo: la recompensa de generar
+            es ver la semana entrar en cascada (`revealKey`) y un modal encima la
+            taparía justo cuando se pinta. Por lo mismo el toast no se alarga más
+            allá de los 5 s que ya usan los de deshacer: se queda encima de la
+            semana que celebra, y quien no lo coja tiene el botón abajo.
+          */
+          duration: 5000,
+          action: {
+            label: "Añadir lo que falte",
+            onClick: () => reviewMissing(r.menuId ?? menuId),
+          },
+        });
         setRevealKey((k) => k + 1);
         router.refresh();
       }
@@ -396,10 +428,15 @@ export function MenuView({
     });
   }
 
-  function reviewMissing() {
-    if (!menuId) return;
+  /**
+   * Calcula lo que falta para el menú y abre el repaso. Recibe el id en vez de
+   * tomarlo del prop porque se llama también desde el toast de «Menú generado»,
+   * donde el menú puede acabar de nacer (ver `MenuState.menuId`).
+   */
+  function reviewMissing(id: string | null = menuId) {
+    if (!id) return;
     startAddList(async () => {
-      const r = await computeMissingForMenuAction(menuId);
+      const r = await computeMissingForMenuAction(id);
       if (r.error) {
         toast.error(r.error);
         return;
@@ -409,7 +446,7 @@ export function MenuView({
         toast.info("Ya tienes todos los ingredientes");
         return;
       }
-      setMissing(candidates);
+      setMissing({ menuId: id, candidates });
     });
   }
 
@@ -948,10 +985,20 @@ export function MenuView({
         <Button
           variant="outline"
           size="lg"
-          onClick={reviewMissing}
+          // Envuelto: `reviewMissing` recibe el id del menú como primer
+          // argumento y sin el lambda le llegaría el evento del click.
+          onClick={() => reviewMissing()}
           loading={addingList}
           className="print:hidden"
         >
+          {/*
+            El carrito es el vocabulario de la app para «esto va a la lista»: la
+            pestaña Lista, el «apuntar» del inventario y el «Apuntar en la lista»
+            del descuento al cocinar, aquí al lado, lo llevan. Este era el único
+            botón que manda cosas a la lista sin decirlo. En `loading` lo esconde
+            el propio Button y saca el spinner en su sitio.
+          */}
+          <ShoppingCart aria-hidden />
           {addingList ? "Calculando…" : "Añadir a la lista lo que falte"}
         </Button>
       ) : null}
@@ -968,11 +1015,7 @@ export function MenuView({
         Fill Good · Compra lo justo, ahorra más
       </p>
 
-      <MissingReviewDrawer
-        menuId={menuId}
-        candidates={missing}
-        onClose={() => setMissing(null)}
-      />
+      <MissingReviewDrawer review={missing} onClose={() => setMissing(null)} />
 
       <EditEntryDrawer
         editing={editing}
@@ -1727,16 +1770,16 @@ function EditEntryDrawer({
  * recalcula e inserta solo lo marcado.
  */
 function MissingReviewDrawer({
-  menuId,
-  candidates,
+  review,
   onClose,
 }: {
-  menuId: string | null;
-  candidates: MissingCandidate[] | null;
+  /** Candidatos y el menú del que salieron (ver el estado `missing`). */
+  review: { menuId: string; candidates: MissingCandidate[] } | null;
   onClose: () => void;
 }) {
   const [included, setIncluded] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+  const candidates = review?.candidates ?? null;
 
   // Al abrir con un conjunto nuevo de candidatos, marcar todos por defecto.
   const [lastKey, setLastKey] = useState<string | null>(null);
@@ -1756,9 +1799,9 @@ function MissingReviewDrawer({
   }
 
   function confirm() {
-    if (!menuId) return;
+    if (!review) return;
     startTransition(async () => {
-      const r = await confirmMissingToListAction(menuId, [...included]);
+      const r = await confirmMissingToListAction(review.menuId, [...included]);
       if (r.error) {
         toast.error(r.error);
         return;
@@ -1777,7 +1820,7 @@ function MissingReviewDrawer({
 
   return (
     <ResponsiveModal
-      open={candidates !== null}
+      open={review !== null}
       onOpenChange={(o) => !o && onClose()}
     >
       <ResponsiveModalContent>
@@ -1834,7 +1877,10 @@ function MissingReviewDrawer({
             disabled={count === 0}
             loading={pending}
           >
-            <Check aria-hidden />
+            {/* Carrito y no `Check`: es la misma acción que el botón que abre
+                este repaso y que el «Apuntar en la lista» del descuento al
+                cocinar. El visto bueno lo da el propio gesto de confirmar. */}
+            <ShoppingCart aria-hidden />
             {pending
               ? "Añadiendo…"
               : count === 1

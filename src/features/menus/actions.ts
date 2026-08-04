@@ -104,6 +104,14 @@ export type MenuState = {
   error?: string;
   ok?: boolean;
   added?: number;
+  /**
+   * Id del menú de la semana, que devuelve `generateMenuAction` porque puede
+   * acabar de CREARLO (`ensureMenu`). La vista lo recibe como prop del servidor,
+   * o sea que en una semana virgen lo tiene en null hasta que aterriza el
+   * `router.refresh()`; sin esto, la acción de «añadir lo que falte» del toast
+   * de éxito no tenía a qué menú apuntar durante esa ventana.
+   */
+  menuId?: string;
   /** true si falta el consentimiento de IA: la UI debe pedirlo antes de reintentar. */
   needsAiConsent?: boolean;
 };
@@ -813,7 +821,7 @@ export async function generateMenuAction(
   await cleanupOrphanEphemeralRecipes(supabase, household.id);
 
   revalidatePath("/menus");
-  return { ok: true };
+  return { ok: true, menuId };
 }
 
 /**
