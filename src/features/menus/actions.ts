@@ -66,6 +66,7 @@ import {
 import { activeSlots, slotLabel } from "./slots";
 import {
   buildCatalogIndex,
+  recipeFitsActiveSlots,
   selectRecipesForPrompt,
   summarizeAvailability,
   type RecipeAvailability,
@@ -323,8 +324,17 @@ async function loadHouseholdMenuContext(
       .filter((id): id is string => id !== null),
   );
 
+  // Dos filtros, no uno: la temporada y el HUECO. Una receta de solo desayuno en
+  // un hogar que no planifica desayuno no tiene dónde ir, y ofrecérsela al modelo
+  // solo consigue que la ponga de cena. Las nombradas por una regla activa
+  // sobreviven al filtro, la misma promesa que con el tope de recetas: si la
+  // regla existe, el modelo tiene que saber que la receta existe.
+  const activeSlotKeys = activeSlots(prefs.planBreakfast).map((s) => s.key);
   const seasonalRecipes = savedRecipes.filter(
-    (r) => r.seasons.includes("all") || r.seasons.includes(season),
+    (r) =>
+      (r.seasons.includes("all") || r.seasons.includes(season)) &&
+      (recipeFitsActiveSlots(r.mealTypes, activeSlotKeys) ||
+        ruleRecipeIds.has(r.id)),
   );
   const availabilityById = new Map<string, RecipeAvailability>();
   for (const r of seasonalRecipes) {

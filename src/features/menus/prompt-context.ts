@@ -124,6 +124,27 @@ export function summarizeAvailability(
 // ---------------------------------------------------------------------------
 
 /**
+ * ¿Cabe esta receta en alguno de los huecos que el hogar planifica?
+ *
+ * Con el desayuno desactivado —el caso por defecto—, una receta marcada SOLO
+ * desayuno no tiene dónde ir: el prompt pide comida y cena, y `enforceMin`
+ * tampoco la colocaría porque respeta el tipo de comida. Mandarla igualmente al
+ * modelo no es neutral, es una invitación: «Tostadas con tomate» acabó de cena
+ * en 2 de 6 generaciones medidas.
+ *
+ * Sin tipos declarados vale para cualquier hueco. Una receta así es flexible por
+ * omisión, no inservible, y filtrarla escondería medio recetario de quien nunca
+ * rellenó ese campo.
+ */
+export function recipeFitsActiveSlots(
+  mealTypes: readonly string[],
+  activeSlotKeys: readonly string[],
+): boolean {
+  if (mealTypes.length === 0) return true;
+  return mealTypes.some((type) => activeSlotKeys.includes(type));
+}
+
+/**
  * Tope de recetas del recetario que viajan al prompt. Está por encima de lo que
  * tiene un hogar normal a propósito: no es una criba que deba notarse en el uso
  * diario, sino un seguro contra un recetario que crece sin parar.

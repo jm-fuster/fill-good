@@ -54,6 +54,7 @@
 import {
   buildCatalogIndex,
   promptRecipeScore,
+  recipeFitsActiveSlots,
   selectRecipesForPrompt,
   summarizeAvailability,
   type AvailabilityIngredient,
@@ -455,6 +456,57 @@ function candidata(
     "una receta sin ingredientes no puntúa por despensa (y no rompe la división)",
     Number.isFinite(promptRecipeScore(sinIngredientes, HOY)),
     promptRecipeScore(sinIngredientes, HOY),
+  );
+}
+
+// ---------------------------------------------------------------------------
+seccion("Y qué recetas NO entran: las que no tienen hueco donde caber");
+// ---------------------------------------------------------------------------
+
+{
+  // Los huecos del hogar por defecto: comida y cena, sin desayuno.
+  const SIN_DESAYUNO = ["lunch", "dinner"];
+  const CON_DESAYUNO = ["breakfast", "lunch", "dinner"];
+
+  check(
+    "una receta de comida entra en un hogar que planifica comida",
+    recipeFitsActiveSlots(["lunch"], SIN_DESAYUNO),
+  );
+  check(
+    "una de comida o cena también",
+    recipeFitsActiveSlots(["lunch", "dinner"], SIN_DESAYUNO),
+  );
+
+  // El fallo que esto fija: con el desayuno desactivado, una receta de solo
+  // desayuno no tiene hueco donde ir —el prompt pide comida y cena, y
+  // `enforceMin` respeta el tipo de comida—, así que mandarla al modelo solo
+  // consigue que la ponga de cena. Pasó con «Tostadas con tomate».
+  check(
+    "una de solo desayuno NO entra si el hogar no planifica desayuno",
+    !recipeFitsActiveSlots(["breakfast"], SIN_DESAYUNO),
+  );
+  check(
+    "y sí entra en cuanto el hogar activa el desayuno",
+    recipeFitsActiveSlots(["breakfast"], CON_DESAYUNO),
+  );
+  check(
+    "una de desayuno o comida entra igual sin desayuno: le queda la comida",
+    recipeFitsActiveSlots(["breakfast", "lunch"], SIN_DESAYUNO),
+  );
+
+  // Sin tipos declarados vale para cualquier hueco: filtrarla escondería medio
+  // recetario de quien nunca rellenó ese campo.
+  check(
+    "una receta sin tipos declarados vale para cualquier hueco",
+    recipeFitsActiveSlots([], SIN_DESAYUNO),
+  );
+  check(
+    "un tipo que la app no conoce no cuela como hueco",
+    !recipeFitsActiveSlots(["merienda"], SIN_DESAYUNO),
+  );
+  check(
+    "sin huecos activos no cabe nada con tipo declarado",
+    !recipeFitsActiveSlots(["lunch"], []),
   );
 }
 

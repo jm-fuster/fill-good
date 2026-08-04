@@ -45,6 +45,7 @@ import {
   type ValidatableRule,
 } from "@/features/menus/rules";
 import { summarizeAvailability } from "@/features/menus/prompt-context";
+import { activeSlots } from "@/features/menus/slots";
 import { assessWeekBudget, servingsFactor } from "@/features/menus/week-budget";
 import { buildMenuPrompt } from "@/lib/ai/menu-prompt";
 import { menuSchema } from "@/lib/ai/menu-schema";
@@ -92,7 +93,16 @@ const PAUSE_MS = 4_000;
 const PROD_TIMEOUT_MS = 60_000;
 const TIMEOUT_MS = Number(process.env.TIMEOUT_MS ?? 150_000);
 
-const SLOTS = ["lunch", "dinner"] as const;
+/** Los huecos que este hogar planifica, en el mismo orden que la app. */
+const SLOTS: readonly string[] = activeSlots(PREFS.planBreakfast).map(
+  (s) => s.key,
+);
+/** Inicial con la que se pinta cada hueco en la rejilla del informe. */
+const SLOT_INITIAL: Record<string, string> = {
+  breakfast: "D",
+  lunch: "C",
+  dinner: "N",
+};
 const DAY_NAMES = [
   "lunes",
   "martes",
@@ -169,7 +179,6 @@ type Metrics = {
   inventedDishes: number;
   hallucinatedIds: string[];
   mealTypeViolations: string[];
-  breakfastRecipesUsed: string[];
   repeatedDishes: string[];
   recentClashes: string[];
   newPurchases: string[];
@@ -289,7 +298,6 @@ function score(
   let inventedDishes = 0;
   const hallucinatedIds: string[] = [];
   const mealTypeViolations: string[] = [];
-  const breakfastRecipesUsed: string[] = [];
   const nameCounts = new Map<string, { name: string; n: number }>();
   const recentNorm = new Set(
     RECENT_DISHES.map((d) => normalizeName(d.name)).filter((n) => n.length > 0),
@@ -320,12 +328,11 @@ function score(
 
         if (recipe) {
           savedDishes += 1;
-          if (recipe.mealTypes.length === 1 && recipe.mealTypes[0] === "breakfast") {
-            // No cuenta como fallo del modelo: `mealTypesLabel` no contempla
-            // `breakfast`, así que el prompt le ofrece esa receta como
-            // "comida o cena". Se anota aparte para no culpar a quien obedece.
-            breakfastRecipesUsed.push(`${where}: ${dish.name}`);
-          } else if (!recipe.mealTypes.includes(meal.slot)) {
+          // Una receta de solo desayuno en la cena cuenta como incumplimiento sin
+          // excepciones. La hubo mientras `mealTypesLabel` no contemplaba
+          // `breakfast` y el prompt ofrecía esas recetas como "comida o cena":
+          // culpar al modelo de obedecer no medía nada. Ya dice la verdad.
+          if (!recipe.mealTypes.includes(meal.slot)) {
             mealTypeViolations.push(
               `${where}: "${dish.name}" (${recipe.mealTypes.join("/")})`,
             );
@@ -437,7 +444,6 @@ function score(
     inventedDishes,
     hallucinatedIds,
     mealTypeViolations,
-    breakfastRecipesUsed,
     repeatedDishes: [...nameCounts.values()]
       .filter((v) => v.n > 1)
       .map((v) => `${v.name} ×${v.n}`),
@@ -469,7 +475,7 @@ function renderWeek(generated: MenuOut): string {
     const cells = SLOTS.map((slot) => {
       const dishes = day?.meals.find((m) => m.slot === slot)?.dishes ?? [];
       const label = dishes.map((d) => d.recipe_name).join(" + ") || "—";
-      return `${slot === "lunch" ? "C" : "N"}: ${label}`;
+      return `${SLOT_INITIAL[slot] ?? slot}: ${label}`;
     });
     lines.push(`| ${DAY_NAMES[i].padEnd(10)} | ${cells.join(" | ")} |`);
   }
@@ -559,11 +565,6 @@ function buildReport(
     }
     if (m.mealTypeViolations.length) {
       detail.push(`tipo de comida incumplido: ${m.mealTypeViolations.join("; ")}`);
-    }
-    if (m.breakfastRecipesUsed.length) {
-      detail.push(
-        `recetas de desayuno en comida o cena (el prompt se las ofrece así): ${m.breakfastRecipesUsed.join("; ")}`,
-      );
     }
     if (m.repeatedDishes.length) detail.push(`repetidos: ${m.repeatedDishes.join("; ")}`);
     if (m.recentClashes.length) {

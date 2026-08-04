@@ -146,13 +146,35 @@ function timesLabel(n: number): string {
   return n === 1 ? "vez" : "veces";
 }
 
-function mealTypesLabel(types: string[]): string {
-  const hasLunch = types.includes("lunch");
-  const hasDinner = types.includes("dinner");
-  if (hasLunch && hasDinner) return "comida o cena";
-  if (hasLunch) return "solo comida";
-  if (hasDinner) return "solo cena";
-  return "comida o cena";
+const MEAL_WORD: Record<string, string> = {
+  breakfast: "desayuno",
+  lunch: "comida",
+  dinner: "cena",
+};
+/** Orden en el que se nombran los huecos: el del día. */
+const MEAL_ORDER = ["breakfast", "lunch", "dinner"] as const;
+
+/**
+ * Para qué huecos vale una receta, en palabras.
+ *
+ * Se construye recorriendo los huecos que existen en vez de preguntando por unos
+ * cuantos, y la diferencia no es de estilo: la versión anterior comprobaba
+ * `lunch` y `dinner` y todo lo demás caía en un `return "comida o cena"` final,
+ * así que una receta marcada SOLO desayuno se le ofrecía al modelo como apta
+ * para comer o cenar. Y obedecía: «Tostadas con tomate» salió de cena en 2 de 6
+ * generaciones (`npm run compare:menu`, agosto de 2026), incumpliendo el
+ * objetivo 5 del propio prompt porque el prompt le había mentido.
+ *
+ * Sin ningún tipo declarado se mantiene «comida o cena»: una receta así es
+ * flexible, y ese es el texto que el modelo ya conocía.
+ */
+function mealTypesLabel(types: readonly string[]): string {
+  const words = MEAL_ORDER.filter((slot) => types.includes(slot)).map(
+    (slot) => MEAL_WORD[slot],
+  );
+  if (words.length === 0) return "comida o cena";
+  if (words.length === 1) return `solo ${words[0]}`;
+  return `${words.slice(0, -1).join(", ")} o ${words[words.length - 1]}`;
 }
 
 function ratingLabel(avg: number | null): string {

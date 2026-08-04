@@ -29,12 +29,14 @@ import path from "node:path";
 
 import {
   buildCatalogIndex,
+  recipeFitsActiveSlots,
   selectRecipesForPrompt,
   summarizeAvailability,
   type CatalogEntry,
   type CatalogIndex,
   type RecipeAvailability,
 } from "@/features/menus/prompt-context";
+import { activeSlots } from "@/features/menus/slots";
 import { weeklyBudgetTarget } from "@/features/menus/week-budget";
 import {
   computeRecipeCost,
@@ -140,7 +142,12 @@ export const PREFS: MenuPrefs = {
   dietStyle: "omnivore",
   avoidText: null,
   servings: 4,
-  planBreakfast: false,
+  /**
+   * Con `COMPARE_BREAKFAST=1` el hogar planifica desayuno. Cambia el prompt (tres
+   * huecos al día) y qué recetas entran, así que es la única forma de medir esa
+   * configuración —que existe en la app y no se parece a la de por defecto—.
+   */
+  planBreakfast: process.env.COMPARE_BREAKFAST === "1",
 };
 
 /** [producto, cantidad, unidad, días para caducar | null, consumir pronto]. */
@@ -362,8 +369,15 @@ export function buildFixture(): Fixture {
     listNames.add(p.normalizedName);
   }
 
+  // Mismos dos filtros que producción: temporada y hueco donde caber, con las
+  // recetas nombradas por una regla activa a salvo del segundo.
+  const ruleRecipeIds = new Set<string>([RULES.min.recipeId, RULES.max.recipeId]);
+  const activeSlotKeys = activeSlots(PREFS.planBreakfast).map((s) => s.key);
   const seasonal = SEED_RECIPES.filter(
-    (r) => r.seasons.includes("all") || r.seasons.includes(season),
+    (r) =>
+      (r.seasons.includes("all") || r.seasons.includes(season)) &&
+      (recipeFitsActiveSlots(r.mealTypes, activeSlotKeys) ||
+        ruleRecipeIds.has(r.id)),
   );
 
   // Los ingredientes del pack vienen por nombre; enlazarlos al catálogo es lo que
@@ -416,8 +430,6 @@ export function buildFixture(): Fixture {
       { avgRating, timesCooked, daysAgo },
     ]),
   );
-
-  const ruleRecipeIds = new Set<string>([RULES.min.recipeId, RULES.max.recipeId]);
 
   const chosenIds = selectRecipesForPrompt(
     seasonal.map((r) => {
