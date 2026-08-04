@@ -1,7 +1,8 @@
 /**
- * Comprobaciones de las guardas de las acciones del menú. Lo ejecuta
- * `npm run check:guardas` (ver `scripts/check-menu-guards.mjs`, que lo empaqueta
- * con esbuild y sustituye Supabase, Clerk y las dos puertas de Next).
+ * Comprobaciones de las guardas de las Server Actions que escriben los datos más
+ * frágiles: las del menú y el descarte de tickets. Lo ejecuta
+ * `npm run check:guardas` (ver `scripts/check-guards.mjs`, que lo empaqueta con
+ * esbuild y sustituye Supabase, Clerk y las dos puertas de Next).
  *
  * Ejecuta las Server Actions REALES contra un cliente de Supabase falso, así que
  * no toca ninguna base ni necesita credenciales. Existe porque los cuatro fallos
@@ -14,11 +15,15 @@
  * fallos fueron el mismo patrón: una regla razonada en una action y ausente en
  * su hermana.
  *
- * Lo que se fija aquí, y por qué no lo ve el compilador: las cuatro guardas son
- * ramas que devuelven un error, así que quitarlas no cambia ningún tipo. Lo que
- * cambia es lo que se ESCRIBE, y de eso solo se entera quien mire las
- * escrituras. Por eso cada caso comprueba dos cosas: el error que se devuelve y
- * que no se haya tocado `menu_entries`.
+ * Lo que se fija aquí, y por qué no lo ve el compilador: las guardas son ramas
+ * que devuelven un error, así que quitarlas no cambia ningún tipo. Lo que cambia
+ * es lo que se ESCRIBE, y de eso solo se entera quien mire las escrituras. Por
+ * eso cada caso comprueba dos cosas: el error que se devuelve y qué se ha tocado.
+ *
+ * El descarte de tickets vive aquí por ser de la misma familia con otra cara: ahí
+ * la guarda existía —el borrado se filtra por `status`— y lo que faltaba era
+ * CONTARLO, porque un borrado que no encuentra fila no es un error para Supabase
+ * y la action devolvía «ok» sobre un ticket que seguía existiendo.
  *
  * Lo que NO cubre: el cliente falso entiende `.eq()`/`.is()` sobre listas y
  * devuelve una fila fija por tabla para `maybeSingle()`, no es un motor de SQL.
@@ -35,6 +40,7 @@ import {
   rerollMenuEntryAction,
   updateMenuEntryAction,
 } from "@/features/menus/actions";
+import { deleteReceiptAction } from "@/features/receipts/actions";
 import { getWeekDays, getWeekStart, shiftWeek } from "@/lib/dates";
 import type { Database } from "@/lib/supabase/types";
 
@@ -77,13 +83,14 @@ function fake(
   const escrituras: Escritura[] = [];
   const from = (table: string): unknown => {
     const filtros: [string, unknown][] = [];
+    const negados: [string, unknown][] = [];
     const rows = () =>
-      (tables[table]?.list ?? []).filter((row) =>
-        filtros.every(([columna, valor]) => {
-          const fila = row as Record<string, unknown>;
-          return !(columna in fila) || fila[columna] === valor;
-        }),
-      );
+      (tables[table]?.list ?? []).filter((row) => {
+        const fila = row as Record<string, unknown>;
+        const pasa = ([columna, valor]: [string, unknown]) =>
+          !(columna in fila) || fila[columna] === valor;
+        return filtros.every(pasa) && !negados.some(pasa);
+      });
     const chain: unknown = new Proxy(
       {},
       {
@@ -102,6 +109,14 @@ function fake(
           if (prop === "eq" || prop === "is") {
             return (columna: string, valor: unknown) => {
               filtros.push([columna, valor]);
+              return chain;
+            };
+          }
+          // `.neq` se entiende para no aprobar por accidente: un filtro que el
+          // falso ignorase dejaría pasar filas que en la base quedan fuera.
+          if (prop === "neq") {
+            return (columna: string, valor: unknown) => {
+              negados.push([columna, valor]);
               return chain;
             };
           }
@@ -185,6 +200,8 @@ const DIA_DE_OTRA_SEMANA = getWeekDays(shiftWeek(SEMANA, 1))[0]!;
   no haya error.
 */
 const ENTRADA_ID = "11111111-1111-4111-8111-111111111111";
+/** Id de ticket, por el mismo motivo que `ENTRADA_ID`. */
+const TICKET_ID = "22222222-2222-4222-8222-222222222222";
 
 const RESUELTO = "Ese plato ya está resuelto: para cambiarlo, deshaz la marca.";
 const LIMITE = "Has generado menús muchas veces seguidas. Espera un poco y vuelve a intentarlo.";
@@ -411,9 +428,60 @@ const ORIGEN = {
   );
 }
 
+// ---------------------------------------------------------------------------
+// 5. Descartar un ticket ya confirmado
+// ---------------------------------------------------------------------------
+
+/*
+  Esta guarda ES de otra clase que las cuatro de arriba, y por eso está aquí: el
+  borrado ya se filtraba con `.neq("status", "confirmed")`, o sea que un ticket
+  confirmado NUNCA se borraba. Lo que fallaba era el parte de guerra — un borrado
+  que no encuentra fila no es un error para Supabase, así que la action decía `ok`
+  y la pantalla remataba con «Ticket descartado» sobre un ticket que seguía ahí,
+  con su stock y sus precios dentro del hogar.
+
+  Lo que se fija es que se lea el estado ANTES y se conteste con la verdad. Ojo:
+  este check NO puede fijarlo por las escrituras, porque el cliente falso no
+  distingue «borré una fila» de «no borré ninguna» — igual que Supabase—. Se fija
+  por el error, que es justo lo que faltaba.
+*/
+console.log("\ndeleteReceiptAction");
+
+{
+  const cliente = usar({ receipts: { single: { status: "confirmed" } } });
+  const r = await deleteReceiptAction(TICKET_ID);
+  check(
+    "un ticket confirmado no se descarta en silencio",
+    (r.error ?? "").includes("ya está confirmado"),
+    r,
+  );
+  check(
+    "y no se intenta borrar",
+    escriturasEn(cliente, "receipts").length === 0,
+    escriturasEn(cliente, "receipts"),
+  );
+}
+
+{
+  usar({ receipts: { single: null } });
+  const r = await deleteReceiptAction(TICKET_ID);
+  check("un ticket que no existe lo dice", r.error === "Ticket no encontrado.", r);
+}
+
+{
+  const cliente = usar({ receipts: { single: { status: "parsed" } } });
+  const r = await deleteReceiptAction(TICKET_ID);
+  check("uno sin confirmar sí se descarta", !r.error, r);
+  check(
+    "y se borra de verdad",
+    escriturasEn(cliente, "receipts")[0]?.op === "delete",
+    escriturasEn(cliente, "receipts"),
+  );
+}
+
 console.log(
   fallos === 0
-    ? "\nGuardas del menú: todo correcto.\n"
-    : `\nGuardas del menú: ${fallos} fallo(s).\n`,
+    ? "\nGuardas de las acciones: todo correcto.\n"
+    : `\nGuardas de las acciones: ${fallos} fallo(s).\n`,
 );
 process.exit(fallos === 0 ? 0 : 1);

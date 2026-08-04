@@ -16,7 +16,7 @@
     "check:cocinado": "node scripts/check-cooked.mjs",
     "check:menu": "node scripts/check-menu.mjs",
     "check:rotulos": "node scripts/check-rotulos.mjs",
-    "check:guardas": "node scripts/check-menu-guards.mjs",
+    "check:guardas": "node scripts/check-guards.mjs",
     "compare:menu": "node scripts/compare-menu-models.mjs",
     "build:check": "node scripts/check-legal-config.mjs && next build && node scripts/check-bundle-budget.mjs",
     "typecheck": "tsc --noEmit"

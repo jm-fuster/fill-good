@@ -1,12 +1,12 @@
 /**
- * Ejecuta las comprobaciones de las guardas de las acciones del menú
- * (`scripts/menu-entry-guards.check.ts`).
+ * Ejecuta las comprobaciones de las guardas de las Server Actions
+ * (`scripts/action-guards.check.ts`).
  *
  * Mismo montaje que `check-alexa.mjs` —esbuild al vuelo porque el check es
  * TypeScript y tira del alias `@/`—, con una diferencia importante: aquí lo que
  * se ejecuta son Server Actions, no funciones puras, así que hay que sustituir
- * las cuatro puertas al mundo que abren al importarse. Cada sustituto es el
- * mínimo para que el código REAL de la action corra:
+ * las puertas al mundo que abren al importarse. Cada sustituto es el mínimo para
+ * que el código REAL de la action corra:
  *
  *   - `@/lib/supabase/server` → el cliente falso que monta el check, leído de un
  *     global para que cada caso pueda poner el suyo.
@@ -30,7 +30,7 @@ const salida = join(
   raiz,
   "node_modules",
   ".cache",
-  "check-menu-guards",
+  "check-guards",
   "bundle.mjs",
 );
 
@@ -44,6 +44,15 @@ const SUSTITUTOS = {
   "next/cache": "export function revalidatePath() {}\nexport function revalidateTag() {}",
   "next/headers":
     "export async function cookies() {\n  return { get: () => undefined };\n}",
+  /*
+    `after()` aplaza trabajo a después de la respuesta (lo usa la confirmación de
+    tickets para rematerializar señales sin hacer esperar al usuario). Aquí se
+    ejecuta EN EL SITIO: el check no tiene ciclo de respuesta que esperar, y lo
+    que aplaza también son escrituras que un caso podría querer mirar. Sustituirlo
+    además es obligado, no cosmético: importar `next/server` de verdad arrastra
+    `ua-parser-js` y el bundle ni arranca (ERR_AMBIGUOUS_MODULE_SYNTAX).
+  */
+  "next/server": "export function after(fn) {\n  return fn();\n}",
   "@clerk/nextjs/server": `
     export async function auth() {
       return { userId: globalThis.__checkUserId ?? "u1" };
@@ -86,7 +95,7 @@ const stubs = {
 
 await mkdir(dirname(salida), { recursive: true });
 await build({
-  entryPoints: [join(raiz, "scripts", "menu-entry-guards.check.ts")],
+  entryPoints: [join(raiz, "scripts", "action-guards.check.ts")],
   outfile: salida,
   bundle: true,
   platform: "node",
