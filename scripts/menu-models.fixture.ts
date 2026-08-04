@@ -79,11 +79,15 @@ export const TODAY = process.env.COMPARE_TODAY ?? "2026-08-04";
 export const MONTHLY_BUDGET = 400;
 
 /**
- * Regla `skip_slot` activada (`SKIP_RULE=1`). Apagada por defecto porque hoy
- * hace fallar la generación ENTERA en cualquier modelo: el prompt pide dejar el
- * hueco vacío, el modelo contesta `"dishes": []` y `menuSchema` exige `.min(1)`
- * platos por hueco. Con la regla puesta esto reproduce ese fallo; sin ella
- * compara el camino que funciona.
+ * Regla `skip_slot` activada (`SKIP_RULE=1`). Nació para reproducir un fallo que
+ * encontró esta misma comparación: el prompt pide dejar el hueco vacío, el modelo
+ * contesta `"dishes": []` y `menuSchema` lo rechazaba con `.min(1)`, tirando la
+ * generación ENTERA por un array vacío. Ya no: el mínimo se quitó (ver
+ * `src/lib/ai/menu-schema.ts`), así que con la regla puesta esto ya no mide un
+ * crash, mide el camino del hueco vacío.
+ *
+ * Sigue apagada por defecto para que la medida de referencia sea la de siempre y
+ * dos comparaciones separadas en el tiempo se puedan comparar entre sí.
  */
 export const SKIP_ENABLED = process.env.SKIP_RULE === "1";
 
