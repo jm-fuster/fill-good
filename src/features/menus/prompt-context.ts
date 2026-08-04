@@ -27,6 +27,7 @@
  * habría planificado la semana sin saber que existía: acabaría metida a la
  * fuerza junto a un plato parecido que él sí vio.
  */
+import type { MenuRecentDish } from "@/lib/ai/menu-prompt";
 import { normalizeName } from "@/lib/normalize";
 import {
   buildCatalogIndex,
@@ -34,6 +35,7 @@ import {
   type CatalogEntry,
   type CatalogIndex,
 } from "./missing";
+import { skipRejectedTheDish } from "./skip-reason";
 
 export { buildCatalogIndex };
 export type { CatalogEntry, CatalogIndex };
@@ -241,4 +243,50 @@ export function selectRecipesForPrompt(
     else if (s.candidate.requiredByRule) rescued.push(s.candidate.id);
   }
   return [...chosen, ...rescued];
+}
+
+/** Lo que hace falta de una entrada pasada para decidir si es un plato reciente. */
+export type RecentDishEntry = {
+  recipeName: string | null;
+  freeText: string | null;
+  cookedAt: string | null;
+  skippedAt: string | null;
+  /** Motivo del descarte, si se dijo (ver `skip-reason.ts`). */
+  skippedReason: string | null;
+};
+
+/**
+ * Los platos de las semanas anteriores que el modelo tiene PROHIBIDO repetir,
+ * sin duplicados y en orden de aparición.
+ *
+ * Quién entra y quién no es la única decisión aquí, y no es obvia: lo
+ * DESCARTADO se cae de la lista —no llegó a comerse, así que volver a
+ * proponerlo no es repetir, es recuperarlo— salvo cuando el descarte fue un
+ * rechazo del plato («no nos apetecía»), y entonces se queda para que el
+ * generador no lo ofrezca otra vez la semana siguiente. Esa distinción es todo
+ * lo que hace el motivo del descarte; el porqué de cada rama, en
+ * `skipRejectedTheDish`.
+ *
+ * Las entradas llegan de más antigua a más reciente: con el mismo plato dos
+ * veces se conserva el nombre de la primera y basta que UNA se cocinara para
+ * que cuente como cocinado (el rótulo del prompt distingue «se cocinó» de
+ * «estaba planificado», y lo segundo pesa menos).
+ */
+export function collectRecentDishes(
+  entries: readonly RecentDishEntry[],
+): MenuRecentDish[] {
+  const byName = new Map<string, MenuRecentDish>();
+  for (const entry of entries) {
+    if (entry.skippedAt && !skipRejectedTheDish(entry.skippedReason)) continue;
+    const name = entry.recipeName ?? entry.freeText ?? "";
+    const norm = normalizeName(name);
+    if (!norm) continue;
+    const seen = byName.get(norm);
+    if (seen) {
+      seen.cooked = seen.cooked || entry.cookedAt !== null;
+      continue;
+    }
+    byName.set(norm, { name, cooked: entry.cookedAt !== null });
+  }
+  return [...byName.values()];
 }

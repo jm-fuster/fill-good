@@ -22,6 +22,11 @@ export type MenuEntry = {
    * null, y de eso es de lo que pregunta el repaso.
    */
   skippedAt: string | null;
+  /**
+   * Por qué no se hizo, si se dijo (`skip-reason.ts`). Null es lo normal: el
+   * motivo es un toque opcional después del descarte, no parte de él.
+   */
+  skippedReason: string | null;
   /** Origen de la entrada: 'manual' | 'ai' (N2). Protege lo manual al regenerar. */
   source: string;
   /** El usuario la fija: la regeneración nunca la toca (N2). */
@@ -42,6 +47,7 @@ type EntryRow = {
   free_text: string | null;
   cooked_at: string | null;
   skipped_at: string | null;
+  skipped_reason: string | null;
   source: string;
   pinned: boolean;
   recipe: { name: string; is_saved: boolean; source: string } | null;
@@ -60,6 +66,7 @@ function mapEntryRow(r: EntryRow): MenuEntry {
     freeText: r.free_text,
     cookedAt: r.cooked_at,
     skippedAt: r.skipped_at,
+    skippedReason: r.skipped_reason,
     source: r.source,
     pinned: r.pinned,
   };
@@ -89,7 +96,7 @@ export async function getMenuEntries(menuId: string): Promise<MenuEntry[]> {
   const { data, error } = await supabase
     .from("menu_entries")
     .select(
-      "id, date, meal_slot, position, recipe_id, free_text, cooked_at, skipped_at, source, pinned, recipe:recipes(name, is_saved, source)",
+      "id, date, meal_slot, position, recipe_id, free_text, cooked_at, skipped_at, skipped_reason, source, pinned, recipe:recipes(name, is_saved, source)",
     )
     .eq("household_id", householdId)
     .eq("menu_id", menuId)
@@ -144,7 +151,7 @@ export async function getWeekMenusWithEntries(
   const { data, error } = await supabase
     .from("menu_entries")
     .select(
-      "menu_id, id, date, meal_slot, position, recipe_id, free_text, cooked_at, skipped_at, source, pinned, recipe:recipes(name, is_saved, source)",
+      "menu_id, id, date, meal_slot, position, recipe_id, free_text, cooked_at, skipped_at, skipped_reason, source, pinned, recipe:recipes(name, is_saved, source)",
     )
     .eq("household_id", householdId)
     .in("menu_id", [...weekByMenuId.keys()])

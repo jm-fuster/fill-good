@@ -62,8 +62,10 @@ import type { SlotDef } from "../slots";
 import type { WeekBudgetWarning } from "../week-budget";
 import type { MissingCandidate } from "../missing";
 import { noDeductionsReason, type CookedDeduction } from "../cooked";
+import type { SkipReason } from "../skip-reason";
 import type { TonightCard } from "../tonight";
 import { CookedCheckinModal } from "./cooked-checkin-modal";
+import { SkipReasonChips } from "./skip-reason-chips";
 import {
   CookedDeductionsFields,
   deductionCount,
@@ -97,6 +99,7 @@ import {
   moveMenuEntryAction,
   removeMenuEntryAction,
   rerollMenuEntryAction,
+  setEntrySkippedReasonAction,
   toggleEntryCookedAction,
   toggleEntryPinnedAction,
   toggleEntrySkippedAction,
@@ -168,6 +171,8 @@ type Editing = {
   canSaveToRecipes: boolean;
   cookedAt: string | null;
   skippedAt: string | null;
+  /** Motivo del descarte, para que los chips lleguen con el suyo ya marcado. */
+  skippedReason: string | null;
   pinned: boolean;
 };
 
@@ -254,6 +259,23 @@ export function MenuView({
   // guardando (para el spinner de SU botón, no de todos).
   const [markingId, setMarkingId] = useState<string | null>(null);
   const [, startMarkCooked] = useTransition();
+  /*
+    Descarte de un plato de HOY desde la tira, con la pregunta del motivo detrás.
+    Vive aquí y no en `TodayStrip` por una razón concreta: la tira se dibuja según
+    lo que queda SIN resolver, así que en un hogar que solo planifica cena,
+    descartar el único plato del día la desmonta —y con ella se iría el estado de
+    la pregunta antes de poder contestarla—. Guardando el plato aquí, la tira se
+    queda montada mientras hay algo que preguntar (ver `showTodayStrip`).
+
+    Hace falta guardarlo entero, y no su id: `toggleEntrySkippedAction` revalida
+    `/menus`, y en la ruta revalidada Next devuelve la página ya re-renderizada en
+    la MISMA respuesta de la action (el modelo de una sola vuelta de Next 16). O
+    sea que en cuanto se escribe el descarte, el plato desaparece de `entries` y la
+    fila no se puede reconstruir de ahí.
+  */
+  const [skipAsking, setSkipAsking] = useState<MenuEntry | null>(null);
+  const [skippingId, setSkippingId] = useState<string | null>(null);
+  const [, startSkip] = useTransition();
   // Repaso de platos pasados (R2): se abre desde el chip de la cabecera.
   const [checkinOpen, setCheckinOpen] = useState(false);
   /*
@@ -337,16 +359,33 @@ export function MenuView({
   const todayEntries = isCurrentWeek
     ? slots.flatMap((s) => bySlot.get(`${today}|${s.key}`) ?? [])
     : [];
-  const todayUncooked = todayEntries.filter((e) => !e.cookedAt);
-  // Con todo cocinado no hay nada que la tarjeta del día no diga ya.
+  /*
+    Sin resolver = ni cocinado ni descartado. El descarte cuenta como respuesta
+    desde que la propia tira lo ofrece: si no, el plato al que acabas de decir
+    «no se hizo» seguiría ahí arriba pidiendo que lo contestes.
+  */
+  const todayUnresolved = todayEntries.filter(
+    (e) => !e.cookedAt && !e.skippedAt,
+  );
+  /*
+    Las filas de la tira: lo que queda por resolver más, si lo hay, el plato al
+    que se le está preguntando el motivo (que ya está resuelto y por eso se cayó
+    de la lista). Va al final: son tres filas como mucho, todas de hoy.
+  */
+  const todayRows =
+    skipAsking && !todayUnresolved.some((e) => e.id === skipAsking.id)
+      ? [...todayUnresolved, skipAsking]
+      : todayUnresolved;
+  // Con todo resuelto no hay nada que la tarjeta del día no diga ya. Salvo que
+  // haya una pregunta a medias: desmontar la tira sería tragarse la pregunta.
   const showTodayStrip =
-    isCurrentWeek && (todayUncooked.length > 0 || todayEntries.length === 0);
+    isCurrentWeek && (todayRows.length > 0 || todayEntries.length === 0);
   /*
     Quién aloja «¿Qué hago hoy?»: la tira, cuando hoy está vacío (ahí ES su
     respuesta), y el bloque de generar en cualquier otro caso. Nunca los dos a la
     vez — dos botones que abren el mismo ranking es justo lo que sobraba.
   */
-  const tonightInStrip = showTodayStrip && todayEntries.length === 0;
+  const tonightInStrip = showTodayStrip && todayRows.length === 0;
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [copying, startCopy] = useTransition();
   /*
@@ -461,6 +500,7 @@ export function MenuView({
       canSaveToRecipes: false,
       cookedAt: null,
       skippedAt: null,
+      skippedReason: null,
       pinned: false,
     });
   }
@@ -476,6 +516,7 @@ export function MenuView({
       canSaveToRecipes: Boolean(entry.recipeId && entry.recipeIsSaved === false),
       cookedAt: entry.cookedAt,
       skippedAt: entry.skippedAt,
+      skippedReason: entry.skippedReason,
       pinned: entry.pinned,
     });
   }
@@ -504,6 +545,45 @@ export function MenuView({
         },
       });
       setMarkingId(null);
+    });
+  }
+
+  /**
+   * "No se hizo" a un toque desde la tira de hoy. Al terminar, la fila pregunta
+   * el motivo: es lo único que hace algo con el descarte —decide si el generador
+   * puede volver a proponer el plato la semana que viene— y a los dos segundos
+   * ya nadie se acuerda de qué plato era.
+   *
+   * No refresca: la action ya revalida `/menus`, así que la página vuelve
+   * re-renderizada en la misma respuesta.
+   */
+  function quickSkip(entry: MenuEntry) {
+    vibrateTick();
+    setSkippingId(entry.id);
+    startSkip(async () => {
+      const r = await toggleEntrySkippedAction(entry.id, true);
+      setSkippingId(null);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      toast.success("Anotado: no se hizo");
+      setSkipAsking(entry);
+    });
+  }
+
+  /** Motivo del descarte desde la tira: se guarda y la fila se despide. */
+  function pickSkipReason(entryId: string, reason: SkipReason | null) {
+    setSkippingId(entryId);
+    startSkip(async () => {
+      const r = await setEntrySkippedReasonAction(entryId, reason);
+      setSkippingId(null);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      toast.success("Motivo guardado");
+      setSkipAsking(null);
     });
   }
 
@@ -679,9 +759,16 @@ export function MenuView({
       {showTodayStrip ? (
         <TodayStrip
           today={today}
-          entries={todayUncooked}
+          entries={todayRows}
           onMarkCooked={quickMarkCooked}
           markingId={markingId}
+          skip={{
+            askingFor: skipAsking?.id ?? null,
+            busyId: skippingId,
+            onSkip: quickSkip,
+            onPickReason: pickSkipReason,
+            onClose: () => setSkipAsking(null),
+          }}
           onAskTonight={askTonight}
           askingTonight={askingTonight}
         />
@@ -816,32 +903,53 @@ export function MenuView({
                     {slotEntries.map((entry) => {
                       const text = entry.recipeName ?? entry.freeText ?? "";
                       const cooked = Boolean(entry.cookedAt);
+                      const skipped = Boolean(entry.skippedAt);
                       // Pasado sin resolver: el día ya pasó y nadie ha dicho si
                       // se cocinó. Tratamiento NEUTRO a propósito: `warning`
                       // significa "caduca pronto" en toda la app.
-                      const unresolved = !cooked && entry.date < today;
+                      //
+                      // «No se hizo» también resuelve: sin esa condición, un
+                      // plato descartado seguía enseñando el punto de «sin
+                      // marcar» y pedía una respuesta que ya se había dado.
+                      const unresolved =
+                        !cooked && !skipped && entry.date < today;
                       // Marcar solo tiene sentido en hoy o antes (igual que en
-                      // el drawer); en futuro ni se ofrece.
+                      // el drawer); en futuro ni se ofrece. Un plato descartado
+                      // sí lo sigue ofreciendo: cambiar de opinión —«al final sí
+                      // lo hicimos»— limpia la marca y es un toque.
                       const canQuickMark = !cooked && entry.date <= today;
                       return (
+                        /*
+                          Plato y resolución en UNA sola caja, no en dos hermanas
+                          con borde propio: el botón de al lado se leía como algo
+                          suelto —y en columna estrecha, donde se apila, como una
+                          barra que no pertenecía a nada—. Ahora el borde es del
+                          conjunto y dentro hay dos zonas: el nombre, que abre el
+                          panel, y la de la derecha, que resuelve.
+
+                          La zona de resolver baja al borde INFERIOR cuando la
+                          columna del hueco es estrecha (3 huecos en móvil, 3 días
+                          por fila en xl…): con 44px a la derecha de una columna
+                          de ~110px el nombre se quedaba en «Lente…». Sigue dentro
+                          de la caja, así que apilarse ya no parte el plato en
+                          dos. Solo CSS (contenedor de consulta), un único árbol.
+
+                          Entre las dos formas no cambia el ANCHO del borde del
+                          botón, solo su color: la base de Button ya trae
+                          `border` transparente en los cuatro lados, así que
+                          pintar uno u otro lado no mueve nada de sitio.
+                        */
                         <div
                           key={entry.id}
-                          className="flex flex-col gap-1 @min-[9rem]:flex-row print:block"
+                          className="flex flex-col rounded-lg border @min-[9rem]:flex-row print:block print:border-0"
                         >
                           <button
                             type="button"
                             onClick={() => openEdit(date, slot, entry)}
-                            className="flex min-h-11 flex-1 items-start gap-1.5 rounded-lg border p-2 text-left text-sm transition-colors hover:bg-muted print:min-h-0 print:border-0 print:p-0 print:text-[10pt]"
+                            className="flex min-h-11 min-w-0 flex-1 items-start gap-1.5 rounded-t-lg p-2 text-left text-sm transition-colors hover:bg-muted @min-[9rem]:rounded-t-none @min-[9rem]:rounded-l-lg print:min-h-0 print:p-0 print:text-[10pt]"
                           >
-                            {/* Cocinado, pendiente y fijado son estado de la app,
-                                no del menú que cuelgas en la nevera: no se
-                                imprimen. */}
-                            {cooked ? (
-                              <Check
-                                className="mt-0.5 size-3.5 shrink-0 text-success print:hidden"
-                                aria-label="Cocinado"
-                              />
-                            ) : null}
+                            {/* Pendiente y fijado son estado de la app, no del
+                                menú que cuelgas en la nevera: no se imprimen. */}
                             {unresolved ? (
                               <span className="mt-1.5 flex shrink-0 print:hidden">
                                 <span
@@ -857,12 +965,13 @@ export function MenuView({
                                 aria-label="Fijado"
                               />
                             ) : null}
-                            {/* Cocinado se atenúa, no se tacha: un plato tachado
+                            {/* Resuelto se atenúa, no se tacha: un plato tachado
                                 se lee como "eliminado". */}
                             <span
                               className={cn(
                                 "line-clamp-2 print:line-clamp-none",
-                                cooked && "text-muted-foreground print:text-inherit",
+                                (cooked || skipped) &&
+                                  "text-muted-foreground print:text-inherit",
                               )}
                             >
                               {text}
@@ -870,15 +979,42 @@ export function MenuView({
                           </button>
                           {canQuickMark ? (
                             <Button
-                              variant="outline"
+                              variant="ghost"
                               size="icon"
                               aria-label={`Marcar como cocinado: ${text}`}
                               loading={markingId === entry.id}
                               onClick={() => quickMarkCooked(entry)}
-                              className="h-auto min-h-11 w-full self-stretch text-muted-foreground @min-[9rem]:w-11 print:hidden"
+                              className="h-auto min-h-11 w-full self-stretch rounded-t-none rounded-b-lg border-t-border text-muted-foreground @min-[9rem]:w-11 @min-[9rem]:rounded-l-none @min-[9rem]:rounded-r-lg @min-[9rem]:border-t-transparent @min-[9rem]:border-l-border print:hidden"
                             >
                               <CircleCheck aria-hidden className="size-5" />
                             </Button>
+                          ) : cooked || skipped ? (
+                            /*
+                              Ya resuelto: el mismo sitio pasa a decir CÓMO, así
+                              que marcar un plato no mueve el nombre ni cambia la
+                              forma de la caja —antes el ✓ aparecía a la izquierda
+                              del nombre y el botón desaparecía por la derecha—.
+                              Aquí no se apila: un estado no necesita 44px, y una
+                              franja de 44px al pie de una celda estrecha solo
+                              para un ✓ sería más hueco que dato.
+
+                              Iconos sin círculo, al contrario que los de las
+                              acciones (`CircleCheck`, `CircleX`): en esta pantalla
+                              lo redondeado se pulsa y lo desnudo se lee.
+                            */
+                            <span className="flex w-full shrink-0 items-center justify-center py-1 @min-[9rem]:w-7 @min-[9rem]:py-0 print:hidden">
+                              {cooked ? (
+                                <Check
+                                  className="size-4 text-success"
+                                  aria-label="Cocinado"
+                                />
+                              ) : (
+                                <CalendarOff
+                                  className="size-4 text-muted-foreground"
+                                  aria-label="No se hizo"
+                                />
+                              )}
+                            </span>
                           ) : null}
                         </div>
                       );
@@ -1029,16 +1165,37 @@ export function MenuView({
         }}
         onCookedChange={(cookedAt) => {
           // Refresca los datos sin cerrar el drawer y refleja el nuevo estado.
-          // Cocinar limpia "no se hizo" en la BD: reflejarlo también aquí.
+          // Cocinar limpia "no se hizo" en la BD —y con él su motivo, que sin
+          // marca no puede existir—: reflejarlo también aquí.
           setEditing((prev) =>
-            prev ? { ...prev, cookedAt, skippedAt: cookedAt ? null : prev.skippedAt } : prev,
+            prev
+              ? {
+                  ...prev,
+                  cookedAt,
+                  skippedAt: cookedAt ? null : prev.skippedAt,
+                  skippedReason: cookedAt ? null : prev.skippedReason,
+                }
+              : prev,
           );
           router.refresh();
         }}
         onSkippedChange={(skippedAt) => {
           setEditing((prev) =>
-            prev ? { ...prev, skippedAt, cookedAt: skippedAt ? null : prev.cookedAt } : prev,
+            prev
+              ? {
+                  ...prev,
+                  skippedAt,
+                  cookedAt: skippedAt ? null : prev.cookedAt,
+                  // Deshacer el descarte se lleva el motivo por delante; volver
+                  // a marcarlo empieza otra vez sin motivo, no con el de antes.
+                  skippedReason: null,
+                }
+              : prev,
           );
+          router.refresh();
+        }}
+        onSkippedReasonChange={(skippedReason) => {
+          setEditing((prev) => (prev ? { ...prev, skippedReason } : prev));
           router.refresh();
         }}
         onProposeDeductions={(recipeName, items) => {
@@ -1099,6 +1256,7 @@ function EditEntryDrawer({
   onSaved,
   onCookedChange,
   onSkippedChange,
+  onSkippedReasonChange,
   onProposeDeductions,
 }: {
   editing: Editing | null;
@@ -1109,6 +1267,7 @@ function EditEntryDrawer({
   onSaved: () => void;
   onCookedChange: (cookedAt: string | null) => void;
   onSkippedChange: (skippedAt: string | null) => void;
+  onSkippedReasonChange: (reason: string | null) => void;
   onProposeDeductions: (recipeName: string, items: CookedDeduction[]) => void;
 }) {
   const [value, setValue] = useState("");
@@ -1170,6 +1329,7 @@ function EditEntryDrawer({
   const [savingRecipe, startSaveRecipe] = useTransition();
   const [cooking, startCooking] = useTransition();
   const [skipping, startSkipping] = useTransition();
+  const [savingReason, startReason] = useTransition();
   const [picking, startPicking] = useTransition();
   const [pinningPending, startPinning] = useTransition();
   const [rerolling, startReroll] = useTransition();
@@ -1183,10 +1343,20 @@ function EditEntryDrawer({
   const pinned = Boolean(editing?.pinned);
   // "Lo cocinamos" solo tiene sentido en entradas ya guardadas y de hoy/pasado.
   const canMarkCooked = Boolean(editing?.entryId && editing.date <= todayLocalISO());
-  // "No se hizo" solo en días YA pasados (por el de hoy no se pregunta todavía)
-  // y sin cocinar: las dos marcas son excluyentes.
+  /*
+    "No se hizo" en hoy o antes, y sin cocinar (las dos marcas son excluyentes).
+
+    Hoy CUENTA, aunque el repaso automático no pregunte por hoy hasta mañana: son
+    dos cosas distintas y confundirlas dejaba el día de hoy sin salida. Que la app
+    no dé por perdida la cena a las once de la mañana es prudencia de la app; que
+    tú puedas decir «hoy comemos fuera» es información que ya tienes, y hasta
+    ahora había que esperar a que el día pasara para poder darla. La tira de hoy
+    ofrece lo mismo con el mismo criterio, así que este veto tenía que aflojarse
+    a la vez: una regla en una pantalla y no en la otra es el patrón que ya ha
+    roto los datos de este repo cuatro veces.
+  */
   const canMarkSkipped = Boolean(
-    editing?.entryId && editing.date < todayLocalISO() && !cooked,
+    editing?.entryId && editing.date <= todayLocalISO() && !cooked,
   );
   /*
     «Otra idea» solo mientras el plato siga siendo un PLAN. Resuelto —cocinado o
@@ -1376,6 +1546,25 @@ function EditEntryDrawer({
       }
       toast.success(next ? "Anotado: no se hizo" : "Vuelve a estar pendiente");
       onSkippedChange(next ? date : null);
+    });
+  }
+
+  /**
+   * Motivo del descarte: aparece en cuanto el plato está marcado y se puede
+   * cambiar o quitar (el chip ya elegido es un interruptor). No confirma con
+   * toast, al contrario que en la tira: aquí los chips se quedan a la vista con
+   * el elegido pulsado, así que el propio grupo ya dice lo que ha pasado.
+   */
+  function pickSkipReason(reason: SkipReason | null) {
+    if (!editing?.entryId) return;
+    const entryId = editing.entryId;
+    startReason(async () => {
+      const r = await setEntrySkippedReasonAction(entryId, reason);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      onSkippedReasonChange(reason);
     });
   }
 
@@ -1714,6 +1903,22 @@ function EditEntryDrawer({
                 onClick={askRemove}
                 disabled={pending}
                 destructive
+              />
+            </div>
+          ) : null}
+
+          {/*
+            El motivo solo existe si el plato está descartado, y aparece DESPUÉS
+            —nunca como un campo del formulario—: preguntar por qué no se hizo
+            algo que sigue en pie no significa nada. Al deshacer la marca el
+            grupo desaparece con ella.
+          */}
+          {skipped ? (
+            <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+              <SkipReasonChips
+                value={editing?.skippedReason ?? null}
+                busy={savingReason}
+                onPick={pickSkipReason}
               />
             </div>
           ) : null}

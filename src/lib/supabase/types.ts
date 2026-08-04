@@ -839,6 +839,12 @@ export type Database = {
           position: number;
           cooked_at: string | null;
           skipped_at: string | null;
+          /**
+           * Por qué no se hizo: 'ate_out' | 'takeaway' | 'not_appealing' |
+           * 'missing_ingredients', o null si no se dijo. Solo puede tener valor
+           * con `skipped_at` puesto (lo garantiza un check en la base).
+           */
+          skipped_reason: string | null;
           source: string;
           pinned: boolean;
         };
@@ -854,6 +860,7 @@ export type Database = {
           position?: number;
           cooked_at?: string | null;
           skipped_at?: string | null;
+          skipped_reason?: string | null;
           source?: string;
           pinned?: boolean;
         };
@@ -869,6 +876,7 @@ export type Database = {
           position?: number;
           cooked_at?: string | null;
           skipped_at?: string | null;
+          skipped_reason?: string | null;
           source?: string;
           pinned?: boolean;
         };

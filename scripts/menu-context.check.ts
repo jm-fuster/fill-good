@@ -53,12 +53,14 @@
  */
 import {
   buildCatalogIndex,
+  collectRecentDishes,
   promptRecipeScore,
   recipeFitsActiveSlots,
   selectRecipesForPrompt,
   summarizeAvailability,
   type AvailabilityIngredient,
   type PromptRecipeCandidate,
+  type RecentDishEntry,
   type RecipeAvailability,
 } from "@/features/menus/prompt-context";
 import {
@@ -1020,6 +1022,133 @@ check("ni uno negativo", weeklyBudgetTarget(-50) === null);
   check(
     "sin ningún plato con precio no hay nada que comparar",
     assessWeekBudget(null, 400) === null,
+  );
+}
+
+seccion("Platos recientes: qué descarte se recupera y cuál no");
+
+{
+  /** Una entrada de una semana pasada, con el estado en el que quedó. */
+  const entrada = (
+    name: string,
+    estado: {
+      cooked?: boolean;
+      skipped?: boolean;
+      reason?: string | null;
+    } = {},
+  ): RecentDishEntry => ({
+    recipeName: name,
+    freeText: null,
+    cookedAt: estado.cooked ? "2026-07-27" : null,
+    skippedAt: estado.skipped ? "2026-07-27" : null,
+    skippedReason: estado.reason ?? null,
+  });
+  const nombres = (entries: RecentDishEntry[]) =>
+    collectRecentDishes(entries).map((d) => d.name);
+
+  check(
+    "lo cocinado entra, y marcado como cocinado",
+    JSON.stringify(collectRecentDishes([entrada("Lentejas", { cooked: true })])) ===
+      JSON.stringify([{ name: "Lentejas", cooked: true }]),
+  );
+  check(
+    "lo planificado y sin resolver entra, pero sin cocinar",
+    JSON.stringify(collectRecentDishes([entrada("Lentejas")])) ===
+      JSON.stringify([{ name: "Lentejas", cooked: false }]),
+  );
+
+  /*
+    El reparto que da sentido al motivo. Las tres primeras son imprevistos del
+    DÍA: el plato no llegó a la mesa por algo ajeno a él, así que se cae de la
+    lista y el generador lo puede recuperar la semana siguiente —que es lo que
+    la app hacía con TODOS los descartes antes de que existiera el motivo—.
+  */
+  check(
+    "descartado por comer fuera: se recupera",
+    nombres([entrada("Lentejas", { skipped: true, reason: "ate_out" })])
+      .length === 0,
+  );
+  check(
+    "descartado por pedir algo: se recupera",
+    nombres([entrada("Lentejas", { skipped: true, reason: "takeaway" })])
+      .length === 0,
+  );
+  check(
+    "descartado por faltar ingredientes: se recupera",
+    nombres([
+      entrada("Lentejas", { skipped: true, reason: "missing_ingredients" }),
+    ]).length === 0,
+  );
+
+  /*
+    Y la única que cambia de bando: «no nos apetecía» es un rechazo DEL PLATO,
+    no del día. Si se cayera de la lista como los demás, el generador tendría vía
+    libre para volver a ofrecer siete días después justo lo que el hogar acaba de
+    rechazar. Este es el caso que justifica la columna entera: sin él, el motivo
+    es un dato que nadie lee y la rama se borraría en cualquier limpieza sin que
+    los tipos ni el resto de los checks se enteraran.
+  */
+  check(
+    "descartado por no apetecer: NO se recupera, se queda como reciente",
+    JSON.stringify(
+      collectRecentDishes([
+        entrada("Lentejas", { skipped: true, reason: "not_appealing" }),
+      ]),
+    ) === JSON.stringify([{ name: "Lentejas", cooked: false }]),
+  );
+
+  /*
+    Descartar sin contestar el motivo conserva el comportamiento anterior a la
+    columna: se recupera. Equivocarse hacia el rechazo sería peor —esconder un
+    plato del recetario sin que nadie lo haya pedido—, y un silencio es más veces
+    «cambió el día» que «no nos gusta».
+  */
+  check(
+    "descartado sin motivo: se recupera (como antes de que hubiera motivos)",
+    nombres([entrada("Lentejas", { skipped: true })]).length === 0,
+  );
+  check(
+    "un motivo que la app no conoce no cuenta como rechazo",
+    nombres([entrada("Lentejas", { skipped: true, reason: "vino_mi_suegra" })])
+      .length === 0,
+  );
+
+  check(
+    "el mismo plato dos veces sale una sola vez",
+    JSON.stringify(nombres([entrada("Lentejas"), entrada("Lentejas")])) ===
+      JSON.stringify(["Lentejas"]),
+  );
+  check(
+    "basta que UNA vez se cocinara para que cuente como cocinado",
+    collectRecentDishes([
+      entrada("Lentejas"),
+      entrada("Lentejas", { cooked: true }),
+    ])[0]?.cooked === true,
+  );
+  check(
+    "acentos y mayúsculas no crean un plato nuevo, y manda el nombre del primero",
+    JSON.stringify(nombres([entrada("Puré de verduras"), entrada("PURE DE VERDURAS")])) ===
+      JSON.stringify(["Puré de verduras"]),
+  );
+  check(
+    "una entrada sin nombre no llega al prompt",
+    nombres([
+      { recipeName: null, freeText: null, cookedAt: null, skippedAt: null, skippedReason: null },
+    ]).length === 0,
+  );
+  check(
+    "el texto libre vale como nombre",
+    JSON.stringify(
+      nombres([
+        {
+          recipeName: null,
+          freeText: "Sobras del domingo",
+          cookedAt: null,
+          skippedAt: null,
+          skippedReason: null,
+        },
+      ]),
+    ) === JSON.stringify(["Sobras del domingo"]),
   );
 }
 

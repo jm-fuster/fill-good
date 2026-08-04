@@ -39,11 +39,13 @@ import {
   confirmCookedDeductionsAction,
   moveMenuEntryAction,
   removeMenuEntryAction,
+  setEntrySkippedReasonAction,
   toggleEntryCookedAction,
   toggleEntrySkippedAction,
 } from "../actions";
 import { noDeductionsReason, type CookedDeduction } from "../cooked";
 import type { PendingCheckinEntry } from "../queries";
+import type { SkipReason } from "../skip-reason";
 import { slotLabel, type SlotDef } from "../slots";
 import {
   CookedDeductionsFields,
@@ -58,6 +60,7 @@ import {
   restockToastMessage,
 } from "./cooked-restock-fields";
 import { EntryActionTile } from "./entry-action-tile";
+import { SkipReasonChips } from "./skip-reason-chips";
 import { SlotPickerGrid } from "./slot-picker-grid";
 
 /** Etiqueta del día de un pendiente: "Ayer" o el día de la semana. */
@@ -69,14 +72,21 @@ function dayLabel(date: string): string {
 
 type Busy = {
   id: string;
-  kind: "cook" | "skip" | "remove" | "move" | "deduct" | "restock";
+  kind: "cook" | "skip" | "reason" | "remove" | "move" | "deduct" | "restock";
 };
 
 /**
  * Repaso de platos (R2): la pregunta batch por los platos pasados de los que no
  * se sabe si se cocinaron. Cada fila se despacha con "Lo cocinamos" (que encadena
  * el descuento de inventario que ya existía) o con "No", que abre tres salidas:
- * anotar que no se hizo, moverlo a otro día o quitarlo del menú.
+ * anotar que no se hizo —y entonces la fila pregunta por qué—, moverlo a otro día
+ * o quitarlo del menú.
+ *
+ * Las dos respuestas largas encadenan un paso más en la MISMA fila en vez de
+ * retirarla: cocinar propone descontar del inventario y descartar pregunta el
+ * motivo. Los dos pasos son opcionales y los dos se saltan con «Ahora no»; lo que
+ * no se puede es perder de vista el plato del que se está hablando, que con
+ * cuatro filas más abajo es exactamente lo que pasaba.
  *
  * AUTOCONTENIDO a propósito: recibe los pendientes ya cargados y no depende del
  * estado de `MenuView`, porque la tarjeta del shell (R3) monta el mismo modal
@@ -112,6 +122,8 @@ export function CookedCheckinModal({
   const [resolved, setResolved] = useState<Set<string>>(new Set());
   // Fila con las tres salidas de "No" desplegadas.
   const [noFor, setNoFor] = useState<string | null>(null);
+  // Fila ya descartada a la que se le está preguntando el motivo (su id).
+  const [why, setWhy] = useState<string | null>(null);
   // Fila con la revisión del descuento desplegada (ya marcada como cocinada).
   const [deduct, setDeduct] = useState<{
     entryId: string;
@@ -126,6 +138,12 @@ export function CookedCheckinModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   // Vista de "Mover a…" (sustituye a la lista): entrada que se está moviendo.
   const [moving, setMoving] = useState<PendingCheckinEntry | null>(null);
+  /**
+   * Fila a medio despachar: ya escrita en la base pero con un paso más que
+   * preguntar (el descuento o el motivo). Se guarda entera porque el servidor
+   * deja de mandarla en cuanto se escribe — ver `remaining`.
+   */
+  const [held, setHeld] = useState<PendingCheckinEntry | null>(null);
   const [busy, setBusy] = useState<Busy | null>(null);
   const [, startAction] = useTransition();
   /*
@@ -137,7 +155,23 @@ export function CookedCheckinModal({
   */
   const [dirty, setDirty] = useState(false);
 
-  const remaining = entries.filter((e) => !resolved.has(e.id));
+  const pending = entries.filter((e) => !resolved.has(e.id));
+  /*
+    Una fila a medio despachar se conserva aunque el servidor ya no la mande.
+
+    Hace falta porque las dos respuestas escriben ANTES de terminar de preguntar
+    —cocinar deja el plato marcado y luego propone el descuento; descartar lo
+    marca y luego pregunta el motivo— y las dos actions revalidan `/menus`. En esa
+    ruta Next devuelve la página ya re-renderizada en la misma respuesta de la
+    action, así que el plato sale de los pendientes del servidor y la fila se
+    esfumaba con la pregunta a medias. Desde otra página no pasaba (revalidar
+    `/menus` no re-renderiza `/lista`), que es por dónde entra casi todo el mundo
+    a este repaso: de ahí que solo se viera en el menú.
+  */
+  const remaining =
+    held && !pending.some((e) => e.id === held.id)
+      ? [...pending, held]
+      : pending;
   const isBusy = (id: string, kind: Busy["kind"]) =>
     busy?.id === id && busy.kind === kind;
 
@@ -150,9 +184,11 @@ export function CookedCheckinModal({
   function resolve(id: string) {
     setResolved((prev) => new Set(prev).add(id));
     setNoFor(null);
+    setWhy(null);
     setDeduct(null);
     setRestock(null);
     setMoving(null);
+    setHeld(null);
     setBusy(null);
     setDirty(false);
     onResolved?.();
@@ -171,6 +207,9 @@ export function CookedCheckinModal({
       }
       toast.success("Marcado como cocinado");
       setDirty(true);
+      // La fila ya está escrita: conservarla es lo que la mantiene a la vista si
+      // el servidor deja de mandarla (ver `held`).
+      setHeld(entry);
       // Texto libre: no hay inventario que tocar.
       if (!entry.recipeId) {
         resolve(entry.id);
@@ -247,19 +286,42 @@ export function CookedCheckinModal({
     });
   }
 
-  /** "No se hizo": deja huella para no volver a preguntar. */
+  /**
+   * "No se hizo": deja huella para no volver a preguntar. La fila NO se retira
+   * todavía —se convierte en la pregunta del motivo, igual que "lo cocinamos" la
+   * convierte en la revisión del descuento—, porque el motivo es lo único que
+   * hace algo con el descarte y a los dos segundos de contestar ya nadie se
+   * acuerda de qué plato era.
+   */
   function skip(entry: PendingCheckinEntry) {
     vibrateTick();
     setBusy({ id: entry.id, kind: "skip" });
     startAction(async () => {
       const r = await toggleEntrySkippedAction(entry.id, true);
+      setBusy(null);
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      toast.success("Anotado: no se hizo");
+      setDirty(true);
+      setHeld(entry);
+      setNoFor(null);
+      setWhy(entry.id);
+    });
+  }
+
+  /** Guarda el motivo del descarte y despacha la fila. */
+  function pickReason(entryId: string, reason: SkipReason | null) {
+    setBusy({ id: entryId, kind: "reason" });
+    startAction(async () => {
+      const r = await setEntrySkippedReasonAction(entryId, reason);
       if (r.error) {
         setBusy(null);
         toast.error(r.error);
         return;
       }
-      toast.success("Anotado: no se hizo");
-      resolve(entry.id);
+      resolve(entryId);
     });
   }
 
@@ -308,6 +370,18 @@ export function CookedCheckinModal({
         if (!o && dirty) {
           setDirty(false);
           onResolved?.();
+        }
+        if (!o) {
+          /*
+            Cerrar abandona la pregunta a medias. Sin esto, `held` mantendría viva
+            la fila y al volver a abrir el repaso reaparecería preguntando por un
+            plato ya contestado —que además ya no cuenta en el «N por repasar»—.
+          */
+          setHeld(null);
+          setWhy(null);
+          setDeduct(null);
+          setRestock(null);
+          setNoFor(null);
         }
         onOpenChange(o);
       }}
@@ -380,6 +454,8 @@ export function CookedCheckinModal({
                     // Paso siguiente: apuntar lo que quedó a cero al descontar.
                     const restocking =
                       restock?.entryId === e.id ? restock : null;
+                    // Ya descartada, preguntando por qué (el «no» de esta fila).
+                    const asking = why === e.id;
                     return (
                       <li
                         key={e.id}
@@ -392,7 +468,26 @@ export function CookedCheckinModal({
                           <p className="font-medium break-words">{e.name}</p>
                         </div>
 
-                        {restocking ? (
+                        {asking ? (
+                          <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                            {/* Pregunta de un solo disparo: al contestar, la fila
+                                se despide, así que no hay motivo que reflejar
+                                pulsado (eso es cosa del panel del plato). */}
+                            <SkipReasonChips
+                              value={null}
+                              busy={isBusy(e.id, "reason")}
+                              onPick={(reason) => pickReason(e.id, reason)}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              onClick={() => resolve(e.id)}
+                              disabled={isBusy(e.id, "reason")}
+                            >
+                              Ahora no
+                            </Button>
+                          </div>
+                        ) : restocking ? (
                           <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-top-1 duration-200">
                             <p className="text-xs text-muted-foreground">
                               Se te ha terminado esto. Desmarca lo que no

@@ -1450,10 +1450,17 @@ async function handleCocinado(
   if (plato.cookedAt) return speak(SPEECH.cookedAlready(plato.name));
 
   // Marcar cocinado va primero y sin preguntar: es reversible desde la app y no
-  // toca existencias. `skipped_at` se limpia porque las dos marcas se excluyen.
+  // toca existencias. `skipped_at` se limpia porque las dos marcas se excluyen,
+  // y con él su motivo: la base no admite un motivo sin descarte, así que sin
+  // esta línea decir «ya lo cociné» por voz fallaría —contestando el error
+  // genérico— justo en los platos que alguien había descartado con motivo.
   const { error } = await admin
     .from("menu_entries")
-    .update({ cooked_at: todayLocalISO(), skipped_at: null })
+    .update({
+      cooked_at: todayLocalISO(),
+      skipped_at: null,
+      skipped_reason: null,
+    })
     .eq("household_id", link.householdId)
     .eq("id", plato.entryId);
   if (error) return speak(SPEECH.error);

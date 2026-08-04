@@ -66,11 +66,13 @@ import {
 import { activeSlots, slotLabel } from "./slots";
 import {
   buildCatalogIndex,
+  collectRecentDishes,
   recipeFitsActiveSlots,
   selectRecipesForPrompt,
   summarizeAvailability,
   type RecipeAvailability,
 } from "./prompt-context";
+import { isSkipReason } from "./skip-reason";
 import { weeklyBudgetTarget } from "./week-budget";
 import {
   computeMissingIngredients,
@@ -420,23 +422,14 @@ async function loadHouseholdMenuContext(
     return [];
   });
 
-  // Platos recientes sin repetidos. Lo marcado como "no se hizo" (R2) se cae: no
-  // llegó a comerse, así que volver a proponerlo no es repetir, es recuperarlo.
-  const recentByName = new Map<string, MenuRecentDish>();
-  for (const week of previousWeekStarts) {
-    for (const entry of previousWeeks.get(week)?.entries ?? []) {
-      if (entry.skippedAt) continue;
-      const name = entry.recipeName ?? entry.freeText ?? "";
-      const norm = normalizeName(name);
-      if (!norm) continue;
-      const seen = recentByName.get(norm);
-      if (seen) {
-        seen.cooked = seen.cooked || entry.cookedAt !== null;
-        continue;
-      }
-      recentByName.set(norm, { name, cooked: entry.cookedAt !== null });
-    }
-  }
+  // Platos recientes sin repetidos, de la semana más antigua a la más reciente.
+  // Quién se cae de la lista (lo descartado, salvo lo rechazado por no apetecer)
+  // lo decide `collectRecentDishes`, que es puro y lo fija `npm run check:menu`.
+  const recentDishes = collectRecentDishes(
+    previousWeekStarts.flatMap(
+      (week) => previousWeeks.get(week)?.entries ?? [],
+    ),
+  );
 
   return {
     season,
@@ -444,7 +437,7 @@ async function loadHouseholdMenuContext(
     recipes: recipeLines,
     rules: ruleLines,
     shoppingList: listContents.labels,
-    recentDishes: [...recentByName.values()],
+    recentDishes,
     weeklyBudget: weeklyBudgetTarget(household?.monthlyBudget ?? null),
     prefs,
     activeRules,
@@ -1579,7 +1572,10 @@ export async function addRecipeToSlotAction(
  * pasadas: la UI oculta el botón en fechas futuras, pero aquí se valida igual.
  *
  * Marcar cocinado limpia `skipped_at`: las dos marcas son excluyentes (R2), así
- * que contestar "sí, lo hicimos" borra un "no se hizo" anterior.
+ * que contestar "sí, lo hicimos" borra un "no se hizo" anterior. Y con la marca
+ * se va su MOTIVO, porque un motivo sin descarte no significa nada: la base lo
+ * exige con un check, así que olvidarlo aquí no dejaría un dato raro, haría
+ * fallar el "sí, lo cocinamos".
  */
 export async function toggleEntryCookedAction(
   entryId: string,
@@ -1615,7 +1611,7 @@ export async function toggleEntryCookedAction(
 
   const { error } = await supabase
     .from("menu_entries")
-    .update({ cooked_at: entry.date, skipped_at: null })
+    .update({ cooked_at: entry.date, skipped_at: null, skipped_reason: null })
     .eq("household_id", household.id)
     .eq("id", entryId);
   if (error) return { error: "No se pudo actualizar la entrada." };
@@ -1629,10 +1625,13 @@ export async function toggleEntryCookedAction(
  * `skipped_at` guarda la fecha de la ENTRADA (mismo criterio que `cooked_at`) y
  * al marcarlo se limpia `cooked_at`, porque las dos marcas son excluyentes.
  *
- * Sirve para no volver a preguntar por un plato que no se cocinó, y de paso
- * crea una señal nueva ("planificado y nunca cocinado") que hoy no existe. Esa
- * señal NO se usa todavía en el generador ni en "¿Qué hago hoy?": primero
- * acumular dato real.
+ * Sirve para no volver a preguntar por un plato que no se cocinó. El MOTIVO se
+ * pregunta después, en un segundo gesto opcional (`setEntrySkippedReasonAction`),
+ * y es lo único que hace algo con esta señal: sin motivo, el descarte solo evita
+ * la pregunta.
+ *
+ * Al desmarcar se limpia el motivo con la marca: un motivo sin descarte lo
+ * rechaza la base (y no significaría nada).
  */
 export async function toggleEntrySkippedAction(
   entryId: string,
@@ -1645,7 +1644,7 @@ export async function toggleEntrySkippedAction(
   if (!skipped) {
     const { error } = await supabase
       .from("menu_entries")
-      .update({ skipped_at: null })
+      .update({ skipped_at: null, skipped_reason: null })
       .eq("household_id", household.id)
       .eq("id", entryId);
     if (error) return { error: "No se pudo actualizar la entrada." };
@@ -1671,6 +1670,45 @@ export async function toggleEntrySkippedAction(
     .eq("household_id", household.id)
     .eq("id", entryId);
   if (error) return { error: "No se pudo actualizar la entrada." };
+
+  revalidatePath("/menus");
+  return { ok: true };
+}
+
+/**
+ * Guarda (o quita) el motivo de un plato ya descartado: los cuatro chips que
+ * aparecen justo después de decir «no se hizo». `null` lo borra, así que el chip
+ * ya elegido funciona como interruptor y se puede corregir.
+ *
+ * La entrada tiene que estar DESCARTADA, y el filtro lo dice: sin él, poner un
+ * motivo a un plato sin marca lo rechazaría el check de la base con un error
+ * genérico, y con él —pero sin contar filas— la app diría «guardado» sobre una
+ * escritura que no tocó nada, porque un `update` que no encuentra fila no es un
+ * error para Supabase. De ahí el `.select("id")`: es la única forma de saber si
+ * hubo fila.
+ */
+export async function setEntrySkippedReasonAction(
+  entryId: string,
+  reason: string | null,
+): Promise<MenuState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  if (reason !== null && !isSkipReason(reason)) {
+    return { error: "Ese motivo no existe." };
+  }
+
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("menu_entries")
+    .update({ skipped_reason: reason })
+    .eq("household_id", household.id)
+    .eq("id", entryId)
+    .not("skipped_at", "is", null)
+    .select("id");
+  if (error) return { error: "No se pudo guardar el motivo." };
+  if (!data || data.length === 0) {
+    return { error: "Ese plato ya no está marcado como «no se hizo»." };
+  }
 
   revalidatePath("/menus");
   return { ok: true };
