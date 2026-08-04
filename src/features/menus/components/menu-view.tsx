@@ -535,6 +535,26 @@ export function MenuView({
           {copying ? "Copiando…" : "Copiar la semana anterior"}
         </Button>
       ) : null}
+      {/*
+        Sin recetas guardadas, el recetario hay que nombrarlo: se entra por un
+        icono del header, y un icono no dice que ahí dentro espera un pack de
+        recetas listas para empezar (antes esa palabra la ponía la pestaña
+        «Recetario»). El aviso se extingue solo —con una receta guardada
+        desaparece— así que no es una línea permanente, es el arranque; misma
+        pauta que el empujón al escáner en el inventario vacío.
+      */}
+      {recipes.length === 0 && !isPastWeek ? (
+        <p className="text-center text-xs text-muted-foreground text-pretty">
+          Aún no tienes recetas guardadas.{" "}
+          <Link
+            href="/recetas"
+            className="font-medium text-foreground underline underline-offset-2"
+          >
+            Añádelas al recetario
+          </Link>{" "}
+          y la IA planificará con ellas.
+        </p>
+      ) : null}
       {tonightInStrip ? null : (
         <Button
           variant="link"

@@ -716,6 +716,21 @@ entre sí. D1 y D2 son las de mayor impacto; D6 y D7 son microcopys de una tarde
 > dentro de la sección). `npx tsc --noEmit` y `npx eslint .` limpios. Verificación interactiva del
 > preview limitada por el login de Clerk (headless), como el resto del bloque D.
 
+> **Revisión (ago-2026): el conmutador se retira; el recetario pasa a un icono del header.**
+> `MenuSectionTabs` queda borrado. El conmutador presentaba como hermanas de igual peso dos cosas que
+> no se usan igual —la semana se mira a diario, el recetario se visita de tanto en tanto para añadir o
+> retocar recetas—, y cobraba por ello una fila permanente sobre el pliegue en las DOS páginas. Ahora
+> `/menus` lleva en el header un botón icono `BookOpen` ("Mis recetas") junto al `⋯` de compartir, y
+> `/recetas` recupera la vuelta explícita (`backHref="/menus"`), que es la misma jerarquía que
+> inventario → historial de movimientos. Lo que hacía descubrible la palabra "Recetario" lo asume, solo
+> mientras hace falta, un aviso en `MenuView` que aparece únicamente con **cero** recetas guardadas
+> ("Añádelas al recetario y la IA planificará con ellas") y se extingue al guardar la primera.
+> `matchPrefixes: ["/recetas"]` se queda como estaba: es lo que sostiene el modelo mental sin pestañas.
+> Medido con los componentes reales montados en `/offline` (viewport 375×812): el alto por encima del
+> contenido baja de **142px a 72px** en `/menus` y de **138px a 112px** en `/recetas` (aquí la vuelta se
+> come parte del ahorro, y se acepta a cambio de la coherencia con el historial). Los dos botones del
+> header miden 44×44 y quedan a 205px del título, sin desborde horizontal.
+
 **Criterios de aceptación**
 - Desde la pestaña Menús se llega al recetario en un toque y se vuelve igual de rápido.
 - La pestaña Menús de la bottom nav aparece activa navegando por `/recetas`, `/recetas/nueva` y `/recetas/[id]`.

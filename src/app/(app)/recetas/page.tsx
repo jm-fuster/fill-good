@@ -7,7 +7,6 @@ import { EmptyState } from "@/components/layout/empty-state";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { Fab, fabButtonClass } from "@/components/layout/fab";
-import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
 import { RecipesList } from "@/features/recipes/components/recipes-list";
 import { ExploreRecipes } from "@/features/recipes/components/explore-recipes";
 import {
@@ -39,8 +38,16 @@ export default async function RecetasPage() {
 
   return (
     <PageContainer>
+      {/*
+        El recetario cuelga de Menús (la bottom nav mantiene esa pestaña activa
+        aquí, vía `matchPrefixes`), así que la vuelta va explícita como en el
+        historial del inventario. Antes esa jerarquía la dibujaba un conmutador
+        «Semana | Recetario»; ahora se entra por el icono del header de /menus.
+      */}
       <PageHeader
         title="Mis recetas"
+        backHref="/menus"
+        backLabel="Menús"
         action={
           <Button asChild className="hidden md:inline-flex">
             <Link href="/recetas/nueva">
@@ -50,10 +57,6 @@ export default async function RecetasPage() {
           </Button>
         }
       />
-
-      <div className="mb-6">
-        <MenuSectionTabs active="recetario" />
-      </div>
 
       <div className="flex flex-col gap-6">
         {recipes.length === 0 ? (

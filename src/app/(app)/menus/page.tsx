@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { BookOpen } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
-import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
 import { MenuView } from "@/features/menus/components/menu-view";
 import { MenuShareActions } from "@/features/menus/components/menu-share-actions";
 import { MenuPrefsOnboarding } from "@/features/menus/components/menu-prefs";
@@ -118,37 +120,55 @@ export default async function MenusPage({
         <PageHeader
           title="Menús"
           action={
-            menu && entries.length > 0 ? (
-              <MenuShareActions menuId={menu.id} />
-            ) : undefined
+            <div className="flex items-center gap-2">
+              {/*
+                El recetario era una pestaña «Semana | Recetario» encima del
+                contenido, en esta página y en /recetas. Presentaba como
+                hermanas de igual peso dos cosas que no se usan igual: la
+                semana se mira a diario y el recetario se visita de tanto en
+                tanto para añadir o retocar recetas. Esa fila costaba ~54px
+                sobre el pliegue en las dos páginas para decir con palabras
+                algo que ahora dice este icono, igual que el historial de
+                movimientos en el inventario (misma jerarquía: la página
+                principal manda y su herramienta cuelga del header).
+              */}
+              <Button
+                asChild
+                variant="outline"
+                size="icon"
+                aria-label="Mis recetas"
+              >
+                <Link href="/recetas">
+                  <BookOpen aria-hidden />
+                </Link>
+              </Button>
+              {menu && entries.length > 0 ? (
+                <MenuShareActions menuId={menu.id} />
+              ) : null}
+            </div>
           }
         />
       </div>
-      <div className="flex flex-col gap-4">
-        <div className="print:hidden">
-          <MenuSectionTabs active="semana" />
-        </div>
-        <MenuView
-          weekStart={weekStart}
-          menuId={menu?.id ?? null}
-          entries={entries}
-          pendingCheckin={pendingCheckin}
-          weekCost={weekCost}
-          budgetWarning={budgetWarning}
-          skippedSlots={skippedSlots}
-          slots={slots}
-          canCopyPrevious={canCopyPrevious}
-          // El mismo recetario que usan las reglas: sirve al buscador del «+».
-          recipes={recipes}
-          householdName={household?.name ?? null}
-          // Preferencias y reglas ya no son dos secciones al final de la página:
-          // viajan con el botón de generar, que es lo que condicionan. La vista
-          // monta `MenuSettings` porque el menú de ese icono dispara además el
-          // «rehacer todo», que es suyo.
-          prefs={prefs}
-          rules={rules}
-        />
-      </div>
+      <MenuView
+        weekStart={weekStart}
+        menuId={menu?.id ?? null}
+        entries={entries}
+        pendingCheckin={pendingCheckin}
+        weekCost={weekCost}
+        budgetWarning={budgetWarning}
+        skippedSlots={skippedSlots}
+        slots={slots}
+        canCopyPrevious={canCopyPrevious}
+        // El mismo recetario que usan las reglas: sirve al buscador del «+».
+        recipes={recipes}
+        householdName={household?.name ?? null}
+        // Preferencias y reglas ya no son dos secciones al final de la página:
+        // viajan con el botón de generar, que es lo que condicionan. La vista
+        // monta `MenuSettings` porque el menú de ese icono dispara además el
+        // «rehacer todo», que es suyo.
+        prefs={prefs}
+        rules={rules}
+      />
       {!prefs.configured ? <MenuPrefsOnboarding /> : null}
     </PageContainer>
   );

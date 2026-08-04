@@ -7,7 +7,9 @@ export default function RecetasLoading() {
   return (
     <PageContainer>
       <LoadingStatus />
-      <PageHeader title="Mis recetas" />
+      {/* Con backHref/backLabel, coherente con la página, para no saltar el
+          layout al resolverse. */}
+      <PageHeader title="Mis recetas" backHref="/menus" backLabel="Menús" />
       <Skeleton className="mb-6 h-10 w-full max-w-sm rounded-lg" aria-hidden />
       <div
         className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
