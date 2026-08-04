@@ -1049,7 +1049,14 @@ function EditEntryDrawer({
   onProposeDeductions: (recipeName: string, items: CookedDeduction[]) => void;
 }) {
   const [value, setValue] = useState("");
-  const [mode, setMode] = useState<"edit" | "move" | "duplicate">("edit");
+  /*
+    Vistas del panel, nunca modales encadenados: un ResponsiveModal que abre otro
+    se cierra solo (cierre por historial de E11). «remove» es la confirmación de
+    quitar, y solo se usa cuando el plato está resuelto —ver `askRemove`—.
+  */
+  const [mode, setMode] = useState<"edit" | "move" | "duplicate" | "remove">(
+    "edit",
+  );
   const [pending, startTransition] = useTransition();
   const [savingRecipe, startSaveRecipe] = useTransition();
   const [cooking, startCooking] = useTransition();
@@ -1179,6 +1186,28 @@ function EditEntryDrawer({
     });
   }
 
+  /*
+    Quitar un plato que sigue siendo un PLAN no se pregunta: no se pierde nada,
+    era una intención. Quitar uno COCINADO sí, porque borra la fila y con ella la
+    vez cocinada de esa receta, de la que viven `timesCooked`/`lastCookedAt` (lo
+    que evita que el generador te la repita pronto), y porque el descuento de
+    inventario que se propuso al marcarlo no se revierte.
+
+    Solo cocinado, no «no se hizo»: ahí no hubo descuento ni vez cocinada que
+    perder, así que preguntar sería estorbar por simetría.
+
+    Se pregunta en vez de bloquearse (la otra opción, y más barata) porque
+    bloquear añade un paso sin contar qué se pierde: deshaces la marca, quitas el
+    plato igual y sigues sin saberlo.
+  */
+  function askRemove() {
+    if (cooked) {
+      setMode("remove");
+      return;
+    }
+    remove();
+  }
+
   function remove() {
     if (!editing?.entryId) return;
     startTransition(async () => {
@@ -1285,7 +1314,10 @@ function EditEntryDrawer({
     });
   }
 
-  const picker = mode !== "edit";
+  // `picker` es el selector de día y hueco: lo comparten mover y duplicar. El
+  // modo «remove» NO lo usa (no elige destino), así que se nombra explícito en
+  // vez de con un `!== "edit"` que lo arrastraría dentro.
+  const picker = mode === "move" || mode === "duplicate";
 
   return (
     <ResponsiveModal open={editing !== null} onOpenChange={(o) => !o && onClose()}>
@@ -1296,16 +1328,20 @@ function EditEntryDrawer({
               ? "Mover a…"
               : mode === "duplicate"
                 ? "Duplicar en…"
-                : editing?.label}
+                : mode === "remove"
+                  ? "¿Quitar este plato?"
+                  : editing?.label}
           </ResponsiveModalTitle>
           <ResponsiveModalDescription>
             {mode === "move"
               ? "Elige el día y el hueco de destino."
               : mode === "duplicate"
                 ? "Elige dónde añadir una copia de este plato."
-                : isNew
-                  ? "Genéralo con IA, elige una receta de tu recetario o escríbelo."
-                  : "Edita o quita este plato."}
+                : mode === "remove"
+                  ? "Ya lo marcaste como cocinado."
+                  : isNew
+                    ? "Genéralo con IA, elige una receta de tu recetario o escríbelo."
+                    : "Edita o quita este plato."}
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
 
@@ -1330,6 +1366,44 @@ function EditEntryDrawer({
                 variant="ghost"
                 onClick={() => setMode("edit")}
                 disabled={picking}
+              >
+                <ChevronLeft aria-hidden />
+                Volver
+              </Button>
+            </ResponsiveModalFooter>
+          </div>
+        ) : mode === "remove" ? (
+          <div className="flex flex-col gap-3 px-4">
+            <p className="text-sm">
+              <span className="font-medium">{editing?.current}</span> dejará de
+              contar como cocinado: el menú olvida esa vez, y con ella lo que
+              evita que el generador te lo repita pronto.
+            </p>
+            {/*
+              «Si descontaste» y no «se descontó»: el descuento al cocinar se
+              PROPONE y se confirma, así que la app no sabe aquí si llegó a
+              hacerse. Afirmarlo sería mentir la mitad de las veces.
+            */}
+            <p className="text-sm text-muted-foreground">
+              Si descontaste sus ingredientes del inventario, ese descuento no se
+              deshace.
+            </p>
+            <ResponsiveModalFooter className="gap-2 px-0">
+              <Button
+                type="button"
+                variant="destructive"
+                size="lg"
+                onClick={remove}
+                loading={pending}
+              >
+                <Trash2 aria-hidden />
+                {pending ? "Quitando…" : "Quitar del menú"}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setMode("edit")}
+                disabled={pending}
               >
                 <ChevronLeft aria-hidden />
                 Volver
@@ -1487,7 +1561,7 @@ function EditEntryDrawer({
               <EntryActionTile
                 icon={Trash2}
                 label="Quitar del menú"
-                onClick={remove}
+                onClick={askRemove}
                 disabled={pending}
                 destructive
               />
