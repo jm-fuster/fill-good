@@ -79,6 +79,7 @@ import { AiGenerateButton, SLOT_GENERATION_STEPS } from "./ai-generate-button";
 import { EntryActionTile } from "./entry-action-tile";
 import { MenuSettings } from "./menu-settings";
 import { SlotPickerGrid } from "./slot-picker-grid";
+import { TodayStrip } from "./today-strip";
 import {
   addMenuEntryAction,
   addRecipeToMenuAction,
@@ -274,6 +275,47 @@ export function MenuView({
   // Hay trabajo que la regeneración respetuosa conservaría (fijado o manual):
   // solo entonces tiene sentido ofrecer el "Rehacer todo" destructivo.
   const hasPreservable = entries.some((e) => e.pinned || e.source === "manual");
+  /*
+    Huecos que «completar con IA» puede llenar: sin plato, sin regla de «no se
+    planifica» y **de hoy en adelante** —el generador no replanifica un día ya
+    vivido (el candado de `rules.ts`), así que un hueco pasado que quedó vacío no
+    es trabajo pendiente y contarlo dejaría el botón mandando para siempre—.
+
+    De esto depende dónde va el botón: mientras haya huecos, arriba; con la
+    semana completa, debajo de la semana. Que el primario ocupe el sitio del
+    contenido cuando no tiene nada que hacer es lo que dejaba el «Lunes 3»
+    asomando en el filo de la pantalla.
+  */
+  let freeSlots = 0;
+  days.forEach((date, dayIndex) => {
+    if (date < today) return;
+    for (const slot of slots) {
+      const taken = (bySlot.get(`${date}|${slot.key}`) ?? []).length > 0;
+      if (!taken && !skipped.has(`${dayIndex}|${slot.key}`)) freeSlots += 1;
+    }
+  });
+  const ctaOnTop = freeSlots > 0;
+  /*
+    La tira de hoy (`TodayStrip`) solo tiene sentido en la semana que contiene
+    hoy. Los platos se sacan de `bySlot` y no filtrando `entries`, porque el
+    orden tiene que ser el de los HUECOS (desayuno → comida → cena) y el de la
+    consulta es alfabético por `meal_slot`, que pone la cena antes de la comida.
+    Sale de la capa optimista, así que marcar un plato lo quita de la tira ya.
+  */
+  const isCurrentWeek = days.includes(today);
+  const todayEntries = isCurrentWeek
+    ? slots.flatMap((s) => bySlot.get(`${today}|${s.key}`) ?? [])
+    : [];
+  const todayUncooked = todayEntries.filter((e) => !e.cookedAt);
+  // Con todo cocinado no hay nada que la tarjeta del día no diga ya.
+  const showTodayStrip =
+    isCurrentWeek && (todayUncooked.length > 0 || todayEntries.length === 0);
+  /*
+    Quién aloja «¿Qué hago hoy?»: la tira, cuando hoy está vacío (ahí ES su
+    respuesta), y el bloque de generar en cualquier otro caso. Nunca los dos a la
+    vez — dos botones que abren el mismo ranking es justo lo que sobraba.
+  */
+  const tonightInStrip = showTodayStrip && todayEntries.length === 0;
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [copying, startCopy] = useTransition();
   /*
@@ -408,6 +450,73 @@ export function MenuView({
     });
   }
 
+  /*
+    El bloque de generar, en una variable porque se coloca en dos sitios según
+    `ctaOnTop`: encima de la semana mientras haya huecos que llenar, y debajo
+    cuando la semana está completa. Es UNA sola instancia —nunca las dos—, así
+    que no hay dos botones de generar en pantalla.
+
+    Con la semana completa se va abajo también «¿Qué hago hoy?». Es coherente:
+    ese enlace responde a «no sé qué cocinar», y si la semana está entera la
+    respuesta para hoy ya está en su tarjeta, ahora visible sin bajar.
+  */
+  const generateBlock = (
+    <div className="flex flex-col gap-2 print:hidden">
+      <div className="flex items-center gap-2">
+        <AiGenerateButton
+          onClick={() => generate("fill")}
+          loading={generating}
+          busyLabel={
+            hasPreservable
+              ? "Completando el menú con IA"
+              : "Generando el menú con IA"
+          }
+          // Grande cuando manda arriba; del tamaño normal cuando acompaña abajo.
+          size={ctaOnTop ? "lg" : "default"}
+          className="flex-1"
+        >
+          {hasPreservable ? "Completar menú con IA" : "Generar menú con IA"}
+        </AiGenerateButton>
+        {/*
+          «Rehacer todo desde cero» vive en el menú de este icono, no en una
+          línea suelta debajo del botón: es una acción de una vez al mes que
+          ocupaba, con su frase de aviso, dos líneas permanentes entre el botón
+          de generar y la semana.
+        */}
+        <MenuSettings
+          prefs={prefs}
+          rules={rules}
+          recipes={recipes}
+          onReplaceAll={
+            hasPreservable ? () => setConfirmReplace(true) : undefined
+          }
+        />
+      </div>
+      {/*
+        Solo existe en semanas vacías (`canCopyPrevious` lo exige), así que
+        nunca compite con un menú ya puesto: ahí es la alternativa natural a
+        generar con IA.
+      */}
+      {canCopyPrevious ? (
+        <Button onClick={copyPrevious} loading={copying} variant="outline">
+          <CalendarDays aria-hidden />
+          {copying ? "Copiando…" : "Copiar la semana anterior"}
+        </Button>
+      ) : null}
+      {tonightInStrip ? null : (
+        <Button
+          variant="link"
+          onClick={askTonight}
+          loading={askingTonight}
+          className="self-center"
+        >
+          <Lightbulb aria-hidden />
+          {askingTonight ? "Pensando…" : "¿Qué hago hoy?"}
+        </Button>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       {/*
@@ -435,34 +544,43 @@ export function MenuView({
             <ChevronLeft aria-hidden />
           </Link>
         </Button>
-        <p className="flex-1 text-center text-sm font-medium">
-          Semana del{" "}
-          {format(parseISO(weekStart), "d 'de' MMMM", { locale: es })}
-        </p>
+        {/*
+          Repaso de días pasados (R2) junto a la semana, no en una fila propia:
+          es un contador, y en cuanto cabe al lado del rótulo deja de costar una
+          línea entera. Envuelve (`flex-wrap`) en vez de apretar, así que en una
+          pantalla estrecha baja bajo el rótulo pero sigue dentro de este bloque,
+          sin el hueco de una fila más. Discreto (`ghost`): el primario de esta
+          pantalla es generar el menú.
+        */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-center gap-x-2 gap-y-1">
+          <p className="text-sm font-medium">
+            Semana del{" "}
+            {format(parseISO(weekStart), "d 'de' MMMM", { locale: es })}
+          </p>
+          {pendingCheckin.length > 0 ? (
+            <Button
+              variant="ghost"
+              onClick={() => setCheckinOpen(true)}
+              className="text-muted-foreground"
+              aria-label={
+                pendingCheckin.length === 1
+                  ? "Repasar 1 plato de días pasados"
+                  : `Repasar ${pendingCheckin.length} platos de días pasados`
+              }
+            >
+              <ChefHat aria-hidden />
+              {pendingCheckin.length === 1
+                ? "1 por repasar"
+                : `${pendingCheckin.length} por repasar`}
+            </Button>
+          ) : null}
+        </div>
         <Button variant="ghost" size="icon" asChild aria-label="Semana siguiente">
           <Link href={`/menus?week=${shiftWeek(weekStart, 1)}`}>
             <ChevronRight aria-hidden />
           </Link>
         </Button>
       </div>
-
-      {/*
-        Repaso de días pasados (R2): solo aparece si hay algo que preguntar, y
-        entonces es lo primero que se ve bajo la semana. Discreto (outline, no
-        primario): el primario de esta pantalla es generar el menú.
-      */}
-      {pendingCheckin.length > 0 ? (
-        <Button
-          variant="outline"
-          onClick={() => setCheckinOpen(true)}
-          className="self-center print:hidden"
-        >
-          <ChefHat aria-hidden />
-          {pendingCheckin.length === 1
-            ? "Repasar 1 plato de días pasados"
-            : `Repasar días pasados (${pendingCheckin.length})`}
-        </Button>
-      ) : null}
 
       {weekCost ? (
         <div className="-mt-2 flex flex-col gap-1 print:hidden">
@@ -476,8 +594,7 @@ export function MenuView({
           </p>
           {/*
             `warning` y no `destructive`: esto es un plan, no un gasto ya hecho.
-            Nada ha salido mal todavía y la semana se puede cambiar entera —de
-            hecho el aviso está justo encima del botón de generar—.
+            Nada ha salido mal todavía y la semana entera se puede rehacer.
           */}
           {budgetWarning ? (
             <p className="text-center text-xs font-medium text-warning">
@@ -491,62 +608,27 @@ export function MenuView({
       ) : null}
 
       {/*
+        Lo de hoy va ANTES del botón de generar: es contenido, y el generador es
+        una herramienta. Con la tira delante, lo primero que se lee al entrar es
+        qué toca hoy y no qué puede hacer la IA.
+      */}
+      {showTodayStrip ? (
+        <TodayStrip
+          today={today}
+          entries={todayUncooked}
+          onMarkCooked={quickMarkCooked}
+          markingId={markingId}
+          onAskTonight={askTonight}
+          askingTonight={askingTonight}
+        />
+      ) : null}
+
+      {/*
         Un solo primario en pantalla: generar con IA. Los ajustes que condicionan
         a la IA van a su lado (icono) y compartir/imprimir en la cabecera de la
-        página. «¿Qué hago hoy?» queda como enlace: sigue a un toque, pero deja
-        de competir con el generador.
+        página. Arriba solo mientras haya huecos que llenar (`ctaOnTop`).
       */}
-      <div className="flex flex-col gap-2 print:hidden">
-        <div className="flex items-center gap-2">
-          <AiGenerateButton
-            onClick={() => generate("fill")}
-            loading={generating}
-            busyLabel={
-              hasPreservable
-                ? "Completando el menú con IA"
-                : "Generando el menú con IA"
-            }
-            size="lg"
-            className="flex-1"
-          >
-            {hasPreservable ? "Completar menú con IA" : "Generar menú con IA"}
-          </AiGenerateButton>
-          {/*
-            «Rehacer todo desde cero» vive en el menú de este icono, no en una
-            línea suelta debajo del botón: es una acción de una vez al mes que
-            ocupaba, con su frase de aviso, dos líneas permanentes entre el botón
-            de generar y la semana.
-          */}
-          <MenuSettings
-            prefs={prefs}
-            rules={rules}
-            recipes={recipes}
-            onReplaceAll={
-              hasPreservable ? () => setConfirmReplace(true) : undefined
-            }
-          />
-        </div>
-        {/*
-          Solo existe en semanas vacías (`canCopyPrevious` lo exige), así que
-          nunca compite con un menú ya puesto: ahí es la alternativa natural a
-          generar con IA.
-        */}
-        {canCopyPrevious ? (
-          <Button onClick={copyPrevious} loading={copying} variant="outline">
-            <CalendarDays aria-hidden />
-            {copying ? "Copiando…" : "Copiar la semana anterior"}
-          </Button>
-        ) : null}
-        <Button
-          variant="link"
-          onClick={askTonight}
-          loading={askingTonight}
-          className="self-center"
-        >
-          <Lightbulb aria-hidden />
-          {askingTonight ? "Pensando…" : "¿Qué hago hoy?"}
-        </Button>
-      </div>
+      {ctaOnTop ? generateBlock : null}
 
       <ResponsiveModal
         open={confirmReplace}
@@ -802,6 +884,13 @@ export function MenuView({
           {addingList ? "Calculando…" : "Añadir a la lista lo que falte"}
         </Button>
       ) : null}
+
+      {/*
+        Semana completa: el generador baja aquí, DESPUÉS de «añadir a la lista lo
+        que falte». Con la semana entera, el siguiente paso es la compra; volver
+        a tocar el menú es la excepción, y desde aquí sigue a un toque.
+      */}
+      {ctaOnTop ? null : generateBlock}
 
       {/* Pie de la hoja, como en la imagen para compartir. */}
       <p className="hidden text-[7.5pt] text-muted-foreground print:mt-4 print:block">
