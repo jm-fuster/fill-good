@@ -18,6 +18,7 @@ export function EntryActionTile({
   disabled,
   pressed,
   destructive,
+  ref,
 }: {
   icon: LucideIcon;
   label: string;
@@ -27,9 +28,16 @@ export function EntryActionTile({
   /** Acción de dos estados (fijar/desfijar): refleja el estado actual. */
   pressed?: boolean;
   destructive?: boolean;
+  /**
+   * Para las celdas que abren una VISTA del panel y con ella se ocultan: el
+   * llamador guarda la referencia y le devuelve el foco al volver, que si no se
+   * queda huérfano en `<body>`. `ref` va como prop normal (React 19).
+   */
+  ref?: React.Ref<HTMLButtonElement>;
 }) {
   return (
     <Button
+      ref={ref}
       type="button"
       variant={pressed ? "secondary" : destructive ? "destructive" : "outline"}
       onClick={onClick}

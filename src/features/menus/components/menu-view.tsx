@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AiConsentModal } from "@/features/ai-consent/components/ai-consent-modal";
@@ -1057,6 +1057,52 @@ function EditEntryDrawer({
   const [mode, setMode] = useState<"edit" | "move" | "duplicate" | "remove">(
     "edit",
   );
+
+  /*
+    Foco al cambiar de vista, el mismo patrón que el selector de icono de
+    inventario (`ProductIconPickerView` + `EditItemDrawer`). Hacen falta las dos
+    mitades, y por el mismo motivo: la celda que abre la vista se oculta al
+    entrar, así que sin esto el foco se queda en `<body>` y quien va con teclado
+    tiene que tabular desde el principio del panel —dos veces, porque al volver
+    pasa igual—.
+
+     - Al ENTRAR se enfoca el contenedor de la vista (`tabIndex={-1}`), que
+       además la sube si el panel venía scrolleado. El contenedor y no el primer
+       control: en «quitar» el primer control es el botón destructivo, y en el
+       selector de días enfocar una celda no dice de qué va la vista.
+     - Al VOLVER, el foco regresa a la celda que la abrió, que estaba oculta
+       cuando se pidió el cambio, así que hay que esperar al repintado (de eso se
+       encarga el efecto). Solo tras un viaje de ida y vuelta: al abrir el panel
+       el foco lo coloca el propio modal.
+  */
+  const viewRef = useRef<HTMLDivElement>(null);
+  const moveTileRef = useRef<HTMLButtonElement>(null);
+  const duplicateTileRef = useRef<HTMLButtonElement>(null);
+  const removeTileRef = useRef<HTMLButtonElement>(null);
+  const volverA = useRef<"move" | "duplicate" | "remove" | null>(null);
+
+  useEffect(() => {
+    if (mode !== "edit") {
+      viewRef.current?.focus();
+      return;
+    }
+    const destino = volverA.current;
+    if (!destino) return;
+    volverA.current = null;
+    const celda =
+      destino === "move"
+        ? moveTileRef
+        : destino === "duplicate"
+          ? duplicateTileRef
+          : removeTileRef;
+    celda.current?.focus();
+  }, [mode]);
+
+  /** «Volver» de cualquier vista: apunta a dónde devolver el foco y sale. */
+  function volverAlPlato() {
+    volverA.current = mode === "edit" ? null : mode;
+    setMode("edit");
+  }
   const [pending, startTransition] = useTransition();
   const [savingRecipe, startSaveRecipe] = useTransition();
   const [cooking, startCooking] = useTransition();
@@ -1346,7 +1392,18 @@ function EditEntryDrawer({
         </ResponsiveModalHeader>
 
         {picker ? (
-          <div className="flex flex-col gap-3 px-4">
+          // `tabIndex={-1}` para poder recibir el foco al entrar sin quedar en el
+          // orden de tabulación (no es un control, es el destino del foco).
+          <div
+            ref={viewRef}
+            tabIndex={-1}
+            // Con nombre, como el selector de icono: al recibir el foco, un lector
+            // de pantalla dice a qué vista se ha entrado. El título del modal ya
+            // cambió, pero el modal no se vuelve a anunciar al cambiar de vista.
+            role="group"
+            aria-label={mode === "move" ? "Mover a…" : "Duplicar en…"}
+            className="flex flex-col gap-3 px-4 outline-none"
+          >
             <SlotPickerGrid
               days={days}
               slots={slots}
@@ -1364,7 +1421,7 @@ function EditEntryDrawer({
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => setMode("edit")}
+                onClick={volverAlPlato}
                 disabled={picking}
               >
                 <ChevronLeft aria-hidden />
@@ -1373,7 +1430,13 @@ function EditEntryDrawer({
             </ResponsiveModalFooter>
           </div>
         ) : mode === "remove" ? (
-          <div className="flex flex-col gap-3 px-4">
+          <div
+            ref={viewRef}
+            tabIndex={-1}
+            role="group"
+            aria-label="Quitar este plato"
+            className="flex flex-col gap-3 px-4 outline-none"
+          >
             <p className="text-sm">
               <span className="font-medium">{editing?.current}</span> dejará de
               contar como cocinado: el menú olvida esa vez, y con ella lo que
@@ -1402,7 +1465,7 @@ function EditEntryDrawer({
               <Button
                 type="button"
                 variant="ghost"
-                onClick={() => setMode("edit")}
+                onClick={volverAlPlato}
                 disabled={pending}
               >
                 <ChevronLeft aria-hidden />
@@ -1540,12 +1603,16 @@ function EditEntryDrawer({
                 loading={pinningPending}
                 pressed={pinned}
               />
+              {/* Las tres celdas que abren una vista llevan `ref`: es donde
+                  vuelve el foco al salir de ella (ver `volverAlPlato`). */}
               <EntryActionTile
+                ref={moveTileRef}
                 icon={MoveRight}
                 label="Mover a…"
                 onClick={() => setMode("move")}
               />
               <EntryActionTile
+                ref={duplicateTileRef}
                 icon={Copy}
                 label="Duplicar en…"
                 onClick={() => setMode("duplicate")}
@@ -1559,6 +1626,7 @@ function EditEntryDrawer({
                 />
               ) : null}
               <EntryActionTile
+                ref={removeTileRef}
                 icon={Trash2}
                 label="Quitar del menú"
                 onClick={askRemove}
