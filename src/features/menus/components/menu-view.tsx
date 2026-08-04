@@ -1072,6 +1072,15 @@ function EditEntryDrawer({
   const canMarkSkipped = Boolean(
     editing?.entryId && editing.date < todayLocalISO() && !cooked,
   );
+  /*
+    «Otra idea» solo mientras el plato siga siendo un PLAN. Resuelto —cocinado o
+    «no se hizo»— ya es lo que pasó, y pedirle a la IA otra cosa para la cena del
+    lunes pasado no significa nada: borraba la prueba de que lo cocinaste y
+    dejaba el descuento de inventario pagando un plato retirado (el veto y el
+    porqué completo están en `rerollMenuEntryAction`). Para cambiarlo de verdad
+    está «deshacer» la marca, que sigue a un toque justo al lado.
+  */
+  const canReroll = !cooked && !skipped;
   const days = getWeekDays(weekStart);
 
   // Sincroniza el input al abrir con un plato distinto (o al pasar a "añadir").
@@ -1430,12 +1439,14 @@ function EditEntryDrawer({
                   pressed={skipped}
                 />
               ) : null}
-              <EntryActionTile
-                icon={RefreshCw}
-                label={rerolling ? "Pensando…" : "Otra idea"}
-                onClick={reroll}
-                loading={rerolling}
-              />
+              {canReroll ? (
+                <EntryActionTile
+                  icon={RefreshCw}
+                  label={rerolling ? "Pensando…" : "Otra idea"}
+                  onClick={reroll}
+                  loading={rerolling}
+                />
+              ) : null}
               <EntryActionTile
                 icon={pinned ? PinOff : Pin}
                 label={pinned ? "Quitar fijado" : "Fijar"}

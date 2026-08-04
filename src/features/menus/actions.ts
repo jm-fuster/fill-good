@@ -1300,18 +1300,43 @@ export async function rerollMenuEntryAction(
 
   const supabase = createServerSupabaseClient();
 
-  const rateError = await enforceAiRateLimit(supabase, "menu");
-  if (rateError) return { error: rateError };
-
   // El `week_start` del menú viaja con la entrada: es lo que fija qué platos
   // cuentan como "de las semanas anteriores" al pedir la alternativa.
   const { data: entry } = await supabase
     .from("menu_entries")
-    .select("menu_id, meal_slot, menu:weekly_menus(week_start)")
+    .select(
+      "menu_id, meal_slot, cooked_at, skipped_at, menu:weekly_menus(week_start)",
+    )
     .eq("household_id", household.id)
     .eq("id", entryId)
     .maybeSingle();
   if (!entry) return { error: "No se encontró la entrada del menú." };
+
+  /*
+    Un plato ya RESUELTO —cocinado o «no se hizo»— no se cambia por otra idea:
+    deja de ser un plan y pasa a ser lo que ocurrió. Cambiarlo borraba justo la
+    prueba de que ocurrió, que es lo mismo que protege el veto de días pasados de
+    `generateMenuAction`: el `update` de abajo pone `cooked_at` a null, así que la
+    entrada volvía al repaso («¿cocinaste esto?») y `timesCooked`/`lastCookedAt`
+    (`getRecipeSignals`) perdían esa vez —el generador volvía a creer que nunca
+    habías cocinado esa receta y te la proponía otra vez—. Y el descuento de
+    inventario que disparó el «lo cocinamos» NO se revierte, así que la despensa
+    se quedaba pagando un plato que ya no está en el menú.
+
+    Con `skipped_at` el destrozo era distinto y más callado: el `update` no lo
+    limpia, así que el plato NUEVO nacía marcado como «no se hizo» y ni aparecía
+    en el repaso ni contaba como cocinado.
+
+    Va ANTES del rate limit a propósito: negar esto no debe gastar cuota de IA.
+  */
+  if (entry.cooked_at || entry.skipped_at) {
+    return {
+      error: "Ese plato ya está resuelto: para cambiarlo, deshaz la marca.",
+    };
+  }
+
+  const rateError = await enforceAiRateLimit(supabase, "menu");
+  if (rateError) return { error: rateError };
 
   const dish = await generateDishForSlot({
     supabase,
@@ -1330,7 +1355,8 @@ export async function rerollMenuEntryAction(
   }
 
   // Reemplaza la entrada en su sitio: nueva receta, sin texto libre, source 'ai'
-  // y sin cocinar (es un plato distinto).
+  // y sin cocinar. Con el veto de arriba `cooked_at` ya llega a null; se deja
+  // escrito para que relajar el veto no reviva el desfase en silencio.
   const { error } = await supabase
     .from("menu_entries")
     .update({
