@@ -18,6 +18,30 @@ type Supabase = SupabaseClient<Database>;
  */
 export const EVENT_FOLD_WINDOW_MS = 15 * 60 * 1000;
 
+/*
+  QUIÉN ANOTA Y QUIÉN NO, porque no es simétrico y buscarlo cuesta:
+
+    anotan → el stepper de la tarjeta (`setInventoryQuantityAction`), el borrado
+             de una fila con stock (`deleteInventoryAction`), la confirmación de
+             un ticket, el checkout de la lista, el descuento al cocinar y las
+             órdenes de Alexa;
+    NO     → el alta y la edición manual del formulario de inventario
+             (`addInventoryAction`, `updateInventoryAction`), aunque cambien la
+             cantidad.
+
+  La asimetría está VISTA, no es un olvido: la detectó la auditoría del
+  2026-07-31 y quedó como decisión de producto pendiente, porque depende de qué
+  se quiera que sea esta tabla — «qué ha entrado y salido de esta casa» (entonces
+  faltan eventos) o «qué movimientos ha hecho la gente», con el formulario como
+  corrección de ficha y no como movimiento (entonces está bien así). Lo que sí
+  era un olvido, y es lo que arregla este comentario, es que la asimetría no
+  estuviera escrita en ninguna parte del código: esta semana cuatro fallos
+  salieron exactamente de eso, de reglas que vivían en la cabeza de alguien.
+
+  Si algún día se decide que el formulario también anota: ojo con `fold`, que
+  agruparía la corrección con el último movimiento del stepper.
+*/
+
 export type StockEventInput = {
   householdId: string;
   productId: string;
