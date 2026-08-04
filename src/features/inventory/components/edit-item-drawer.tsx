@@ -963,10 +963,26 @@ export function EditItemDrawer({
                     <span className="text-sm font-medium">
                       Fusionar con otro producto
                     </span>
+                    {/*
+                      El stock se nombra porque la fusión puede DESCARTARLO sin
+                      avisar: `merge_products` suma las filas de la misma
+                      ubicación cuando la unidad coincide, y cuando no coincide
+                      se queda la del destino y borra la del origen (ver
+                      20260730190000_merge_products_descarta_filas_vacias.sql).
+                      Es deliberado —no se puede sumar 1 kg y 3 ud—, pero las
+                      otras dos vías que se topan con lo mismo NO deciden solas:
+                      `mergeInventoryRowsAction` y el traslado de
+                      `updateInventoryAction` paran y piden unificar la unidad.
+                      Aquí no hay parada posible (es una sola transacción en
+                      SQL), así que lo que toca es decirlo antes.
+                    */}
                     <p className="text-sm text-muted-foreground">
                       Une este producto con otro: el historial de precios de
-                      ambos se juntará en el que elijas. Esta acción no se puede
-                      deshacer.
+                      ambos se juntará en el que elijas, y su stock se sumará
+                      donde las unidades coincidan. Si los dos tienen stock en el
+                      mismo sitio contado en unidades distintas (kg y ud, por
+                      ejemplo), se queda el del producto que elijas. Esta acción
+                      no se puede deshacer.
                     </p>
                     <ProductCombobox
                       products={mergeCandidates}
