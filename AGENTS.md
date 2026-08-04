@@ -35,6 +35,7 @@ Referencia viva en `/styleguide` (`src/app/styleguide/page.tsx`). Tokens en `src
 - Features en `src/features/<nombre>/{components,actions.ts,queries.ts,schemas.ts}`; UI compartida en `src/components/`.
 - Migraciones SQL en `supabase/migrations/`, escritas con la Supabase CLI localmente; se aplican solas al mergear a `main` (integración GitHub↔Supabase, sin branching). Regenerar tipos tras cada migración.
 - El usuario no quiere gasto en IA por ahora: mantener Gemini free tier salvo que pida lo contrario.
+- **No hay formateador, y es a propósito: no corras Prettier.** No está en `package.json`, no hay `.prettierrc` ni `.editorconfig`, y el lint no lo mira. El estilo se escribe a mano imitando el de alrededor (comentarios cortados a ~80, líneas partidas donde se leen mejor). Un `npx prettier --write` sobre un archivo no lo «arregla»: le impone las reglas por defecto de una herramienta que este repo no usa y lo reescribe entero — con los defaults tocaría **148 de los 318** `.ts`/`.tsx`. Y eso aquí es caro de una forma concreta: lo que más vale de este código son los comentarios que explican cada decisión, y `git blame` es cómo se averigua cuándo y por qué se escribió cada uno; un commit de formateo pone una pared delante de la mitad de esa historia. Si algún día se adopta, va en un commit ÚNICO que no lleve nada más, con `prettier` fijado en devDependencies y `.git-blame-ignore-revs` desde ese mismo commit.
 
 ## Vigilancia de calidad (rendimiento + accesibilidad)
 
