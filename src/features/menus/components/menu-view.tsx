@@ -1509,6 +1509,25 @@ function EditEntryDrawer({
               placeholder="p. ej. Lentejas con verduras"
             />
             {/*
+              Editar el texto DESVINCULA la receta (`updateMenuEntryAction` lo
+              hace a propósito: lo editado pasa a ser texto libre). En un plato ya
+              cocinado eso borra además la única prueba de que se cocinó ESA
+              receta —`menu_entries.recipe_id + cooked_at`, de donde salen
+              `timesCooked`/`lastCookedAt`—, y no hay forma limpia de conservarla:
+              mantener el enlace haría que la vista siguiera mostrando el nombre
+              de la receta y la edición pareciera no hacer nada.
+
+              Así que se avisa, que es lo que se pudo hacer sin decidir el esquema
+              —misma salida que en «quitar un plato cocinado» y en la fusión de
+              productos—. Solo cuando hay algo que perder: cocinado Y enlazado.
+            */}
+            {!isNew && cooked && editing?.recipeId ? (
+              <p className="text-xs text-warning">
+                Si cambias el nombre, el plato se desvincula de la receta y esta
+                vez deja de contar como cocinada.
+              </p>
+            ) : null}
+            {/*
               Al añadir, lo que escribes busca en tu recetario: elegir una receta
               deja la entrada ENLAZADA (cuenta para el coste de la semana, para
               "lo que falte" y para descontar del inventario al cocinarla), algo
