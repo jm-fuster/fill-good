@@ -203,8 +203,17 @@ function availabilityLabel(a: MenuRecipeAvailability): string {
   return `tienes en casa ${a.inStock} de ${a.total}${onList}, hay que comprar: ${shown}${more}`;
 }
 
+/**
+ * Los dos puntos de `id:` no son cosmética. Con `id gazpacho` el modelo lee el
+ * rótulo como parte del valor y contesta `saved_recipe_id: "id-gazpacho"`: medido
+ * con `npm run compare:menu`, una semana entera salió con los 14 ids prefijados
+ * así. No se notaba porque `makeSavedRecipeResolver` rescata la receta por su
+ * NOMBRE, pero entonces el id no sirve para nada y basta con que un nombre no
+ * empareje —dos recetas que normalizan igual, un plato renombrado— para que el
+ * plato se guarde como receta inventada y duplique la fila en `recipes`.
+ */
 function recipeLine(r: MenuRecipeLine): string {
-  const parts = [`id ${r.id}`, `"${r.name}"`, mealTypesLabel(r.mealTypes)];
+  const parts = [`id: ${r.id}`, `"${r.name}"`, mealTypesLabel(r.mealTypes)];
   if (r.prepMinutes !== null) parts.push(`${r.prepMinutes} min`);
   parts.push(ratingLabel(r.avgRating));
   parts.push(cookedLabel(r.timesCooked, r.lastCookedLabel));
