@@ -887,6 +887,35 @@ export async function updateMenuEntryAction(
   // Sin texto = quitar el plato (misma semántica que el botón "Quitar").
   if (!text) return removeMenuEntryAction(entryId);
 
+  /*
+    Guardar el MISMO nombre que ya tiene la receta enlazada no es una edición, y
+    tratarlo como tal la desvinculaba sin que nadie hubiera cambiado nada: el
+    panel llega con el nombre de la receta ya escrito en el campo, así que bastaba
+    abrirlo —a fijar, a mover, a marcar cocinado— y pulsar «Guardar».
+
+    Y desvincular no es cosmético. Con `recipe_id` a null se van, en silencio y a
+    la vez: el coste de la semana (que pasa a «parcial»), los ingredientes que
+    aporta a «añadir a la lista lo que falte», el descuento de inventario al
+    cocinarla y las señales de `getRecipeSignals` —`timesCooked`/`lastCookedAt`,
+    que son las que evitan que el generador te repita lo de la semana pasada—. Si
+    además el plato estaba cocinado, con la señal se iba la prueba de que lo
+    cocinaste.
+
+    La vista ya no manda un guardado sin cambios, pero la regla vive aquí: un
+    cliente viejo o la voz llaman igual.
+  */
+  const { data: linked } = await supabase
+    .from("menu_entries")
+    .select("recipe:recipes(name)")
+    .eq("household_id", household.id)
+    .eq("id", entryId)
+    .maybeSingle();
+  const linkedName = (linked as { recipe: { name: string } | null } | null)
+    ?.recipe?.name;
+  if (linkedName && normalizeName(linkedName) === normalizeName(text)) {
+    return { ok: true };
+  }
+
   // Editar una entrada la vuelve manual (ya se desvinculaba de la receta): así la
   // regeneración respetuosa (N2) no la pisa.
   const { error } = await supabase

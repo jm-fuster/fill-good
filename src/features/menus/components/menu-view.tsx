@@ -1119,6 +1119,18 @@ function EditEntryDrawer({
     if (!editing) return;
     const trimmed = text.trim();
     if (!trimmed) return;
+    /*
+      Sin cambios no se guarda: el campo llega con el nombre de la receta ya
+      escrito, así que abrir el panel para otra cosa —fijar, mover, marcar
+      cocinado— y pulsar «Guardar» desvinculaba la receta sin haber tocado nada,
+      y con ella el coste, los ingredientes y las señales de lo cocinado (el
+      porqué completo, en `updateMenuEntryAction`). Se cierra igual: quien pulsa
+      «Guardar» espera que el panel se vaya, no un aviso de que no había nada.
+    */
+    if (editing.entryId && trimmed === editing.current.trim()) {
+      onSaved();
+      return;
+    }
     startTransition(async () => {
       const r = editing.entryId
         ? await updateMenuEntryAction(editing.entryId, trimmed)
