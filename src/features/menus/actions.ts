@@ -1033,11 +1033,30 @@ export async function duplicateMenuEntryAction(
 
   const { data: entry } = await supabase
     .from("menu_entries")
-    .select("menu_id, recipe_id, free_text")
+    .select("menu_id, recipe_id, free_text, menu:weekly_menus(week_start)")
     .eq("household_id", household.id)
     .eq("id", entryId)
     .maybeSingle();
   if (!entry) return { error: "No se encontró la entrada del menú." };
+
+  /*
+    El destino tiene que caer en la semana del menú de origen, porque la copia se
+    inserta con el `menu_id` del original. Una fecha de otra semana creaba una
+    fila con la fecha fuera de la semana de su menú: invisible en la UI —que pinta
+    semana por semana— y a la vez VIVA para el repaso, que busca por rango de
+    fechas y no por `menu_id` (a propósito: el domingo pendiente pertenece al menú
+    de la semana anterior). O sea un plato que la app te pregunta y no te deja
+    ver, ni marcar, ni quitar.
+
+    Es el mismo desfase que `moveMenuEntryAction` documenta y esquiva cambiando de
+    `menu_id`. Aquí no hace falta resolverlo: duplicar solo se ofrece dentro de la
+    semana visible, así que la regla es negar lo de fuera.
+  */
+  const originWeek = (entry as { menu: { week_start: string } | null }).menu
+    ?.week_start;
+  if (!originWeek || !getWeekDays(originWeek).includes(date)) {
+    return { error: "Solo se puede duplicar dentro de la misma semana." };
+  }
 
   const position = await nextPosition(
     supabase,
