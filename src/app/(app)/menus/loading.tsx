@@ -7,7 +7,23 @@ export default function MenusLoading() {
   return (
     <PageContainer>
       <LoadingStatus />
-      <PageHeader title="Menús" />
+      {/*
+        Los dos iconos del header (recetario y «⋯») miden 44px y hacen la fila
+        del título 12px más alta que el título solo: sin reservarles el sitio,
+        cada carga de /menus empujaba la semana 12px hacia abajo al resolverse.
+        Medido montando las dos cabeceras en /offline, igual en móvil y en
+        escritorio. El del «⋯» solo existe si la semana tiene platos, pero se
+        reserva igual: es la altura más probable y no se sabe aún.
+      */}
+      <PageHeader
+        title="Menús"
+        action={
+          <div className="flex items-center gap-2" aria-hidden>
+            <Skeleton className="size-11 rounded-lg" />
+            <Skeleton className="size-11 rounded-lg" />
+          </div>
+        }
+      />
       <div className="flex flex-col gap-4" aria-hidden>
         <div className="flex items-center gap-1">
           <Skeleton className="size-11 shrink-0 rounded-lg" />
