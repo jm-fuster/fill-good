@@ -37,9 +37,19 @@
  *     propio mínimo y que una configuración imposible se rinda en vez de
  *     colgarse (el bucle de `enforceMin` corre dentro de una Server Action).
  *
+ * Y cubre una línea del CONTRATO con el modelo (`menuSchema`): que un hueco
+ * pueda llegar vacío. Un `.min(1)` en los platos de cada hueco parece una
+ * salvaguarda y era un fallo total: la regla «los miércoles no planifiques cena»
+ * le pide al modelo que deje el hueco vacío, el modelo obedecía con
+ * `"dishes": []` y zod rechazaba la SEMANA ENTERA, así que ese hogar no podía
+ * generar menú nunca. Quien decide si una semana vacía es un fallo es la Server
+ * Action, que puede contestar «inténtalo de nuevo»; el schema solo tiene que
+ * dejarla pasar.
+ *
  * Lo que NO se prueba: la redacción del prompt (eso es `menu-prompt.ts`, texto),
- * ni qué contesta Gemini, ni las consultas que reúnen el contexto (viven en la
- * Server Action, contra la base). Aquí solo las cuentas.
+ * ni qué contesta Gemini —para eso está `npm run compare:menu`, que genera de
+ * verdad—, ni las consultas que reúnen el contexto (viven en la Server Action,
+ * contra la base). Aquí solo las cuentas.
  */
 import {
   buildCatalogIndex,
@@ -68,6 +78,7 @@ import {
   servingsFactor,
   weeklyBudgetTarget,
 } from "@/features/menus/week-budget";
+import { menuSchema } from "@/lib/ai/menu-schema";
 import { normalizeName } from "@/lib/normalize";
 
 let fallos = 0;
@@ -957,6 +968,75 @@ check("ni uno negativo", weeklyBudgetTarget(-50) === null);
   check(
     "sin ningún plato con precio no hay nada que comparar",
     assessWeekBudget(null, 400) === null,
+  );
+}
+
+seccion("El contrato con el modelo: un hueco puede llegar vacío");
+
+{
+  const plato = () => ({
+    recipe_name: "Gazpacho andaluz",
+    saved_recipe_id: null,
+    description: null,
+    ingredients: [{ name: "Tomates", quantity: 1, unit: "kg" }],
+  });
+  /** Semana de 7 días con comida y cena, y los platos que decida `porHueco`. */
+  const semana = (porHueco: (dia: number, hueco: string) => unknown[]) => ({
+    days: Array.from({ length: 7 }, (_, day_index) => ({
+      day_index,
+      meals: ["lunch", "dinner"].map((slot) => ({
+        slot,
+        dishes: porHueco(day_index, slot),
+      })),
+    })),
+  });
+
+  check(
+    "una semana normal cuadra con el schema",
+    menuSchema.safeParse(semana(() => [plato()])).success,
+  );
+
+  // El fallo que esto fija: con `.min(1)` en `dishes`, el miércoles sin cena
+  // tiraba la RESPUESTA ENTERA y un hogar con la regla «los miércoles no
+  // planifiques cena» no podía generar menú nunca. El modelo obedece la
+  // instrucción del prompt devolviendo el hueco vacío, y eso tiene que valer.
+  check(
+    "el hueco que el hogar no planifica llega vacío y la semana sigue valiendo",
+    menuSchema.safeParse(
+      semana((dia, hueco) =>
+        dia === 2 && hueco === "dinner" ? [] : [plato()],
+      ),
+    ).success,
+  );
+
+  // Que una semana vacía del todo PARSEE no es un descuido: el schema no es
+  // quien tiene que juzgar eso. Lo juzga `generateMenuAction`, que compara los
+  // platos con los huecos que había que rellenar y ahí sí puede decir «no se
+  // pudo generar, inténtalo de nuevo» en vez de perder la respuesta entera.
+  check(
+    "una semana entera vacía también parsea (juzgarla es cosa de la Server Action)",
+    menuSchema.safeParse(semana(() => [])).success,
+  );
+
+  check(
+    "el tope de 2 platos por hueco sigue en pie",
+    !menuSchema.safeParse(semana(() => [plato(), plato(), plato()])).success,
+  );
+
+  check(
+    "relajar el mínimo no ha relajado el resto: un plato sin nombre no vale",
+    !menuSchema.safeParse(
+      semana(() => [{ ...plato(), recipe_name: undefined }]),
+    ).success,
+  );
+
+  check(
+    "ni una unidad que la app no sabe convertir",
+    !menuSchema.safeParse(
+      semana(() => [
+        { ...plato(), ingredients: [{ name: "Tomates", quantity: 1, unit: "cucharadas" }] },
+      ]),
+    ).success,
   );
 }
 

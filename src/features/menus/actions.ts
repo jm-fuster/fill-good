@@ -615,6 +615,13 @@ export async function generateMenuAction(
   // marcado `locked`, que además cierra los que quedaron vacíos.
   const generatedByIndex = new Map(generated.days.map((d) => [d.day_index, d]));
   const structDays: MenuDay[] = [];
+  // Huecos que la IA tenía que rellenar y platos que puso en ellos. El schema ya
+  // no exige platos por hueco (ver `menu-schema.ts`: un hueco vacío es una
+  // respuesta legítima y rechazar la respuesta entera por eso dejaba sin menú a
+  // los hogares con un hueco cerrado), así que el «no ha generado nada» se
+  // detecta aquí, que es donde se le puede decir al usuario que reintente.
+  let openSlots = 0;
+  let aiDishes = 0;
   for (let dayIndex = 0; dayIndex < weekDays.length; dayIndex += 1) {
     const date = weekDays[dayIndex];
     const locked = isPast(date);
@@ -634,6 +641,7 @@ export async function generateMenuAction(
           }));
         return { slot, dishes, locked: closed };
       }
+      openSlots += 1;
       const m = genDay?.meals.find((x) => x.slot === slot);
       const dishes: MenuDish[] = (m?.dishes ?? []).slice(0, 2).map((dish) => {
         const payload: DishPayload = {
@@ -653,9 +661,20 @@ export async function generateMenuAction(
           payload,
         };
       });
+      aiDishes += dishes.length;
       return { slot, dishes };
     });
     structDays.push({ dayIndex, meals });
+  }
+
+  // Ni un solo plato para toda una semana por rellenar: eso no es un menú con
+  // huecos, es una generación que no ha salido. Se dice y se puede reintentar,
+  // en vez de dejar al hogar mirando catorce huecos vacíos sin explicación. Con
+  // `openSlots` a cero no hay nada que reprochar: en modo "fill" puede estar
+  // todo conservado o cerrado, y entonces no había nada que generar.
+  if (openSlots > 0 && aiDishes === 0) {
+    console.error("La IA no propuso ningún plato para la semana", { weekStart });
+    return { error: "No se pudo generar el menú. Inténtalo de nuevo." };
   }
 
   // Reglas de frecuencia enriquecidas con los metadatos de su receta.

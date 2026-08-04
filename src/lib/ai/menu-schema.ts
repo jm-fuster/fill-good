@@ -63,12 +63,27 @@ export const menuSchema = z.object({
                   ),
                 }),
               )
-              .min(1)
+              // SIN mínimo, y es deliberado: un hueco vacío es una respuesta
+              // legítima. La regla `skip_slot` («los miércoles no planifiques
+              // cena») le pide al modelo exactamente eso, y contestaba
+              // `"dishes": []` — con `.min(1)`, zod rechazaba la RESPUESTA
+              // ENTERA y el hogar con esa regla no podía generar menú nunca
+              // (medido con `npm run compare:menu`: 2 de 2 generaciones
+              // fallidas con la regla puesta, 8 de 8 correctas sin ella; el
+              // JSON llegaba completo, con siete días y catorce huecos, y lo
+              // único inválido era ese array vacío).
+              //
+              // La proporción es lo que falla: un hueco que llega vacío se
+              // pinta vacío con su «+» y no se pierde nada; una respuesta
+              // rechazada es la semana entera a la basura y un error genérico.
+              // Que la semana NO venga vacía del todo se comprueba en
+              // `generateMenuAction`, que es donde se puede contestar algo útil.
               .max(2)
               .describe(
-                "1 o 2 platos del hueco. La comida (lunch) puede llevar 2 " +
-                  "(p. ej. primero ligero + segundo) cuando tenga sentido; la " +
-                  "cena (dinner) normalmente 1.",
+                "1 o 2 platos del hueco, o ninguno si es un hueco que el hogar " +
+                  "no planifica. La comida (lunch) puede llevar 2 (p. ej. " +
+                  "primero ligero + segundo) cuando tenga sentido; la cena " +
+                  "(dinner) normalmente 1.",
               ),
           }),
         ),
