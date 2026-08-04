@@ -56,10 +56,15 @@ export default async function PreciosPage({
   return (
     <PageContainer>
       {/* Sin atajo al resumen del mes: ese destino cuelga de /perfil, que es
-          quien lleva el marcador. Aquí se viene a analizar precios. */}
+          quien lleva el marcador. Aquí se viene a analizar precios.
+          Y por eso mismo la vuelta va a /perfil, igual que en /resumen y
+          /ajustes: aquí se entra desde ahí (o desde la paleta), Precios no
+          tiene pestaña propia en la barra. */}
       <PageHeader
         title="Precios"
         description="Evolución de precios de lo que compras."
+        backHref="/perfil"
+        backLabel="Perfil"
       />
 
       {rows.length === 0 ? (

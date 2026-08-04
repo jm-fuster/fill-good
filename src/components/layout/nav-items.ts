@@ -11,7 +11,13 @@ import {
  * Entradas de la navegación principal, compartidas entre la bottom nav (móvil)
  * y el sidebar (escritorio) para que ambas se mantengan sincronizadas.
  * El recetario vive bajo Menús: esa pestaña se mantiene activa en /recetas*.
- * Ajustes y el resumen del mes cuelgan de Perfil, y mantienen su pestaña activa.
+ * Ajustes, el resumen del mes y el análisis de precios cuelgan de Perfil, y
+ * mantienen su pestaña activa.
+ *
+ * Una ruta de la app que no case con NINGUNA entrada deja la barra entera
+ * apagada, y entonces no hay nada en pantalla que diga dónde estás: cada
+ * destino que no sea nav de primer nivel tiene que aparecer en los
+ * `matchPrefixes` de su área.
  */
 export type NavItem = {
   href: string;
@@ -40,7 +46,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     href: "/perfil",
     label: "Perfil",
     icon: CircleUser,
-    matchPrefixes: ["/ajustes", "/resumen"],
+    matchPrefixes: ["/ajustes", "/resumen", "/precios"],
   },
 ];
 

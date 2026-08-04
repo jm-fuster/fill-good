@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 import { PageContainer } from "@/components/layout/page-container";
+import { PageHeader } from "@/components/layout/page-header";
 import { PriceChart } from "@/features/prices/components/price-chart";
 import { CHAIN_LABELS } from "@/features/prices/chains";
 import { computeChainComparison } from "@/features/prices/chain-comparison";
@@ -73,19 +72,21 @@ export default async function PrecioDetallePage({
 
   return (
     <PageContainer>
-      <Link
-        href="/precios"
-        className="mb-2 inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" aria-hidden /> Precios
-      </Link>
-      <h1 className="font-heading text-2xl font-semibold tracking-tight text-balance">
-        {name}
-      </h1>
-      <p className="mt-1 mb-6 text-sm text-muted-foreground">
-        Evolución del precio por {perLabel}.
-        {brings ? ` ${brings}` : null}
-      </p>
+      {/* Era la única página de la app que se hacía la cabecera a mano, con las
+          clases de PageHeader copiadas carácter a carácter (vuelta con flecha,
+          h1 y descripción). Se veía igual, y por eso mismo se iba a
+          desincronizar en el primer retoque de PageHeader. */}
+      <PageHeader
+        title={name}
+        backHref="/precios"
+        backLabel="Precios"
+        description={
+          <>
+            Evolución del precio por {perLabel}.
+            {brings ? ` ${brings}` : null}
+          </>
+        }
+      />
 
       {points.length === 0 ? (
         <p className="text-sm text-muted-foreground">
