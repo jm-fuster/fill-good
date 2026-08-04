@@ -301,6 +301,31 @@ export async function deleteReceiptAction(
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
+
+  /*
+    Se lee el estado antes de borrar, igual que hace `confirmReceiptAction` y por
+    el mismo caso: una pantalla de revisión obsoleta (router cache, o dos
+    dispositivos con el mismo ticket). Si el otro ya lo confirmó, el
+    `.neq("status", "confirmed")` de abajo no encuentra fila que borrar — y eso
+    para Supabase NO es un error, así que esto devolvía `ok` y la pantalla decía
+    «descartado» sobre un ticket que sigue ahí, con su stock y sus precios ya
+    dentro del hogar. La hermana avisa en ese mismo caso («Este ticket ya está
+    confirmado»); aquí se callaba, que es peor que negarse.
+
+    El `.neq` se queda como defensa en profundidad: entre la lectura y el borrado
+    cabe otra confirmación, y ahí lo que toca es no borrar nada.
+  */
+  const { data: receipt } = await supabase
+    .from("receipts")
+    .select("status")
+    .eq("id", receiptId)
+    .eq("household_id", household.id)
+    .maybeSingle();
+  if (!receipt) return { error: "Ticket no encontrado." };
+  if (receipt.status === "confirmed") {
+    return { error: "Este ticket ya está confirmado: no se puede descartar." };
+  }
+
   const { error } = await supabase
     .from("receipts")
     .delete()
