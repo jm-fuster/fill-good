@@ -4,7 +4,6 @@ import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { MenuSectionTabs } from "@/components/layout/menu-section-tabs";
 import { MenuView } from "@/features/menus/components/menu-view";
-import { MenuSettings } from "@/features/menus/components/menu-settings";
 import { MenuShareActions } from "@/features/menus/components/menu-share-actions";
 import { MenuPrefsOnboarding } from "@/features/menus/components/menu-prefs";
 import {
@@ -143,10 +142,11 @@ export default async function MenusPage({
           recipes={recipes}
           householdName={household?.name ?? null}
           // Preferencias y reglas ya no son dos secciones al final de la página:
-          // viajan con el botón de generar, que es lo que condicionan.
-          settingsSlot={
-            <MenuSettings prefs={prefs} rules={rules} recipes={recipes} />
-          }
+          // viajan con el botón de generar, que es lo que condicionan. La vista
+          // monta `MenuSettings` porque el menú de ese icono dispara además el
+          // «rehacer todo», que es suyo.
+          prefs={prefs}
+          rules={rules}
         />
       </div>
       {!prefs.configured ? <MenuPrefsOnboarding /> : null}

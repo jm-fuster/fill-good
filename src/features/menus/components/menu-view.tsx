@@ -51,7 +51,12 @@ import { saveGeneratedRecipeAction } from "@/features/recipes/actions";
 import type { SavedRecipe } from "@/features/recipes/queries";
 import { addListItemsAction } from "@/features/shopping-list/actions";
 import type { RestockCandidate } from "@/features/shopping-list/queries";
-import type { MenuEntry, PendingCheckinEntry } from "../queries";
+import type {
+  MenuEntry,
+  MenuPrefs,
+  MenuRule,
+  PendingCheckinEntry,
+} from "../queries";
 import type { SlotDef } from "../slots";
 import type { WeekBudgetWarning } from "../week-budget";
 import type { MissingCandidate } from "../missing";
@@ -72,6 +77,7 @@ import {
 } from "./cooked-restock-fields";
 import { AiGenerateButton, SLOT_GENERATION_STEPS } from "./ai-generate-button";
 import { EntryActionTile } from "./entry-action-tile";
+import { MenuSettings } from "./menu-settings";
 import { SlotPickerGrid } from "./slot-picker-grid";
 import {
   addMenuEntryAction,
@@ -175,7 +181,8 @@ export function MenuView({
   canCopyPrevious,
   recipes,
   householdName,
-  settingsSlot,
+  prefs,
+  rules,
 }: {
   weekStart: string;
   menuId: string | null;
@@ -210,11 +217,14 @@ export function MenuView({
   /** Solo para la cabecera de la hoja impresa (D5). */
   householdName: string | null;
   /**
-   * Botón de «Ajustes del menú» (`MenuSettings`), que viaja junto al botón de
-   * generar. Llega como slot desde el servidor para que esta vista no cargue
-   * con las preferencias ni las reglas, que no usa para nada.
+   * Preferencias y reglas del hogar: esta vista no las usa, las pasa tal cual a
+   * `MenuSettings`, que viaja junto al botón de generar. Antes llegaba ya
+   * montado como slot desde el servidor —más limpio—, pero el menú de ese icono
+   * necesita disparar el «rehacer todo», y esa confirmación (y `generate`) viven
+   * aquí; un callback no se puede pasar desde un Server Component.
    */
-  settingsSlot: React.ReactNode;
+  prefs: MenuPrefs;
+  rules: MenuRule[];
 }) {
   const router = useRouter();
   const [generating, startGenerate] = useTransition();
@@ -501,7 +511,20 @@ export function MenuView({
           >
             {hasPreservable ? "Completar menú con IA" : "Generar menú con IA"}
           </AiGenerateButton>
-          {settingsSlot}
+          {/*
+            «Rehacer todo desde cero» vive en el menú de este icono, no en una
+            línea suelta debajo del botón: es una acción de una vez al mes que
+            ocupaba, con su frase de aviso, dos líneas permanentes entre el botón
+            de generar y la semana.
+          */}
+          <MenuSettings
+            prefs={prefs}
+            rules={rules}
+            recipes={recipes}
+            onReplaceAll={
+              hasPreservable ? () => setConfirmReplace(true) : undefined
+            }
+          />
         </div>
         {/*
           Solo existe en semanas vacías (`canCopyPrevious` lo exige), así que
@@ -513,19 +536,6 @@ export function MenuView({
             <CalendarDays aria-hidden />
             {copying ? "Copiando…" : "Copiar la semana anterior"}
           </Button>
-        ) : null}
-        {hasPreservable ? (
-          <p className="text-center text-xs text-muted-foreground">
-            Completar respeta tus platos fijados y manuales.{" "}
-            <button
-              type="button"
-              onClick={() => setConfirmReplace(true)}
-              disabled={generating}
-              className="font-medium text-foreground underline underline-offset-2 disabled:opacity-50"
-            >
-              Rehacer todo desde cero
-            </button>
-          </p>
         ) : null}
         <Button
           variant="link"

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ChefHat, X } from "lucide-react";
 
@@ -12,8 +12,11 @@ import type { PendingCheckinEntry } from "../queries";
 import { slotLabel, type SlotDef } from "../slots";
 import { CookedCheckinModal } from "./cooked-checkin-modal";
 
-/** Cuántos platos se nombran en la tarjeta antes de resumir con "y N más". */
-const NAMES_SHOWN = 3;
+/**
+ * Página que YA tiene su propia puerta al repaso: /menus enseña «Repasar días
+ * pasados (N)» bajo el selector de semana. Ahí la tarjeta sobra.
+ */
+const ROUTE_WITH_OWN_CHECKIN = "/menus";
 
 /**
  * Snooze diario y silencio semanal viven en COOKIES por dispositivo, no en la
@@ -26,10 +29,11 @@ function setCookie(name: string, value: string, days: number) {
 }
 
 /**
- * Tarjeta del repaso de platos (R3): aparece en CUALQUIER página de la app
+ * Tarjeta del repaso de platos (R3): aparece en cualquier página de la app
  * cuando hay platos pasados sin resolver, porque el insight de partida es que
  * nadie entra al menú a marcar — la gente entra a la lista o a escanear un
- * ticket. Aprovecha esas visitas que ya ocurren.
+ * ticket. Aprovecha esas visitas que ya ocurren. Con una excepción:
+ * `ROUTE_WITH_OWN_CHECKIN`, donde la página ya ofrece el repaso por su cuenta.
  *
  * Recibe los pendientes ya cargados por el servidor (`CookedCheckinBanner`), así
  * que abrir el repaso no navega ni vuelve a consultar.
@@ -42,21 +46,39 @@ export function CookedCheckinCard({
   slots: SlotDef[];
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [, startDisable] = useTransition();
 
   if (dismissed) return null;
+  /*
+    Dos puertas al mismo repaso en la misma pantalla decían lo mismo dos veces,
+    con estilos distintos y una encima del título de la página. El argumento de
+    esta tarjeta es aprovechar las visitas a OTRAS páginas (nadie entra al menú
+    a marcar); donde el botón local ya existe, no aporta.
 
-  const shown = entries.slice(0, NAMES_SHOWN);
-  const extra = entries.length - shown.length;
-  const list = shown
-    .map((e) => `${e.name} (${slotLabel(e.slot).toLowerCase()})`)
-    .join(", ");
+    `usePathname` es la única vía: quien la monta es el shell, un Server
+    Component, y en Next 16 la ruta actual solo se lee desde el cliente. El coste
+    es que la consulta del servidor se hace y se tira en /menus, igual que hoy.
+  */
+  if (pathname === ROUTE_WITH_OWN_CHECKIN) return null;
+
   // Si todo lo pendiente es de ayer, la pregunta puede ser concreta.
   const allYesterday = entries.every(
     (e) => relativeDaysLabel(e.date) === "ayer",
   );
+  /*
+    Una línea, no el inventario de la semana: enumerar los platos con su hueco
+    entre paréntesis se comía cuatro líneas por encima del <h1> —y los nombres
+    largos traen sus propios paréntesis dentro—. Los nombres ya están en el
+    modal, que es donde hay que reconocerlos para contestar. Con uno solo sí se
+    nombra: es corto y hace la pregunta concreta.
+  */
+  const only = entries.length === 1 ? entries[0] : undefined;
+  const summary = only
+    ? `Tenías ${only.name} (${slotLabel(only.slot).toLowerCase()}).`
+    : `Tenías ${entries.length} platos planificados.`;
 
   /** La X no niega nada: solo aparta la pregunta hasta mañana. */
   function snooze() {
@@ -105,9 +127,8 @@ export function CookedCheckinCard({
             <p className="text-sm font-medium">
               {allYesterday ? "¿Qué tal ayer?" : "¿Qué tal estos días?"}
             </p>
-            <p className="text-xs text-muted-foreground">
-              Tenías {list}
-              {extra > 0 ? ` y ${extra} más` : ""}.
+            <p className="line-clamp-2 text-xs text-muted-foreground">
+              {summary}
             </p>
           </div>
           <Button

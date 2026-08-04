@@ -2,10 +2,17 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { SlidersHorizontal } from "lucide-react";
+import { RefreshCw, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   ResponsiveModal,
   ResponsiveModalClose,
@@ -30,15 +37,33 @@ import { MenuRulesFields } from "./menu-rules";
  *
  * Las reglas se guardan solas (cada toggle/alta/borrado es su propia acción);
  * el botón del pie solo confirma las preferencias.
+ *
+ * Con `onReplaceAll` el icono deja de abrir los ajustes de un toque y abre un
+ * menú con las dos acciones. Es un toque más para los ajustes, y se acepta:
+ * ambas son cosas de configurar una vez, y a cambio la pantalla se queda sin las
+ * dos líneas de texto que «Rehacer todo desde cero» arrastraba bajo el botón de
+ * generar.
  */
 export function MenuSettings({
   prefs,
   rules,
   recipes,
+  onReplaceAll,
 }: {
   prefs: MenuPrefs;
   rules: MenuRule[];
   recipes: SavedRecipe[];
+  /**
+   * Abre la confirmación de «rehacer la semana entera», que sigue viviendo en
+   * `MenuView` (allí está `generate`). Solo llega cuando hay algo que la
+   * regeneración respetuosa conservaría; si no, no hay nada que rehacer y el
+   * icono se queda como un botón normal.
+   *
+   * El disparador tiene que ser este menú y NO una fila dentro del panel de
+   * ajustes: un ResponsiveModal que abre otro se cierra solo (el cierre por
+   * historial), y el desplegable no toca el historial.
+   */
+  onReplaceAll?: () => void;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -68,20 +93,58 @@ export function MenuSettings({
     });
   }
 
+  const rulesSuffix =
+    activeRules > 0
+      ? ` (${activeRules} ${activeRules === 1 ? "regla activa" : "reglas activas"})`
+      : "";
+  // Sin `onClick` cuando es disparador del menú: ahí lo pone Radix vía `asChild`.
+  const trigger = (
+    <Button
+      variant="outline"
+      size="icon-lg"
+      onClick={onReplaceAll ? undefined : () => setOpen(true)}
+      aria-label={
+        (onReplaceAll ? "Ajustes y acciones del menú" : "Ajustes del menú") +
+        rulesSuffix
+      }
+    >
+      <SlidersHorizontal aria-hidden />
+    </Button>
+  );
+
   return (
     <ResponsiveModal open={open} onOpenChange={setOpen}>
-      <Button
-        variant="outline"
-        size="icon-lg"
-        onClick={() => setOpen(true)}
-        aria-label={
-          activeRules > 0
-            ? `Ajustes del menú (${activeRules} ${activeRules === 1 ? "regla activa" : "reglas activas"})`
-            : "Ajustes del menú"
-        }
-      >
-        <SlidersHorizontal aria-hidden />
-      </Button>
+      {onReplaceAll ? (
+        // `modal={false}`: sin bloqueo de puntero en el body, que es lo que se
+        // enreda cuando de aquí sale un bottom sheet.
+        <DropdownMenu modal={false}>
+          <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuItem onSelect={() => setOpen(true)}>
+              <SlidersHorizontal aria-hidden />
+              Ajustes del menú
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {/* El subtítulo es lo que antes decía la línea de debajo del botón
+                («completar respeta tus platos fijados y manuales»), dicho en el
+                único sitio donde hace falta: al elegir entre las dos. */}
+            <DropdownMenuItem variant="destructive" onSelect={onReplaceAll}>
+              <RefreshCw aria-hidden />
+              <span className="min-w-0 flex-1">
+                <span className="block">Rehacer todo desde cero</span>
+                {/* Token semántico y no `opacity` sobre el rojo: bajarle la
+                    opacidad al `destructive` lo acerca al fondo del popover y
+                    ahí ya no está medido el contraste. */}
+                <span className="block text-xs text-muted-foreground">
+                  Borra también tus platos fijados y manuales
+                </span>
+              </span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : (
+        trigger
+      )}
 
       <ResponsiveModalContent>
         <ResponsiveModalHeader>
