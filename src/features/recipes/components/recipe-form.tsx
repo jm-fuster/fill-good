@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +40,10 @@ import { cn } from "@/lib/utils";
 import type { UnitType } from "@/lib/supabase/types";
 import { AiConsentModal } from "@/features/ai-consent/components/ai-consent-modal";
 import type { ProductStock } from "@/features/inventory/queries";
+// El botón de IA vive en `menus` porque nació allí, y se reutiliza tal cual: es
+// la firma de IA de la app (el relleno `--ai-fill` que late), y recrear ese
+// degradado aquí sería un segundo sitio donde mantener el mismo color.
+import { AiGenerateButton } from "@/features/menus/components/ai-generate-button";
 import type { CatalogProduct } from "@/features/shopping-list/queries";
 import { ProductAutocomplete } from "@/features/shopping-list/components/product-autocomplete";
 import type { RecipeForEdit, MealTypeValue, SeasonValue } from "../queries";
@@ -49,7 +53,12 @@ import {
   type RecipeIngredientInput,
   type RecipeInput,
 } from "../schemas";
-import { MEAL_TYPE_OPTIONS, SEASON_OPTIONS, seasonsToChoice } from "../constants";
+import {
+  MEAL_TYPE_OPTIONS,
+  RECIPE_GENERATION_STEPS,
+  SEASON_OPTIONS,
+  seasonsToChoice,
+} from "../constants";
 import {
   createRecipeAction,
   deleteRecipeAction,
@@ -739,36 +748,9 @@ export function RecipeForm({
         <legend className="mb-1 text-sm font-medium">
           Pasos <span className="text-muted-foreground">(opcional)</span>
         </legend>
-        <p className="text-xs text-muted-foreground">
+        <p className="mb-1 text-xs text-muted-foreground">
           Uno por paso, en orden, con las cantidades para {servingsLabel}. Si
           pegas una receta entera, cada línea se convierte en un paso.
-        </p>
-        {/*
-          Botón de IA en `outline` y sin el relleno que late de
-          `AiGenerateButton`: ese es el primario de /menus, y aquí competiría con
-          «Guardar receta» por ser la acción principal de la página, que no lo es.
-          El icono y la palabra ya dicen que es IA; el degradado, además, está
-          pensado para ir encima del `bg-primary` sólido.
-        */}
-        <Button
-          ref={aiButtonRef}
-          type="button"
-          variant="outline"
-          onClick={generateWithAi}
-          loading={generating}
-          disabled={pending}
-          className="self-start"
-        >
-          <Sparkles aria-hidden />
-          {generating
-            ? "Escribiendo…"
-            : hasSteps
-              ? "Rehacer los pasos con IA"
-              : "Escribir los pasos con IA"}
-        </Button>
-        <p className="mb-1 text-xs text-muted-foreground">
-          Escribe los pasos y completa las cantidades que falten arriba, sin
-          tocar los ingredientes que ya hayas puesto. Revísalo antes de guardar.
         </p>
         <ol className="flex flex-col gap-3">
           {steps.map((step, index) => (
@@ -845,14 +827,39 @@ export function RecipeForm({
             </li>
           ))}
         </ol>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={addStep}
-          className="self-start"
-        >
-          <Plus aria-hidden /> Añadir paso
-        </Button>
+        {/*
+          Las dos formas de añadir pasos, en la misma fila y por orden de
+          esfuerzo: a mano a la izquierda, con IA a la derecha. `flex-wrap` es la
+          red de seguridad —si un día crecen las etiquetas o el usuario tiene el
+          tipo de letra grande, el de IA baja debajo en vez de desbordar—.
+
+          El de IA va con la firma de la app: `AiGenerateButton`, cuyo relleno
+          late con `--ai-fill` (verde de marca → ámbar). Las etiquetas de los dos
+          son cortas a propósito, porque comparten ancho: mientras genera, el
+          mensaje de progreso SUSTITUYE a la etiqueta, así que una larga
+          ensancharía el botón y partiría la fila a mitad de la espera.
+        */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" onClick={addStep}>
+            <Plus aria-hidden /> Añadir paso
+          </Button>
+          <AiGenerateButton
+            ref={aiButtonRef}
+            type="button"
+            onClick={generateWithAi}
+            loading={generating}
+            disabled={pending}
+            steps={RECIPE_GENERATION_STEPS}
+            busyLabel="Escribiendo la receta con IA"
+          >
+            {hasSteps ? "Rehacer con IA" : "Escribir con IA"}
+          </AiGenerateButton>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          La IA escribe los pasos y completa las cantidades que falten arriba,
+          sin tocar los ingredientes que ya hayas puesto. Revísalo antes de
+          guardar.
+        </p>
       </fieldset>
 
       {error ? (
