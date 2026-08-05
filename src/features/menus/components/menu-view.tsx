@@ -48,7 +48,13 @@ import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
 import { normalizeName } from "@/lib/normalize";
 import { cn } from "@/lib/utils";
-import { saveGeneratedRecipeAction } from "@/features/recipes/actions";
+import {
+  fillRecipeDetailsAction,
+  getRecipeCookingAction,
+  saveGeneratedRecipeAction,
+  type RecipeCooking,
+} from "@/features/recipes/actions";
+import { RecipeCookingDetails } from "@/features/recipes/components/recipe-cooking";
 import type { SavedRecipe } from "@/features/recipes/queries";
 import { addListItemsAction } from "@/features/shopping-list/actions";
 import type { RestockCandidate } from "@/features/shopping-list/queries";
@@ -1276,9 +1282,9 @@ function EditEntryDrawer({
     se cierra solo (cierre por historial de E11). «remove» es la confirmación de
     quitar, y solo se usa cuando el plato está resuelto —ver `askRemove`—.
   */
-  const [mode, setMode] = useState<"edit" | "move" | "duplicate" | "remove">(
-    "edit",
-  );
+  const [mode, setMode] = useState<
+    "edit" | "move" | "duplicate" | "remove" | "recipe"
+  >("edit");
 
   /*
     Foco al cambiar de vista, el mismo patrón que el selector de icono de
@@ -1301,7 +1307,10 @@ function EditEntryDrawer({
   const moveTileRef = useRef<HTMLButtonElement>(null);
   const duplicateTileRef = useRef<HTMLButtonElement>(null);
   const removeTileRef = useRef<HTMLButtonElement>(null);
-  const volverA = useRef<"move" | "duplicate" | "remove" | null>(null);
+  const recipeTileRef = useRef<HTMLButtonElement>(null);
+  const volverA = useRef<
+    "move" | "duplicate" | "remove" | "recipe" | null
+  >(null);
 
   useEffect(() => {
     if (mode !== "edit") {
@@ -1311,12 +1320,16 @@ function EditEntryDrawer({
     const destino = volverA.current;
     if (!destino) return;
     volverA.current = null;
-    const celda =
-      destino === "move"
-        ? moveTileRef
-        : destino === "duplicate"
-          ? duplicateTileRef
-          : removeTileRef;
+    // Mapa y no una cadena de ternarios: la cadena acababa en un `else` que
+    // devolvía el foco a «quitar», así que una vista nueva que se olvidara de
+    // añadir su rama no fallaba —enfocaba la celda equivocada, en silencio—.
+    // Aquí, un valor sin celda es un error de tipos.
+    const celda = {
+      move: moveTileRef,
+      duplicate: duplicateTileRef,
+      remove: removeTileRef,
+      recipe: recipeTileRef,
+    }[destino];
     celda.current?.focus();
   }, [mode]);
 
@@ -1336,6 +1349,22 @@ function EditEntryDrawer({
   const [generatingSlot, startGenerateSlot] = useTransition();
   const [addingRecipe, startAddRecipe] = useTransition();
   const [addingRecipeId, setAddingRecipeId] = useState<string | null>(null);
+  /*
+    La receta de la vista «Cómo se cocina», traída cuando se abre. Se guarda
+    ENTERA en local, no su id: la action que escribe los pasos revalida /menus, y
+    en la ruta revalidada Next devuelve la página ya re-renderizada en la misma
+    respuesta, así que reconstruirla de `entries` no es fiable a mitad de la
+    conversación. Es lo mismo que hace `skipAsking` con su fila.
+  */
+  const [detail, setDetail] = useState<RecipeCooking | null>(null);
+  const [loadingDetail, startLoadDetail] = useTransition();
+  const [fillingSteps, startFillSteps] = useTransition();
+  /**
+   * Contador de la petición en curso, para descartar la que llegue tarde. El
+   * `setDetail(null)` del cambio de plato solo cubre lo sincrónico: una consulta
+   * lanzada para el plato de ayer sigue viva mientras abres el de hoy.
+   */
+  const detailRequest = useRef(0);
 
   const isNew = editing?.entryId == null;
   const cooked = Boolean(editing?.cookedAt);
@@ -1379,6 +1408,9 @@ function EditEntryDrawer({
     setValue(editing?.current ?? "");
     setMode("edit");
     setAddingRecipeId(null);
+    // Sin esto, abrir otro plato enseñaría la receta del anterior mientras llega
+    // la suya (el panel no se desmonta al cambiar de entrada).
+    setDetail(null);
   }
 
   /*
@@ -1612,6 +1644,69 @@ function EditEntryDrawer({
     });
   }
 
+  /**
+   * Abre «Cómo se cocina» y trae la receta en ese momento. La carga es perezosa a
+   * propósito: la consulta de la semana no arrastra los pasos de catorce platos
+   * para que se lea el de un día.
+   */
+  function openRecipeView() {
+    const recipeId = editing?.recipeId;
+    if (!recipeId) return;
+    const peticion = ++detailRequest.current;
+    setDetail(null);
+    setMode("recipe");
+    startLoadDetail(async () => {
+      const r = await getRecipeCookingAction(recipeId);
+      // Una respuesta que llega tarde se tira. Sin esto: abres un plato, la
+      // consulta se atasca, cierras, abres otro y pides su receta —y encima de
+      // ella cae la del primero, con el título del segundo. Y lo peor no es lo
+      // que se lee: «Escribir los pasos con IA» se ofrece según los pasos de la
+      // receta pintada y escribe sobre la del plato abierto.
+      if (peticion !== detailRequest.current) return;
+      if (r.error || !r.recipe) {
+        toast.error(r.error ?? "No se pudo abrir la receta.");
+        return;
+      }
+      setDetail(r.recipe);
+    });
+  }
+
+  /**
+   * Escribe los pasos que le faltan al plato con IA, y los guarda. Aquí no hay
+   * borrador que revisar antes de guardar, y por eso `fillRecipeDetailsAction`
+   * solo rellena huecos: se niega a rehacer unos pasos que ya existan.
+   *
+   * Sin consentimiento de IA nos quedamos en el aviso por toast, igual que «Otra
+   * idea»: abrir aquí el modal de consentimiento encadenaría dos ResponsiveModal
+   * y el segundo se cerraría solo.
+   */
+  function fillSteps() {
+    const recipeId = editing?.recipeId;
+    if (!recipeId) return;
+    const peticion = detailRequest.current;
+    startFillSteps(async () => {
+      const r = await fillRecipeDetailsAction(recipeId);
+      // Puede volver con las dos cosas: los pasos guardados y una pega («una
+      // cantidad no se pudo guardar»). Manda la pega, que es lo que hay que leer.
+      if (r.error) toast.error(r.error);
+      else if (r.details) toast.success("Ya tienes la receta");
+      /*
+        Se relee SIEMPRE, también al fallar, y por dos motivos. Uno: lo que se
+        guarda es ADITIVO (una cantidad que ya estaba le gana a la del modelo),
+        así que leer lo guardado es la única forma de que la vista no prometa algo
+        distinto de lo que hay en la receta. Dos: un fallo a mitad puede haber
+        dejado los pasos ya escritos, y sin releer el panel seguía diciendo
+        «todavía nadie ha escrito cómo se hace» debajo de un botón que a partir de
+        ese momento contesta «esta receta ya tiene sus pasos» — un callejón que se
+        contradice en dos toques.
+      */
+      const fresh = await getRecipeCookingAction(recipeId);
+      if (peticion === detailRequest.current && fresh.recipe) {
+        setDetail(fresh.recipe);
+      }
+    });
+  }
+
   // `picker` es el selector de día y hueco: lo comparten mover y duplicar. El
   // modo «remove» NO lo usa (no elige destino), así que se nombra explícito en
   // vez de con un `!== "edit"` que lo arrastraría dentro.
@@ -1621,14 +1716,23 @@ function EditEntryDrawer({
     <ResponsiveModal open={editing !== null} onOpenChange={(o) => !o && onClose()}>
       <ResponsiveModalContent>
         <ResponsiveModalHeader>
-          <ResponsiveModalTitle className={picker ? undefined : "capitalize"}>
+          {/*
+            `capitalize` es para el rótulo del hueco («cena · martes»), así que
+            los títulos que son una frase se quedan fuera: con él, «Cómo se
+            cocina» se pintaría «Cómo Se Cocina».
+          */}
+          <ResponsiveModalTitle
+            className={picker || mode === "recipe" ? undefined : "capitalize"}
+          >
             {mode === "move"
               ? "Mover a…"
               : mode === "duplicate"
                 ? "Duplicar en…"
                 : mode === "remove"
                   ? "¿Quitar este plato?"
-                  : editing?.label}
+                  : mode === "recipe"
+                    ? "Cómo se cocina"
+                    : editing?.label}
           </ResponsiveModalTitle>
           <ResponsiveModalDescription>
             {mode === "move"
@@ -1637,9 +1741,11 @@ function EditEntryDrawer({
                 ? "Elige dónde añadir una copia de este plato."
                 : mode === "remove"
                   ? "Ya lo marcaste como cocinado."
-                  : isNew
-                    ? "Genéralo con IA, elige una receta de tu recetario o escríbelo."
-                    : "Edita o quita este plato."}
+                  : mode === "recipe"
+                    ? (detail?.name ?? editing?.current)
+                    : isNew
+                      ? "Genéralo con IA, elige una receta de tu recetario o escríbelo."
+                      : "Edita o quita este plato."}
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
 
@@ -1719,6 +1825,62 @@ function EditEntryDrawer({
                 variant="ghost"
                 onClick={volverAlPlato}
                 disabled={pending}
+              >
+                <ChevronLeft aria-hidden />
+                Volver
+              </Button>
+            </ResponsiveModalFooter>
+          </div>
+        ) : mode === "recipe" ? (
+          <div
+            ref={viewRef}
+            tabIndex={-1}
+            role="group"
+            aria-label="Cómo se cocina"
+            className="flex flex-col gap-3 px-4 outline-none"
+          >
+            {/*
+              La receta scrollea dentro de la vista y no arrastra el panel: una de
+              doce pasos no debe empujar el «Volver» fuera de la pantalla. Mismo
+              recurso que la lista de sugerencias de este mismo panel.
+            */}
+            <div className="max-h-[55vh] overflow-y-auto">
+              {detail ? (
+                <RecipeCookingDetails recipe={detail} />
+              ) : loadingDetail ? (
+                <p className="text-sm text-muted-foreground">
+                  Abriendo la receta…
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No se pudo abrir la receta.
+                </p>
+              )}
+            </div>
+            {/*
+              El botón solo cuando faltan los pasos: un plato que la IA inventó al
+              planificar la semana llega con ingredientes y sin pasos, y las
+              recetas del pack curado tampoco los traen. Con pasos ya escritos no
+              se ofrece, porque lo que se guardara desde aquí no pasaría por
+              delante de nadie antes de pisar lo que hubiera.
+            */}
+            {detail && detail.steps.length === 0 ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={fillSteps}
+                loading={fillingSteps}
+              >
+                <Sparkles aria-hidden />
+                {fillingSteps ? "Escribiendo…" : "Escribir los pasos con IA"}
+              </Button>
+            ) : null}
+            <ResponsiveModalFooter className="gap-2 px-0">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={volverAlPlato}
+                disabled={fillingSteps}
               >
                 <ChevronLeft aria-hidden />
                 Volver
@@ -1850,6 +2012,20 @@ function EditEntryDrawer({
           */}
           {!isNew ? (
             <div className="grid grid-cols-3 gap-2">
+              {/*
+                Primera celda cuando el plato es una receta: al abrir un plato de
+                hoy, «cómo se cocina» es más veces lo que se venía a buscar que
+                moverlo o quitarlo. Un plato de texto libre no la tiene porque no
+                hay nada que leer.
+              */}
+              {editing?.recipeId ? (
+                <EntryActionTile
+                  ref={recipeTileRef}
+                  icon={ChefHat}
+                  label="Cómo se cocina"
+                  onClick={openRecipeView}
+                />
+              ) : null}
               {canMarkSkipped ? (
                 <EntryActionTile
                   icon={CalendarOff}
@@ -1874,8 +2050,8 @@ function EditEntryDrawer({
                 loading={pinningPending}
                 pressed={pinned}
               />
-              {/* Las tres celdas que abren una vista llevan `ref`: es donde
-                  vuelve el foco al salir de ella (ver `volverAlPlato`). */}
+              {/* Las celdas que abren una vista llevan `ref`: es donde vuelve el
+                  foco al salir de ella (ver `volverAlPlato`). */}
               <EntryActionTile
                 ref={moveTileRef}
                 icon={MoveRight}

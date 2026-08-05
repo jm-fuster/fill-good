@@ -719,6 +719,7 @@ export type Database = {
           meal_types: string[] | null;
           seasons: string[];
           instructions: string | null;
+          steps: string[];
           source: string;
           is_saved: boolean;
           normalized_name: string | null;
@@ -735,6 +736,7 @@ export type Database = {
           meal_types?: string[] | null;
           seasons?: string[];
           instructions?: string | null;
+          steps?: string[];
           source?: string;
           is_saved?: boolean;
           normalized_name?: string | null;
@@ -751,6 +753,7 @@ export type Database = {
           meal_types?: string[] | null;
           seasons?: string[];
           instructions?: string | null;
+          steps?: string[];
           source?: string;
           is_saved?: boolean;
           normalized_name?: string | null;
