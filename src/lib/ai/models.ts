@@ -10,7 +10,7 @@ import type { LanguageModel } from "ai";
  * su rama aquí y cambiar las env vars. Prompts, schemas zod y features no
  * cambian.
  *
- * Env vars: AI_MODEL_RECEIPTS, AI_MODEL_MENUS (id del modelo) y
+ * Env vars: AI_MODEL_RECEIPTS, AI_MODEL_MENUS, AI_MODEL_RECIPES (id del modelo) y
  * GOOGLE_GENERATIVE_AI_API_KEY (la lee el provider de Google automáticamente).
  *
  * Los ids van FIJOS, no por alias `*-latest`: con el alias Google mueve el
@@ -29,6 +29,15 @@ const DEFAULT_MODELS = {
    * semana generada — el ahorro de bajarla a lite era ruido.
    */
   menus: "gemini-3.5-flash",
+  /**
+   * Cómo se cocina un plato: cantidades por ingrediente y pasos. Flash por lo
+   * mismo que los menús —esto tampoco es extraer lo que ya está escrito, es
+   * escribirlo— y con una razón más: las cantidades que salgan de aquí acaban
+   * en la lista de la compra y en el descuento del inventario, así que un «500 g
+   * de azafrán» no es una frase fea, es dinero. Es UNA llamada por receta y a
+   * petición del usuario, así que bajarla a lite ahorraría ruido.
+   */
+  recipes: "gemini-3.5-flash",
 } as const;
 
 export type AiTask = keyof typeof DEFAULT_MODELS;
@@ -36,6 +45,7 @@ export type AiTask = keyof typeof DEFAULT_MODELS;
 const ENV_KEYS: Record<AiTask, string> = {
   receipts: "AI_MODEL_RECEIPTS",
   menus: "AI_MODEL_MENUS",
+  recipes: "AI_MODEL_RECIPES",
 };
 
 export function getModel(task: AiTask): LanguageModel {

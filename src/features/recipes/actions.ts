@@ -2,21 +2,68 @@
 
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import { generateObject } from "ai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
-import type { Database } from "@/lib/supabase/types";
+import type { Database, UnitType } from "@/lib/supabase/types";
+import { classifyAiError } from "@/lib/ai/errors";
+import { getModel } from "@/lib/ai/models";
+import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
+import { buildRecipeDetailsPrompt } from "@/lib/ai/recipe-prompt";
+import { recipeDetailsSchema } from "@/lib/ai/recipe-schema";
+import { getAiConsent } from "@/features/ai-consent/queries";
+import { AI_CONSENT_REQUIRED_ERROR } from "@/features/ai-consent/version";
 import { getCurrentHousehold } from "@/features/household/queries";
 import {
+  mergeGeneratedIngredients,
+  sanitizeGeneratedSteps,
+  sanitizePrepMinutes,
+  type DraftIngredient,
+} from "./ai-draft";
+import {
   ratingSchema,
+  recipeDetailsRequestSchema,
   recipeInputSchema,
+  type RecipeDetailsRequest,
   type RecipeInput,
   type RecipeIngredientInput,
 } from "./schemas";
 import { getSeedRecipeById } from "./seed";
 
 export type RecipeActionState = { error?: string; ok?: boolean; id?: string };
+
+/** Cómo se cocina un plato, tal como sale de la IA y ya mezclado con lo que había. */
+export type RecipeDetailsDraft = {
+  prepMinutes: number | null;
+  ingredients: DraftIngredient[];
+  steps: string[];
+};
+
+export type RecipeDetailsState = {
+  error?: string;
+  /** El usuario no ha aceptado el aviso de IA: la pantalla debe ofrecerlo. */
+  needsAiConsent?: boolean;
+  details?: RecipeDetailsDraft;
+};
+
+/** Una receta para leerla mientras se cocina (`RecipeCookingDetails`). */
+export type RecipeCooking = {
+  name: string;
+  /** Raciones a las que corresponden las cantidades de abajo. */
+  servings: number;
+  prepMinutes: number | null;
+  steps: string[];
+  ingredients: {
+    name: string;
+    quantity: number | null;
+    unit: UnitType | null;
+    optional: boolean;
+  }[];
+};
+
+export type RecipeCookingState = { error?: string; recipe?: RecipeCooking };
 
 type Supabase = SupabaseClient<Database>;
 
@@ -79,11 +126,18 @@ async function buildIngredientRows(
   });
 }
 
-/** Valida la entrada descartando filas de ingrediente sin nombre. */
+/**
+ * Valida la entrada descartando las filas que el formulario deja vacías:
+ * ingredientes sin nombre y pasos en blanco. Los pasos se recortan aquí y no en
+ * el cliente porque la columna `steps` tiene prohibida la cadena vacía
+ * (`recipes_steps_sin_vacios`): un paso en blanco que llegara a la escritura no
+ * sería un texto feo, sería un error de Postgres perdiendo la receta entera.
+ */
 function parseInput(input: RecipeInput) {
   return recipeInputSchema.safeParse({
     ...input,
     ingredients: (input.ingredients ?? []).filter((i) => i?.name?.trim()),
+    steps: (input.steps ?? []).filter((s) => s?.trim()),
   });
 }
 
@@ -135,7 +189,7 @@ export async function createRecipeAction(
       prep_minutes: d.prepMinutes,
       meal_types: d.mealTypes,
       seasons: d.seasons,
-      instructions: d.instructions,
+      steps: d.steps,
       source: "manual",
       is_saved: true,
       created_by: userId,
@@ -194,7 +248,7 @@ export async function updateRecipeAction(
       prep_minutes: d.prepMinutes,
       meal_types: d.mealTypes,
       seasons: d.seasons,
-      instructions: d.instructions,
+      steps: d.steps,
     })
     .eq("household_id", household.id)
     .eq("id", id);
@@ -426,4 +480,373 @@ export async function rateRecipeAction(
   revalidatePath("/recetas");
   revalidatePath(`/recetas/${recipeId}`);
   return { ok: true, id: recipeId };
+}
+
+/**
+ * Trae una receta para leerla, con sus ingredientes y sus pasos. Es una LECTURA
+ * en una Server Action, y no una query de servidor, porque quien la pide es el
+ * panel de un plato del menú ya montado en el cliente: los pasos no viajan en la
+ * consulta de la semana (serían catorce recetas completas para que se lea una), y
+ * una receta efímera de la IA no está en el recetario que ese panel ya tiene.
+ * Mismo patrón que `computeCookedDeductionsAction`.
+ *
+ * Vale igual para una receta guardada que para una efímera: no filtra por
+ * `is_saved` a propósito, porque el plato que la IA inventó al planificar la
+ * semana es justo el que nadie sabe cocinar.
+ */
+export async function getRecipeCookingAction(
+  recipeId: string,
+): Promise<RecipeCookingState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+
+  const { data: recipe } = await supabase
+    .from("recipes")
+    .select("id, name, servings, prep_minutes, steps")
+    .eq("household_id", household.id)
+    .eq("id", recipeId)
+    .maybeSingle();
+  if (!recipe) return { error: "No se encontró la receta." };
+
+  const { data: ings } = await supabase
+    .from("recipe_ingredients")
+    .select("name, quantity, unit, optional")
+    .eq("household_id", household.id)
+    .eq("recipe_id", recipeId)
+    .order("id", { ascending: true });
+
+  return {
+    recipe: {
+      name: recipe.name,
+      servings: recipe.servings ?? 1,
+      prepMinutes: recipe.prep_minutes,
+      steps: recipe.steps ?? [],
+      ingredients: (ings ?? []).map((i) => ({
+        name: i.name,
+        quantity: i.quantity === null ? null : Number(i.quantity),
+        unit: i.unit,
+        optional: i.optional,
+      })),
+    },
+  };
+}
+
+/**
+ * Le pide al modelo cómo se cocina un plato y devuelve el resultado ya mezclado
+ * con lo que la receta tuviera escrito (`ai-draft.ts`).
+ *
+ * No consulta la base ni escribe nada: recibe los ingredientes que ya hay y
+ * devuelve el borrador. Es lo que permite que la MISMA generación sirva para el
+ * formulario (que enseña el borrador antes de guardar) y para un plato del menú
+ * (que lo guarda), sin que cada lado le pida al modelo cosas distintas.
+ */
+async function askForRecipeDetails(input: {
+  name: string;
+  description: string | null;
+  servings: number;
+  mealTypes: string[];
+  existing: DraftIngredient[];
+}): Promise<{ error?: string; details?: RecipeDetailsDraft }> {
+  let generated;
+  try {
+    const { object } = await generateObject({
+      model: getModel("recipes"),
+      schema: recipeDetailsSchema,
+      // Un plato, no una semana: 45 s frente a los 60 s del menú. Si tarda más
+      // que esto, lo que llegue tarde ya no lo está esperando nadie.
+      abortSignal: AbortSignal.timeout(45_000),
+      prompt: buildRecipeDetailsPrompt({
+        name: input.name,
+        description: input.description,
+        servings: input.servings,
+        mealTypes: input.mealTypes,
+        existing: input.existing.map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          unit: i.unit,
+        })),
+      }),
+    });
+    generated = object;
+  } catch (err) {
+    console.error("Error al escribir la receta:", err);
+    const kind = classifyAiError(err);
+    return {
+      error:
+        kind === "rate_limit"
+          ? "El servicio de IA está saturado ahora mismo. Espera un minuto y vuelve a intentarlo."
+          : kind === "timeout"
+            ? "La receta tardó demasiado en escribirse. Vuelve a intentarlo."
+            : "No se pudo escribir la receta. Vuelve a intentarlo.",
+    };
+  }
+
+  /*
+    Aquí es donde se comprueba que ha llegado algo, y no en el schema:
+    `recipe-schema.ts` renuncia a `.min()` a propósito para que una lista vacía no
+    tire la respuesta ENTERA, y el precio de eso es que la respuesta vacía llega
+    hasta aquí. A cambio, el aviso puede nombrar el plato, que es lo que le dice
+    al usuario qué cambiar.
+  */
+  if (generated.steps.length === 0 && generated.ingredients.length === 0) {
+    return {
+      error: `No he sabido escribir la receta de «${input.name}». Prueba con un nombre más concreto.`,
+    };
+  }
+
+  return {
+    details: {
+      prepMinutes: sanitizePrepMinutes(generated.prep_minutes),
+      ingredients: mergeGeneratedIngredients(
+        input.existing,
+        generated.ingredients,
+      ),
+      steps: sanitizeGeneratedSteps(generated.steps),
+    },
+  };
+}
+
+/**
+ * Escribe con IA los ingredientes y los pasos de un plato y los devuelve al
+ * formulario SIN guardar nada. Sirve igual en «nueva receta» (donde solo hay un
+ * nombre) que al editar una que ya tiene media lista puesta.
+ *
+ * Que no escriba es la decisión importante: lo que vuelve es un borrador que
+ * pasa por delante de una persona y se guarda con el botón de siempre. Por eso
+ * aquí SÍ se puede rehacer una receta que ya tenía pasos —no se pierde nada
+ * hasta que se guarda—, mientras que `fillRecipeDetailsAction`, que escribe
+ * directo, solo rellena lo que está vacío.
+ */
+export async function generateRecipeDetailsAction(
+  input: RecipeDetailsRequest,
+): Promise<RecipeDetailsState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  // Escribir una receta manda a la IA de Google el nombre del plato y lo que el
+  // hogar tenga apuntado en él: mismo gate que los tickets y los menús.
+  const consent = await getAiConsent();
+  if (!consent.consented) {
+    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
+  }
+
+  const parsed = recipeDetailsRequestSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
+  }
+  const d = parsed.data;
+
+  const supabase = createServerSupabaseClient();
+  const rateError = await enforceAiRateLimit(supabase, "recipe");
+  if (rateError) return { error: rateError };
+
+  const result = await askForRecipeDetails({
+    name: d.name,
+    description: d.description,
+    servings: d.servings,
+    mealTypes: d.mealTypes,
+    existing: d.ingredients.map((i) => ({
+      name: i.name,
+      quantity: i.quantity,
+      unit: i.unit,
+      optional: i.optional,
+      productId: i.productId,
+    })),
+  });
+  if (!result.details) {
+    return { error: result.error ?? "No se pudo escribir la receta." };
+  }
+  return { details: result.details };
+}
+
+/**
+ * Escribe con IA los pasos que le faltan a una receta que YA existe y los
+ * guarda. Es la vía del menú: un plato que la IA inventó al planificar la semana
+ * trae nombre e ingredientes pero nunca pasos, y una receta del pack curado
+ * tampoco los trae, así que «¿cómo se cocina esto?» no tiene respuesta hasta que
+ * alguien la pide.
+ *
+ * Lo que escribe es ADITIVO por diseño: los pasos solo si no había ninguno, los
+ * minutos solo si estaban vacíos, y de los ingredientes solo las cantidades que
+ * faltaban más los que no estaban. Un ingrediente que ya estaba no se renombra
+ * ni se borra nunca (`mergeGeneratedIngredients`), porque su nombre es el vínculo
+ * con el catálogo del hogar del que cuelgan la lista de la compra y el descuento
+ * de la despensa.
+ */
+export async function fillRecipeDetailsAction(
+  recipeId: string,
+): Promise<RecipeDetailsState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const consent = await getAiConsent();
+  if (!consent.consented) {
+    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
+  }
+
+  const supabase = createServerSupabaseClient();
+
+  const { data: recipe } = await supabase
+    .from("recipes")
+    .select("id, name, description, servings, prep_minutes, meal_types, steps")
+    .eq("household_id", household.id)
+    .eq("id", recipeId)
+    .maybeSingle();
+  if (!recipe) return { error: "No se encontró la receta." };
+
+  /*
+    Una receta que ya tiene pasos no se rehace por aquí. Desde el menú no hay
+    revisión previa —lo que devuelva el modelo se guarda—, así que rehacerlos
+    sería borrar sin preguntar, y sin deshacer, lo que escribió el hogar. Para
+    rehacerlos está el formulario de la receta, donde el borrador se ve antes de
+    guardarse.
+
+    Va ANTES del rate limit a propósito, igual que la guarda del reroll en
+    `menus/actions.ts`: negar algo no debe gastar cuota de IA.
+  */
+  if ((recipe.steps ?? []).length > 0) {
+    return {
+      error: "Esta receta ya tiene sus pasos: puedes cambiarlos en «Mis recetas».",
+    };
+  }
+
+  const rateError = await enforceAiRateLimit(supabase, "recipe");
+  if (rateError) return { error: rateError };
+
+  // El `id` de cada fila viaja porque las cantidades se escriben una a una sobre
+  // la fila que ya existe. Borrar e insertar de nuevo (lo que hace el formulario
+  // al guardar) perdería aquí un `product_id` elegido a mano en el
+  // autocompletado: al reinsertar solo se recupera el vínculo cuyo nombre
+  // coincide exactamente con el del catálogo.
+  const { data: ings, error: ingsErr } = await supabase
+    .from("recipe_ingredients")
+    .select("id, name, quantity, unit, optional, product_id")
+    .eq("household_id", household.id)
+    .eq("recipe_id", recipeId)
+    .order("id", { ascending: true });
+
+  /*
+    Aquí NO vale el `?? []` de costumbre, y es la diferencia entre un fallo y un
+    destrozo: «esta receta no tiene ingredientes» y «no he podido leerlos» dan la
+    misma lista vacía, pero con la segunda el modelo devuelve el plato entero,
+    todo cuenta como AÑADIDO y se insertan otra vez los ingredientes que ya
+    estaban —duplicados y sin `product_id`—. A partir de ahí «lo que falta» pide
+    el doble y cocinar descuenta el doble, sin un solo error por ningún lado.
+    Y no es hipotético: el PGRST303 por desfase de reloj Clerk↔Supabase de este
+    repo es exactamente un fallo transitorio de una lectura como esta.
+  */
+  if (ingsErr) {
+    return { error: "No se pudieron leer los ingredientes. Vuelve a intentarlo." };
+  }
+
+  const rows = ings ?? [];
+  const existing: DraftIngredient[] = rows.map((i) => ({
+    name: i.name,
+    quantity: i.quantity === null ? null : Number(i.quantity),
+    unit: i.unit,
+    optional: i.optional,
+    productId: i.product_id,
+  }));
+
+  const result = await askForRecipeDetails({
+    name: recipe.name,
+    description: recipe.description,
+    servings: recipe.servings ?? 2,
+    mealTypes: recipe.meal_types ?? [],
+    existing,
+  });
+  if (!result.details) {
+    return { error: result.error ?? "No se pudo escribir la receta." };
+  }
+  const details = result.details;
+
+  /*
+    Sin pasos no se escribe nada. Aquí se llega desde un botón que dice «Escribir
+    los pasos con IA», así que guardar un array vacío gastaba la cuota y luego el
+    panel cantaba «Ya tienes la receta» sobre un plato que seguía sin decir cómo
+    se hace. Es un caso vivo, no una precaución: `askForRecipeDetails` solo falla
+    cuando vienen vacías las DOS listas, y `recipe-schema.ts` renuncia al `.min()`
+    a propósito. No escribir tampoco las cantidades es lo que deja el intento
+    limpio: la guarda de arriba no lo bloquea y se puede volver a pedir.
+  */
+  if (details.steps.length === 0) {
+    return {
+      error: `No he sabido escribir los pasos de «${recipe.name}». Puedes escribirlos a mano en «Mis recetas».`,
+    };
+  }
+
+  const { error: updErr } = await supabase
+    .from("recipes")
+    .update({
+      steps: details.steps,
+      // Los minutos solo si la receta no los declaraba: los del hogar manda.
+      ...(recipe.prep_minutes === null && details.prepMinutes !== null
+        ? { prep_minutes: details.prepMinutes }
+        : {}),
+    })
+    .eq("household_id", household.id)
+    .eq("id", recipeId);
+  if (updErr) return { error: "No se pudieron guardar los pasos." };
+
+  // El orden de la mezcla es contrato (ver `mergeGeneratedIngredients`): los que
+  // ya estaban, uno a uno y en su sitio, y detrás los añadidos.
+  const filled = details.ingredients.slice(0, existing.length);
+  const added = details.ingredients.slice(existing.length);
+
+  let cantidadesFallidas = 0;
+  for (let i = 0; i < filled.length; i += 1) {
+    const before = existing[i];
+    const after = filled[i];
+    // Solo se toca la fila a la que le faltaba la cantidad y ahora la tiene.
+    if (before.quantity !== null || after.quantity === null) continue;
+    const { error: qtyErr } = await supabase
+      .from("recipe_ingredients")
+      .update({ quantity: after.quantity, unit: after.unit })
+      .eq("household_id", household.id)
+      .eq("id", rows[i].id);
+    // Se cuenta en vez de abortar: los pasos ya están guardados y las demás
+    // cantidades siguen siendo buenas, así que se termina el bucle y se avisa al
+    // final. Callarse era decir «ya tienes la receta» sobre unas cantidades que
+    // no se escribieron — la regla del repo: una escritura con filtro que no
+    // comprueba nada convierte el éxito en una suposición.
+    if (qtyErr) cantidadesFallidas += 1;
+  }
+
+  if (added.length > 0) {
+    const newRows = await buildIngredientRows(
+      supabase,
+      household.id,
+      recipeId,
+      added,
+    );
+    const { error: ingErr } = await supabase
+      .from("recipe_ingredients")
+      .insert(newRows);
+    // Los pasos ya están guardados: un fallo aquí deja la receta con sus pasos y
+    // sin los ingredientes nuevos, que es recuperable a mano. Se avisa, no se
+    // deshace: borrar los pasos que sí salieron bien sería peor.
+    if (ingErr) {
+      return {
+        error: "Se guardaron los pasos, pero no los ingredientes nuevos.",
+      };
+    }
+  }
+
+  revalidatePath("/recetas");
+  revalidatePath(`/recetas/${recipeId}`);
+  revalidatePath("/menus");
+
+  // Los pasos están guardados, así que esto no es un fracaso: es un éxito con una
+  // pega concreta, y quien llama vuelve a leer la receta en los dos casos.
+  if (cantidadesFallidas > 0) {
+    return {
+      details,
+      error:
+        cantidadesFallidas === 1
+          ? "Ya tienes los pasos, pero una cantidad no se pudo guardar."
+          : `Ya tienes los pasos, pero ${cantidadesFallidas} cantidades no se pudieron guardar.`,
+    };
+  }
+  return { details };
 }

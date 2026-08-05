@@ -40,7 +40,8 @@ export type RecipeForEdit = {
   prepMinutes: number | null;
   mealTypes: string[];
   seasons: string[];
-  instructions: string | null;
+  /** Pasos en orden. Vacío = la receta aún no dice cómo se hace. */
+  steps: string[];
   ingredients: RecipeIngredient[];
 };
 
@@ -272,7 +273,7 @@ type RecipeRow = {
   prep_minutes: number | null;
   meal_types: string[] | null;
   seasons: string[] | null;
-  instructions: string | null;
+  steps: string[] | null;
   is_saved: boolean;
 };
 
@@ -290,7 +291,7 @@ export async function getRecipeForEdit(
   const { data: recipe, error } = await supabase
     .from("recipes")
     .select(
-      "id, name, description, servings, prep_minutes, meal_types, seasons, instructions, is_saved",
+      "id, name, description, servings, prep_minutes, meal_types, seasons, steps, is_saved",
     )
     .eq("household_id", householdId)
     .eq("id", id)
@@ -315,7 +316,7 @@ export async function getRecipeForEdit(
     prepMinutes: row.prep_minutes,
     mealTypes: row.meal_types ?? [],
     seasons: row.seasons ?? ["all"],
-    instructions: row.instructions,
+    steps: row.steps ?? [],
     ingredients: (ingredients ?? []).map((i) => ({
       name: i.name,
       quantity: i.quantity === null ? null : Number(i.quantity),
