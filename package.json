@@ -19,8 +19,9 @@
     "check:rotulos": "node scripts/check-rotulos.mjs",
     "check:receta-ia": "node scripts/check-recipe-draft.mjs",
     "check:guardas": "node scripts/check-guards.mjs",
+    "check:acciones": "node scripts/check-server-actions.mjs",
     "compare:menu": "node scripts/compare-menu-models.mjs",
-    "build:check": "node scripts/check-legal-config.mjs && next build && node scripts/check-bundle-budget.mjs",
+    "build:check": "node scripts/check-legal-config.mjs && node scripts/check-server-actions.mjs && next build && node scripts/check-bundle-budget.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

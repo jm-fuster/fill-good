@@ -1,5 +1,5 @@
 import { formatQuantity, formatQuantityValue } from "@/lib/units";
-import type { RecipeCooking } from "../actions";
+import type { RecipeCooking } from "../queries";
 
 type CookingIngredient = RecipeCooking["ingredients"][number];
 

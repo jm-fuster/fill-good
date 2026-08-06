@@ -51,8 +51,7 @@ import {
   restockPayload,
   restockToastMessage,
 } from "@/features/menus/components/cooked-restock-fields";
-import type { RecipeCooking } from "../actions";
-import type { RecipeRatingSummary } from "../queries";
+import type { RecipeCooking, RecipeRatingSummary } from "../queries";
 import {
   finishOffer,
   progressStorageKey,

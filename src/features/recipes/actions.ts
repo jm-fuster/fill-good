@@ -50,12 +50,22 @@ export type RecipeDetailsState = {
 };
 
 /**
- * Una receta para leerla mientras se cocina (`RecipeCookingDetails`). Se declara
- * en `queries.ts`, con la consulta que la devuelve, y se reexporta aquí porque
- * quien la importa es cliente y no debe tirar de un módulo `server-only`.
+ * El tipo `RecipeCooking` vive en `queries.ts`, junto a la consulta que lo
+ * devuelve, y quien lo necesite lo importa DE ALLÍ con `import type` —también
+ * desde el cliente: un import de tipo se borra al compilar, así que nunca
+ * arrastra el módulo `server-only` al navegador (es lo que ya hace la lista de
+ * la compra con los suyos).
+ *
+ * Aquí NO se reexporta, y no es una preferencia de estilo: un
+ * `export type { X }` en un módulo `"use server"` **rompe el módulo entero en
+ * tiempo de ejecución**. El cargador de Server Actions de Next trata cada
+ * exportación como un valor y genera una referencia a un binding que TypeScript
+ * ya había borrado, así que la evaluación del módulo muere con
+ * `ReferenceError: X is not defined` y con ella TODAS las acciones que esa
+ * página tenga en su cargador — no solo la de al lado. Ni `tsc`, ni el lint, ni
+ * `next build` lo ven: solo aparece al invocar una acción. Lo vigila
+ * `npm run check:acciones`.
  */
-export type { RecipeCooking };
-
 export type RecipeCookingState = { error?: string; recipe?: RecipeCooking };
 
 type Supabase = SupabaseClient<Database>;

@@ -53,10 +53,12 @@ import {
   fillRecipeDetailsAction,
   getRecipeCookingAction,
   saveGeneratedRecipeAction,
-  type RecipeCooking,
 } from "@/features/recipes/actions";
 import { RecipeCookingDetails } from "@/features/recipes/components/recipe-cooking";
-import type { SavedRecipe } from "@/features/recipes/queries";
+import type {
+  RecipeCooking,
+  SavedRecipe,
+} from "@/features/recipes/queries";
 import { addListItemsAction } from "@/features/shopping-list/actions";
 import type { RestockCandidate } from "@/features/shopping-list/queries";
 import type {
