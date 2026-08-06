@@ -44,6 +44,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getWeekDays, shiftWeek, todayLocalISO } from "@/lib/dates";
+import { actionErrorMessage } from "@/lib/action-error";
 import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
 import { normalizeName } from "@/lib/normalize";
@@ -433,7 +434,21 @@ export function MenuView({
   function generate(mode: "fill" | "replace") {
     setConfirmReplace(false);
     startGenerate(async () => {
-      const r = await generateMenuAction(weekStart, mode);
+      /*
+        Toda acción de IA de esta vista va envuelta, y no es celo: una que lanza
+        dentro de una transición sube hasta la barrera de error y **se lleva la
+        pantalla entera** — la semana desaparece y en su sitio queda «No se pudo
+        cargar», que ni nombra lo que fallaba ni deja reintentar solo eso. Un
+        aviso dice más y no cuesta el contexto. `actionErrorMessage` es el mismo
+        texto honrado que usa el resto de la app (y trae la referencia del log).
+      */
+      let r: Awaited<ReturnType<typeof generateMenuAction>>;
+      try {
+        r = await generateMenuAction(weekStart, mode);
+      } catch (err) {
+        toast.error(actionErrorMessage("No se pudo generar el menú.", err));
+        return;
+      }
       if (r.needsAiConsent) {
         // Sin consentimiento de IA: pedimos aceptar y reintentamos al aceptar.
         // El botón de generar no vive dentro de otro modal, así que abrir este
@@ -473,7 +488,13 @@ export function MenuView({
 
   function askTonight() {
     startTonight(async () => {
-      const r = await computeTonightAction();
+      let r: Awaited<ReturnType<typeof computeTonightAction>>;
+      try {
+        r = await computeTonightAction();
+      } catch (err) {
+        toast.error(actionErrorMessage("No se pudo pensar qué hacer hoy.", err));
+        return;
+      }
       if (r.error) {
         toast.error(r.error);
         return;
@@ -1483,7 +1504,13 @@ function EditEntryDrawer({
     if (!editing) return;
     const { date, slot } = editing;
     startGenerateSlot(async () => {
-      const r = await generateSlotEntryAction(weekStart, date, slot);
+      let r: Awaited<ReturnType<typeof generateSlotEntryAction>>;
+      try {
+        r = await generateSlotEntryAction(weekStart, date, slot);
+      } catch (err) {
+        toast.error(actionErrorMessage("No se pudo generar el plato.", err));
+        return;
+      }
       if (r.error) toast.error(r.error);
       else {
         toast.success("Plato generado");
@@ -1645,7 +1672,13 @@ function EditEntryDrawer({
     if (!editing?.entryId) return;
     const entryId = editing.entryId;
     startReroll(async () => {
-      const r = await rerollMenuEntryAction(entryId);
+      let r: Awaited<ReturnType<typeof rerollMenuEntryAction>>;
+      try {
+        r = await rerollMenuEntryAction(entryId);
+      } catch (err) {
+        toast.error(actionErrorMessage("No se pudo pensar otra idea.", err));
+        return;
+      }
       if (r.error) toast.error(r.error);
       else {
         toast.success("Nueva idea lista");
@@ -1695,7 +1728,13 @@ function EditEntryDrawer({
     if (!recipeId) return;
     const peticion = detailRequest.current;
     startFillSteps(async () => {
-      const r = await fillRecipeDetailsAction(recipeId);
+      let r: Awaited<ReturnType<typeof fillRecipeDetailsAction>>;
+      try {
+        r = await fillRecipeDetailsAction(recipeId);
+      } catch (err) {
+        toast.error(actionErrorMessage("No se pudieron escribir los pasos.", err));
+        return;
+      }
       // Puede volver con las dos cosas: los pasos guardados y una pega («una
       // cantidad no se pudo guardar»). Manda la pega, que es lo que hay que leer.
       if (r.error) toast.error(r.error);
