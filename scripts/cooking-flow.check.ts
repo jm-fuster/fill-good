@@ -21,6 +21,13 @@
  *    esa rama no cambia ningún tipo —`FinishOffer` sigue siendo `FinishOffer`—:
  *    lo único que cambia es lo que sale por pantalla.
  *
+ * 3. **Qué tiempos se ofrecen para poner en marcha.** `step-timers.ts` adivina
+ *    sobre texto libre escrito por una persona o por un modelo, donde
+ *    «20 minutos» y «200 g» son los dos un número seguido de letras. El coste de
+ *    equivocarse no es simétrico —un tiempo no detectado se pone a mano, un chip
+ *    de «180 min» sacado de «180 grados» arruina la cena—, así que lo que fijan
+ *    los casos de abajo es sobre todo lo que NO debe detectar.
+ *
  * Lo que NO se comprueba: el componente, la escritura en `localStorage` ni las
  * Server Actions que encadena el cierre (esas las cubre `check:guardas`).
  */
@@ -34,6 +41,12 @@ import {
   writeProgress,
   type CookingEntry,
 } from "@/features/recipes/cooking-flow";
+import {
+  findStepTimers,
+  formatCountdown,
+  MAX_TIMERS_PER_STEP,
+  timerLabel,
+} from "@/features/recipes/step-timers";
 
 let fallos = 0;
 function check(nombre: string, condicion: boolean, extra?: unknown) {
@@ -204,6 +217,126 @@ check(
   timesCookedLabel(3) === "Es la 3.ª vez que lo cocináis",
   { real: timesCookedLabel(3) },
 );
+
+/** Los segundos de los tiempos detectados en un paso, en orden. */
+function tiempos(paso: string): number[] {
+  return findStepTimers(paso).map((t) => t.seconds);
+}
+/** Los rótulos, para los casos en que lo que se mira es cómo se escriben. */
+function rotulos(paso: string): string[] {
+  return findStepTimers(paso).map((t) => t.label);
+}
+
+seccion("Tiempos que SÍ se detectan");
+check("minutos en cifras", tiempos("Cuece 35 minutos a fuego bajo")[0] === 2100);
+check("abreviado a «min»", tiempos("Hornea 25 min")[0] === 1500);
+check("con punto detrás", tiempos("Hornea 25 min. y saca")[0] === 1500);
+check("horas", tiempos("Deja reposar 2 horas")[0] === 7200);
+check("una «h» suelta", tiempos("Marina 1 h en la nevera")[0] === 3600);
+check("segundos", tiempos("Escalda 45 segundos")[0] === 45);
+check("decimal con coma", tiempos("Cuece 1,5 horas")[0] === 5400);
+/*
+  De un intervalo se toma el extremo BAJO: el temporizador sirve para ir a
+  MIRAR, no para dar algo por acabado. Quedarse corto te lleva a la olla dos
+  minutos antes; pasarse la quema.
+*/
+check("intervalo con guion: el extremo bajo", tiempos("Sofríe 10-12 minutos")[0] === 600);
+check("intervalo con «a»", tiempos("Sofríe 10 a 12 minutos")[0] === 600);
+check("intervalo con «entre … y …»", tiempos("Hornea entre 20 y 25 minutos")[0] === 1200);
+/*
+  «1 h 30 min» son dos coincidencias pegadas. Sin unirlas salían dos chips —«1 h»
+  y «30 min»— que juntos son hora y media pero por separado no son nada.
+*/
+check("«1 h 30 min» es UN tiempo", tiempos("Asa 1 h 30 min")[0] === 5400, {
+  real: tiempos("Asa 1 h 30 min"),
+});
+check("y solo uno", tiempos("Asa 1 h 30 min").length === 1);
+check("«1 h y 30 min» también", tiempos("Asa 1 h y 30 min")[0] === 5400);
+check("«hora y media»", tiempos("Deja reposar 1 hora y media")[0] === 5400, {
+  real: tiempos("Deja reposar 1 hora y media"),
+});
+/*
+  Pero solo si van pegados: dos tiempos que hablan de cosas distintas en la misma
+  frase siguen siendo dos.
+*/
+check(
+  "dos tiempos separados por texto NO se funden",
+  JSON.stringify(tiempos("Hornea 1 h y sirve tras 30 min de reposo")) ===
+    JSON.stringify([3600, 1800]),
+  { real: tiempos("Hornea 1 h y sirve tras 30 min de reposo") },
+);
+check(
+  "varios tiempos en un paso salen en orden",
+  JSON.stringify(tiempos("Sofríe 5 minutos y luego cuece 35 minutos")) ===
+    JSON.stringify([300, 2100]),
+);
+
+seccion("Tiempos que NO se deben detectar (lo que de verdad importa)");
+check("los grados del horno no son minutos", tiempos("Precalienta a 180 grados").length === 0);
+check(
+  "un horno a 200 ºC con su tiempo detecta SOLO el tiempo",
+  JSON.stringify(tiempos("Hornea a 200 ºC durante 25 minutos")) ===
+    JSON.stringify([1500]),
+  { real: tiempos("Hornea a 200 ºC durante 25 minutos") },
+);
+check("los gramos no", tiempos("Añade 200 g de harina").length === 0);
+/*
+  `m` y `s` a secas se quedan fuera: en una receta son metros y son segundos con
+  la misma probabilidad, y equivocarse hacia el falso positivo es lo caro.
+*/
+check("«2 m» no es un tiempo", tiempos("Corta tiras de 2 m").length === 0);
+check("los mililitros tampoco", tiempos("Vierte 200 ml de caldo").length === 0);
+check("ni los grados en decimal", tiempos("Baja a 62,5 grados").length === 0);
+check("una palabra que empieza por «h»", tiempos("Añade 3 huevos").length === 0);
+check("una palabra que empieza por «min»", tiempos("Usa 2 minipimientos").length === 0);
+/*
+  Los números en palabras se quedan fuera a propósito: distinguir «diez segundos»
+  de «diez dientes de ajo» pide entender la frase, no reconocer un patrón.
+*/
+check("los números en palabras no se adivinan", tiempos("Remueve diez segundos").length === 0);
+check("un paso sin tiempos no inventa ninguno", tiempos("Pica la cebolla en dados").length === 0);
+check("un paso vacío no revienta", tiempos("").length === 0);
+
+seccion("Topes del temporizador");
+check("por debajo del mínimo no se ofrece", tiempos("Remueve 5 segundos").length === 0);
+check("justo en el mínimo sí", tiempos("Remueve 10 segundos")[0] === 10);
+/*
+  Ocho horas de reposo no es un temporizador: la cuenta atrás vive en una pestaña
+  del navegador y prometería un despertador que no va a sonar.
+*/
+check("un reposo de toda la noche no se ofrece", tiempos("Deja en salmuera 8 horas").length === 0);
+check("seis horas es el último que entra", tiempos("Guisa 6 horas")[0] === 21600);
+check(
+  "no salen más chips que el tope",
+  findStepTimers("15 min, 20 min, 25 min, 30 min y 35 min").length ===
+    MAX_TIMERS_PER_STEP,
+);
+check(
+  "un tiempo repetido no da dos chips iguales",
+  tiempos("Reposa 5 minutos, remueve y reposa otros 5 minutos").length === 1,
+);
+
+seccion("Cómo se escriben");
+check("segundos", timerLabel(45) === "45 s");
+check("minutos justos", timerLabel(2100) === "35 min");
+check("una hora en punto no dice «60 min»", timerLabel(3600) === "1 h");
+check("hora y algo", timerLabel(5400) === "1 h 30 min");
+check("el rótulo del chip sale del mismo sitio", rotulos("Asa 1 h 30 min")[0] === "1 h 30 min");
+
+seccion("La cuenta atrás");
+check("mm:ss", formatCountdown(95_000) === "01:35", { real: formatCountdown(95_000) });
+check("con horas cambia de formato", formatCountdown(3_725_000) === "1:02:05", {
+  real: formatCountdown(3_725_000),
+});
+check("cero es 00:00", formatCountdown(0) === "00:00");
+check("en negativo no cuenta hacia atrás", formatCountdown(-5000) === "00:00");
+/*
+  Redondeo hacia ARRIBA, como un reloj de cocina: recién arrancado un
+  temporizador de 35 min tiene que leerse «35:00» y no «34:59», y la cuenta llega
+  a 00:00 justo cuando suena, no un segundo antes.
+*/
+check("recién arrancado se lee entero", formatCountdown(2_100_000) === "35:00");
+check("un resto de segundo todavía se ve", formatCountdown(1) === "00:01");
 
 console.log(
   fallos === 0

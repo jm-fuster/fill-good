@@ -13,6 +13,9 @@ import {
   getRecipeRating,
 } from "@/features/recipes/queries";
 import { getMenuEntryForCooking } from "@/features/menus/queries";
+import { computeMissingForRecipes } from "@/features/menus/missing-server";
+import { getActiveHouseholdId } from "@/features/household/queries";
+import { getActiveList } from "@/features/shopping-list/queries";
 import { nowMs, todayLocalISO } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Cocinar" };
@@ -41,12 +44,27 @@ export default async function CocinarPage({
   const recipe = await getRecipeForCooking(id);
   if (!recipe) notFound();
 
-  const [rawEntry, timesCookedBefore, rating] = await Promise.all([
-    sp.entrada ? getMenuEntryForCooking(sp.entrada) : Promise.resolve(null),
-    getRecipeCookedCount(id),
-    getRecipeRating(id),
-  ]);
+  const [rawEntry, timesCookedBefore, rating, householdId, list] =
+    await Promise.all([
+      sp.entrada ? getMenuEntryForCooking(sp.entrada) : Promise.resolve(null),
+      getRecipeCookedCount(id),
+      getRecipeRating(id),
+      getActiveHouseholdId(),
+      getActiveList(),
+    ]);
   const entry = rawEntry && rawEntry.recipeId === id ? rawEntry : null;
+
+  /*
+    Lo que no está ni en la despensa ni apuntado, resuelto AQUÍ y no al abrir la
+    pantalla: es lo primero que se lee del repaso de ingredientes, y un aviso de
+    «te falta comino» que aparece tres segundos tarde llega cuando ya has pasado
+    de pantalla. Sale de la misma cuenta que «añadir a la lista lo que falte»
+    (`computeMissingForRecipes`), para que las dos pantallas no se contradigan.
+  */
+  const missing =
+    householdId && list
+      ? await computeMissingForRecipes(householdId, list.id, [id])
+      : [];
 
   // Volver al menú solo si de ahí se vino. Una receta efímera no tiene ficha
   // (`/recetas/[id]` es solo para las guardadas), así que su salida es el menú.
@@ -99,6 +117,7 @@ export default async function CocinarPage({
       loadedAt={nowMs()}
       timesCookedBefore={timesCookedBefore}
       rating={rating}
+      missing={missing}
       backHref={backHref}
     />
   );

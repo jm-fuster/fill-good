@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
+  BellRing,
   Check,
   ChefHat,
   ChevronLeft,
@@ -10,22 +11,33 @@ import {
   ListChecks,
   PartyPopper,
   ShoppingCart,
+  Timer,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { usePersistedChoice } from "@/hooks/use-persisted-flag";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import {
+  usePersistedChoice,
+  usePersistedFlag,
+} from "@/hooks/use-persisted-flag";
 import { useWakeLock } from "@/hooks/use-wake-lock";
-import { vibrateTick } from "@/lib/haptics";
+import { playChime, primeChime } from "@/lib/chime";
+import { vibrateAlarm, vibrateTick } from "@/lib/haptics";
 import { cn } from "@/lib/utils";
 import { addListItemsAction } from "@/features/shopping-list/actions";
 import type { RestockCandidate } from "@/features/shopping-list/queries";
 import {
   computeCookedDeductionsAction,
   confirmCookedDeductionsAction,
+  confirmMissingForRecipeAction,
   toggleEntryCookedAction,
 } from "@/features/menus/actions";
+import type { MissingCandidate } from "@/features/menus/missing";
 import { noDeductionsReason, type CookedDeduction } from "@/features/menus/cooked";
 import {
   CookedDeductionsFields,
@@ -49,11 +61,33 @@ import {
   writeProgress,
   type CookingEntry,
 } from "../cooking-flow";
+import { findStepTimers, formatCountdown } from "../step-timers";
 import { RecipeIngredientList } from "./recipe-cooking";
 import { RecipeRating } from "./recipe-rating";
 
 /** Recorrido (px) que hay que deslizar para cambiar de paso. */
 const SWIPE_THRESHOLD = 60;
+
+/**
+ * Cuántos temporizadores pueden correr a la vez. Tres cubre la cocina real (el
+ * horno, el arroz y el reposo) y es lo que cabe en la barra sin que cada uno se
+ * quede sin sitio para su cuenta atrás.
+ */
+const MAX_RUNNING_TIMERS = 3;
+
+/** Clave del silenciador del pitido, por dispositivo. */
+const MUTE_KEY = "cocinar:silencio";
+
+/** Un temporizador en marcha. */
+type RunningTimer = {
+  id: string;
+  /** Cómo se llamaba el tiempo en el paso: «35 min». */
+  label: string;
+  /** Momento en que termina, en epoch ms. */
+  endsAt: number;
+  /** Ya ha sonado y espera que lo quiten de en medio. */
+  rung: boolean;
+};
 
 /**
  * En qué punto del cierre está la pantalla del final. No es el «paso» de la
@@ -94,6 +128,7 @@ export function CookingMode({
   loadedAt,
   timesCookedBefore,
   rating,
+  missing,
   backHref,
 }: {
   recipeId: string;
@@ -118,6 +153,14 @@ export function CookingMode({
   /** Veces que el hogar ya había cocinado esta receta al abrir la pantalla. */
   timesCookedBefore: number;
   rating: RecipeRatingSummary;
+  /**
+   * Ingredientes que no están ni en la despensa ni apuntados, calculados en el
+   * SERVIDOR con la misma cuenta que «añadir a la lista lo que falte». Viene ya
+   * resuelto y no se pide al abrir: es lo primero que se lee al entrar, y una
+   * pantalla que empieza con «cargando…» donde va el aviso más importante no
+   * avisa de nada.
+   */
+  missing: MissingCandidate[];
   /** Adónde se vuelve al salir: el menú si vino de un plato, si no su ficha. */
   backHref: string;
 }) {
@@ -142,6 +185,77 @@ export function CookingMode({
   const resumed = step > 0 && !moved;
 
   const [finished, setFinished] = useState(false);
+  /*
+    El repaso de ingredientes es la pantalla de entrada, y se sale de ella
+    pulsando: `started` es ese pulsado y nada más.
+
+    Deliberadamente NO depende de si hay progreso guardado. Podría —«si vuelves a
+    mitad, sáltate el repaso»— pero eso se decide leyendo `localStorage`, que en
+    el servidor no existe: la primera pintura enseñaría el repaso y la hidratación
+    lo quitaría de golpe. Mejor una pantalla estable con el botón diciendo a dónde
+    va («Seguir en el paso 5») que un parpadeo en la única pantalla que se mira
+    con las manos llenas.
+  */
+  const [started, setStarted] = useState(false);
+
+  /*
+    Temporizadores. Viven AQUÍ y no en la vista de los pasos porque tienen que
+    sobrevivir a cambiar de paso y a llegar al cierre: un arroz de 18 minutos se
+    arranca en el paso 3 y se come en el 6, y el horno sigue encendido mientras
+    valoras el plato.
+
+    Cada uno guarda CUÁNDO TERMINA, no cuánto le queda. Descontando un segundo
+    por tic, un rato en segundo plano —donde el navegador estrangula los
+    intervalos— dejaría el temporizador retrasado sin que nada fallara; con la
+    hora de fin, volver a la pantalla recalcula lo que queda y, si ya pasó, suena
+    en ese momento.
+  */
+  const [timers, setTimers] = useState<RunningTimer[]>([]);
+  const [now, setNow] = useState(loadedAt);
+  const [muted, setMuted] = usePersistedFlag(MUTE_KEY, false);
+
+  useEffect(() => {
+    if (timers.length === 0) return;
+    const id = setInterval(() => {
+      const t = Date.now();
+      setNow(t);
+      const due = timers.filter((x) => !x.rung && x.endsAt <= t);
+      if (due.length === 0) return;
+      // El aviso sale del intervalo y no de la actualización de estado: un
+      // actualizador de React tiene que ser puro y se le puede llamar dos veces.
+      vibrateAlarm();
+      if (!muted) playChime();
+      toast.success(
+        due.length === 1 ? `¡Tiempo! ${due[0].label}` : "¡Tiempo en la cocina!",
+      );
+      setTimers((prev) =>
+        prev.map((x) => (x.endsAt <= t ? { ...x, rung: true } : x)),
+      );
+    }, 1000);
+    return () => clearInterval(id);
+  }, [timers, muted]);
+
+  function startTimer(seconds: number, label: string) {
+    if (timers.length >= MAX_RUNNING_TIMERS) {
+      toast.info("Ya tienes tres tiempos en marcha.");
+      return;
+    }
+    vibrateTick();
+    // Despertar el audio AQUÍ, aprovechando este toque: un `AudioContext` creado
+    // sin gesto del usuario nace suspendido, y dentro de 35 minutos no habrá
+    // ningún gesto que lo despierte (ver `chime.ts`).
+    if (!muted) primeChime();
+    const t = Date.now();
+    setNow(t);
+    setTimers((prev) => [
+      ...prev,
+      { id: `${t}-${seconds}`, label, endsAt: t + seconds * 1000, rung: false },
+    ]);
+  }
+
+  function stopTimer(id: string) {
+    setTimers((prev) => prev.filter((x) => x.id !== id));
+  }
 
   /*
     Guardar el paso SIEMPRE con `loadedAt`, nunca con el reloj de este instante.
@@ -196,6 +310,9 @@ export function CookingMode({
     return () => document.removeEventListener("keydown", onKey);
   }, [finished, step, total, loadedAt, setProgress]);
 
+  // Sin ingredientes apuntados no hay nada que repasar: se entra directo al paso 1.
+  const showPrep = !started && !finished && recipe.ingredients.length > 0;
+
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-background">
       <CookingHeader
@@ -203,7 +320,17 @@ export function CookingMode({
         step={step}
         total={total}
         finished={finished}
+        prep={showPrep}
         backHref={backHref}
+      />
+      {/* Entre la cabecera y el contenido: se ve igual leyendo un paso que en el
+          cierre, porque el horno sigue encendido mientras valoras el plato. */}
+      <TimerBar
+        timers={timers}
+        now={now}
+        muted={muted}
+        onToggleMute={() => setMuted(!muted)}
+        onStop={stopTimer}
       />
       {finished ? (
         <CookingFinish
@@ -217,11 +344,24 @@ export function CookingMode({
           onBackToSteps={() => setFinished(false)}
           onDone={() => setProgress(null)}
         />
+      ) : showPrep ? (
+        <CookingPrep
+          recipeId={recipeId}
+          recipe={recipe}
+          missing={missing}
+          resumeStep={step}
+          onStart={() => {
+            vibrateTick();
+            setStarted(true);
+          }}
+        />
       ) : (
         <CookingSteps
           recipe={recipe}
           step={step}
           resumed={resumed}
+          runningTimers={timers.length}
+          onStartTimer={startTimer}
           onGoTo={goTo}
           onRestart={() => saveStep(0)}
           onFinish={() => {
@@ -234,18 +374,298 @@ export function CookingMode({
   );
 }
 
+/**
+ * *Mise en place*: el repaso de ingredientes con el que arranca el modo.
+ *
+ * Hace dos cosas que no se parecen, y por eso la pantalla lo dice con dos
+ * lenguajes distintos:
+ *
+ *  - **La lista con casillas es el ritual**, no un dato de la app: se marca lo
+ *    que vas dejando en la encimera. Nace todo sin marcar, porque marcarlo por ti
+ *    sería justo lo contrario de para lo que sirve.
+ *  - **El rótulo de «no lo tienes» es la app hablando**, y sale de la MISMA
+ *    cuenta con la que «añadir a la lista lo que falte» decide qué apuntar
+ *    (`computeMissingForRecipes`). Por eso el botón de apuntar actúa sobre eso y
+ *    NO sobre las casillas vacías: una casilla sin marcar significa «todavía no
+ *    lo he sacado», que no es lo mismo que «no lo tengo».
+ *
+ * Se muestra siempre al entrar, sin preferencia de «no volver a enseñarla». Es
+ * un toque, y la alternativa —guardarla en el dispositivo— haría parpadear la
+ * pantalla en cada carga mientras el servidor no sabe todavía qué eligió este
+ * móvil. Si estorba, se quita entera; media medida aquí sale peor.
+ */
+function CookingPrep({
+  recipeId,
+  recipe,
+  missing,
+  resumeStep,
+  onStart,
+}: {
+  recipeId: string;
+  recipe: RecipeCooking;
+  missing: MissingCandidate[];
+  /** Paso guardado al que se volvería, o 0 si se empieza de cero. */
+  resumeStep: number;
+  onStart: () => void;
+}) {
+  const [ready, setReady] = useState<Set<number>>(new Set());
+  const [addedToList, setAddedToList] = useState(false);
+  const [adding, startAdding] = useTransition();
+
+  // Los que la app sabe que no tienes, por nombre: los dos lados salen de la
+  // misma columna (`recipe_ingredients.name`), así que casan carácter a carácter.
+  const missingNames = new Set(missing.map((m) => m.ingredientName));
+
+  function addMissing() {
+    vibrateTick();
+    startAdding(async () => {
+      const r = await confirmMissingForRecipeAction(
+        recipeId,
+        missing.map((m) => m.key),
+      );
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      const n = r.added ?? 0;
+      toast.success(
+        n === 1 ? "1 producto apuntado en la lista" : `${n} apuntados en la lista`,
+      );
+      setAddedToList(true);
+    });
+  }
+
+  return (
+    <>
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
+          <div className="flex flex-col gap-1">
+            <h2 className="font-heading text-xl font-semibold">
+              Antes de empezar
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Saca lo que vas a necesitar y márcalo. Para{" "}
+              {recipe.servings === 1 ? "1 ración" : `${recipe.servings} raciones`}
+              {recipe.prepMinutes !== null ? ` · ${recipe.prepMinutes} min` : ""}.
+            </p>
+          </div>
+
+          {missing.length > 0 && !addedToList ? (
+            <div className="flex flex-col gap-2 rounded-xl border border-warning/40 bg-warning/15 p-3">
+              <p className="text-sm font-medium text-warning">
+                {missing.length === 1
+                  ? "Te falta 1 ingrediente"
+                  : `Te faltan ${missing.length} ingredientes`}
+              </p>
+              <p className="text-xs text-warning">
+                No está en la despensa ni apuntado en la lista:{" "}
+                {missing.map((m) => m.ingredientName).join(", ")}.
+              </p>
+              <Button
+                variant="outline"
+                onClick={addMissing}
+                loading={adding}
+                className="self-start bg-background"
+              >
+                <ShoppingCart aria-hidden />
+                Apuntar en la lista
+              </Button>
+            </div>
+          ) : null}
+
+          <ul className="flex flex-col gap-1">
+            {recipe.ingredients.map((ing, i) => {
+              const id = `mise-${i}`;
+              const falta = missingNames.has(ing.name);
+              return (
+                <li key={`${ing.name}-${i}`}>
+                  <Label
+                    htmlFor={id}
+                    className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg px-1 font-normal"
+                  >
+                    <Checkbox
+                      id={id}
+                      checked={ready.has(i)}
+                      onCheckedChange={(v) => {
+                        if (v === true) vibrateTick();
+                        setReady((prev) => {
+                          const next = new Set(prev);
+                          if (v === true) next.add(i);
+                          else next.delete(i);
+                          return next;
+                        });
+                      }}
+                      className="size-5 shrink-0"
+                    />
+                    <span
+                      className={cn(
+                        "min-w-16 shrink-0 text-sm tabular-nums text-muted-foreground",
+                        ready.has(i) && "line-through",
+                      )}
+                    >
+                      {ing.quantity === null
+                        ? "al gusto"
+                        : `${ing.quantity}${ing.unit ? ` ${ing.unit}` : ""}`}
+                    </span>
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 text-sm",
+                        ready.has(i) && "text-muted-foreground line-through",
+                      )}
+                    >
+                      {ing.name}
+                      {ing.optional ? (
+                        <span className="text-muted-foreground"> (opcional)</span>
+                      ) : null}
+                    </span>
+                    {falta ? (
+                      <span className="shrink-0 rounded-md border border-warning/40 bg-warning/15 px-1.5 py-0.5 text-xs text-warning">
+                        no lo tienes
+                      </span>
+                    ) : null}
+                  </Label>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </div>
+
+      <footer className="border-t px-4 pb-safe-3 pt-3">
+        <div className="mx-auto w-full max-w-2xl">
+          {/*
+            Nunca bloquea: las casillas son para ti, no un formulario que haya que
+            completar. Se puede empezar con todo sin marcar y con ingredientes que
+            te faltan — a lo mejor los sustituyes, o los tienes y la app no lo
+            sabe.
+          */}
+          <Button size="lg" className="w-full" onClick={onStart}>
+            {resumeStep > 0 ? `Seguir en el paso ${resumeStep + 1}` : "Empezar"}
+            <ChevronRight aria-hidden />
+          </Button>
+        </div>
+      </footer>
+    </>
+  );
+}
+
+/**
+ * Los tiempos en marcha, siempre a la vista mientras dure el modo.
+ *
+ * Un temporizador que hay que ir a buscar no sirve de nada, así que esto no se
+ * pliega ni se esconde tras un icono: ocupa sitio solo cuando hay algo contando,
+ * y entonces es justo lo que se quiere ver al levantar la vista.
+ *
+ * El que ya ha sonado se queda en la barra en vez de desaparecer solo, con el
+ * aviso en `warning` (el mismo tinte que usa la app para «esto pide tu
+ * atención»). Desaparecer sería perder la única prueba de que sonó para quien
+ * estaba en otra habitación.
+ */
+function TimerBar({
+  timers,
+  now,
+  muted,
+  onToggleMute,
+  onStop,
+}: {
+  timers: RunningTimer[];
+  /** Reloj compartido por todos: uno por temporizador no cabría en un tic. */
+  now: number;
+  muted: boolean;
+  onToggleMute: () => void;
+  onStop: (id: string) => void;
+}) {
+  if (timers.length === 0) return null;
+
+  return (
+    <div className="border-b bg-card px-4 py-2">
+      <div className="mx-auto flex w-full max-w-2xl items-center gap-2">
+        <ul className="flex min-w-0 flex-1 flex-wrap gap-2">
+          {timers.map((t) => {
+            const left = t.endsAt - now;
+            const done = t.rung || left <= 0;
+            return (
+              <li
+                key={t.id}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg border px-2 py-1",
+                  done && "border-warning/40 bg-warning/15 text-warning",
+                )}
+              >
+                {done ? (
+                  <BellRing aria-hidden className="size-4 shrink-0" />
+                ) : (
+                  <Timer
+                    aria-hidden
+                    className="size-4 shrink-0 text-muted-foreground"
+                  />
+                )}
+                {/*
+                  `aria-live` solo en el que ya sonó: una cuenta atrás que se
+                  anuncia cada segundo deja el lector de pantalla inservible.
+                */}
+                <span
+                  className="text-sm font-medium tabular-nums"
+                  aria-live={done ? "assertive" : "off"}
+                >
+                  {done ? `¡Tiempo! ${t.label}` : formatCountdown(left)}
+                </span>
+                {/*
+                  Diana completa de 44px y no un `icon-sm` que abultaría menos:
+                  esta pantalla se toca con las manos mojadas, que es el peor
+                  sitio posible para un objetivo pequeño. La barra crece un poco
+                  y solo mientras haya algo contando.
+                */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={
+                    done
+                      ? `Descartar el aviso de ${t.label}`
+                      : `Cancelar el tiempo de ${t.label}`
+                  }
+                  onClick={() => onStop(t.id)}
+                >
+                  <X aria-hidden className="size-4" />
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={muted ? "Activar el sonido" : "Silenciar el sonido"}
+          aria-pressed={muted}
+          onClick={onToggleMute}
+          className="shrink-0 text-muted-foreground"
+        >
+          {muted ? (
+            <VolumeX aria-hidden className="size-5" />
+          ) : (
+            <Volume2 aria-hidden className="size-5" />
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** Cabecera fija: de qué plato se habla, por dónde vas y cómo se sale. */
 function CookingHeader({
   name,
   step,
   total,
   finished,
+  prep,
   backHref,
 }: {
   name: string;
   step: number;
   total: number;
   finished: boolean;
+  /** En el repaso de ingredientes, que va antes del primer paso. */
+  prep: boolean;
   backHref: string;
 }) {
   // Terminado, la barra se llena: el progreso ya no es «paso N», es «hecho».
@@ -262,9 +682,11 @@ function CookingHeader({
           <p className="text-xs text-muted-foreground tabular-nums">
             {finished
               ? "Plato terminado"
-              : total > 0
-                ? `Paso ${step + 1} de ${total}`
-                : "Sin pasos"}
+              : prep
+                ? "Ingredientes"
+                : total > 0
+                  ? `Paso ${step + 1} de ${total}`
+                  : "Sin pasos"}
           </p>
         </div>
         <Button asChild variant="ghost" size="icon" aria-label="Salir de cocinar">
@@ -297,6 +719,8 @@ function CookingSteps({
   recipe,
   step,
   resumed,
+  runningTimers,
+  onStartTimer,
   onGoTo,
   onRestart,
   onFinish,
@@ -304,12 +728,18 @@ function CookingSteps({
   recipe: RecipeCooking;
   step: number;
   resumed: boolean;
+  /** Cuántos hay ya en marcha: al llegar al tope los chips se apagan. */
+  runningTimers: number;
+  onStartTimer: (seconds: number, label: string) => void;
   onGoTo: (next: number) => void;
   onRestart: () => void;
   onFinish: () => void;
 }) {
   const total = recipe.steps.length;
   const isLast = step === total - 1;
+  // Los tiempos que menciona ESTE paso. Se calcula en el render y no se guarda:
+  // es una función pura sobre un texto que ya está en memoria (ver `step-timers`).
+  const stepTimers = findStepTimers(recipe.steps[step] ?? "");
   const [showIngredients, setShowIngredients] = useState(false);
   // Hacia dónde entró el paso: la animación acompaña al gesto en vez de
   // contradecirlo (avanzar entra por la derecha, retroceder por la izquierda).
@@ -412,6 +842,34 @@ function CookingSteps({
               {recipe.steps[step]}
             </p>
           </div>
+
+          {/*
+            Los tiempos que dice el paso, para ponerlos en marcha sin ir a buscar
+            el reloj del móvil con las manos sucias. Es una SUGERENCIA leída del
+            texto, no un dato de la receta: por eso son chips que se pulsan y no
+            un temporizador que arranca solo. Un paso sin tiempos no enseña nada
+            (ver `step-timers.ts`, que prefiere callarse a acertar de más).
+          */}
+          {stepTimers.length > 0 ? (
+            <div
+              className="flex flex-wrap items-center gap-2"
+              role="group"
+              aria-label="Tiempos de este paso"
+            >
+              {stepTimers.map((t) => (
+                <Button
+                  key={t.key}
+                  variant="outline"
+                  onClick={() => onStartTimer(t.seconds, t.label)}
+                  disabled={runningTimers >= MAX_RUNNING_TIMERS}
+                  aria-label={`Poner un temporizador de ${t.label}`}
+                >
+                  <Timer aria-hidden />
+                  {t.label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
 
           {recipe.ingredients.length > 0 ? (
             <div className="flex flex-col gap-3 rounded-xl border p-3">
