@@ -9,6 +9,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import type { Database } from "@/lib/supabase/types";
 import { classifyAiError } from "@/lib/ai/errors";
+import { serverFailureMessage } from "@/lib/server-failure";
 import { getModel } from "@/lib/ai/models";
 import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
 import { buildRecipeDetailsPrompt } from "@/lib/ai/recipe-prompt";
@@ -589,6 +590,16 @@ async function askForRecipeDetails(input: {
 export async function generateRecipeDetailsAction(
   input: RecipeDetailsRequest,
 ): Promise<RecipeDetailsState> {
+  try {
+    return await generateRecipeDetails(input);
+  } catch (err) {
+    return { error: serverFailureMessage("generateRecipeDetailsAction", err) };
+  }
+}
+
+async function generateRecipeDetails(
+  input: RecipeDetailsRequest,
+): Promise<RecipeDetailsState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
 
@@ -644,6 +655,16 @@ export async function generateRecipeDetailsAction(
  * de la despensa.
  */
 export async function fillRecipeDetailsAction(
+  recipeId: string,
+): Promise<RecipeDetailsState> {
+  try {
+    return await fillRecipeDetails(recipeId);
+  } catch (err) {
+    return { error: serverFailureMessage("fillRecipeDetailsAction", err) };
+  }
+}
+
+async function fillRecipeDetails(
   recipeId: string,
 ): Promise<RecipeDetailsState> {
   const household = await getCurrentHousehold();

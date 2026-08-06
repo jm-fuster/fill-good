@@ -10,6 +10,7 @@ import { es } from "date-fns/locale";
 
 import { getModel } from "@/lib/ai/models";
 import { classifyAiError } from "@/lib/ai/errors";
+import { serverFailureMessage } from "@/lib/server-failure";
 import { menuSchema, singleDishSchema } from "@/lib/ai/menu-schema";
 import {
   buildMenuPrompt,
@@ -475,6 +476,17 @@ function makeSavedRecipeResolver(savedRecipes: SavedRecipeForMenu[]) {
  *     borrando también lo manual y lo fijado. La UI lo pide con confirmación.
  */
 export async function generateMenuAction(
+  weekStart: string,
+  mode: "fill" | "replace" = "fill",
+): Promise<MenuState> {
+  try {
+    return await generateMenu(weekStart, mode);
+  } catch (err) {
+    return { error: serverFailureMessage("generateMenuAction", err) };
+  }
+}
+
+async function generateMenu(
   weekStart: string,
   mode: "fill" | "replace" = "fill",
 ): Promise<MenuState> {
@@ -1335,6 +1347,16 @@ async function generateDishForSlot({
 export async function rerollMenuEntryAction(
   entryId: string,
 ): Promise<MenuState> {
+  try {
+    return await rerollMenuEntry(entryId);
+  } catch (err) {
+    return { error: serverFailureMessage("rerollMenuEntryAction", err) };
+  }
+}
+
+async function rerollMenuEntry(
+  entryId: string,
+): Promise<MenuState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
   const { userId } = await auth();
@@ -1433,6 +1455,18 @@ export async function rerollMenuEntryAction(
  * reemplazarlo, y fijarlo lo protege.
  */
 export async function generateSlotEntryAction(
+  weekStart: string,
+  date: string,
+  slot: string,
+): Promise<MenuState> {
+  try {
+    return await generateSlotEntry(weekStart, date, slot);
+  } catch (err) {
+    return { error: serverFailureMessage("generateSlotEntryAction", err) };
+  }
+}
+
+async function generateSlotEntry(
   weekStart: string,
   date: string,
   slot: string,
@@ -1960,6 +1994,14 @@ export type TonightState = { error?: string; cards?: TonightCard[] };
  * 2–3 tarjetas; el cálculo vive en `tonight.ts` (puro y testeable).
  */
 export async function computeTonightAction(): Promise<TonightState> {
+  try {
+    return await computeTonight();
+  } catch (err) {
+    return { error: serverFailureMessage("computeTonightAction", err) };
+  }
+}
+
+async function computeTonight(): Promise<TonightState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
 

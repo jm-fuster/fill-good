@@ -7,6 +7,7 @@ import { generateObject } from "ai";
 
 import { getModel } from "@/lib/ai/models";
 import { classifyAiError } from "@/lib/ai/errors";
+import { serverFailureMessage } from "@/lib/server-failure";
 import { buildReceiptSchema } from "@/lib/ai/receipt-schema";
 import type { ReceiptItemExtraction } from "@/lib/ai/receipt-schema";
 import { buildReceiptPrompt } from "@/lib/ai/receipt-prompt";
@@ -92,6 +93,17 @@ async function inChunks<T, R>(
 }
 
 export async function scanReceiptAction(
+  _prev: ScanState,
+  formData: FormData,
+): Promise<ScanState> {
+  try {
+    return await scanReceipt(_prev, formData);
+  } catch (err) {
+    return { error: serverFailureMessage("scanReceiptAction", err) };
+  }
+}
+
+async function scanReceipt(
   _prev: ScanState,
   formData: FormData,
 ): Promise<ScanState> {
