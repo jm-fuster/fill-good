@@ -31,6 +31,7 @@ import {
   ProductCombobox,
   type ComboboxProduct,
 } from "@/components/product-combobox";
+import { actionErrorMessage } from "@/lib/action-error";
 import { cn } from "@/lib/utils";
 import { formatQuantity } from "@/lib/units";
 import { relativeDaysLabel } from "@/lib/dates";
@@ -399,12 +400,10 @@ export function ReceiptReview({
         return;
       }
       router.push(href);
-    } catch {
-      // Si la Server Action lanza (red caída), el botón debe recuperarse en vez
-      // de quedarse en «Guardando…» para siempre.
-      toast.error(
-        "No se pudo confirmar el ticket. Comprueba tu conexión e inténtalo de nuevo.",
-      );
+    } catch (err) {
+      // Si la Server Action lanza, el botón debe recuperarse en vez de quedarse
+      // en «Guardando…» para siempre.
+      toast.error(actionErrorMessage("No se pudo confirmar el ticket.", err));
     } finally {
       setPending(false);
     }

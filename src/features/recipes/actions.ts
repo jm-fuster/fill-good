@@ -13,8 +13,7 @@ import { getModel } from "@/lib/ai/models";
 import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
 import { buildRecipeDetailsPrompt } from "@/lib/ai/recipe-prompt";
 import { recipeDetailsSchema } from "@/lib/ai/recipe-schema";
-import { getAiConsent } from "@/features/ai-consent/queries";
-import { AI_CONSENT_REQUIRED_ERROR } from "@/features/ai-consent/version";
+import { aiConsentError, getAiConsent } from "@/features/ai-consent/queries";
 import { getCurrentHousehold } from "@/features/household/queries";
 import {
   mergeGeneratedIngredients,
@@ -595,10 +594,11 @@ export async function generateRecipeDetailsAction(
 
   // Escribir una receta manda a la IA de Google el nombre del plato y lo que el
   // hogar tenga apuntado en él: mismo gate que los tickets y los menús.
-  const consent = await getAiConsent();
-  if (!consent.consented) {
-    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
-  }
+  // Puerta de IA: el consentimiento y también el caso de no haberlo podido
+  // comprobar (ver `aiConsentError`). Las seis rutas la cruzan con esta misma
+  // llamada, para que no puedan divergir.
+  const consentError = aiConsentError(await getAiConsent());
+  if (consentError) return consentError;
 
   const parsed = recipeDetailsRequestSchema.safeParse(input);
   if (!parsed.success) {
@@ -649,10 +649,11 @@ export async function fillRecipeDetailsAction(
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
 
-  const consent = await getAiConsent();
-  if (!consent.consented) {
-    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
-  }
+  // Puerta de IA: el consentimiento y también el caso de no haberlo podido
+  // comprobar (ver `aiConsentError`). Las seis rutas la cruzan con esta misma
+  // llamada, para que no puedan divergir.
+  const consentError = aiConsentError(await getAiConsent());
+  if (consentError) return consentError;
 
   const supabase = createServerSupabaseClient();
 

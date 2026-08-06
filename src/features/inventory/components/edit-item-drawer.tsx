@@ -44,6 +44,7 @@ import {
   ProductCombobox,
   type ComboboxProduct,
 } from "@/components/product-combobox";
+import { actionErrorMessage } from "@/lib/action-error";
 import { cn } from "@/lib/utils";
 import { chainLabel, chainOptions, orderChains } from "@/features/prices/chains";
 import { relativeDaysLabel } from "@/lib/dates";
@@ -438,8 +439,8 @@ export function EditItemDrawer({
       toast.success("Cambios guardados");
       onOpenChange(false);
       router.refresh();
-    } catch {
-      setError("No se pudieron guardar los cambios. Comprueba tu conexión.");
+    } catch (err) {
+      setError(actionErrorMessage("No se pudieron guardar los cambios.", err));
     } finally {
       setPending(false);
     }

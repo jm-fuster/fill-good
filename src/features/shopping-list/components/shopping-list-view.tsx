@@ -33,6 +33,7 @@ import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { useNavListBadge } from "@/components/layout/nav-list-count";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
+import { actionErrorMessage } from "@/lib/action-error";
 import { cn } from "@/lib/utils";
 import { vibrateTick } from "@/lib/haptics";
 import { useSwipeAction } from "@/hooks/use-swipe-action";
@@ -307,11 +308,11 @@ export function ShoppingListView({
     let result: Awaited<ReturnType<typeof runAddAction>>;
     try {
       result = await runAddAction(input);
-    } catch {
-      // Si la acción lanza (red caída), el ítem optimista quedaría huérfano en la
-      // lista: se revierte y se avisa para que el usuario reintente.
+    } catch (err) {
+      // Si la acción lanza, el ítem optimista quedaría huérfano en la lista: se
+      // revierte y se avisa para que el usuario reintente.
       setPendingAdds((prev) => prev.filter((p) => p.tempId !== tempId));
-      toast.error("No se pudo añadir. Comprueba tu conexión e inténtalo de nuevo.");
+      toast.error(actionErrorMessage("No se pudo añadir.", err));
       return false;
     }
 

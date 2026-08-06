@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ProductIcon } from "@/components/product-icon";
+import { actionErrorMessage } from "@/lib/action-error";
 import { LOCATION_OPTIONS, UNIT_OPTIONS } from "@/lib/units";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import type { Category } from "../queries";
@@ -62,8 +63,8 @@ export function AddProductDrawer({
       setOpen(false);
       setFieldsKey((k) => k + 1);
       router.refresh();
-    } catch {
-      setError("No se pudo añadir el producto. Comprueba tu conexión.");
+    } catch (err) {
+      setError(actionErrorMessage("No se pudo añadir el producto.", err));
     } finally {
       setPending(false);
     }

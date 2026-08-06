@@ -35,6 +35,7 @@ import {
   UNIT_OPTIONS,
   unitFamily,
 } from "@/lib/units";
+import { actionErrorMessage } from "@/lib/action-error";
 import { normalizeName } from "@/lib/normalize";
 import { cn } from "@/lib/utils";
 import type { UnitType } from "@/lib/supabase/types";
@@ -459,8 +460,8 @@ export function RecipeForm({
       }
       applyDetails(result.details);
       toast.success("Receta escrita. Revísala antes de guardar.");
-    } catch {
-      setError("No se pudo escribir la receta. Comprueba tu conexión.");
+    } catch (err) {
+      setError(actionErrorMessage("No se pudo escribir la receta.", err));
     } finally {
       setGenerating(false);
     }
@@ -493,8 +494,8 @@ export function RecipeForm({
       toast.success(isEdit ? "Receta actualizada" : "Receta guardada");
       router.push("/recetas");
       router.refresh();
-    } catch {
-      setError("No se pudo guardar la receta. Comprueba tu conexión.");
+    } catch (err) {
+      setError(actionErrorMessage("No se pudo guardar la receta.", err));
     } finally {
       setPending(false);
     }

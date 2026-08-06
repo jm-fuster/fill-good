@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ResponsiveModalFooter } from "@/components/ui/responsive-modal";
 import { ProductIcon } from "@/components/product-icon";
+import { actionErrorMessage } from "@/lib/action-error";
 import { cn } from "@/lib/utils";
 import { normalizeName } from "@/lib/normalize";
 import { parseQuantityFromText } from "@/lib/parse-quantity";
@@ -241,10 +242,8 @@ export function AddItemsPicker({
       }
       toast.success(resultLabel(result));
       onDone();
-    } catch {
-      toast.error(
-        "No se pudo añadir. Comprueba tu conexión e inténtalo de nuevo.",
-      );
+    } catch (err) {
+      toast.error(actionErrorMessage("No se pudo añadir.", err));
     } finally {
       setPending(false);
     }

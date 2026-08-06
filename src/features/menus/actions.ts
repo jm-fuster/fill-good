@@ -36,8 +36,7 @@ import type { Database, UnitType } from "@/lib/supabase/types";
 import { convertQuantity, roundQuantity, type UnitContent } from "@/lib/units";
 import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
 import { getCurrentHousehold } from "@/features/household/queries";
-import { getAiConsent } from "@/features/ai-consent/queries";
-import { AI_CONSENT_REQUIRED_ERROR } from "@/features/ai-consent/version";
+import { aiConsentError, getAiConsent } from "@/features/ai-consent/queries";
 import { recordStockEvent } from "@/features/inventory/events";
 import { getInventory } from "@/features/inventory/queries";
 import { getInventoryStatus } from "@/features/inventory/status";
@@ -487,10 +486,11 @@ export async function generateMenuAction(
   // las semanas anteriores y preferencias) se envía a la IA de Google: sin
   // consentimiento no generamos. Al ampliar lo que viaja hay que repasar el
   // aviso de `ai-consent` y subir `AI_CONSENT_VERSION`.
-  const consent = await getAiConsent();
-  if (!consent.consented) {
-    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
-  }
+  // Puerta de IA: el consentimiento y también el caso de no haberlo podido
+  // comprobar (ver `aiConsentError`). Las seis rutas la cruzan con esta misma
+  // llamada, para que no puedan divergir.
+  const consentError = aiConsentError(await getAiConsent());
+  if (consentError) return consentError;
 
   const weekDays = getWeekDays(weekStart);
   const today = todayLocalISO();
@@ -1340,10 +1340,11 @@ export async function rerollMenuEntryAction(
   const { userId } = await auth();
 
   // El reroll también pasa el contexto del hogar a la IA de Google: mismo gate.
-  const consent = await getAiConsent();
-  if (!consent.consented) {
-    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
-  }
+  // Puerta de IA: el consentimiento y también el caso de no haberlo podido
+  // comprobar (ver `aiConsentError`). Las seis rutas la cruzan con esta misma
+  // llamada, para que no puedan divergir.
+  const consentError = aiConsentError(await getAiConsent());
+  if (consentError) return consentError;
 
   const supabase = createServerSupabaseClient();
 
@@ -1446,10 +1447,11 @@ export async function generateSlotEntryAction(
   }
   ({ weekStart, date, slot } = parsed.data);
 
-  const consent = await getAiConsent();
-  if (!consent.consented) {
-    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
-  }
+  // Puerta de IA: el consentimiento y también el caso de no haberlo podido
+  // comprobar (ver `aiConsentError`). Las seis rutas la cruzan con esta misma
+  // llamada, para que no puedan divergir.
+  const consentError = aiConsentError(await getAiConsent());
+  if (consentError) return consentError;
 
   const supabase = createServerSupabaseClient();
 

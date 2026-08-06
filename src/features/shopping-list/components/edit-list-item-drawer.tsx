@@ -29,6 +29,7 @@ import {
   listTotalLabel,
   UNIT_OPTIONS,
 } from "@/lib/units";
+import { actionErrorMessage } from "@/lib/action-error";
 import type { UnitType } from "@/lib/supabase/types";
 import type { ListItem } from "../queries";
 import { updateListItemAction } from "../actions";
@@ -96,8 +97,8 @@ export function EditListItemDrawer({
       // Sin `router.refresh()`: la acción ya revalida `/lista` (así se refresca
       // el catálogo si el nombre cambió) y la fila la actualiza el cambio suelto
       // de Realtime. Refrescar además duplicaba el render de la página.
-    } catch {
-      setError("No se pudieron guardar los cambios. Comprueba tu conexión.");
+    } catch (err) {
+      setError(actionErrorMessage("No se pudieron guardar los cambios.", err));
     } finally {
       setPending(false);
     }

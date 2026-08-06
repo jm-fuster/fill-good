@@ -48,8 +48,7 @@ import {
   compareTripToReceipt,
   type TripComparison,
 } from "@/features/shopping-list/trip-comparison";
-import { getAiConsent } from "@/features/ai-consent/queries";
-import { AI_CONSENT_REQUIRED_ERROR } from "@/features/ai-consent/version";
+import { aiConsentError, getAiConsent } from "@/features/ai-consent/queries";
 import { confirmPayloadSchema } from "./schemas";
 import type { ConfirmPayload } from "./schemas";
 
@@ -103,10 +102,11 @@ export async function scanReceiptAction(
   // El archivo del ticket se envía a la IA de Google: no procesamos nada sin el
   // consentimiento explícito del usuario (barrera efectiva; cubre también el
   // Web Share Target, que llama a esta acción sin pasar por el gate de /escanear).
-  const consent = await getAiConsent();
-  if (!consent.consented) {
-    return { error: AI_CONSENT_REQUIRED_ERROR, needsAiConsent: true };
-  }
+  // Puerta de IA: el consentimiento y también el caso de no haberlo podido
+  // comprobar (ver `aiConsentError`). Las seis rutas la cruzan con esta misma
+  // llamada, para que no puedan divergir.
+  const consentError = aiConsentError(await getAiConsent());
+  if (consentError) return consentError;
 
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {

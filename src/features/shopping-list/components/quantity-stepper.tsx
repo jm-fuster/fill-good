@@ -5,6 +5,7 @@ import { Minus, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { actionErrorMessage } from "@/lib/action-error";
 import type { UnitType } from "@/lib/supabase/types";
 import { cn } from "@/lib/utils";
 import {
@@ -126,8 +127,8 @@ export function QuantityStepper({
       .then((r) => {
         if (r?.error) toast.error(r.error);
       })
-      .catch(() => {
-        toast.error("No se pudo guardar la cantidad. Comprueba tu conexión.");
+      .catch((err: unknown) => {
+        toast.error(actionErrorMessage("No se pudo guardar la cantidad.", err));
       })
       .finally(() => {
         writing.current -= 1;

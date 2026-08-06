@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Sparkles, Store, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { actionErrorMessage } from "@/lib/action-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -78,8 +79,8 @@ export function StoreChainsEditor({
           router.refresh();
         }
       })
-      .catch(() => {
-        toast.error("No se pudieron guardar tus tiendas. Comprueba tu conexión.");
+      .catch((err: unknown) => {
+        toast.error(actionErrorMessage("No se pudieron guardar tus tiendas.", err));
         router.refresh();
       });
   }
