@@ -7,7 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
-import type { Database, UnitType } from "@/lib/supabase/types";
+import type { Database } from "@/lib/supabase/types";
 import { classifyAiError } from "@/lib/ai/errors";
 import { getModel } from "@/lib/ai/models";
 import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
@@ -22,6 +22,7 @@ import {
   sanitizePrepMinutes,
   type DraftIngredient,
 } from "./ai-draft";
+import { getRecipeForCooking, type RecipeCooking } from "./queries";
 import {
   ratingSchema,
   recipeDetailsRequestSchema,
@@ -48,20 +49,12 @@ export type RecipeDetailsState = {
   details?: RecipeDetailsDraft;
 };
 
-/** Una receta para leerla mientras se cocina (`RecipeCookingDetails`). */
-export type RecipeCooking = {
-  name: string;
-  /** Raciones a las que corresponden las cantidades de abajo. */
-  servings: number;
-  prepMinutes: number | null;
-  steps: string[];
-  ingredients: {
-    name: string;
-    quantity: number | null;
-    unit: UnitType | null;
-    optional: boolean;
-  }[];
-};
+/**
+ * Una receta para leerla mientras se cocina (`RecipeCookingDetails`). Se declara
+ * en `queries.ts`, con la consulta que la devuelve, y se reexporta aquí porque
+ * quien la importa es cliente y no debe tirar de un módulo `server-only`.
+ */
+export type { RecipeCooking };
 
 export type RecipeCookingState = { error?: string; recipe?: RecipeCooking };
 
@@ -499,37 +492,13 @@ export async function getRecipeCookingAction(
 ): Promise<RecipeCookingState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
-  const supabase = createServerSupabaseClient();
 
-  const { data: recipe } = await supabase
-    .from("recipes")
-    .select("id, name, servings, prep_minutes, steps")
-    .eq("household_id", household.id)
-    .eq("id", recipeId)
-    .maybeSingle();
+  // La consulta la comparte con el modo cocinado (`getRecipeForCooking`): son la
+  // misma receta leída para lo mismo, y si cada lado la trajera por su cuenta
+  // podrían acabar enseñando ingredientes distintos.
+  const recipe = await getRecipeForCooking(recipeId);
   if (!recipe) return { error: "No se encontró la receta." };
-
-  const { data: ings } = await supabase
-    .from("recipe_ingredients")
-    .select("name, quantity, unit, optional")
-    .eq("household_id", household.id)
-    .eq("recipe_id", recipeId)
-    .order("id", { ascending: true });
-
-  return {
-    recipe: {
-      name: recipe.name,
-      servings: recipe.servings ?? 1,
-      prepMinutes: recipe.prep_minutes,
-      steps: recipe.steps ?? [],
-      ingredients: (ings ?? []).map((i) => ({
-        name: i.name,
-        quantity: i.quantity === null ? null : Number(i.quantity),
-        unit: i.unit,
-        optional: i.optional,
-      })),
-    },
-  };
+  return { recipe };
 }
 
 /**

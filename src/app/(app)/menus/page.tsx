@@ -9,6 +9,7 @@ import { MenuView } from "@/features/menus/components/menu-view";
 import { MenuShareActions } from "@/features/menus/components/menu-share-actions";
 import { MenuPrefsOnboarding } from "@/features/menus/components/menu-prefs";
 import {
+  getCookableRecipeIds,
   getMenuPrefs,
   getMenuRules,
   getPendingCheckinEntries,
@@ -21,7 +22,7 @@ import {
 } from "@/features/menus/week-budget";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { getRecipeCostsForIds, getSavedRecipes } from "@/features/recipes/queries";
-import { getWeekStart, shiftWeek } from "@/lib/dates";
+import { getWeekStart, shiftWeek, todayLocalISO } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Menús" };
 
@@ -70,7 +71,18 @@ export default async function MenusPage({
   const recipeIds = entries
     .map((e) => e.recipeId)
     .filter((id): id is string => Boolean(id));
-  const costMap = await getRecipeCostsForIds(recipeIds);
+  // Cuáles de las recetas de HOY se pueden cocinar paso a paso (la tira de hoy
+  // solo ofrece el modo cocinado en esas). Van con el coste en la misma tanda, y
+  // solo las del día: la consulta lee la columna `steps`, que a propósito no
+  // viaja en la de la semana.
+  const todayRecipeIds = entries
+    .filter((e) => e.date === todayLocalISO())
+    .map((e) => e.recipeId)
+    .filter((id): id is string => Boolean(id));
+  const [costMap, cookableRecipeIds] = await Promise.all([
+    getRecipeCostsForIds(recipeIds),
+    getCookableRecipeIds(todayRecipeIds),
+  ]);
   let weekCostTotal = 0;
   let weekCostComplete = true;
   let weekCostAny = false;
@@ -159,6 +171,7 @@ export default async function MenusPage({
         skippedSlots={skippedSlots}
         slots={slots}
         canCopyPrevious={canCopyPrevious}
+        cookableRecipeIds={cookableRecipeIds}
         // El mismo recetario que usan las reglas: sirve al buscador del «+».
         recipes={recipes}
         householdName={household?.name ?? null}

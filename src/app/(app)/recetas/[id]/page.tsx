@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ChefHat } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { RecipeForm } from "@/features/recipes/components/recipe-form";
@@ -37,7 +40,25 @@ export default async function EditarRecetaPage({
         title={recipe.name}
         backHref="/recetas"
         backLabel="Mis recetas"
-        action={<CostBadge cost={cost} />}
+        action={
+          <div className="flex items-center gap-2">
+            {/*
+              Cocinar es lo único que se hace con una receta además de editarla,
+              y esta página es un formulario largo: sin el botón aquí arriba, la
+              única puerta al modo cocinado pasaba por el menú, o sea que quien
+              cocina algo que no había planificado no tenía ninguna. Solo con
+              pasos escritos, que es lo que el modo va guiando.
+            */}
+            {recipe.steps.length > 0 ? (
+              <Button asChild variant="outline" size="icon" aria-label="Cocinar paso a paso">
+                <Link href={`/recetas/${recipe.id}/cocinar`}>
+                  <ChefHat aria-hidden />
+                </Link>
+              </Button>
+            ) : null}
+            <CostBadge cost={cost} />
+          </div>
+        }
       />
       <div className="mb-6">
         <RecipeRating

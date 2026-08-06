@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
-import { CircleCheck, CircleX, Lightbulb } from "lucide-react";
+import { ChefHat, CircleCheck, CircleX, Lightbulb } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import type { MenuEntry } from "../queries";
@@ -44,6 +45,7 @@ import { SkipReasonChips } from "./skip-reason-chips";
 export function TodayStrip({
   today,
   entries,
+  cookableRecipeIds,
   onMarkCooked,
   markingId,
   skip,
@@ -59,6 +61,12 @@ export function TodayStrip({
    * que decir.
    */
   entries: MenuEntry[];
+  /**
+   * Recetas con pasos escritos: solo esas ofrecen el modo cocinado. Sin este
+   * dato la tira no puede saberlo —los pasos no viajan en la consulta de la
+   * semana— y el botón llevaría la mitad de las veces a un callejón.
+   */
+  cookableRecipeIds: string[];
   onMarkCooked: (entry: MenuEntry) => void;
   /** Id del plato que se está guardando: el spinner va solo en SU botón. */
   markingId: string | null;
@@ -144,6 +152,8 @@ export function TodayStrip({
               </div>
             );
           }
+          const cookable =
+            entry.recipeId !== null && cookableRecipeIds.includes(entry.recipeId);
           return (
             <div key={entry.id} className="flex items-center gap-2">
               {/*
@@ -159,6 +169,29 @@ export function TodayStrip({
                 </span>{" "}
                 {text}
               </p>
+              {/*
+                Ponerse a cocinar, de un toque y desde donde ya estás mirando qué
+                toca hoy. Es el tercer botón de una fila que nació con dos, y se
+                gana el sitio porque es la acción que se hace ANTES que las otras
+                dos: el ✓ y la ✗ contestan qué pasó, y esto es lo que pasa. Solo
+                sale si la receta tiene pasos que seguir; si no, no hay modo al
+                que entrar y el panel del plato sigue siendo el sitio de leerla.
+              */}
+              {cookable ? (
+                <Button
+                  asChild
+                  variant="outline"
+                  size="icon"
+                  aria-label={`Cocinar paso a paso: ${text}`}
+                  className="shrink-0 text-muted-foreground"
+                >
+                  <Link
+                    href={`/recetas/${entry.recipeId}/cocinar?entrada=${entry.id}`}
+                  >
+                    <ChefHat aria-hidden className="size-5" />
+                  </Link>
+                </Button>
+              ) : null}
               {/* Mismo icono y mismo aria-label que la acción rápida de la
                   tarjeta: es la misma acción, y verla distinta la haría parecer
                   otra cosa. */}

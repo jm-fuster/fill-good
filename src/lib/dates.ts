@@ -54,6 +54,21 @@ export function todayLocalISO(): string {
 }
 
 /**
+ * Ahora, en milisegundos desde epoch. Es `Date.now()` con un nombre, y existe
+ * para poder leer el reloj desde el render de un Server Component: ahí es
+ * legítimo —se renderiza una vez por petición— pero llamar directamente a una
+ * función impura dentro de un componente es lo que veta el compilador de React,
+ * sin distinguir servidor de cliente.
+ *
+ * No lo uses en un componente CLIENTE: ahí el render se repite y el número
+ * cambiaría entre repintados. Si un cliente necesita «cuándo se cargó esto», que
+ * se lo pase el servidor como prop (lo hace el modo cocinado).
+ */
+export function nowMs(): number {
+  return Date.now();
+}
+
+/**
  * Hora del día (0–23) en España (Europe/Madrid). Para decisiones de franja
  * («¿comida o cena?») tomadas en SERVIDOR: Vercel corre en UTC y su reloj va
  * 1–2 horas por detrás — a las 17:30 españolas `getHours()` decía 15 y la

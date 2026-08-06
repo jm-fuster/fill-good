@@ -327,6 +327,101 @@ export async function getRecipeForEdit(
   };
 }
 
+/**
+ * Una receta para leerla mientras se cocina: los pasos y las cantidades, sin
+ * nada de lo que solo sirve para editarla.
+ *
+ * La consumen las dos superficies que enseñan cómo se cocina un plato —la vista
+ * del panel del menú (a través de `getRecipeCookingAction`) y el modo cocinado—,
+ * y por eso vive aquí en vez de en cada una: si se separaran, una podría enseñar
+ * un ingrediente que la otra no.
+ */
+export type RecipeCooking = {
+  name: string;
+  /** Raciones a las que corresponden las cantidades de abajo. */
+  servings: number;
+  prepMinutes: number | null;
+  steps: string[];
+  /**
+   * Está en el recetario del hogar. Las efímeras (las que inventó la IA al
+   * planificar la semana) no lo están, y eso decide si se puede enlazar a su
+   * ficha: `/recetas/[id]` solo existe para las guardadas.
+   */
+  isSaved: boolean;
+  ingredients: {
+    name: string;
+    quantity: number | null;
+    unit: UnitType | null;
+    optional: boolean;
+  }[];
+};
+
+/**
+ * Receta por id para cocinarla. null si no existe o no es del hogar activo.
+ *
+ * NO filtra por `is_saved`, al revés que `getRecipeForEdit`: el plato que la IA
+ * inventó al planificar la semana es efímero y es justo el que nadie sabe
+ * cocinar. Lo que se lee para cocinar no tiene por qué estar en el recetario.
+ */
+export async function getRecipeForCooking(
+  recipeId: string,
+): Promise<RecipeCooking | null> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return null;
+  const supabase = createServerSupabaseClient();
+
+  const { data: recipe } = await supabase
+    .from("recipes")
+    .select("id, name, servings, prep_minutes, steps, is_saved")
+    .eq("household_id", householdId)
+    .eq("id", recipeId)
+    .maybeSingle();
+  if (!recipe) return null;
+
+  const { data: ings } = await supabase
+    .from("recipe_ingredients")
+    .select("name, quantity, unit, optional")
+    .eq("household_id", householdId)
+    .eq("recipe_id", recipeId)
+    .order("id", { ascending: true });
+
+  return {
+    name: recipe.name,
+    servings: recipe.servings ?? 1,
+    prepMinutes: recipe.prep_minutes,
+    steps: recipe.steps ?? [],
+    isSaved: recipe.is_saved,
+    ingredients: (ings ?? []).map((i) => ({
+      name: i.name,
+      quantity: i.quantity === null ? null : Number(i.quantity),
+      unit: i.unit,
+      optional: i.optional,
+    })),
+  };
+}
+
+/**
+ * Cuántas veces ha cocinado el hogar esta receta, contando las entradas de menú
+ * marcadas. Es la MISMA cuenta de la que sale `timesCooked` en
+ * `getRecipeSignals` —lo que evita que el generador repita lo de la semana
+ * pasada—, no un contador aparte: el número que se celebra al terminar de
+ * cocinar tiene que ser el número del que se fía la app.
+ *
+ * `head: true`: solo interesa el total, así que no viajan las filas.
+ */
+export async function getRecipeCookedCount(recipeId: string): Promise<number> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return 0;
+  const supabase = createServerSupabaseClient();
+  const { count } = await supabase
+    .from("menu_entries")
+    .select("id", { count: "exact", head: true })
+    .eq("household_id", householdId)
+    .eq("recipe_id", recipeId)
+    .not("cooked_at", "is", null);
+  return count ?? 0;
+}
+
 /** Resumen de valoración de una receta para su página de detalle. */
 export type RecipeRatingSummary = {
   /** Media del hogar (null si nadie ha votado aún). */

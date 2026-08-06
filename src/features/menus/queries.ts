@@ -173,6 +173,74 @@ export async function getWeekMenusWithEntries(
 // Repaso de cocinado (R2)
 // ---------------------------------------------------------------------------
 
+/** Lo que el modo cocinado necesita saber de la entrada del menú de la que salió. */
+export type MenuEntryForCooking = {
+  id: string;
+  /** Día para el que estaba planificado (ISO local). */
+  date: string;
+  cookedAt: string | null;
+  /** Receta enlazada; null en un plato de texto libre. */
+  recipeId: string | null;
+};
+
+/**
+ * Una entrada del menú por id, para el modo cocinado. null si no existe o no es
+ * del hogar activo.
+ *
+ * El `entrada` de la URL lo escribe quien quiera, así que esto es además la
+ * comprobación de que apunta a algo del hogar: sin ella, la pantalla de cierre
+ * ofrecería marcar como cocinada una entrada ajena y el fallo solo aparecería al
+ * pulsar (la action sí acota, pero ya en el momento de celebrar).
+ */
+export async function getMenuEntryForCooking(
+  entryId: string,
+): Promise<MenuEntryForCooking | null> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return null;
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("menu_entries")
+    .select("id, date, cooked_at, recipe_id")
+    .eq("household_id", householdId)
+    .eq("id", entryId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    id: data.id,
+    date: data.date,
+    cookedAt: data.cooked_at,
+    recipeId: data.recipe_id,
+  };
+}
+
+/**
+ * De unas recetas dadas, cuáles tienen pasos escritos —o sea, cuáles se pueden
+ * cocinar paso a paso—.
+ *
+ * Consulta aparte y no una columna más en la de la semana: los pasos NO viajan
+ * en `getMenuEntries` a propósito (serían catorce recetas completas para que se
+ * lea una). Aquí se le pasan solo las recetas de HOY, que son una o tres, y lo
+ * que cruza al cliente es una lista de ids, no el texto.
+ */
+export async function getCookableRecipeIds(
+  recipeIds: string[],
+): Promise<string[]> {
+  const unique = [...new Set(recipeIds)];
+  if (unique.length === 0) return [];
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("recipes")
+    .select("id, steps")
+    .eq("household_id", householdId)
+    .in("id", unique);
+  if (error) return [];
+  return (data ?? [])
+    .filter((r) => (r.steps ?? []).length > 0)
+    .map((r) => r.id);
+}
+
 /** Plato pasado del que aún no se sabe si se cocinó, tal como lo lista el repaso. */
 export type PendingCheckinEntry = {
   id: string;

@@ -192,6 +192,7 @@ export function MenuView({
   skippedSlots,
   slots,
   canCopyPrevious,
+  cookableRecipeIds,
   recipes,
   householdName,
   prefs,
@@ -221,6 +222,14 @@ export function MenuView({
   skippedSlots: string[];
   slots: SlotDef[];
   canCopyPrevious: boolean;
+  /**
+   * Recetas de HOY que tienen pasos escritos, o sea las que se pueden cocinar
+   * paso a paso. Solo las de hoy: los pasos no viajan en la consulta de la
+   * semana (serían catorce recetas completas para que se lea una), así que esto
+   * lo resuelve una consulta aparte con los ids del día — y lo que cruza al
+   * cliente es esta lista, no el texto.
+   */
+  cookableRecipeIds: string[];
   /**
    * Recetario del hogar, para el buscador del «+» (elegir una receta guardada en
    * vez de escribir texto libre). Lo carga ya la página para los ajustes del
@@ -766,6 +775,7 @@ export function MenuView({
         <TodayStrip
           today={today}
           entries={todayRows}
+          cookableRecipeIds={cookableRecipeIds}
           onMarkCooked={quickMarkCooked}
           markingId={markingId}
           skip={{
@@ -1857,6 +1867,25 @@ function EditEntryDrawer({
                 </p>
               )}
             </div>
+            {/*
+              Con pasos escritos, la acción principal de esta vista es ponerse a
+              cocinar: leerlos aquí es de un vistazo, y guiarlos uno a uno con la
+              pantalla encendida y las manos sucias es el modo cocinado. Va como
+              enlace porque sale del modal a una ruta propia (no cabe dentro: el
+              cierre encadena el descuento, y anidar modales no funciona).
+            */}
+            {detail && detail.steps.length > 0 && editing?.recipeId ? (
+              <Button asChild size="lg">
+                <Link
+                  href={`/recetas/${editing.recipeId}/cocinar${
+                    editing.entryId ? `?entrada=${editing.entryId}` : ""
+                  }`}
+                >
+                  <ChefHat aria-hidden />
+                  Cocinar paso a paso
+                </Link>
+              </Button>
+            ) : null}
             {/*
               El botón solo cuando faltan los pasos: un plato que la IA inventó al
               planificar la semana llega con ingredientes y sin pasos, y las
