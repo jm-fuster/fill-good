@@ -35,6 +35,7 @@ import {
   usePersistedFlag,
 } from "@/hooks/use-persisted-flag";
 import { useSwipeAction } from "@/hooks/use-swipe-action";
+import { useWakeLock } from "@/hooks/use-wake-lock";
 import { AisleOrderPanel } from "@/features/categories/components/aisle-order-panel";
 import {
   aisleSort,
@@ -66,9 +67,6 @@ import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import { QuantityStepper } from "./quantity-stepper";
 import { suggestionReasonLabel } from "../suggestion-reason";
 import { useCheckout } from "./use-checkout";
-
-/** Sentinel mínimo del Screen Wake Lock API (evita depender del lib DOM). */
-type WakeLockLike = { release: () => Promise<void> };
 
 /** Clave del único bloque cuando la lista va sin agrupar (no lleva cabecera). */
 const FLAT_GROUP = "__lista__";
@@ -186,33 +184,10 @@ export function ShoppingMode({
   // Sección "otras tiendas" contraída por defecto.
   const [showOther, setShowOther] = useState(false);
 
-  // Pantalla siempre encendida mientras dura la compra (feature-detect; degrada
-  // en silencio donde no exista). Se re-solicita al volver de segundo plano
-  // (el sistema libera el lock al ocultar la pestaña) y se libera al salir.
-  const wakeRef = useRef<WakeLockLike | null>(null);
-  useEffect(() => {
-    const nav = navigator as Navigator & {
-      wakeLock?: { request: (type: "screen") => Promise<WakeLockLike> };
-    };
-    async function request() {
-      try {
-        if (nav.wakeLock)
-          wakeRef.current = await nav.wakeLock.request("screen");
-      } catch {
-        // Denegado o no disponible: seguimos sin bloqueo.
-      }
-    }
-    request();
-    const onVisibility = () => {
-      if (document.visibilityState === "visible") request();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      wakeRef.current?.release().catch(() => {});
-      wakeRef.current = null;
-    };
-  }, []);
+  // Pantalla siempre encendida mientras dura la compra. Lo comparte con el modo
+  // cocinado, que está en la misma situación: el móvil apoyado y las manos
+  // ocupadas (ver `useWakeLock`).
+  useWakeLock();
 
   function toggle(id: string, checked: boolean) {
     if (checked) vibrateTick();
