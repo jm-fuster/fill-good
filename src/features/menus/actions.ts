@@ -74,10 +74,8 @@ import {
 } from "./prompt-context";
 import { isSkipReason } from "./skip-reason";
 import { weeklyBudgetTarget } from "./week-budget";
-import {
-  computeMissingIngredients,
-  type MissingCandidate,
-} from "./missing";
+import type { MissingCandidate } from "./missing";
+import { computeMissingForRecipes } from "./missing-server";
 import {
   computeCookedDeductions,
   resolveStockTarget,
@@ -2129,65 +2127,33 @@ export async function computeMissingForMenuAction(
     return { error: "El menú no tiene recetas con ingredientes." };
   }
 
-  const { data: ingredients } = await supabase
-    .from("recipe_ingredients")
-    .select("name, quantity, unit, product_id")
-    .eq("household_id", household.id)
-    .in("recipe_id", recipeIds);
+  const candidates = await computeMissingForRecipes(
+    household.id,
+    list.id,
+    recipeIds,
+  );
+  return { candidates };
+}
 
-  const [inventory, catalog] = await Promise.all([
-    getInventory(),
-    getProductCatalog(),
+/**
+ * Lo mismo para UNA receta: lo que usa el repaso de ingredientes con el que
+ * arranca el modo cocinado. Comparte el cálculo con la versión del menú
+ * (`computeMissingForRecipes`) a propósito — son la misma pregunta hecha sobre
+ * un plato en vez de sobre catorce, y si contestaran distinto el modo cocinado
+ * diría «te falta comino» sobre algo que la lista se niega a apuntar.
+ */
+export async function computeMissingForRecipeAction(
+  recipeId: string,
+): Promise<MissingState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+
+  const list = await getActiveList();
+  if (!list) return { error: "No hay lista activa." };
+
+  const candidates = await computeMissingForRecipes(household.id, list.id, [
+    recipeId,
   ]);
-
-  // Stock real: suma por producto > 0 (no basta con que exista la fila).
-  const stockByProduct = new Map<string, number>();
-  for (const i of inventory) {
-    stockByProduct.set(
-      i.productId,
-      (stockByProduct.get(i.productId) ?? 0) + i.quantity,
-    );
-  }
-  const stockProductIds = new Set<string>();
-  for (const [pid, qty] of stockByProduct) {
-    if (qty > 0) stockProductIds.add(pid);
-  }
-  const stockNames = new Set<string>();
-  for (const i of inventory) {
-    if (i.quantity > 0) stockNames.add(normalizeName(i.productName));
-  }
-
-  // Lo que ya está en la lista activa (por producto y por nombre).
-  const { data: listItems } = await supabase
-    .from("shopping_list_items")
-    .select("name, product_id")
-    .eq("household_id", household.id)
-    .eq("list_id", list.id);
-  const listProductIds = new Set<string>();
-  const listNames = new Set<string>();
-  for (const it of listItems ?? []) {
-    if (it.product_id) listProductIds.add(it.product_id);
-    listNames.add(normalizeName(it.name));
-  }
-
-  const candidates = computeMissingIngredients({
-    ingredients: (ingredients ?? []).map((i) => ({
-      name: i.name,
-      productId: i.product_id,
-      unit: i.unit,
-    })),
-    catalog: catalog.map((c) => ({
-      id: c.id,
-      name: c.name,
-      normalizedName: c.normalizedName,
-      defaultUnit: c.defaultUnit,
-    })),
-    stockProductIds,
-    stockNames,
-    listProductIds,
-    listNames,
-  });
-
   return { candidates };
 }
 
@@ -2203,6 +2169,39 @@ export async function confirmMissingToListAction(
   menuId: string,
   includedKeys: string[],
 ): Promise<MenuState> {
+  const computed = await computeMissingForMenuAction(menuId);
+  if (computed.error) return { error: computed.error };
+  return insertMissingToList(computed.candidates ?? [], includedKeys);
+}
+
+/**
+ * Y la versión de una receta, para el repaso de ingredientes del modo cocinado.
+ * Recalcula en el servidor igual que su hermana y usa `includedKeys` SOLO para
+ * filtrar: los datos de producto que mande el cliente no se miran nunca.
+ */
+export async function confirmMissingForRecipeAction(
+  recipeId: string,
+  includedKeys: string[],
+): Promise<MenuState> {
+  const computed = await computeMissingForRecipeAction(recipeId);
+  if (computed.error) return { error: computed.error };
+  return insertMissingToList(computed.candidates ?? [], includedKeys);
+}
+
+/**
+ * Inserta en la lista activa los faltantes que el usuario dejó marcados. Los que
+ * casaron con el catálogo entran vinculados (`product_id`), para que «Finalizar
+ * compra» los mande a su ubicación por defecto; los sin match, como texto libre.
+ *
+ * Recibe los candidatos YA recalculados en servidor: quien la llama es el único
+ * que sabe de qué se estaba hablando (un menú o una receta), y así la regla de
+ * no fiarse de lo que manda el cliente se cumple una sola vez y en los dos
+ * caminos.
+ */
+async function insertMissingToList(
+  candidates: MissingCandidate[],
+  includedKeys: string[],
+): Promise<MenuState> {
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
   const { userId } = await auth();
@@ -2211,13 +2210,8 @@ export async function confirmMissingToListAction(
   const list = await getActiveList();
   if (!list) return { error: "No hay lista activa." };
 
-  const computed = await computeMissingForMenuAction(menuId);
-  if (computed.error) return { error: computed.error };
-
   const included = new Set(includedKeys);
-  const toInsert = (computed.candidates ?? []).filter((c) =>
-    included.has(c.key),
-  );
+  const toInsert = candidates.filter((c) => included.has(c.key));
   if (toInsert.length === 0) return { ok: true, added: 0 };
 
   const { data: last } = await supabase
