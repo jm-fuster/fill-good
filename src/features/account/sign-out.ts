@@ -47,11 +47,12 @@ const SIGN_IN_URL = "/sign-in";
  * historial.
  */
 export async function signOutToSignIn(clerk: Clerk) {
-  // Purga la caché del SW y el estado del hogar en localStorage ANTES de salir,
-  // para que ningún dato del hogar sobreviva al logout en dispositivos
-  // compartidos (auditoría de privacidad jul-2026). Es best-effort y se hace
-  // antes del signOut a propósito: si el cierre fallara y el usuario siguiera
-  // dentro, lo único perdido es la caché offline, que se rehace online.
+  // Purga la caché del SW, el estado del hogar en localStorage y la suscripción
+  // a notificaciones ANTES de salir, para que ningún dato del hogar sobreviva al
+  // logout en dispositivos compartidos (auditoría de privacidad jul-2026). Es
+  // best-effort y se hace antes del signOut a propósito: cancelar el push
+  // necesita la sesión viva, y si el cierre fallara y el usuario siguiera
+  // dentro, lo perdido son la caché offline y unos avisos que se rehacen.
   await clearLocalAppData();
 
   const unsubscribe = clerk.addListener(
