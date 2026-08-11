@@ -6,11 +6,11 @@ import { getExpiryStatus } from "@/lib/dates";
  * (orden por urgencia) y los chips de filtro (E4) — para no duplicar la lógica.
  */
 export type InventoryStatusFlags = {
-  /** Caducado (fecha pasada). */
+  /** Caducado (fecha pasada) Y con existencias: sin nada, no caduca nada. */
   expired: boolean;
-  /** Caduca pronto o marcado "consumir pronto". */
+  /** Caduca pronto o "consumir pronto", también solo con existencias. */
   soon: boolean;
-  /** Agotado (cantidad 0). */
+  /** Agotado (sin existencias). */
   out: boolean;
   /** Quedan pocas (≤ mínimo, pero aún hay stock). */
   low: boolean;
@@ -41,15 +41,30 @@ export function getInventoryStatus(fields: {
   useSoon: boolean;
   minQuantity: number | null;
 }): InventoryStatusFlags {
-  const expiry = getExpiryStatus(fields.expiryDate);
+  // Sin existencias no hay caducidad que valga. La fecha y el "consumir pronto"
+  // hablan de comida que está en casa —lo que se va a echar a perder, lo que
+  // conviene gastar antes—, y de lo que se ha agotado no queda nada ni que tirar
+  // ni que cocinar: el único estado accionable es "agotado", y se arregla
+  // comprando, no corriendo a consumirlo. Decir las dos cosas a la vez sale caro
+  // en los dos sentidos: la tarjeta manda a tirar algo que ya no existe, y la
+  // fila engorda los recuentos de "Caducados" y "Caducan pronto" de los chips,
+  // que es justo donde se mira para saber cuánto trabajo urgente hay.
+  //
+  // La regla ya vivía en el resto de superficies —el push diario de caducidades,
+  // los informes de Alexa y las sugerencias de la lista filtran todos por
+  // cantidad > 0—; faltaba aquí, que es donde se ve. No quites la comprobación
+  // por redundante con `out`: son cuatro flags independientes y quien lee
+  // `expired` (los chips, el orden, la cabecera de la ubicación) no mira `out`.
+  const hasStock = fields.quantity > 0;
+  const expiry = hasStock ? getExpiryStatus(fields.expiryDate) : null;
   return {
     expired: expiry?.status === "expired",
-    soon: expiry?.status === "soon" || fields.useSoon,
-    out: fields.quantity === 0,
+    soon: expiry?.status === "soon" || (hasStock && fields.useSoon),
+    out: !hasStock,
     low:
       fields.minQuantity !== null &&
       fields.quantity <= fields.minQuantity &&
-      fields.quantity > 0,
+      hasStock,
   };
 }
 

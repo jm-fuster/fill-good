@@ -395,16 +395,27 @@ async function loadHouseholdMenuContext(
     };
   });
 
-  const invLines: MenuInventoryLine[] = inventory.map((i) => {
-    const exp = getExpiryStatus(i.expiryDate, 7);
-    return {
-      name: i.productName,
-      quantity: i.quantity,
-      unit: i.unit as string,
-      expiresInDays: exp ? exp.days : null,
-      useSoon: i.useSoon,
-    };
-  });
+  // Solo lo que HAY. Una fila a cero no es inventario, y en una sección titulada
+  // "Inventario actual del hogar" el modelo la lee como que sí hay —skimear un
+  // listado largo es justo lo que peor hace, ver el `id gazpacho` de
+  // `compare:menu`—; con su "(caduca en -2 días)" detrás, además, cae en el
+  // objetivo de aprovechar lo que caduca y planta la semana alrededor de una
+  // leche que se acabó. El resto del contexto ya contaba solo lo que tiene
+  // existencias (`summarizeAvailability` empareja contra ids con suma > 0, y el
+  // push y Alexa filtran en la propia consulta): esta lista era la única que
+  // decía lo contrario.
+  const invLines: MenuInventoryLine[] = inventory
+    .filter((i) => i.quantity > 0)
+    .map((i) => {
+      const exp = getExpiryStatus(i.expiryDate, 7);
+      return {
+        name: i.productName,
+        quantity: i.quantity,
+        unit: i.unit as string,
+        expiresInDays: exp ? exp.days : null,
+        useSoon: i.useSoon,
+      };
+    });
 
   // `skip_slot` NO entra aquí: viaja al prompt en su propia sección, con el día
   // y el hueco ya en palabras (ver `skippedSlotsSection`).

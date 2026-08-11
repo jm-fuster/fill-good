@@ -143,7 +143,6 @@ export function InventoryItemCard({
     });
   }
 
-  const expiry = getExpiryStatus(entry.expiryDate);
   // Estado desde el helper compartido (misma clasificación que chips/página),
   // con la cantidad EN VIVO del stepper.
   const status = getInventoryStatus({
@@ -152,6 +151,16 @@ export function InventoryItemCard({
     useSoon: entry.useSoon,
     minQuantity: entry.minQuantity,
   });
+  const emptied = status.out;
+  // Al vaciarse la fila, la caducidad y el "consumir pronto" se callan: los dos
+  // hablan de comida que está en casa y aquí ya no hay nada que se eche a perder
+  // ni que haya que gastar antes (el porqué largo, en `getInventoryStatus`, que
+  // hace lo mismo para los chips y el orden). Se calla la fecha ENTERA, no solo
+  // las dos urgentes: "Caduca en 5 días" al lado de "Agotado" es la misma
+  // contradicción con otro color. La fecha no se borra —sigue en la ficha, y
+  // vuelve a verse en cuanto el stepper suba de cero—, solo deja de gritar.
+  const expiry = emptied ? null : getExpiryStatus(entry.expiryDate);
+  const useSoon = !emptied && entry.useSoon;
   // El stepper existe para TODA unidad: a granel el paso es el de compra
   // (¼ kg, ½ l, 100 g/ml) en vez de 1, que en gramos no significaba nada.
   const step = quantityStep(entry.unit);
@@ -169,19 +178,20 @@ export function InventoryItemCard({
         }
       : null,
   );
-  const emptied = status.out;
   const inList = listOverride ?? onList;
   // El `aria-label` del botón SUSTITUYE a su contenido, así que todo lo que
   // dicen los badges (y el carrito) hay que repetirlo aquí o no existe para un
   // lector de pantalla: hasta ahora se oía «Editar leche, botón» y ni una
   // palabra de que estaba caducada. La cantidad no entra —el stepper ya la
   // anuncia en su propia región `aria-live`— y «en la lista» solo cuando queda
-  // algo, porque en agotado lo dice el botón del pie con su propio texto.
+  // algo, porque en agotado lo dice el botón del pie con su propio texto. En
+  // agotado se oye solo eso: la caducidad y el «consumir pronto» ya vienen
+  // apagados de arriba, así que esta línea no puede desmentir a los badges.
   const stateLabel = [
     emptied ? "agotado" : null,
     expiry ? expiryLabel(expiry.days).toLowerCase() : null,
     status.low ? "quedan pocas" : null,
-    entry.useSoon ? "consumir pronto" : null,
+    useSoon ? "consumir pronto" : null,
     inList && !emptied ? "en la lista de la compra" : null,
   ]
     .filter(Boolean)
@@ -357,7 +367,7 @@ export function InventoryItemCard({
                       Quedan pocas
                     </Badge>
                   ) : null}
-                  {entry.useSoon ? (
+                  {useSoon ? (
                     <Badge className="border-transparent bg-warning/15 text-warning">
                       Consumir pronto
                     </Badge>

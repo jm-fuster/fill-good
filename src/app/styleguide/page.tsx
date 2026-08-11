@@ -252,7 +252,7 @@ export default function StyleguidePage() {
 
       <Section
         title="Badges de estado"
-        description="Estados de inventario y caducidad, siempre con estos pares token/uso. El tinte está reservado a la caducidad: los tres colores son la MISMA escala (frescura), así que lo que no es una fecha no se tiñe. «Agotado» va neutro (outline) y se distingue por forma —borde, sin relleno—; si compartiera el ámbar de «caduca pronto», una tarjeta vacía se leería como comida a punto de echarse a perder."
+        description="Estados de inventario y caducidad, siempre con estos pares token/uso. El tinte está reservado a la caducidad: los tres colores son la MISMA escala (frescura), así que lo que no es una fecha no se tiñe. «Agotado» va neutro (outline) y se distingue por forma —borde, sin relleno—; si compartiera el ámbar de «caduca pronto», una tarjeta vacía se leería como comida a punto de echarse a perder. Y no convive con ninguno de los tres: sin existencias no hay frescura de la que hablar, así que en agotado la escala entera se calla (también «Consumir pronto»)."
       >
         <div className="flex flex-wrap items-center gap-2">
           <Badge className="border-success/30 bg-success/15 text-success">
