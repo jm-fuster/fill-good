@@ -808,14 +808,39 @@ export async function checkoutAction(): Promise<
   const list = await getActiveList();
   if (!list) return { error: "No hay lista activa." };
 
-  const { data: checked, error: fetchErr } = await supabase
+  /*
+    Reclamo de lo marcado: se desmarca y se pide de vuelta lo que ESTA ejecución
+    consiguió cambiar. No es un rodeo para leer, es lo que impide que la compra
+    entre dos veces.
+
+    Leyendo a secas, dos móviles que pulsan «Finalizar compra» con segundos de
+    diferencia —el caso normal: dos personas en la misma caja, y el bucle de
+    abajo tarda varios segundos con la lista llena— leían ambos las mismas
+    líneas, porque el borrado no llega hasta el final. Resultado: el stock se
+    sumaba dos veces, dos eventos «repuesto» por producto, `bump_product_purchase`
+    doble (que corre la cadencia de reposición) y DOS filas en `shopping_trips`,
+    una de las cuales se queda pidiendo ticket para siempre. Nada de eso se
+    deshace desde la app.
+
+    Con el UPDATE condicional lo decide Postgres: de dos ejecuciones a la vez,
+    solo una ve `is_checked = true` y se lleva las filas; la otra recibe cero y
+    contesta «No hay productos marcados», que es exactamente lo que pasó. El
+    botón ya estaba protegido por dispositivo (`loading` lo deshabilita), así que
+    esto cubre justo lo que faltaba: dos dispositivos distintos.
+
+    Desmarcar es el reclamo más barato que existe sin tocar el esquema, y es
+    reversible: lo que no se llegue a pasar se vuelve a marcar al final, tal cual
+    estaba (`checked_by`/`checked_at` no se tocan aquí).
+  */
+  const { data: claimed, error: fetchErr } = await supabase
     .from("shopping_list_items")
-    .select("id, name, quantity, unit, product_id")
+    .update({ is_checked: false })
     .eq("household_id", household.id)
     .eq("list_id", list.id)
-    .eq("is_checked", true);
+    .eq("is_checked", true)
+    .select("id, name, quantity, unit, product_id");
   if (fetchErr) return { error: "No se pudieron leer los productos." };
-  if (!checked || checked.length === 0) {
+  if (!claimed || claimed.length === 0) {
     return { error: "No hay productos marcados." };
   }
 
@@ -832,7 +857,7 @@ export async function checkoutAction(): Promise<
   let added = 0;
   let failures = 0;
 
-  for (const item of checked) {
+  for (const item of claimed) {
     // Resolver producto: enlazado, o resolver/crear por nombre normalizado.
     let productId = item.product_id;
     let defaultUnit = item.unit ?? "ud";
@@ -995,10 +1020,42 @@ export async function checkoutAction(): Promise<
     doneIds.push(item.id);
   }
 
-  // Snapshot de la compra (G2) ANTES del borrado: es el único instante en que
-  // existe la información de qué había en la lista. Best-effort — perder el
-  // snapshot degrada una comparación futura, pero no puede impedir que el
-  // usuario cierre su compra.
+  // Lo reclamado que no se pudo pasar vuelve a estar marcado, tal como lo dejó
+  // quien lo marcó: el reclamo de arriba lo desmarcó para que ninguna otra
+  // ejecución lo procesara, no para deshacer el trabajo del usuario.
+  const done = new Set(doneIds);
+  const unresolvedIds = claimed
+    .map((i) => i.id)
+    .filter((id) => !done.has(id));
+  if (unresolvedIds.length > 0) {
+    await supabase
+      .from("shopping_list_items")
+      .update({ is_checked: true })
+      .eq("household_id", household.id)
+      .in("id", unresolvedIds);
+  }
+
+  if (doneIds.length === 0) {
+    revalidatePath("/lista");
+    return {
+      error: "No se pudo pasar la compra al inventario. Inténtalo de nuevo.",
+    };
+  }
+
+  /*
+    Snapshot de la compra (G2) ANTES del borrado: es el único instante en que
+    existe la información de qué había en la lista. Best-effort — perder el
+    snapshot degrada una comparación futura, pero no puede impedir que el
+    usuario cierre su compra.
+
+    Va DESPUÉS de comprobar que algo entró de verdad. Antes se escribía siempre,
+    así que un checkout que fallaba entero dejaba un trip con cero productos: la
+    lista se ponía a ofrecer «¿tienes el ticket de esta compra?» por una compra
+    que no ocurrió y, al reintentar, el ticket podía emparejarse con el trip
+    vacío en vez de con el bueno — y entonces TODO lo comprado contaba como
+    «extra», o sea «0 de 1 compras perfectas» y un «capricho recurrente» hecho
+    con la lista de la compra.
+  */
   try {
     // El cliente NO lanza en error de BD: devuelve { error }. Hay que mirarlo, o
     // un snapshot fallido pasaría desapercibido, que es justo el dato que esta
@@ -1016,20 +1073,14 @@ export async function checkoutAction(): Promise<
     console.error("Snapshot de compra falló (best-effort):", err);
   }
 
-  if (doneIds.length > 0) {
-    await supabase
-      .from("shopping_list_items")
-      .delete()
-      .eq("household_id", household.id)
-      .in("id", doneIds);
-  }
+  await supabase
+    .from("shopping_list_items")
+    .delete()
+    .eq("household_id", household.id)
+    .in("id", doneIds);
 
   revalidatePath("/lista");
   revalidatePath("/inventario");
-
-  if (doneIds.length === 0) {
-    return { error: "No se pudo pasar la compra al inventario. Inténtalo de nuevo." };
-  }
 
   const failureNote =
     failures === 0
