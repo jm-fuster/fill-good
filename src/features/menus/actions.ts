@@ -60,6 +60,7 @@ import {
   getMenuPrefs,
   getMenuRules,
   getWeekMenusWithEntries,
+  type MenuEntry,
   type MenuPrefs,
   type MenuRule,
 } from "./queries";
@@ -533,6 +534,25 @@ async function generateMenu(
    * pudiendo poner algo en un día pasado, porque ahí lo pide el usuario a mano.
    */
   const isPast = (date: string) => date < today;
+  /**
+   * Un plato ya RESUELTO —cocinado o «no se hizo»— tampoco se replanifica,
+   * aunque su día no haya pasado.
+   *
+   * El veto de arriba mira la FECHA, y con `<` estricto hoy no entra: la comida
+   * que marcaste hace un rato y por la que ya descontaste la despensa caía en el
+   * borrado en cuanto pulsabas «Completar menú con IA» esa misma tarde. Se
+   * llevaba el `cooked_at` (o sea, la prueba de que lo cocinaste, con lo que
+   * `timesCooked`/`lastCookedAt` volvían a cero para esa receta), reabría el
+   * hueco y colocaba otro plato encima, dejando el descuento pagando algo que ya
+   * no existe. Es el mismo destrozo que el veto de días pasados evita, dentro de
+   * la única fecha que ese veto no cubre — y la más probable, porque es el día
+   * en el que estás tocando el menú.
+   *
+   * Se mira el dato, no la fecha, porque lo que hace intocable a una entrada no
+   * es cuándo estaba planificada sino que ya ocurrió algo con ella.
+   */
+  const isResolved = (e: MenuEntry) =>
+    e.cookedAt !== null || e.skippedAt !== null;
   if (weekDays.every(isPast)) {
     return {
       error: "Esa semana ya ha pasado: no se puede volver a planificar.",
@@ -547,13 +567,16 @@ async function generateMenu(
   const menuId = await ensureMenu(supabase, household.id, weekStart);
   if (!menuId) return { error: "No se pudo crear el menú." };
 
-  // Entradas que la regeneración conserva: las de días pasados SIEMPRE, y en
-  // modo "fill" además las fijadas y las manuales. Se cuentan para las reglas y
-  // se listan en el prompt para que la IA no las repita.
+  // Entradas que la regeneración conserva: las de días pasados y las ya
+  // resueltas SIEMPRE, y en modo "fill" además las fijadas y las manuales. Se
+  // cuentan para las reglas y se listan en el prompt para que la IA no las
+  // repita.
   const existingEntries = await getMenuEntries(menuId);
   const preserved = existingEntries.filter(
     (e) =>
-      isPast(e.date) || (mode === "fill" && (e.pinned || e.source === "manual")),
+      isPast(e.date) ||
+      isResolved(e) ||
+      (mode === "fill" && (e.pinned || e.source === "manual")),
   );
   const occupiedSlots = new Set(preserved.map((e) => `${e.date}|${e.slot}`));
   const pinnedLines: MenuPinnedLine[] = preserved
@@ -726,13 +749,18 @@ async function generateMenu(
   // "replace" arrasa el resto de la semana; "fill" borra solo lo generado por IA
   // que no esté fijado y deja intactas las entradas conservadas. El `gte` de la
   // fecha es lo que salva los días ya vividos —y el "lo cocinamos" que llevan
-  // dentro— del borrado de las dos ramas.
+  // dentro— del borrado de las dos ramas; los dos `is` salvan lo de HOY que ya
+  // se resolvió, que por fecha sí entraría (mismo motivo que `isResolved`, y
+  // aquí es donde se ejecuta de verdad: el filtro de `preserved` decide qué
+  // cuenta para las reglas, este decide qué sobrevive).
   const deleteFromToday = supabase
     .from("menu_entries")
     .delete()
     .eq("household_id", household.id)
     .eq("menu_id", menuId)
-    .gte("date", today);
+    .gte("date", today)
+    .is("cooked_at", null)
+    .is("skipped_at", null);
   if (mode === "replace") {
     await deleteFromToday;
   } else {
