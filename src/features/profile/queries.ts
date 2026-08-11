@@ -3,6 +3,7 @@ import "server-only";
 import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
+import { currentMonthInSpain, dayOfMonthInSpain } from "@/lib/dates";
 import {
   getMonthlySpending,
   type MonthlySpending,
@@ -48,8 +49,12 @@ export type ProfileOverview = {
 
 export async function getProfileOverview(): Promise<ProfileOverview | null> {
   // El mes se fija aquí (y no se deja al valor por defecto de cada consulta)
-  // para poder lanzar las dos en paralelo con la misma referencia temporal.
-  const month = format(new Date(), "yyyy-MM");
+  // para poder lanzar las dos en paralelo con la misma referencia temporal. Es
+  // el mes ESPAÑOL: con el del proceso (UTC), durante las dos primeras horas
+  // del día 1 la hucha y el objetivo seguían siendo los del mes que acababa de
+  // cerrarse, y la fila de abajo ofrecía como «resumen» el del mes anterior a
+  // ese.
+  const month = currentMonthInSpain();
   const [spending, trips] = await Promise.all([
     getMonthlySpending(month),
     getMonthlyTripStats(month),
@@ -67,6 +72,6 @@ export async function getProfileOverview(): Promise<ProfileOverview | null> {
     }),
     wrappedIsNew:
       spending.prevTotal > 0 &&
-      new Date().getDate() <= WRAPPED_IS_NEW_UNTIL_DAY,
+      dayOfMonthInSpain() <= WRAPPED_IS_NEW_UNTIL_DAY,
   };
 }

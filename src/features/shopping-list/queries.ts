@@ -3,6 +3,7 @@ import "server-only";
 import { auth } from "@clerk/nextjs/server";
 import { addMonths, format, formatISO, parseISO, subHours } from "date-fns";
 
+import { startOfDayInSpain, todayLocalISO } from "@/lib/dates";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   getActiveHouseholdId,
@@ -605,7 +606,10 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
       .order("purchased_at", { ascending: true }),
   ]);
 
-  const todayISO = new Date().toISOString().slice(0, 10);
+  // Hoy en España: esta fecha decide qué lote cuenta como caducado para dejar
+  // de sugerirlo, y con la del proceso (UTC) discrepaba de la que usa la ficha
+  // del inventario para pintar el mismo lote.
+  const todayISO = todayLocalISO();
 
   const stockByProduct = new Map<string, number>();
   // Productos con algún lote ya caducado (con existencias: un lote a 0 ya está
@@ -1006,8 +1010,16 @@ export async function getMonthlyTripStats(
   }
   const supabase = createServerSupabaseClient();
   const monthStart = parseISO(`${month}-01`);
-  const monthStartStr = format(monthStart, "yyyy-MM-dd");
-  const nextStartStr = format(addMonths(monthStart, 1), "yyyy-MM-dd");
+  // `closed_at` es `timestamptz`, así que las fronteras van como INSTANTES de
+  // la medianoche española. Con la fecha suelta ('2026-09-01') Postgres la lee
+  // como medianoche UTC —las 02:00 de Madrid en verano—, y una compra cerrada
+  // a la 01:00 del día 1 se contaba en el mes anterior mientras su ticket
+  // (`purchased_at`, un `date` sin zona) contaba en el nuevo: las compras
+  // perfectas y el gasto del mismo mes salían de dos calendarios distintos.
+  const monthStartStr = startOfDayInSpain(format(monthStart, "yyyy-MM-dd"));
+  const nextStartStr = startOfDayInSpain(
+    format(addMonths(monthStart, 1), "yyyy-MM-dd"),
+  );
 
   const { data: tripRows } = await supabase
     .from("shopping_trips")

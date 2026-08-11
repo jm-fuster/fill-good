@@ -1,8 +1,9 @@
 import "server-only";
 
-import { addMonths, format, parseISO, startOfMonth, subMonths } from "date-fns";
+import { addMonths, format, parseISO, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 
+import { currentMonthInSpain } from "@/lib/dates";
 import { roundCents } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getCurrentHousehold } from "@/features/household/queries";
@@ -81,12 +82,12 @@ export type MonthlySpending = {
 const OTHER_KEY = "otros";
 
 /** Normaliza un "yyyy-MM" arbitrario a uno válido; si no lo es, usa el actual. */
-function resolveMonth(month: string | undefined, today: Date): string {
+function resolveMonth(month: string | undefined, currentMonth: string): string {
   if (month && /^\d{4}-\d{2}$/.test(month)) {
     const d = parseISO(`${month}-01`);
     if (!Number.isNaN(d.getTime())) return month;
   }
-  return format(today, "yyyy-MM");
+  return currentMonth;
 }
 
 function cap(s: string): string {
@@ -106,13 +107,16 @@ export async function getMonthlySpending(
   if (!household) return null;
 
   const supabase = createServerSupabaseClient();
-  const today = new Date();
-  const targetMonth = resolveMonth(month, today);
+  // Cuál es «el mes actual» lo dice el calendario español, no el reloj del
+  // proceso: de eso dependen el mes que se abre por defecto, si el visible se
+  // da por cerrado y hasta dónde deja avanzar la flecha «siguiente».
+  const currentMonth = currentMonthInSpain();
+  const targetMonth = resolveMonth(month, currentMonth);
 
   const monthStart = parseISO(`${targetMonth}-01`);
   const prevStart = subMonths(monthStart, 1);
   const nextStart = addMonths(monthStart, 1);
-  const currentMonthStart = startOfMonth(today);
+  const currentMonthStart = parseISO(`${currentMonth}-01`);
 
   const fmt = (d: Date) => format(d, "yyyy-MM-dd");
   const monthStartStr = fmt(monthStart);

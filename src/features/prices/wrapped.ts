@@ -1,8 +1,9 @@
 import "server-only";
 
-import { addMonths, format, parseISO, startOfMonth, subMonths } from "date-fns";
+import { addMonths, format, parseISO, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 
+import { currentMonthInSpain } from "@/lib/dates";
 import { roundCents } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getActiveHouseholdId } from "@/features/household/queries";
@@ -128,8 +129,11 @@ export async function getMonthlyWrapped(
     ? { label: bestChainEntry.label, value: bestChainEntry.total }
     : null;
 
-  const today = new Date();
-  const canGoForward = nextStart <= startOfMonth(today);
+  // Un mes está cerrado cuando ha empezado el siguiente EN ESPAÑA. Con el mes
+  // del proceso, /resumen del mes recién terminado seguía diciendo «vais por
+  // 412 €» en vez de dar el veredicto, durante las dos primeras horas del día 1.
+  const currentMonthStart = parseISO(`${currentMonthInSpain()}-01`);
+  const canGoForward = nextStart <= currentMonthStart;
 
   return {
     month: spending.month,
@@ -137,7 +141,7 @@ export async function getMonthlyWrapped(
     prevMonth: format(subMonths(monthStart, 1), "yyyy-MM"),
     nextMonth: canGoForward ? format(nextStart, "yyyy-MM") : null,
     hasData: spending.receiptCount > 0,
-    isClosed: nextStart <= startOfMonth(today),
+    isClosed: nextStart <= currentMonthStart,
     budget: spending.budget,
 
     spentTotal: roundCents(spending.total),
