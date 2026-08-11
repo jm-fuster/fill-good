@@ -23,6 +23,7 @@
 import { normalizeName } from "@/lib/normalize";
 import type { UnitType } from "@/lib/supabase/types";
 import {
+  MAX_INGREDIENT_QUANTITY,
   MAX_RECIPE_INGREDIENT_NAME,
   MAX_RECIPE_INGREDIENTS,
   MAX_RECIPE_STEPS,
@@ -100,8 +101,7 @@ export function sanitizeGeneratedSteps(steps: readonly string[]): string[] {
  */
 export function sanitizeQuantity(quantity: number | null): number | null {
   if (quantity === null || !Number.isFinite(quantity)) return null;
-  // `numeric(10, 2)` son 8 dígitos enteros: 99999999,99 es el techo real.
-  if (quantity <= 0 || quantity > 99_999_999) return null;
+  if (quantity <= 0 || quantity > MAX_INGREDIENT_QUANTITY) return null;
   // Redondeo a los dos decimales de la columna, para que lo que se guarda sea lo
   // mismo que se enseñó en el borrador.
   return Math.round(quantity * 100) / 100;

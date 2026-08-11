@@ -50,6 +50,7 @@ import { ProductAutocomplete } from "@/features/shopping-list/components/product
 import type { RecipeForEdit, MealTypeValue, SeasonValue } from "../queries";
 import { cleanStepText } from "../ai-draft";
 import {
+  MAX_INGREDIENT_QUANTITY,
   MAX_RECIPE_STEPS,
   type RecipeIngredientInput,
   type RecipeInput,
@@ -693,6 +694,10 @@ export function RecipeForm({
                   type="number"
                   inputMode="decimal"
                   min={0}
+                  /* El tope es el de la columna (`numeric(10, 2)`): más largo
+                     que eso no es una cantidad, es un cero de más al teclear, y
+                     sin `max` el navegador lo enviaba y reventaba el guardado. */
+                  max={MAX_INGREDIENT_QUANTITY}
                   step="any"
                   aria-label="Cantidad"
                   placeholder="Cant."

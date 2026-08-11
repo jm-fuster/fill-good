@@ -257,12 +257,33 @@ export async function updateRecipeAction(
     .eq("id", id);
   if (updErr) return { error: "No se pudo guardar la receta." };
 
-  // Reemplaza los ingredientes por completo (más simple que diferenciar).
-  await supabase
+  /*
+    Los ingredientes se reemplazan enteros, pero PRIMERO se insertan los nuevos
+    y solo después se borran los viejos.
+
+    Al revés —que es como estaba— un fallo del insert dejaba la receta con CERO
+    ingredientes: el borrado ya había ocurrido, aquí no hay transacción que lo
+    deshaga y el mensaje que sale («No se pudieron guardar los ingredientes») se
+    lee como «no se ha cambiado nada», así que ni siquiera invita a revisar.
+    Basta un PGRST303 por desfase de reloj o una cantidad de nueve cifras que
+    desborde `numeric(10,2)` para vaciar una receta escrita a mano. Y una receta
+    sin ingredientes no solo se ve mal: deja de aportar a «añadir a la lista lo
+    que falte», al coste de la semana y al descuento de la despensa.
+
+    En este orden el peor caso es el contrario y es recuperable: si falla el
+    borrado quedan los viejos junto a los nuevos, visibles y editables, y se
+    dice. Los duplicados momentáneos no rompen nada — `recipe_ingredients` no
+    tiene unique por nombre (dos filas «Ajo» son legales) y entre las dos
+    escrituras nadie lee la tabla.
+  */
+  const { data: previousRows, error: prevErr } = await supabase
     .from("recipe_ingredients")
-    .delete()
+    .select("id")
     .eq("household_id", household.id)
     .eq("recipe_id", id);
+  if (prevErr) return { error: "No se pudieron guardar los ingredientes." };
+  const previousIds = (previousRows ?? []).map((r) => r.id);
+
   if (d.ingredients.length > 0) {
     const rows = await buildIngredientRows(
       supabase,
@@ -274,6 +295,20 @@ export async function updateRecipeAction(
       .from("recipe_ingredients")
       .insert(rows);
     if (ingErr) return { error: "No se pudieron guardar los ingredientes." };
+  }
+
+  if (previousIds.length > 0) {
+    const { error: delErr } = await supabase
+      .from("recipe_ingredients")
+      .delete()
+      .eq("household_id", household.id)
+      .in("id", previousIds);
+    if (delErr) {
+      return {
+        error:
+          "Se guardaron los ingredientes, pero no se pudieron quitar los anteriores. Ábrela y revisa si hay repetidos.",
+      };
+    }
   }
 
   revalidatePath("/recetas");

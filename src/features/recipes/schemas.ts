@@ -20,6 +20,17 @@ export const MAX_RECIPE_INGREDIENTS = 50;
  * antes de que llegue aquí.
  */
 export const MAX_RECIPE_INGREDIENT_NAME = 120;
+/**
+ * Tope de la CANTIDAD de un ingrediente: `numeric(10, 2)` son 8 dígitos
+ * enteros, así que 99999999,99 es el techo real de la columna.
+ *
+ * No es una cota de cordura, es la de la base. Pasarse no da un dato raro: da
+ * `numeric field overflow`, un error de ESCRITURA que llega cuando el guardado
+ * ya ha empezado. Al editar una receta eso significaba quedarse sin ningún
+ * ingrediente (ver `updateRecipeAction`), y basta una errata de un dedo —un
+ * cero de más repetido al teclear los gramos— para provocarlo.
+ */
+export const MAX_INGREDIENT_QUANTITY = 99_999_999;
 
 const nullableText = (max: number) =>
   z
@@ -43,10 +54,19 @@ const stepSchema = z
 /** Un ingrediente del formulario de receta. */
 export const recipeIngredientSchema = z.object({
   name: z.string().trim().min(1).max(MAX_RECIPE_INGREDIENT_NAME),
+  /**
+   * Cantidad, o null si no se sabe. El `.catch(null)` es la política del campo
+   * desde siempre —lo que no se entiende (un negativo, un no-finito) se guarda
+   * como «no lo sé» en vez de tumbar el guardado—, y el tope entra dentro de
+   * ella a propósito: sin él, un número más largo que la columna no caía en
+   * este `catch`, llegaba hasta el INSERT y reventaba allí. Quien avisa de que
+   * el número no cabe es el `max` del input, antes de enviar.
+   */
   quantity: z
     .number()
     .finite()
     .min(0)
+    .max(MAX_INGREDIENT_QUANTITY)
     .nullable()
     .catch(null),
   unit: unit.nullable(),
