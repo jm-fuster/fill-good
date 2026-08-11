@@ -11,6 +11,7 @@ import { serverFailureMessage } from "@/lib/server-failure";
 import { buildReceiptSchema } from "@/lib/ai/receipt-schema";
 import type { ReceiptItemExtraction } from "@/lib/ai/receipt-schema";
 import { buildReceiptPrompt } from "@/lib/ai/receipt-prompt";
+import { isoDateInSpain } from "@/lib/dates";
 import { loadHouseholdMatchData, matchLineExact } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
 import { aliasKeyFor, cleanReceiptLabel } from "@/lib/receipt-label";
@@ -483,11 +484,14 @@ export async function confirmReceiptAction(
   // Nunca sin fecha: los agregados mensuales (gasto, hucha, resumen) filtran
   // por purchased_at y un NULL desaparecería de todas las cifras. Si ni la IA
   // ni la revisión la aportaron, vale la fecha de subida (se escanea al llegar
-  // a casa; el error posible es de horas, no de mes).
+  // a casa; el error posible es de horas, no de mes). La fecha de subida se lee
+  // en España: `created_at` viaja en UTC, así que recortarlo a pelo mandaba al
+  // mes anterior el ticket subido de madrugada el día 1 — que es justo cuando
+  // el error sí era de mes.
   const purchasedAt =
     payload.purchaseDate ??
     receipt.purchased_at ??
-    receipt.created_at.slice(0, 10);
+    isoDateInSpain(receipt.created_at);
 
   // Cadena corregida en la revisión (L15 f5). Solo se acepta si es una de las
   // que se le ofrecieron —conocidas, tiendas del hogar u "otro"—: el valor entra
@@ -897,6 +901,16 @@ export async function confirmReceiptAction(
   // garantizamos aquí es que un fallo se COMUNIQUE en vez de presentarse como éxito.
   // El orden de escrituras NO se reordena: cualquier alternativa tiene un modo de
   // fallo parcial simétrico y perdería la idempotencia por `added_to_inventory`.
+  //
+  // El `added_to_inventory = false` del filtro convierte este update en un
+  // RECLAMO, y es lo que impide que el mismo ticket entre dos veces en la
+  // despensa. La idempotencia por reintento (arriba, línea a línea) solo
+  // funciona en ejecuciones SEGUIDAS: dos a la vez —el móvil y la tablet, o una
+  // recarga mientras la primera sigue en vuelo— leían las dos `added_to_inventory
+  // = false` y las dos sumaban. Aquí lo arbitra Postgres: la fila la reclama una
+  // sola, y quien no la consigue no recibe fila y para antes de tocar el stock
+  // (2.4 va después). No cambia nada en el camino normal, porque `processable`
+  // nunca trae líneas ya marcadas.
   const itemUpdateResults = await inChunks(processable, (r) =>
     supabase
       .from("receipt_items")
@@ -911,7 +925,9 @@ export async function confirmReceiptAction(
         store_chain: storeChain,
       })
       .eq("id", r.itemId)
-      .eq("receipt_id", payload.receiptId),
+      .eq("receipt_id", payload.receiptId)
+      .eq("added_to_inventory", false)
+      .select("id"),
   );
   if (itemUpdateResults.some((res) => res.error)) {
     console.error(
@@ -921,6 +937,26 @@ export async function confirmReceiptAction(
     return {
       error:
         "La confirmación falló a mitad. Vuelve a intentarlo: lo ya añadido no se duplicará.",
+    };
+  }
+  // Alguna línea no se pudo reclamar ⇒ otra confirmación del mismo ticket va por
+  // delante. Se sueltan las que sí habíamos cogido —si no, quedarían marcadas
+  // como añadidas sin haber sumado stock, que es la única forma de PERDER
+  // género— y se para aquí, con el inventario todavía sin tocar.
+  const claimedIds = itemUpdateResults.flatMap((res) =>
+    (res.data ?? []).map((row) => row.id),
+  );
+  if (claimedIds.length < processable.length) {
+    if (claimedIds.length > 0) {
+      await supabase
+        .from("receipt_items")
+        .update({ added_to_inventory: false })
+        .eq("receipt_id", payload.receiptId)
+        .in("id", claimedIds);
+    }
+    return {
+      error:
+        "Este ticket se está confirmando desde otro sitio. Espera unos segundos y recarga la pantalla.",
     };
   }
   // Líneas saltadas: un solo update (mismo valor para todas).
@@ -1184,6 +1220,11 @@ export async function confirmReceiptAction(
   //     el dato más pesado de la BD. El cierre es el último paso, así que si la
   //     confirmación falla a mitad el ticket sigue `needs_review` con su JSON
   //     intacto y el reintento idempotente funciona igual.
+  //     El `status` en el filtro cierra el ticket UNA sola vez: es la misma
+  //     puerta que la guarda de arriba, pero en la base en vez de en TS, para el
+  //     caso en que las dos confirmaciones leyeron `needs_review` a la vez (un
+  //     ticket sin líneas que reclamar —todas saltadas— no pasa por el reclamo
+  //     de 2.3, así que llegaría aquí por duplicado y reescribiría la hucha).
   const { error: closeErr } = await supabase
     .from("receipts")
     .update({
@@ -1197,7 +1238,8 @@ export async function confirmReceiptAction(
       confirmed_at: new Date().toISOString(),
       raw_extraction: null,
     })
-    .eq("id", payload.receiptId);
+    .eq("id", payload.receiptId)
+    .eq("status", "needs_review");
   if (closeErr) {
     // El inventario ya se actualizó; el reintento es seguro porque las líneas
     // marcadas `added_to_inventory` se saltan (idempotencia).
