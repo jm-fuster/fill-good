@@ -30,7 +30,13 @@ import { updateMonthlyBudgetAction } from "../actions";
  * cerrar el modal al guardar: con el estado del hook habría que hacerlo desde un
  * efecto, y eso son renders en cascada (regla react-hooks/set-state-in-effect).
  */
-export function BudgetRow({ budget }: { budget: number | null }) {
+export function BudgetRow({
+  householdId,
+  budget,
+}: {
+  householdId: string;
+  budget: number | null;
+}) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -78,6 +84,9 @@ export function BudgetRow({ budget }: { budget: number | null }) {
         </ResponsiveModalHeader>
 
         <form onSubmit={save} className="flex flex-col">
+          {/* El objetivo se guarda en el hogar que la fila muestra, no en el
+              que diga la cookie al llegar la petición. */}
+          <input type="hidden" name="householdId" value={householdId} />
           <div className="flex flex-col gap-2 px-4">
             <Label htmlFor="budget">Importe mensual (€)</Label>
             <Input

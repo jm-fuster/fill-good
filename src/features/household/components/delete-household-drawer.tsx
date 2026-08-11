@@ -19,8 +19,10 @@ import { Label } from "@/components/ui/label";
 import { deleteHouseholdAction } from "../actions";
 
 export function DeleteHouseholdDrawer({
+  householdId,
   householdName,
 }: {
+  householdId: string;
   householdName: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -33,8 +35,12 @@ export function DeleteHouseholdDrawer({
   function confirm() {
     if (!matches) return;
     startTransition(async () => {
+      // El id viaja con la petición porque lo que el usuario ha confirmado
+      // escribiendo el nombre es ESTE hogar, no «el activo»: si mientras tanto
+      // otra pestaña cambió de hogar, la acción lo rechaza en vez de borrar el
+      // que no era.
       // Éxito: la acción redirige a /onboarding, no vuelve aquí.
-      const result = await deleteHouseholdAction();
+      const result = await deleteHouseholdAction(householdId);
       if (result?.error) toast.error(result.error);
     });
   }

@@ -35,7 +35,11 @@ export default async function TiendasPage() {
         backHref="/ajustes"
         backLabel="Ajustes"
       />
-      <StoreChainsEditor configured={configured} detected={detected} />
+      <StoreChainsEditor
+        householdId={household.id}
+        configured={configured}
+        detected={detected}
+      />
     </PageContainer>
   );
 }

@@ -31,8 +31,10 @@ import { leaveHouseholdAction, transferOwnershipAction } from "../actions";
  * seguido, se abandona (leaveHouseholdAction redirige a /onboarding).
  */
 export function OwnerLeaveDrawer({
+  householdId,
   candidates,
 }: {
+  householdId: string;
   candidates: HouseholdMember[];
 }) {
   const [open, setOpen] = useState(false);
@@ -45,13 +47,13 @@ export function OwnerLeaveDrawer({
       return;
     }
     startTransition(async () => {
-      const transfer = await transferOwnershipAction(selected);
+      const transfer = await transferOwnershipAction(householdId, selected);
       if (transfer?.error) {
         toast.error(transfer.error);
         return;
       }
       // Ya somos miembros: abandonar. Éxito → redirige a /onboarding.
-      const left = await leaveHouseholdAction();
+      const left = await leaveHouseholdAction(householdId);
       if (left?.error) {
         toast.error(left.error);
       }

@@ -110,7 +110,10 @@ export default async function AjustesPage() {
                 members.length === 1 ? "1 miembro" : `${members.length} miembros`
               }
             />
-            <BudgetRow budget={household.monthlyBudget} />
+            <BudgetRow
+              householdId={household.id}
+              budget={household.monthlyBudget}
+            />
             <SettingsLinkRow
               href="/ajustes/tiendas"
               icon={Store}

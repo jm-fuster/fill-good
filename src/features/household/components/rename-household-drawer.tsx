@@ -21,8 +21,10 @@ import { renameHouseholdAction } from "../actions";
 
 /** Cambiar el nombre del hogar; solo se renderiza para el propietario. */
 export function RenameHouseholdDrawer({
+  householdId,
   currentName,
 }: {
+  householdId: string;
   currentName: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -69,6 +71,10 @@ export function RenameHouseholdDrawer({
         </ResponsiveModalHeader>
 
         <form onSubmit={save} className="flex flex-col">
+          {/* El hogar que se renombra es el que está pintado aquí, no el que
+              diga la cookie cuando llegue la petición (otra pestaña puede
+              haberla cambiado). */}
+          <input type="hidden" name="householdId" value={householdId} />
           <div className="flex flex-col gap-2 px-4">
             <Label htmlFor="household-name">Nombre del hogar</Label>
             <Input

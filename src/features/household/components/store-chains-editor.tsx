@@ -37,9 +37,12 @@ import { addCustomChainAction, updatePreferredChainsAction } from "../actions";
  * es un ajuste de una sola dimensión y reversible de un toque.
  */
 export function StoreChainsEditor({
+  householdId,
   configured,
   detected,
 }: {
+  /** Hogar que se está editando, el pintado (no «el activo» al llegar). */
+  householdId: string;
   /** Cadenas elegidas a mano. Vacío = sin configurar (manda lo deducido). */
   configured: string[];
   /** Cadenas vistas en los tickets recientes del hogar. */
@@ -72,7 +75,7 @@ export function StoreChainsEditor({
   function commit(next: string[]) {
     queueRef.current = queueRef.current
       .catch(() => {})
-      .then(() => updatePreferredChainsAction(next))
+      .then(() => updatePreferredChainsAction(householdId, next))
       .then((result) => {
         if (result?.error) {
           toast.error(result.error);
@@ -123,7 +126,7 @@ export function StoreChainsEditor({
     setAddError(null);
     // La lista de delante viaja como base: en modo automático son las deducidas,
     // y añadir una tienda propia las convierte en elección del hogar.
-    const result = await addCustomChainAction(name, [...selected]);
+    const result = await addCustomChainAction(householdId, name, [...selected]);
     setAdding(false);
     if (result.error) {
       setAddError(result.error);

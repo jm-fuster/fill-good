@@ -9,6 +9,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { canonicalizeChains, CHAINS_MAX } from "@/features/prices/chains";
 import {
   ACTIVE_HOUSEHOLD_COOKIE,
+  type CurrentHousehold,
   getCurrentHousehold,
   getUserHouseholds,
 } from "./queries";
@@ -37,6 +38,37 @@ async function setActiveHouseholdCookie(householdId: string) {
     householdId,
     ACTIVE_COOKIE_OPTIONS,
   );
+}
+
+/**
+ * Hogar sobre el que actúa una acción de gestión, comprobando que sigue siendo
+ * el que el usuario tenía DELANTE al pulsar.
+ *
+ * `active_household` es una cookie del navegador, no de la pestaña: cambiar de
+ * hogar en una pestaña deja a las demás pintando el anterior, y sus botones
+ * seguirían resolviendo el hogar con `getCurrentHousehold()`, que ya devuelve
+ * otro. En gestión del hogar eso no es una vista desfasada, es escribir en el
+ * hogar equivocado. El caso que obliga a esto: la confirmación de «Eliminar
+ * hogar» compara lo que escribes con el nombre PINTADO, así que autorizas un
+ * hogar y se borra otro —con su inventario, sus tickets y sus recetas— sin
+ * vuelta atrás. Por eso el id viaja desde la pantalla y aquí solo se comprueba
+ * que no haya cambiado por debajo.
+ *
+ * No es una comprobación de permisos y no sustituye a ninguna: el id que llega
+ * solo puede confirmarse contra el hogar activo real, nunca elegirlo, así que
+ * un cliente manipulado no alcanza con esto un hogar que no fuera ya el suyo.
+ */
+async function requireVisibleHousehold(
+  expectedId: string,
+): Promise<{ household: CurrentHousehold } | { error: string }> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  if (household.id !== expectedId) {
+    return {
+      error: `El hogar activo ahora es «${household.name}». Recarga la página y vuelve a intentarlo.`,
+    };
+  }
+  return { household };
 }
 
 /**
@@ -136,8 +168,11 @@ export async function updateMonthlyBudgetAction(
   _prev: BudgetState,
   formData: FormData,
 ): Promise<BudgetState> {
-  const household = await getCurrentHousehold();
-  if (!household) return { error: "No perteneces a ningún hogar." };
+  const visible = await requireVisibleHousehold(
+    String(formData.get("householdId") ?? ""),
+  );
+  if ("error" in visible) return { error: visible.error };
+  const { household } = visible;
 
   const raw = String(formData.get("budget") ?? "")
     .trim()
@@ -201,11 +236,12 @@ async function saveHouseholdChains(
  * configuración manual, con lo que la app vuelve a deducirlas de los tickets.
  */
 export async function updatePreferredChainsAction(
+  householdId: string,
   chains: string[],
 ): Promise<ChainsState> {
-  const household = await getCurrentHousehold();
-  if (!household) return { error: "No perteneces a ningún hogar." };
-  return saveHouseholdChains(household.id, chains);
+  const visible = await requireVisibleHousehold(householdId);
+  if ("error" in visible) return { error: visible.error };
+  return saveHouseholdChains(visible.household.id, chains);
 }
 
 /**
@@ -216,11 +252,12 @@ export async function updatePreferredChainsAction(
  * tocas algo, pasas a decidirlo tú»).
  */
 export async function addCustomChainAction(
+  householdId: string,
   name: string,
   base: string[],
 ): Promise<ChainsState> {
-  const household = await getCurrentHousehold();
-  if (!household) return { error: "No perteneces a ningún hogar." };
+  const visible = await requireVisibleHousehold(householdId);
+  if ("error" in visible) return { error: visible.error };
 
   const parsed = customChainSchema.safeParse(name);
   if (!parsed.success) {
@@ -238,12 +275,15 @@ export async function addCustomChainAction(
     return { error: `No puedes tener más de ${CHAINS_MAX} tiendas.` };
   }
 
-  return saveHouseholdChains(household.id, after);
+  return saveHouseholdChains(visible.household.id, after);
 }
 
-export async function regenerateInviteCodeAction(): Promise<ActionState> {
-  const household = await getCurrentHousehold();
-  if (!household) return { error: "No perteneces a ningún hogar." };
+export async function regenerateInviteCodeAction(
+  householdId: string,
+): Promise<ActionState> {
+  const visible = await requireVisibleHousehold(householdId);
+  if ("error" in visible) return { error: visible.error };
+  const { household } = visible;
 
   const supabase = createServerSupabaseClient();
   const { error } = await supabase.rpc("regenerate_invite_code", {
@@ -260,8 +300,11 @@ export async function regenerateInviteCodeAction(): Promise<ActionState> {
 export async function renameHouseholdAction(
   formData: FormData,
 ): Promise<ActionState> {
-  const household = await getCurrentHousehold();
-  if (!household) return { error: "No perteneces a ningún hogar." };
+  const visible = await requireVisibleHousehold(
+    String(formData.get("householdId") ?? ""),
+  );
+  if ("error" in visible) return { error: visible.error };
+  const { household } = visible;
   if (household.role !== "owner") {
     return { error: "Solo el propietario puede cambiar el nombre del hogar." };
   }
@@ -290,10 +333,12 @@ export async function renameHouseholdAction(
 }
 
 export async function removeMemberAction(
+  householdId: string,
   userId: string,
 ): Promise<ActionState> {
-  const household = await getCurrentHousehold();
-  if (!household) return { error: "No perteneces a ningún hogar." };
+  const visible = await requireVisibleHousehold(householdId);
+  if ("error" in visible) return { error: visible.error };
+  const { household } = visible;
   if (household.role !== "owner") {
     return { error: "Solo el propietario puede quitar miembros." };
   }
@@ -321,10 +366,12 @@ export async function removeMemberAction(
 }
 
 export async function transferOwnershipAction(
+  householdId: string,
   newOwnerUserId: string,
 ): Promise<ActionState> {
-  const household = await getCurrentHousehold();
-  if (!household) return { error: "No perteneces a ningún hogar." };
+  const visible = await requireVisibleHousehold(householdId);
+  if ("error" in visible) return { error: visible.error };
+  const { household } = visible;
   if (household.role !== "owner") {
     return { error: "Solo el propietario puede transferir el hogar." };
   }
@@ -343,9 +390,12 @@ export async function transferOwnershipAction(
   return {};
 }
 
-export async function deleteHouseholdAction(): Promise<ActionState> {
-  const household = await getCurrentHousehold();
-  if (!household) return { error: "No perteneces a ningún hogar." };
+export async function deleteHouseholdAction(
+  householdId: string,
+): Promise<ActionState> {
+  const visible = await requireVisibleHousehold(householdId);
+  if ("error" in visible) return { error: visible.error };
+  const { household } = visible;
   if (household.role !== "owner") {
     return { error: "Solo el propietario puede eliminar el hogar." };
   }
@@ -366,9 +416,12 @@ export async function deleteHouseholdAction(): Promise<ActionState> {
   redirect("/onboarding");
 }
 
-export async function leaveHouseholdAction(): Promise<ActionState> {
-  const household = await getCurrentHousehold();
-  if (!household) return { error: "No perteneces a ningún hogar." };
+export async function leaveHouseholdAction(
+  householdId: string,
+): Promise<ActionState> {
+  const visible = await requireVisibleHousehold(householdId);
+  if ("error" in visible) return { error: visible.error };
+  const { household } = visible;
 
   // La garantía fuerte vive en la BD: leave_household aplica las reglas de
   // propiedad y filtra por hogar (corrige el borrado por solo user_id).

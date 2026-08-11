@@ -27,8 +27,10 @@ import type { HouseholdMember } from "../queries";
 import { transferOwnershipAction } from "../actions";
 
 export function TransferOwnershipDrawer({
+  householdId,
   candidates,
 }: {
+  householdId: string;
   candidates: HouseholdMember[];
 }) {
   const router = useRouter();
@@ -42,7 +44,7 @@ export function TransferOwnershipDrawer({
       return;
     }
     startTransition(async () => {
-      const result = await transferOwnershipAction(selected);
+      const result = await transferOwnershipAction(householdId, selected);
       if (result?.error) {
         toast.error(result.error);
         return;

@@ -106,7 +106,7 @@ export function HouseholdSettings({
 
   function regenerate() {
     startTransition(async () => {
-      const result = await regenerateInviteCodeAction();
+      const result = await regenerateInviteCodeAction(household.id);
       if (result?.error) toast.error(result.error);
       else toast.success("Código regenerado");
     });
@@ -114,7 +114,7 @@ export function HouseholdSettings({
 
   function leave() {
     startTransition(async () => {
-      const result = await leaveHouseholdAction();
+      const result = await leaveHouseholdAction(household.id);
       if (result?.error) {
         toast.error(result.error);
         return;
@@ -127,7 +127,7 @@ export function HouseholdSettings({
     if (!removing) return;
     const userId = removing.userId;
     startRemoving(async () => {
-      const result = await removeMemberAction(userId);
+      const result = await removeMemberAction(household.id, userId);
       if (result?.error) {
         toast.error(result.error);
         return;
@@ -264,14 +264,26 @@ export function HouseholdSettings({
         <CardContent>
           {isOwner ? (
             <div className="flex flex-col gap-2">
-              <RenameHouseholdDrawer currentName={household.name} />
+              <RenameHouseholdDrawer
+                householdId={household.id}
+                currentName={household.name}
+              />
               {hasOtherMembers ? (
                 <>
-                  <TransferOwnershipDrawer candidates={otherMembers} />
-                  <OwnerLeaveDrawer candidates={otherMembers} />
+                  <TransferOwnershipDrawer
+                    householdId={household.id}
+                    candidates={otherMembers}
+                  />
+                  <OwnerLeaveDrawer
+                    householdId={household.id}
+                    candidates={otherMembers}
+                  />
                 </>
               ) : null}
-              <DeleteHouseholdDrawer householdName={household.name} />
+              <DeleteHouseholdDrawer
+                householdId={household.id}
+                householdName={household.name}
+              />
             </div>
           ) : (
             <ResponsiveModal open={leaveOpen} onOpenChange={setLeaveOpen}>
