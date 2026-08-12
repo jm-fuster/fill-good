@@ -564,7 +564,7 @@ export async function updateListItemAction(
   }
 
   const unit = d.unit ?? null;
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("shopping_list_items")
     .update({
       // Se guarda igualmente aunque el nombre vivo salga del producto: es el
@@ -578,8 +578,22 @@ export async function updateListItemAction(
       unit,
     })
     .eq("id", d.itemId)
-    .eq("household_id", household.id);
+    .eq("household_id", household.id)
+    .select("id");
   if (error) return { error: "No se pudo guardar." };
+  /*
+    Como en el editor del inventario, aquí el «ok» sobre cero filas podía llegar
+    después de haber renombrado ya el producto en `products` (arriba), así que
+    el guardado quedaba a medias y la pantalla decía que había ido bien.
+
+    Basta con que el otro móvil quite ese artículo mientras lo editas. También
+    lo provoca la cookie de hogar activo cambiada en otra pestaña: entonces el
+    filtro por `household_id` no encuentra nada y NINGUNA de las dos escrituras
+    ocurre en el hogar que se está mirando.
+  */
+  if (!data || data.length === 0) {
+    return { error: "Ese artículo ya no está en la lista." };
+  }
 
   revalidatePath("/lista");
   return { ok: true };
@@ -602,12 +616,18 @@ export async function setListItemQuantityAction(
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("shopping_list_items")
     .update({ quantity })
     .eq("id", itemId)
-    .eq("household_id", household.id);
+    .eq("household_id", household.id)
+    .select("id");
   if (error) return { error: "No se pudo actualizar." };
+  // Sin revalidatePath, lo que se ve es puro estado de cliente: si la fila ya no
+  // existe, nadie iba a corregir ese número hasta la siguiente cura.
+  if (!data || data.length === 0) {
+    return { error: "Ese artículo ya no está en la lista." };
+  }
   return { ok: true };
 }
 
@@ -631,11 +651,24 @@ export async function reorderListItemsAction(
         .from("shopping_list_items")
         .update({ position: index })
         .eq("id", id)
-        .eq("household_id", household.id),
+        .eq("household_id", household.id)
+        .select("id"),
     ),
   );
   if (results.some((r) => r.error)) {
     return { error: "No se pudo guardar el orden." };
+  }
+  /*
+    Aquí no se exige colocar TODAS las filas, al revés que en las acciones de
+    un solo artículo: reordenar diez y que una se haya borrado mientras
+    arrastrabas no invalida la posición de las otras nueve. Lo que no puede
+    pasar por bueno es que no se colocara ninguna, que es lo que ocurre cuando
+    la lista entera dejó de ser alcanzable — el caso de la pestaña que se quedó
+    con el hogar viejo.
+  */
+  const colocadas = results.reduce((n, r) => n + (r.data?.length ?? 0), 0);
+  if (parsedIds.data.length > 0 && colocadas === 0) {
+    return { error: "Esa lista ya no está disponible. Recarga la página." };
   }
   return { ok: true };
 }
@@ -648,7 +681,7 @@ export async function toggleItemAction(
   const household = await getCurrentHousehold();
   if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("shopping_list_items")
     .update({
       is_checked: isChecked,
@@ -656,8 +689,15 @@ export async function toggleItemAction(
       checked_at: isChecked ? new Date().toISOString() : null,
     })
     .eq("id", itemId)
-    .eq("household_id", household.id);
+    .eq("household_id", household.id)
+    .select("id");
   if (error) return { error: "No se pudo actualizar." };
+  // Marcar es el gesto más repetido de la compra y el más silencioso: sin
+  // revalidatePath y sin contar filas, una casilla marcada sobre un artículo
+  // que ya no existe se quedaba marcada hasta que la cura la deshiciera sola.
+  if (!data || data.length === 0) {
+    return { error: "Ese artículo ya no está en la lista." };
+  }
   // Sin revalidatePath: optimista en cliente, y al resto de dispositivos llega
   // como cambio suelto de Realtime (marcar es el gesto más repetido de la
   // compra; recargar la ruta por cada uno era la mitad del problema).
@@ -708,6 +748,18 @@ export async function deleteListItemAction(
     .eq("household_id", household.id)
     .maybeSingle();
 
+  /*
+    El borrado es la ÚNICA de estas acciones que no trata «cero filas» como un
+    error, y es deliberado: aquí lo que el usuario quería —que el artículo no
+    esté en la lista— ya se cumple, así que un borrado repetido es idempotente
+    y no hay nada que reprochar. Devolver error tendría además un efecto peor
+    que el problema: la vista restaura la fila cuando la acción falla, así que
+    borrar algo que el otro móvil acababa de quitar lo haría REAPARECER un
+    instante antes de que la cura lo volviera a tirar.
+
+    Lo que sí cambia según haya fila o no es el «Deshacer»: sin instantánea no
+    se ofrece, porque no habría nada que restaurar.
+  */
   const { error } = await supabase
     .from("shopping_list_items")
     .delete()
