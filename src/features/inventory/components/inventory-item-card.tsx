@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { Check, Minus, Plus, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ProductIcon } from "@/components/product-icon";
@@ -83,7 +85,10 @@ export function InventoryItemCard({
     qtyRef.current = next;
     setQty(next);
     startTransition(async () => {
-      const result = await setInventoryQuantityAction(entry.id, next);
+      const result = await safeAction(
+        setInventoryQuantityAction(entry.id, next),
+        "No se pudo guardar la cantidad.",
+      );
       if (result?.error) {
         toast.error(result.error);
         qtyRef.current = entry.quantity;
@@ -99,7 +104,10 @@ export function InventoryItemCard({
   function addToList() {
     if (listBusy) return;
     startListWork(async () => {
-      const result = await addProductToListAction(entry.productId);
+      const result = await safeAction(
+        addProductToListAction(entry.productId),
+        "No se pudo añadir a la lista.",
+      );
       if (result?.error) {
         toast.error(result.error);
       } else {
@@ -112,7 +120,10 @@ export function InventoryItemCard({
   function removeFromList() {
     if (listBusy) return;
     startListWork(async () => {
-      const result = await removeProductFromListAction(entry.productId);
+      const result = await safeAction(
+        removeProductFromListAction(entry.productId),
+        "No se pudo quitar de la lista.",
+      );
       if (result?.error) {
         // Lo más probable: ya está marcado en la compra. La tarjeta se queda
         // como está, porque «En la lista» sigue siendo verdad.

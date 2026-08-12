@@ -31,6 +31,7 @@ import {
   relativeDaysLabel,
   todayLocalISO,
 } from "@/lib/dates";
+import { safeAction } from "@/lib/action-error";
 import { vibrateTick } from "@/lib/haptics";
 import { addListItemsAction } from "@/features/shopping-list/actions";
 import type { RestockCandidate } from "@/features/shopping-list/queries";
@@ -199,7 +200,10 @@ export function CookedCheckinModal({
     vibrateTick();
     setBusy({ id: entry.id, kind: "cook" });
     startAction(async () => {
-      const r = await toggleEntryCookedAction(entry.id, true);
+      const r = await safeAction(
+        toggleEntryCookedAction(entry.id, true),
+        "No se pudo marcar como cocinado.",
+      );
       if (r.error) {
         setBusy(null);
         toast.error(r.error);
@@ -215,7 +219,10 @@ export function CookedCheckinModal({
         resolve(entry.id);
         return;
       }
-      const d = await computeCookedDeductionsAction(entry.recipeId);
+      const d = await safeAction(
+        computeCookedDeductionsAction(entry.recipeId),
+        "No se pudo calcular el descuento.",
+      );
       const items = d.deductions ?? [];
       setBusy(null);
       if (items.some((it) => it.deductible)) {
@@ -239,8 +246,9 @@ export function CookedCheckinModal({
     const { entryId, items } = deduct;
     setBusy({ id: entryId, kind: "deduct" });
     startAction(async () => {
-      const r = await confirmCookedDeductionsAction(
-        deductionPayload(items, qty),
+      const r = await safeAction(
+        confirmCookedDeductionsAction(deductionPayload(items, qty)),
+        "No se pudo descontar de la despensa.",
       );
       if (r.error) {
         setBusy(null);
@@ -275,7 +283,10 @@ export function CookedCheckinModal({
     const { entryId, candidates } = restock;
     setBusy({ id: entryId, kind: "restock" });
     startAction(async () => {
-      const r = await addListItemsAction(restockPayload(candidates, selected));
+      const r = await safeAction(
+        addListItemsAction(restockPayload(candidates, selected)),
+        "No se pudo añadir a la lista.",
+      );
       if (r.error) {
         setBusy(null);
         toast.error(r.error);
@@ -297,7 +308,10 @@ export function CookedCheckinModal({
     vibrateTick();
     setBusy({ id: entry.id, kind: "skip" });
     startAction(async () => {
-      const r = await toggleEntrySkippedAction(entry.id, true);
+      const r = await safeAction(
+        toggleEntrySkippedAction(entry.id, true),
+        "No se pudo anotar.",
+      );
       setBusy(null);
       if (r.error) {
         toast.error(r.error);
@@ -315,7 +329,10 @@ export function CookedCheckinModal({
   function pickReason(entryId: string, reason: SkipReason | null) {
     setBusy({ id: entryId, kind: "reason" });
     startAction(async () => {
-      const r = await setEntrySkippedReasonAction(entryId, reason);
+      const r = await safeAction(
+        setEntrySkippedReasonAction(entryId, reason),
+        "No se pudo guardar el motivo.",
+      );
       if (r.error) {
         setBusy(null);
         toast.error(r.error);
@@ -328,7 +345,10 @@ export function CookedCheckinModal({
   function remove(entry: PendingCheckinEntry) {
     setBusy({ id: entry.id, kind: "remove" });
     startAction(async () => {
-      const r = await removeMenuEntryAction(entry.id);
+      const r = await safeAction(
+        removeMenuEntryAction(entry.id),
+        "No se pudo quitar el plato.",
+      );
       if (r.error) {
         setBusy(null);
         toast.error(r.error);
@@ -344,7 +364,10 @@ export function CookedCheckinModal({
     const entry = moving;
     setBusy({ id: entry.id, kind: "move" });
     startAction(async () => {
-      const r = await moveMenuEntryAction(entry.id, date, slot);
+      const r = await safeAction(
+        moveMenuEntryAction(entry.id, date, slot),
+        "No se pudo mover el plato.",
+      );
       if (r.error) {
         setBusy(null);
         toast.error(r.error);

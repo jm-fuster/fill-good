@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Check, ChevronDown, Compass, Plus } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -181,7 +183,10 @@ function ExploreCard({ card }: { card: SeedRecipeCard }) {
 
   function importRecipe() {
     startTransition(async () => {
-      const r = await importSeedRecipeAction(card.id);
+      const r = await safeAction(
+        importSeedRecipeAction(card.id),
+        "No se pudo añadir la receta.",
+      );
       if (r.error) {
         toast.error(r.error);
         return;

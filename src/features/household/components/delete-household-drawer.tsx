@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import {
   ResponsiveModal,
@@ -40,7 +42,10 @@ export function DeleteHouseholdDrawer({
       // otra pestaña cambió de hogar, la acción lo rechaza en vez de borrar el
       // que no era.
       // Éxito: la acción redirige a /onboarding, no vuelve aquí.
-      const result = await deleteHouseholdAction(householdId);
+      const result = await safeAction(
+        deleteHouseholdAction(householdId),
+        "No se pudo eliminar el hogar.",
+      );
       if (result?.error) toast.error(result.error);
     });
   }

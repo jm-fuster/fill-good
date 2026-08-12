@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import {
   ResponsiveModal,
@@ -222,7 +224,10 @@ export function MenuPrefsOnboarding() {
 
   function save(input: MenuPrefsInput, done: string) {
     startSave(async () => {
-      const r = await saveMenuPrefsAction(input);
+      const r = await safeAction(
+        saveMenuPrefsAction(input),
+        "No se pudieron guardar las preferencias.",
+      );
       if (r.error) {
         toast.error(r.error);
         return;

@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,7 +54,10 @@ function useSwitchHousehold() {
     setTargetId(householdId);
     startTransition(async () => {
       // Éxito: la acción fija la cookie y redirige a /inventario.
-      const result = await switchHouseholdAction(householdId);
+      const result = await safeAction(
+        switchHouseholdAction(householdId),
+        "No se pudo cambiar de hogar.",
+      );
       if (result?.error) toast.error(result.error);
     });
   }

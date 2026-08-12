@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import { ChainChip } from "@/components/chain-chip";
 import { chainLabel, orderChains } from "@/features/prices/chains";
@@ -65,7 +67,10 @@ export function AisleOrderPanel({
   async function resetToGeneral() {
     if (!target) return;
     setResetting(true);
-    const result = await resetChainOrderAction(target);
+    const result = await safeAction(
+      resetChainOrderAction(target),
+      "No se pudo restablecer el orden.",
+    );
     setResetting(false);
     if (result.error) {
       toast.error(result.error);

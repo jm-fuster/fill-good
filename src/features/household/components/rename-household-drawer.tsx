@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,7 +37,10 @@ export function RenameHouseholdDrawer({
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     startTransition(async () => {
-      const result = await renameHouseholdAction(formData);
+      const result = await safeAction(
+        renameHouseholdAction(formData),
+        "No se pudo cambiar el nombre.",
+      );
       if (result?.error) {
         setError(result.error);
         return;

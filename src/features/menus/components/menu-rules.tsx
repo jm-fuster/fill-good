@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { ListChecks, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -133,7 +135,10 @@ function RuleRow({ rule }: { rule: MenuRule }) {
 
   function toggle(active: boolean) {
     startToggle(async () => {
-      const r = await toggleRuleAction(rule.id, active);
+      const r = await safeAction(
+        toggleRuleAction(rule.id, active),
+        "No se pudo cambiar la regla.",
+      );
       if (r.error) toast.error(r.error);
       else router.refresh();
     });
@@ -141,7 +146,10 @@ function RuleRow({ rule }: { rule: MenuRule }) {
 
   function remove() {
     startDelete(async () => {
-      const r = await deleteRuleAction(rule.id);
+      const r = await safeAction(
+        deleteRuleAction(rule.id),
+        "No se pudo borrar la regla.",
+      );
       if (r.error) toast.error(r.error);
       else {
         toast.success("Regla eliminada");
@@ -240,7 +248,10 @@ function AddRuleForm({
     }
 
     startTransition(async () => {
-      const r = await createRuleAction(input);
+      const r = await safeAction(
+        createRuleAction(input),
+        "No se pudo crear la regla.",
+      );
       if (r.error) {
         setError(r.error);
         return;

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import { SettingsControlRow } from "@/features/settings/components/settings-list";
 import { grantAiConsentAction, revokeAiConsentAction } from "../actions";
@@ -21,9 +23,10 @@ export function AiConsentSettingRow({ consented }: { consented: boolean }) {
 
   function toggle() {
     start(async () => {
-      const result = consented
-        ? await revokeAiConsentAction()
-        : await grantAiConsentAction();
+      const result = await safeAction(
+        consented ? revokeAiConsentAction() : grantAiConsentAction(),
+        "No se pudo guardar tu preferencia.",
+      );
       if (result.error) {
         toast.error(result.error);
         return;

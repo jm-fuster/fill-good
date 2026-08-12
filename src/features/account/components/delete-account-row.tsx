@@ -5,6 +5,8 @@ import { useClerk } from "@clerk/nextjs";
 import { Trash2, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import {
   ResponsiveModal,
@@ -39,7 +41,10 @@ export function DeleteAccountRow() {
   function remove() {
     if (!matches) return;
     startTransition(async () => {
-      const result = await deleteAccountAction();
+      const result = await safeAction(
+        deleteAccountAction(),
+        "No se pudo eliminar la cuenta.",
+      );
       if (result?.error) {
         toast.error(result.error);
         return;

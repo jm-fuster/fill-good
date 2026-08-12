@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { grantAiConsentAction } from "../actions";
@@ -26,7 +28,10 @@ export function AiConsentCard({
 
   function accept() {
     start(async () => {
-      const result = await grantAiConsentAction();
+      const result = await safeAction(
+        grantAiConsentAction(),
+        "No se pudo guardar tu preferencia.",
+      );
       if (result.error) {
         toast.error(result.error);
         return;

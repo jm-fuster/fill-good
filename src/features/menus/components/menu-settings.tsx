@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { RefreshCw, SlidersHorizontal } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -82,7 +84,10 @@ export function MenuSettings({
 
   function save() {
     startSave(async () => {
-      const r = await saveMenuPrefsAction(toInput(state));
+      const r = await safeAction(
+        saveMenuPrefsAction(toInput(state)),
+        "No se pudieron guardar las preferencias.",
+      );
       if (r.error) {
         toast.error(r.error);
         return;

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Crown } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import {
   ResponsiveModal,
@@ -44,7 +46,10 @@ export function TransferOwnershipDrawer({
       return;
     }
     startTransition(async () => {
-      const result = await transferOwnershipAction(householdId, selected);
+      const result = await safeAction(
+        transferOwnershipAction(householdId, selected),
+        "No se pudo transferir la propiedad.",
+      );
       if (result?.error) {
         toast.error(result.error);
         return;

@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { ExternalLink, Mic, Unlink } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import {
   ResponsiveModal,
@@ -116,7 +118,10 @@ export function AlexaSetup({
 
   function generate() {
     startTransition(async () => {
-      const result = await generateAlexaCodeAction();
+      const result = await safeAction(
+        generateAlexaCodeAction(),
+        "No se pudo generar el código.",
+      );
       if (result.error || !result.code || !result.expiresAt) {
         toast.error(result.error ?? "No se pudo generar el código.");
         return;
@@ -133,7 +138,10 @@ export function AlexaSetup({
     const linkId = unlinking?.id;
     if (!linkId) return;
     startUnlink(async () => {
-      const result = await unlinkAlexaAction(linkId);
+      const result = await safeAction(
+        unlinkAlexaAction(linkId),
+        "No se pudo desvincular.",
+      );
       if (result.error) {
         toast.error(result.error);
         return;

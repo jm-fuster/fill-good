@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import { ProductIcon } from "@/components/product-icon";
 import { cn } from "@/lib/utils";
@@ -36,7 +38,10 @@ export function StarterPicker({ groups }: { groups: StarterGroup[] }) {
     if (count === 0 || pending) return;
     const ids = [...selected];
     startTransition(async () => {
-      const r = await addStarterItemsAction(ids);
+      const r = await safeAction(
+        addStarterItemsAction(ids),
+        "No se pudieron añadir los productos.",
+      );
       if (r?.error) {
         toast.error(r.error);
         return;

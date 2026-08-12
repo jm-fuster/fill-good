@@ -4,6 +4,8 @@ import { useTransition } from "react";
 import { Download } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { SettingsButtonRow } from "@/features/settings/components/settings-list";
 import { exportMyDataAction } from "../actions";
 
@@ -16,7 +18,10 @@ export function ExportDataRow() {
 
   function exportData() {
     startTransition(async () => {
-      const result = await exportMyDataAction();
+      const result = await safeAction(
+        exportMyDataAction(),
+        "No se pudieron exportar tus datos.",
+      );
       if (result.error || !result.data) {
         toast.error(result.error ?? "No se pudieron exportar los datos.");
         return;

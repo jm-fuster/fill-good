@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { LogOut, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Button } from "@/components/ui/button";
 import {
   ResponsiveModal,
@@ -47,13 +49,19 @@ export function OwnerLeaveDrawer({
       return;
     }
     startTransition(async () => {
-      const transfer = await transferOwnershipAction(householdId, selected);
+      const transfer = await safeAction(
+        transferOwnershipAction(householdId, selected),
+        "No se pudo transferir la propiedad.",
+      );
       if (transfer?.error) {
         toast.error(transfer.error);
         return;
       }
       // Ya somos miembros: abandonar. Éxito → redirige a /onboarding.
-      const left = await leaveHouseholdAction(householdId);
+      const left = await safeAction(
+        leaveHouseholdAction(householdId),
+        "No se pudo abandonar el hogar.",
+      );
       if (left?.error) {
         toast.error(left.error);
       }

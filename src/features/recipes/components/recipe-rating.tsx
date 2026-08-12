@@ -4,6 +4,8 @@ import { useRef, useState, useTransition } from "react";
 import { Star } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { cn } from "@/lib/utils";
 import { formatRating } from "../constants";
 import { rateRecipeAction } from "../actions";
@@ -52,7 +54,10 @@ export function RecipeRating({
     setAvgState(newCount ? newTotal / newCount : null);
 
     startTransition(async () => {
-      const r = await rateRecipeAction(recipeId, rating);
+      const r = await safeAction(
+        rateRecipeAction(recipeId, rating),
+        "No se pudo guardar la valoración.",
+      );
       if (r.error) {
         setValue(prev.value);
         setAvgState(prev.avg);

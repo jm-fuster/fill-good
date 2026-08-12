@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { safeAction } from "@/lib/action-error";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -106,7 +108,10 @@ export function HouseholdSettings({
 
   function regenerate() {
     startTransition(async () => {
-      const result = await regenerateInviteCodeAction(household.id);
+      const result = await safeAction(
+        regenerateInviteCodeAction(household.id),
+        "No se pudo regenerar el código.",
+      );
       if (result?.error) toast.error(result.error);
       else toast.success("Código regenerado");
     });
@@ -114,7 +119,10 @@ export function HouseholdSettings({
 
   function leave() {
     startTransition(async () => {
-      const result = await leaveHouseholdAction(household.id);
+      const result = await safeAction(
+        leaveHouseholdAction(household.id),
+        "No se pudo abandonar el hogar.",
+      );
       if (result?.error) {
         toast.error(result.error);
         return;
@@ -127,7 +135,10 @@ export function HouseholdSettings({
     if (!removing) return;
     const userId = removing.userId;
     startRemoving(async () => {
-      const result = await removeMemberAction(household.id, userId);
+      const result = await safeAction(
+        removeMemberAction(household.id, userId),
+        "No se pudo quitar al miembro.",
+      );
       if (result?.error) {
         toast.error(result.error);
         return;

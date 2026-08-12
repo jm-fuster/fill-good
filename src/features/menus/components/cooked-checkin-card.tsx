@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
+
+import { safeAction } from "@/lib/action-error";
 import { ChefHat, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -102,7 +104,10 @@ export function CookedCheckinCard({
     setOpen(false);
     setDismissed(true);
     startDisable(async () => {
-      const r = await setCheckinEnabledAction(false);
+      const r = await safeAction(
+        setCheckinEnabledAction(false),
+        "No se pudo guardar la preferencia.",
+      );
       if (r.error) {
         toast.error(r.error);
         setDismissed(false);

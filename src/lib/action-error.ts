@@ -25,6 +25,60 @@
  * reporta el fallo es quien lo está leyendo y nadie abre las herramientas de
  * desarrollo para copiarlo.
  */
+/**
+ * Ejecuta una Server Action y convierte un RECHAZO en el mismo `{ error }` que
+ * la propia acción habría devuelto.
+ *
+ * Existe por lo que pasa cuando no está: casi todas las pantallas llaman a sus
+ * acciones dentro de un `startTransition`, y ahí una promesa rechazada no es un
+ * fallo local, sube hasta la barrera de error de la ruta y **sustituye la
+ * pantalla entera** por «No se pudo cargar». O sea que quedarse sin cobertura al
+ * pulsar «+» en el inventario no te dejaba sin sumar una unidad: te dejaba sin
+ * inventario, con el número optimista ya subido y sin revertir.
+ *
+ * Con esto, el rechazo llega por donde el código ya mira los fallos previstos
+ * (`if (result.error)`), así que cada pantalla sigue decidiendo qué hacer —cerrar
+ * el modal o no, revertir lo optimista, avisar— en vez de perderlo todo. El
+ * `what` es la frase que verá el usuario; el `digest` y la traza los añade
+ * `actionErrorMessage`.
+ *
+ * No captura `redirect()` ni `notFound()` de Next: los propaga tal cual, porque
+ * son control de flujo y no errores (tragarlos convertiría un redirect en un
+ * toast de fallo sobre una acción que sí funcionó).
+ */
+export async function safeAction<T extends { error?: string }>(
+  work: Promise<T>,
+  what: string,
+): Promise<T> {
+  try {
+    return await work;
+  } catch (err) {
+    if (isNextControlFlow(err)) throw err;
+    /*
+      El cast dice «un objeto que solo trae `error` es un resultado válido de
+      esta acción», y lo es porque en este repo el resto de campos que devuelve
+      una acción son SIEMPRE opcionales (`ok?`, `deducted?`, `deleted?`…): son
+      lo que se rellena cuando salió bien. Devolver la unión en su lugar sería
+      más estricto sobre el papel y peor en la práctica — obligaría a estrechar
+      el tipo en cada uno de los sitios que ya comprueban `if (r.error) return`,
+      que es justo el código que este helper existe para no tener que tocar.
+    */
+    return { error: actionErrorMessage(what, err) } as T;
+  }
+}
+
+/**
+ * `redirect()` y `notFound()` señalizan lanzando un error con un `digest`
+ * reconocible; no son fallos y no deben acabar en un toast.
+ */
+function isNextControlFlow(err: unknown): boolean {
+  const digest = (err as { digest?: unknown } | null)?.digest;
+  return (
+    typeof digest === "string" &&
+    (digest.startsWith("NEXT_REDIRECT") || digest === "NEXT_NOT_FOUND")
+  );
+}
+
 export function actionErrorMessage(what: string, err?: unknown): string {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     return `${what} Parece que te has quedado sin conexión.`;
