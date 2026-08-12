@@ -146,7 +146,7 @@ async function scanReceipt(
 
   // Rate-limit: protege la cuota free-tier de Gemini frente al abuso de una sola
   // cuenta (una lectura de visión por escaneo).
-  const rateError = await enforceAiRateLimit(supabase, "receipt");
+  const rateError = await enforceAiRateLimit(supabase, "receipt", household.id);
   if (rateError) return { error: rateError };
 
   // Catálogo del hogar para la sugerencia de la IA (E7, coste cero: va en la
@@ -212,7 +212,7 @@ async function scanReceipt(
     // La cuota se apuntó antes de llamar; esta lectura no ha dado nada, así que
     // se devuelve. Si no, obedecer al mensaje de «espera un minuto» veinte veces
     // acababa acusando al usuario de escanear demasiados tickets.
-    await refundAiUsage(supabase, "receipt");
+    await refundAiUsage(supabase, "receipt", household.id);
     const kind = classifyAiError(err);
     return {
       error:

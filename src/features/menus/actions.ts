@@ -561,7 +561,7 @@ async function generateMenu(
 
   const supabase = createServerSupabaseClient();
 
-  const rateError = await enforceAiRateLimit(supabase, "menu");
+  const rateError = await enforceAiRateLimit(supabase, "menu", household.id);
   if (rateError) return { error: rateError };
 
   const menuId = await ensureMenu(supabase, household.id, weekStart);
@@ -646,7 +646,7 @@ async function generateMenu(
   } catch (err) {
     console.error("Error al generar el menú:", err);
     // Cuota devuelta: esta generación no ha dejado ningún menú.
-    await refundAiUsage(supabase, "menu");
+    await refundAiUsage(supabase, "menu", household.id);
     const kind = classifyAiError(err);
     return {
       error:
@@ -1355,7 +1355,7 @@ async function generateDishForSlot({
     console.error("Error al generar el plato:", err);
     // Cuota devuelta: no hay plato. Las dos puertas que llegan aquí (el «+» de
     // un hueco y «otra idea») ya la habían apuntado antes de llamar.
-    await refundAiUsage(supabase, "menu");
+    await refundAiUsage(supabase, "menu", householdId);
     const kind = classifyAiError(err);
     return {
       error:
@@ -1475,7 +1475,7 @@ async function rerollMenuEntry(
     };
   }
 
-  const rateError = await enforceAiRateLimit(supabase, "menu");
+  const rateError = await enforceAiRateLimit(supabase, "menu", household.id);
   if (rateError) return { error: rateError };
 
   const dish = await generateDishForSlot({
@@ -1559,7 +1559,7 @@ async function generateSlotEntry(
 
   const supabase = createServerSupabaseClient();
 
-  const rateError = await enforceAiRateLimit(supabase, "menu");
+  const rateError = await enforceAiRateLimit(supabase, "menu", household.id);
   if (rateError) return { error: rateError };
 
   const menuId = await ensureMenu(supabase, household.id, weekStart);

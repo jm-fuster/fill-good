@@ -1187,11 +1187,11 @@ export type Database = {
         Returns: undefined;
       };
       record_ai_usage: {
-        Args: { p_kind: string };
+        Args: { p_kind: string; p_household_id?: string };
         Returns: undefined;
       };
       refund_ai_usage: {
-        Args: { p_kind: string };
+        Args: { p_kind: string; p_household_id?: string };
         Returns: undefined;
       };
       remove_household_member: {
