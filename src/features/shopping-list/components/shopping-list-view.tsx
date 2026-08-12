@@ -188,35 +188,51 @@ export function ShoppingListView({
     // Si era un alta aún sin confirmar, se cae también su fila optimista.
     setPendingAdds((prev) => prev.filter((p) => p.item.id !== item.id));
 
-    deleteListItemAction(item.id).then((r) => {
-      if (r?.error) {
-        // El servidor rechazó el borrado: vuelve a mostrarse.
+    deleteListItemAction(item.id)
+      .then((r) => {
+        if (r?.error) {
+          // El servidor rechazó el borrado: vuelve a mostrarse.
+          removing.current.delete(item.id);
+          list.unremove(item);
+          toast.error(r.error);
+          return;
+        }
+        const snapshot = r?.deleted;
+        toast(`${item.name} quitado`, {
+          duration: 5000,
+          action: snapshot
+            ? {
+                label: "Deshacer",
+                onClick: () => {
+                  removing.current.delete(item.id);
+                  list.unremove(item);
+                  restoreListItemAction(snapshot)
+                    .then((res) => {
+                      if (res?.error) {
+                        toast.error(res.error);
+                        // No volvió: fuera otra vez, o quedaría una fila fantasma.
+                        list.remove(item.id);
+                      }
+                    })
+                    .catch((err: unknown) => {
+                      toast.error(
+                        actionErrorMessage("No se pudo restaurar.", err),
+                      );
+                      list.remove(item.id);
+                    });
+                },
+              }
+            : undefined,
+        });
+      })
+      // Un rechazo (sin red) no llega al `then`, y el veto de `tombstones` dura
+      // lo que dure el montaje: sin esto, el artículo desaparecía de este móvil
+      // sin haberse borrado en el servidor y sin forma de recuperarlo.
+      .catch((err: unknown) => {
         removing.current.delete(item.id);
         list.unremove(item);
-        toast.error(r.error);
-        return;
-      }
-      const snapshot = r?.deleted;
-      toast(`${item.name} quitado`, {
-        duration: 5000,
-        action: snapshot
-          ? {
-              label: "Deshacer",
-              onClick: () => {
-                removing.current.delete(item.id);
-                list.unremove(item);
-                restoreListItemAction(snapshot).then((res) => {
-                  if (res?.error) {
-                    toast.error(res.error);
-                    // No volvió: fuera otra vez, o quedaría una fila fantasma.
-                    list.remove(item.id);
-                  }
-                });
-              },
-            }
-          : undefined,
+        toast.error(actionErrorMessage("No se pudo quitar.", err));
       });
-    });
   }
 
   function toggle(id: string, checked: boolean) {
@@ -227,12 +243,21 @@ export function ShoppingListView({
     // servidor para ella entre tanto se ignora. Sin eso, marcar y desmarcar
     // rápido dejaba la fila marcada medio segundo (el eco del primer toque
     // aterrizaba cuando ya se había hecho el segundo).
-    list.pending.track(id, toggleItemAction(id, checked)).then((r) => {
-      if (!r?.error) return;
-      toast.error(r.error);
-      list.patch(id, { isChecked: before });
-      list.heal(0);
-    });
+    list.pending
+      .track(id, toggleItemAction(id, checked))
+      .then((r) => {
+        if (!r?.error) return;
+        toast.error(r.error);
+        list.patch(id, { isChecked: before });
+        list.heal(0);
+      })
+      // `track` re-lanza, así que sin esto un fallo de red se saltaba el `then`:
+      // la casilla se quedaba marcada sin aviso y la cura la desmarcaba sola
+      // medio minuto después.
+      .catch((err: unknown) => {
+        toast.error(actionErrorMessage("No se pudo marcar.", err));
+        list.patch(id, { isChecked: before });
+      });
   }
 
   /** Marca varias filas como «escribiéndose» mientras la acción viaja. */
@@ -258,12 +283,19 @@ export function ShoppingListView({
 
     const work = reorderListItemsAction(globalIds);
     trackAll(globalIds, work);
-    work.then((r) => {
-      if (r?.error) {
-        toast.error(r.error);
+    work
+      .then((r) => {
+        if (r?.error) {
+          toast.error(r.error);
+          list.heal(0);
+        }
+      })
+      // Sin red, el orden recién arrastrado se quedaba en pantalla como si se
+      // hubiera guardado y volvía al anterior en la siguiente cura.
+      .catch((err: unknown) => {
+        toast.error(actionErrorMessage("No se pudo guardar el orden.", err));
         list.heal(0);
-      }
-    });
+      });
   }
 
   // Alta optimista: el ítem aparece al instante y se reconcilia al confirmar.

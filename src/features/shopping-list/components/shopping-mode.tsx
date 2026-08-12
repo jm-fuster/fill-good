@@ -29,6 +29,7 @@ import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { useNavListBadge } from "@/components/layout/nav-list-count";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
+import { actionErrorMessage } from "@/lib/action-error";
 import { cn } from "@/lib/utils";
 import {
   usePersistedChoice,
@@ -195,12 +196,27 @@ export function ShoppingMode({
     list.patch(id, { isChecked: checked });
     // `track` marca la fila mientras la escritura viaja: lo que llegue del
     // servidor para ella entre tanto va por detrás y se ignora.
-    list.pending.track(id, toggleItemAction(id, checked)).then((r) => {
-      if (!r?.error) return;
-      toast.error(r.error);
-      list.patch(id, { isChecked: before });
-      list.heal(0);
-    });
+    list.pending
+      .track(id, toggleItemAction(id, checked))
+      .then((r) => {
+        if (!r?.error) return;
+        toast.error(r.error);
+        list.patch(id, { isChecked: before });
+        list.heal(0);
+      })
+      /*
+        Sin `catch` no había red de seguridad justo donde más falta hace: aquí
+        se marca dentro del súper, con la cobertura que haya. `track` re-lanza
+        el rechazo (su `try/finally` no lo captura), así que una petición que
+        muere por falta de red se saltaba el `then` entero: ni aviso, ni vuelta
+        atrás, y la casilla se quedaba marcada como si se hubiera guardado.
+        Treinta segundos después la cura la desmarcaba sola, ya en otro pasillo
+        y sin nada que lo explicara.
+      */
+      .catch((err: unknown) => {
+        toast.error(actionErrorMessage("No se pudo marcar.", err));
+        list.patch(id, { isChecked: before });
+      });
   }
 
   // La cantidad que corrige el stepper se guarda TAMBIÉN aquí, no solo dentro de
@@ -231,7 +247,8 @@ export function ShoppingMode({
     removing.current.add(item.id);
     list.remove(item.id);
 
-    deleteListItemAction(item.id).then((r) => {
+    deleteListItemAction(item.id)
+      .then((r) => {
       if (r?.error) {
         removing.current.delete(item.id);
         list.unremove(item);
@@ -247,17 +264,36 @@ export function ShoppingMode({
               onClick: () => {
                 removing.current.delete(item.id);
                 list.unremove(item);
-                restoreListItemAction(snapshot).then((res) => {
-                  if (res?.error) {
-                    toast.error(res.error);
+                restoreListItemAction(snapshot)
+                  .then((res) => {
+                    if (res?.error) {
+                      toast.error(res.error);
+                      list.remove(item.id);
+                    }
+                  })
+                  .catch((err: unknown) => {
+                    toast.error(
+                      actionErrorMessage("No se pudo restaurar.", err),
+                    );
                     list.remove(item.id);
-                  }
-                });
+                  });
               },
             }
           : undefined,
       });
-    });
+      })
+      /*
+        Sin `catch`, un borrado que no llega al servidor dejaba el artículo
+        fuera de la pantalla PARA SIEMPRE en este móvil: `list.remove` lo mete
+        en `tombstones`, que por diseño no se sueltan mientras dure el montaje,
+        así que ninguna cura ni evento posterior podía devolverlo. El otro móvil
+        seguía viéndolo, y este solo lo recuperaba al recargar en casa.
+      */
+      .catch((err: unknown) => {
+        removing.current.delete(item.id);
+        list.unremove(item);
+        toast.error(actionErrorMessage("No se pudo quitar.", err));
+      });
   }
 
   const visible = list.items;
