@@ -1,8 +1,8 @@
 import "server-only";
 
-import { APICallError, RetryError } from "ai";
+import { APICallError, LoadAPIKeyError, RetryError } from "ai";
 
-export type AiErrorKind = "rate_limit" | "timeout" | "other";
+export type AiErrorKind = "rate_limit" | "timeout" | "config" | "other";
 
 function isAbortLike(e: unknown): boolean {
   return (
@@ -31,5 +31,30 @@ export function classifyAiError(err: unknown): AiErrorKind {
     return "rate_limit";
   }
 
+  /*
+    Configuración rota, que es lo que NO se distinguía y salía como «other»:
+    falta o caduca `GOOGLE_GENERATIVE_AI_API_KEY`, o alguien pone un id de
+    modelo que no existe en `AI_MODEL_*` (`getModel` no valida nada, así que el
+    404 llega aquí). El usuario recibía entonces «prueba con una foto más
+    nítida» —o «inténtalo de nuevo»— para SIEMPRE: reencuadraba, recortaba,
+    repetía, y cada intento le gastaba cuota. El único rastro quedaba en un
+    console.error del servidor que nadie mira si nadie sabe que hay que mirarlo.
+
+    Se reconoce por el nombre del error de credenciales del SDK y por los 4xx
+    que no son de cuota y que el propio SDK marca como no reintentables: un 400
+    o un 404 no los arregla el usuario con otra foto, y volver a intentarlo
+    tampoco.
+  */
+  if (isConfigLike(err) || isConfigLike(unwrapped)) return "config";
+
   return "other";
+}
+
+function isConfigLike(e: unknown): boolean {
+  // `isInstance` y no `instanceof` ni el nombre: es la comprobación que expone
+  // el SDK y la única que sobrevive a tener dos copias del paquete en el árbol.
+  if (LoadAPIKeyError.isInstance(e)) return true;
+  if (!APICallError.isInstance(e)) return false;
+  const status = e.statusCode ?? 0;
+  return status >= 400 && status < 500 && status !== 429 && !e.isRetryable;
 }

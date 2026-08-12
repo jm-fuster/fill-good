@@ -230,7 +230,8 @@ const ENTRADA_ID = "11111111-1111-4111-8111-111111111111";
 const TICKET_ID = "22222222-2222-4222-8222-222222222222";
 
 const RESUELTO = "Ese plato ya está resuelto: para cambiarlo, deshaz la marca.";
-const LIMITE = "Has generado menús muchas veces seguidas. Espera un poco y vuelve a intentarlo.";
+const LIMITE =
+  "Has generado menús muchas veces en la última hora. Prueba de nuevo dentro de unos minutos.";
 
 console.log("\nGuardas de las acciones del menú\n");
 

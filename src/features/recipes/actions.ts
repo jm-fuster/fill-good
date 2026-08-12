@@ -11,7 +11,7 @@ import type { Database } from "@/lib/supabase/types";
 import { classifyAiError } from "@/lib/ai/errors";
 import { serverFailureMessage } from "@/lib/server-failure";
 import { getModel } from "@/lib/ai/models";
-import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
+import { enforceAiRateLimit, refundAiUsage } from "@/lib/ai/rate-limit";
 import { buildRecipeDetailsPrompt } from "@/lib/ai/recipe-prompt";
 import { recipeDetailsSchema } from "@/lib/ai/recipe-schema";
 import { aiConsentError, getAiConsent } from "@/features/ai-consent/queries";
@@ -592,7 +592,9 @@ async function askForRecipeDetails(input: {
           ? "El servicio de IA está saturado ahora mismo. Espera un minuto y vuelve a intentarlo."
           : kind === "timeout"
             ? "La receta tardó demasiado en escribirse. Vuelve a intentarlo."
-            : "No se pudo escribir la receta. Vuelve a intentarlo.",
+            : kind === "config"
+              ? "La escritura con IA no está bien configurada. Repetirlo no lo va a arreglar: hay que revisar la configuración de la app."
+              : "No se pudo escribir la receta. Vuelve a intentarlo.",
     };
   }
 
@@ -680,6 +682,11 @@ async function generateRecipeDetails(
     })),
   });
   if (!result.details) {
+    // Sin borrador no hay nada que enseñar, así que la cuota apuntada arriba se
+    // devuelve. Va en el llamador y no en `askForRecipeDetails` porque ese
+    // helper no toca la base a propósito: es lo que le permite servir a las dos
+    // generaciones (la del formulario y la del menú) sin saber de dónde vienen.
+    await refundAiUsage(supabase, "recipe");
     return { error: result.error ?? "No se pudo escribir la receta." };
   }
   return { details: result.details };
@@ -793,6 +800,7 @@ async function fillRecipeDetails(
     existing,
   });
   if (!result.details) {
+    await refundAiUsage(supabase, "recipe");
     return { error: result.error ?? "No se pudo escribir la receta." };
   }
   const details = result.details;

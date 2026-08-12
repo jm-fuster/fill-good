@@ -1190,6 +1190,10 @@ export type Database = {
         Args: { p_kind: string };
         Returns: undefined;
       };
+      refund_ai_usage: {
+        Args: { p_kind: string };
+        Returns: undefined;
+      };
       remove_household_member: {
         Args: { p_household_id: string; p_user_id: string };
         Returns: undefined;

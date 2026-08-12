@@ -23,7 +23,7 @@ import {
   type UnitContent,
 } from "@/lib/units";
 import { sniffUploadType, stripImageMetadata } from "@/lib/image-metadata";
-import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
+import { enforceAiRateLimit, refundAiUsage } from "@/lib/ai/rate-limit";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { LocationType, UnitType } from "@/lib/supabase/types";
 import {
@@ -209,6 +209,10 @@ async function scanReceipt(
     extraction = object;
   } catch (err) {
     console.error("Error de extracción del ticket:", err);
+    // La cuota se apuntó antes de llamar; esta lectura no ha dado nada, así que
+    // se devuelve. Si no, obedecer al mensaje de «espera un minuto» veinte veces
+    // acababa acusando al usuario de escanear demasiados tickets.
+    await refundAiUsage(supabase, "receipt");
     const kind = classifyAiError(err);
     return {
       error:
@@ -216,7 +220,9 @@ async function scanReceipt(
           ? "El servicio de IA está saturado ahora mismo. Espera un minuto y vuelve a intentarlo."
           : kind === "timeout"
             ? "La lectura del ticket tardó demasiado. Vuelve a intentarlo."
-            : "No se pudo leer el ticket. Prueba con una foto más nítida o vuelve a intentarlo.",
+            : kind === "config"
+              ? "La lectura con IA no está bien configurada. Repetir el escaneo no lo va a arreglar: hay que revisar la configuración de la app."
+              : "No se pudo leer el ticket. Prueba con una foto más nítida o vuelve a intentarlo.",
     };
   }
 

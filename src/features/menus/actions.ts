@@ -35,7 +35,7 @@ import { normalizeName } from "@/lib/normalize";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { Database, UnitType } from "@/lib/supabase/types";
 import { convertQuantity, roundQuantity, type UnitContent } from "@/lib/units";
-import { enforceAiRateLimit } from "@/lib/ai/rate-limit";
+import { enforceAiRateLimit, refundAiUsage } from "@/lib/ai/rate-limit";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { aiConsentError, getAiConsent } from "@/features/ai-consent/queries";
 import { recordStockEvent } from "@/features/inventory/events";
@@ -645,6 +645,8 @@ async function generateMenu(
     generated = object;
   } catch (err) {
     console.error("Error al generar el menú:", err);
+    // Cuota devuelta: esta generación no ha dejado ningún menú.
+    await refundAiUsage(supabase, "menu");
     const kind = classifyAiError(err);
     return {
       error:
@@ -652,7 +654,9 @@ async function generateMenu(
           ? "El servicio de IA está saturado ahora mismo. Espera un minuto y vuelve a intentarlo."
           : kind === "timeout"
             ? "La generación del menú tardó demasiado. Vuelve a intentarlo."
-            : "No se pudo generar el menú. Inténtalo de nuevo.",
+            : kind === "config"
+              ? "La generación con IA no está bien configurada. Repetirlo no lo va a arreglar: hay que revisar la configuración de la app."
+              : "No se pudo generar el menú. Inténtalo de nuevo.",
     };
   }
 
@@ -1349,6 +1353,9 @@ async function generateDishForSlot({
     dish = object;
   } catch (err) {
     console.error("Error al generar el plato:", err);
+    // Cuota devuelta: no hay plato. Las dos puertas que llegan aquí (el «+» de
+    // un hueco y «otra idea») ya la habían apuntado antes de llamar.
+    await refundAiUsage(supabase, "menu");
     const kind = classifyAiError(err);
     return {
       error:
@@ -1356,7 +1363,9 @@ async function generateDishForSlot({
           ? "El servicio de IA está saturado ahora mismo. Espera un minuto y vuelve a intentarlo."
           : kind === "timeout"
             ? "La generación tardó demasiado. Vuelve a intentarlo."
-            : `No se pudo generar ${what}. Inténtalo de nuevo.`,
+            : kind === "config"
+              ? "La generación con IA no está bien configurada. Repetirlo no lo va a arreglar: hay que revisar la configuración de la app."
+              : `No se pudo generar ${what}. Inténtalo de nuevo.`,
     };
   }
 
