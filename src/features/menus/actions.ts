@@ -968,12 +968,19 @@ export async function updateMenuEntryAction(
 
   // Editar una entrada la vuelve manual (ya se desvinculaba de la receta): así la
   // regeneración respetuosa (N2) no la pisa.
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("menu_entries")
     .update({ free_text: text, recipe_id: null, source: "manual" })
     .eq("household_id", household.id)
-    .eq("id", entryId);
+    .eq("id", entryId)
+    .select("id");
   if (error) return { error: "No se pudo guardar el plato." };
+  // Un update que no encuentra fila NO es un error para Supabase, así que sin
+  // contar filas esto contestaba «guardado» sobre un plato que el otro móvil
+  // acababa de quitar (o sobre otro hogar, si la cookie cambió en otra pestaña).
+  if (!data || data.length === 0) {
+    return { error: "Ese plato ya no está en el menú." };
+  }
 
   revalidatePath("/menus");
   return { ok: true };
@@ -987,12 +994,20 @@ export async function removeMenuEntryAction(
   if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("menu_entries")
     .delete()
     .eq("household_id", household.id)
-    .eq("id", entryId);
+    .eq("id", entryId)
+    .select("id");
   if (error) return { error: "No se pudo quitar el plato." };
+  // Mismo motivo que en el resto: un delete que no encuentra fila devuelve
+  // éxito, así que la pantalla celebraba haber quitado un plato que ya no
+  // estaba. Aquí además `updateMenuEntryAction` delega cuando el texto queda
+  // vacío, así que este contador cubre las dos puertas.
+  if (!data || data.length === 0) {
+    return { error: "Ese plato ya no está en el menú." };
+  }
 
   revalidatePath("/menus");
   return { ok: true };
@@ -1231,12 +1246,19 @@ export async function toggleEntryPinnedAction(
   if (!household) return { error: "No perteneces a ningún hogar." };
   const supabase = createServerSupabaseClient();
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("menu_entries")
     .update({ pinned })
     .eq("household_id", household.id)
-    .eq("id", entryId);
+    .eq("id", entryId)
+    .select("id");
   if (error) return { error: "No se pudo actualizar el plato." };
+  // Sin contar filas, el icono de fijado se quedaba encendido sobre un plato
+  // que tu pareja acababa de quitar mientras tenías el panel abierto — y, peor,
+  // el usuario se iba creyendo que la regeneración lo respetaría.
+  if (!data || data.length === 0) {
+    return { error: "Ese plato ya no está en el menú." };
+  }
 
   revalidatePath("/menus");
   return { ok: true };
@@ -1659,12 +1681,16 @@ export async function toggleEntryCookedAction(
   const supabase = createServerSupabaseClient();
 
   if (!cooked) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("menu_entries")
       .update({ cooked_at: null })
       .eq("household_id", household.id)
-      .eq("id", entryId);
+      .eq("id", entryId)
+      .select("id");
     if (error) return { error: "No se pudo actualizar la entrada." };
+    if (!data || data.length === 0) {
+      return { error: "Ese plato ya no está en el menú." };
+    }
     revalidatePath("/menus");
     return { ok: true };
   }
@@ -1682,12 +1708,20 @@ export async function toggleEntryCookedAction(
     return { error: "Solo puedes marcar como cocinado un día que ya ha pasado." };
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("menu_entries")
     .update({ cooked_at: entry.date, skipped_at: null, skipped_reason: null })
     .eq("household_id", household.id)
-    .eq("id", entryId);
+    .eq("id", entryId)
+    .select("id");
   if (error) return { error: "No se pudo actualizar la entrada." };
+  // El plato se leyó dos líneas antes para sacar su fecha, pero entre esa
+  // lectura y esta escritura cabe el borrado del otro móvil. Sin contar filas,
+  // el ✓ verde se quedaba puesto sobre algo que ya no existe — y con él la
+  // creencia de que el descuento de la despensa tenía a qué agarrarse.
+  if (!data || data.length === 0) {
+    return { error: "Ese plato ya no está en el menú." };
+  }
 
   revalidatePath("/menus");
   return { ok: true };
@@ -1715,12 +1749,16 @@ export async function toggleEntrySkippedAction(
   const supabase = createServerSupabaseClient();
 
   if (!skipped) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("menu_entries")
       .update({ skipped_at: null, skipped_reason: null })
       .eq("household_id", household.id)
-      .eq("id", entryId);
+      .eq("id", entryId)
+      .select("id");
     if (error) return { error: "No se pudo actualizar la entrada." };
+    if (!data || data.length === 0) {
+      return { error: "Ese plato ya no está en el menú." };
+    }
     revalidatePath("/menus");
     return { ok: true };
   }
@@ -1737,12 +1775,16 @@ export async function toggleEntrySkippedAction(
     return { error: "Ese día todavía no ha pasado." };
   }
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("menu_entries")
     .update({ skipped_at: entry.date, cooked_at: null })
     .eq("household_id", household.id)
-    .eq("id", entryId);
+    .eq("id", entryId)
+    .select("id");
   if (error) return { error: "No se pudo actualizar la entrada." };
+  if (!data || data.length === 0) {
+    return { error: "Ese plato ya no está en el menú." };
+  }
 
   revalidatePath("/menus");
   return { ok: true };

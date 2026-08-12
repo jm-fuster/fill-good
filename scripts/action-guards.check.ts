@@ -37,7 +37,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   copyPreviousWeekAction,
   duplicateMenuEntryAction,
+  removeMenuEntryAction,
   rerollMenuEntryAction,
+  toggleEntryCookedAction,
+  toggleEntryPinnedAction,
+  toggleEntrySkippedAction,
   updateMenuEntryAction,
 } from "@/features/menus/actions";
 import { deleteReceiptAction } from "@/features/receipts/actions";
@@ -84,20 +88,41 @@ function fake(
   const from = (table: string): unknown => {
     const filtros: [string, unknown][] = [];
     const negados: [string, unknown][] = [];
-    const rows = () =>
-      (tables[table]?.list ?? []).filter((row) => {
-        const fila = row as Record<string, unknown>;
-        const pasa = ([columna, valor]: [string, unknown]) =>
-          !(columna in fila) || fila[columna] === valor;
-        return filtros.every(pasa) && !negados.some(pasa);
-      });
+    /** ¿Esta cadena escribe? Cambia qué significa lo que devuelve el `then`. */
+    let escribe = false;
+    const alcanza = (row: unknown) => {
+      const fila = row as Record<string, unknown>;
+      const pasa = ([columna, valor]: [string, unknown]) =>
+        !(columna in fila) || fila[columna] === valor;
+      return filtros.every(pasa) && !negados.some(pasa);
+    };
+    const rows = () => (tables[table]?.list ?? []).filter(alcanza);
+    /**
+     * Lo que resuelve la cadena. En una LECTURA son las filas que pasan el
+     * filtro; en una ESCRITURA es su `returning`, o sea las filas que el update
+     * o el delete han tocado de verdad.
+     *
+     * Esa distinción es lo que permite comprobar las guardas de «cero filas»:
+     * una action que pide `.select("id")` después de escribir lo hace justo para
+     * saber si encontró algo, y un falso que siempre devolviera lista vacía
+     * haría fallar el camino bueno, mientras que uno que devolviera siempre una
+     * fila aprobaría la guarda sin que existiera. Cuando el caso solo declara
+     * `single` (lo normal: es la fila que la action lee antes de escribir), esa
+     * es la fila candidata a resultar afectada.
+     */
+    const resultado = () => {
+      if (!escribe) return rows();
+      if (tables[table]?.list) return rows();
+      const fila = tables[table]?.single ?? null;
+      return fila !== null && alcanza(fila) ? [fila] : [];
+    };
     const chain: unknown = new Proxy(
       {},
       {
         get(_target, prop) {
           if (prop === "then") {
             return (resolve: (value: unknown) => void) =>
-              resolve({ data: rows(), error: null });
+              resolve({ data: resultado(), error: null });
           }
           if (prop === "maybeSingle" || prop === "single") {
             return () =>
@@ -122,6 +147,7 @@ function fake(
           }
           if (prop === "insert" || prop === "update" || prop === "delete") {
             return (datos?: Record<string, unknown>) => {
+              escribe = true;
               escrituras.push({ tabla: table, op: prop, datos: datos ?? {} });
               return chain;
             };
@@ -476,6 +502,78 @@ console.log("\ndeleteReceiptAction");
     "y se borra de verdad",
     escriturasEn(cliente, "receipts")[0]?.op === "delete",
     escriturasEn(cliente, "receipts"),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 6. Escribir sobre un plato que ya no está
+// ---------------------------------------------------------------------------
+
+/*
+  Todas estas actions filtran por `id` + `household_id`, y un update o un delete
+  que no encuentra fila NO es un error para Supabase: devuelve `{ error: null }`
+  y cero filas. Sin contar esas filas, la action respondía «hecho» y la pantalla
+  lo celebraba —el ✓ de cocinado, el icono de fijado, el toast de «plato
+  quitado»— sobre algo que ya no existía.
+
+  Y no hace falta mala suerte para llegar aquí: basta que tu pareja quite ese
+  plato desde su móvil mientras tú tienes el panel abierto, que es el uso normal
+  de una app de hogar compartida. El mismo agujero se abre si la cookie de hogar
+  activo cambió en otra pestaña: entonces el `household_id` del filtro es el de
+  otro hogar y no encuentra NADA, con lo que la app confirmaba cambios que no
+  ocurrieron en ninguna parte.
+
+  Se prueba con la tabla vacía (`single: null`), que es como se ve una fila
+  borrada desde estas actions. Ojo al leerlo: lo que se comprueba es que
+  devuelven error, no que no escriban — la escritura se INTENTA siempre, y es su
+  `returning` vacío el que delata que no tocó nada.
+*/
+console.log("\nEscribir sobre un plato que ya no está");
+
+const SIN_ENTRADA = { menu_entries: { single: null } };
+
+{
+  usar(SIN_ENTRADA);
+  const r = await toggleEntryPinnedAction(ENTRADA_ID, true);
+  check("fijar un plato borrado lo dice", Boolean(r.error), r);
+}
+
+{
+  usar(SIN_ENTRADA);
+  const r = await removeMenuEntryAction(ENTRADA_ID);
+  check("quitarlo dos veces lo dice", Boolean(r.error), r);
+}
+
+{
+  usar(SIN_ENTRADA);
+  const r = await updateMenuEntryAction(ENTRADA_ID, "Gazpacho");
+  check("renombrarlo lo dice", Boolean(r.error), r);
+}
+
+{
+  usar(SIN_ENTRADA);
+  const r = await toggleEntryCookedAction(ENTRADA_ID, false);
+  check("desmarcar «cocinado» lo dice", Boolean(r.error), r);
+}
+
+{
+  usar(SIN_ENTRADA);
+  const r = await toggleEntrySkippedAction(ENTRADA_ID, false);
+  check("desmarcar «no se hizo» lo dice", Boolean(r.error), r);
+}
+
+/*
+  El contrapunto, que es lo que impide «arreglar» esto devolviendo error
+  siempre: con la fila delante, las mismas actions tienen que funcionar.
+*/
+{
+  const cliente = usar({ menu_entries: { single: { id: ENTRADA_ID, date: "2020-01-01" } } });
+  const r = await toggleEntryPinnedAction(ENTRADA_ID, true);
+  check("y con el plato delante sí se fija", !r.error, r);
+  check(
+    "escribiendo de verdad",
+    escriturasEn(cliente, "menu_entries")[0]?.datos.pinned === true,
+    escriturasEn(cliente, "menu_entries"),
   );
 }
 
