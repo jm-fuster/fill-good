@@ -123,8 +123,23 @@ export async function getMonthlySpending(
   const nextStartStr = fmt(nextStart);
   const prevStartStr = fmt(prevStart);
 
-  // Una sola tanda: receipts (mes objetivo + anterior) y líneas por categoría.
-  const [{ data: receiptRows }, { data: itemRows }] = await Promise.all([
+  /*
+    Una sola tanda: receipts (mes objetivo + anterior) y líneas por categoría.
+
+    Los dos `error` se miran y se lanzan. Ignorarlos no dejaba la pantalla a
+    medias: la dejaba MINTIENDO. Sin filas, `total` es 0 y `receiptCount` es 0,
+    o sea exactamente la firma de «este hogar no ha comprado nada» — y con ella
+    /perfil saca el cartel de bienvenida («Tu hucha empieza aquí, escanea un
+    ticket») a un hogar con cuarenta tickets dentro, y /resumen dice que no hay
+    compras registradas. Un fallo transitorio (un PGRST303 que agota sus
+    reintentos, un 500 de PostgREST) se presentaba como un hecho sobre el
+    dinero del hogar, que es el dato del que depende toda la gamificación.
+
+    Lanzar es lo que ya hacen `getListItems` y `getShoppingModeItems`: sube a la
+    barrera de error de (app), que ofrece reintentar y no afirma nada falso.
+  */
+  const [{ data: receiptRows, error: recErr }, { data: itemRows, error: itemErr }] =
+    await Promise.all([
     supabase
       .from("receipts")
       .select(
@@ -146,6 +161,8 @@ export async function getMonthlySpending(
       .gte("purchased_at", monthStartStr)
       .lt("purchased_at", nextStartStr),
   ]);
+  if (recErr) throw recErr;
+  if (itemErr) throw itemErr;
 
   // Totales y desglose por cadena a partir de receipts.
   let total = 0;

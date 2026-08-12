@@ -575,11 +575,25 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
   const householdId = await getActiveHouseholdId();
   if (!householdId) return [];
   const supabase = createServerSupabaseClient();
+  /*
+    Aquí los errores se REGISTRAN pero no se lanzan, al revés que en los
+    agregados de dinero (`getMonthlySpending`), y la diferencia es qué queda si
+    esto falla: allí la consulta ES el contenido de la pantalla y un cero se lee
+    como un hecho sobre el hogar; aquí las sugerencias son un añadido a la lista
+    de la compra, que es la pantalla que se usa dentro del súper. Tirarla entera
+    porque no se pudo calcular «te puede faltar leche» cambiaría una omisión por
+    una app inservible con el carro delante.
+
+    Lo que no puede seguir pasando es el silencio: sin este log, una consulta
+    rota (una columna que aún no existe porque la migración no está aplicada, el
+    caso que ya documenta `getConfiguredChains`) se presentaba como «no hay nada
+    que sugerir» y no dejaba ni rastro que mirar en Vercel.
+  */
   const [
-    { data: products },
-    { data: inventory },
-    { data: items },
-    { data: history },
+    { data: products, error: prodErr },
+    { data: inventory, error: invErr },
+    { data: items, error: itemsErr },
+    { data: history, error: histErr },
   ] = await Promise.all([
     supabase
       .from("products")
@@ -605,6 +619,10 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
       .not("purchased_at", "is", null)
       .order("purchased_at", { ascending: true }),
   ]);
+  const fallo = prodErr ?? invErr ?? itemsErr ?? histErr;
+  if (fallo) {
+    console.error("No se pudieron calcular las sugerencias de la lista:", fallo);
+  }
 
   // Hoy en España: esta fecha decide qué lote cuenta como caducado para dejar
   // de sugerirlo, y con la del proceso (UTC) discrepaba de la que usa la ficha
@@ -1021,13 +1039,14 @@ export async function getMonthlyTripStats(
     format(addMonths(monthStart, 1), "yyyy-MM-dd"),
   );
 
-  const { data: tripRows } = await supabase
+  const { data: tripRows, error: tripErr } = await supabase
     .from("shopping_trips")
     .select("id, product_ids, receipt_id")
     .eq("household_id", householdId)
     .not("receipt_id", "is", null)
     .gte("closed_at", monthStartStr)
     .lt("closed_at", nextStartStr);
+  if (tripErr) throw tripErr;
 
   const trips = tripRows ?? [];
   const receiptIds = trips
@@ -1038,7 +1057,15 @@ export async function getMonthlyTripStats(
   const extraCounts = new Map<string, number>();
 
   if (receiptIds.length > 0) {
-    const { data: boughtRows } = await supabase
+    /*
+      Aquí el error importa MÁS que en la consulta de arriba, y por eso también
+      se lanza: sin estas filas cada compra se compara contra un ticket vacío,
+      así que todo lo comprado cuenta como «extra» y el mes entero sale como
+      «0 de N compras perfectas» —con su «capricho recurrente» construido, en
+      realidad, con la propia lista de la compra—. Un cero aquí no es la
+      ausencia de un dato, es un veredicto sobre cómo compra el hogar.
+    */
+    const { data: boughtRows, error: boughtErr } = await supabase
       .from("receipt_items")
       // 2 FKs a products → hay que nombrar la relación o PostgREST da PGRST201.
       .select(
@@ -1047,6 +1074,7 @@ export async function getMonthlyTripStats(
       .eq("household_id", householdId)
       .in("receipt_id", receiptIds)
       .not("product_id", "is", null);
+    if (boughtErr) throw boughtErr;
 
     type BoughtRow = {
       receipt_id: string;

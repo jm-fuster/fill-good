@@ -87,7 +87,10 @@ export async function getMonthlyWrapped(
   const householdId = await getActiveHouseholdId();
   if (!householdId) return null;
 
-  const [{ data: itemRows }, tripStats] = await Promise.all([
+  // El `error` se mira y se lanza: sin filas no hay «producto estrella», que es
+  // indistinguible de un mes en el que no se compró nada. Ver el porqué largo en
+  // `getMonthlySpending`, de donde sale el resto de este resumen.
+  const [{ data: itemRows, error: itemErr }, tripStats] = await Promise.all([
     supabase
       .from("receipt_items")
       // 2 FKs a products → hay que nombrar la relación o PostgREST da PGRST201.
@@ -101,6 +104,7 @@ export async function getMonthlyWrapped(
       .lt("purchased_at", nextStartStr),
     getMonthlyTripStats(spending.month),
   ]);
+  if (itemErr) throw itemErr;
 
   // Producto estrella: en el que más dinero se fue este mes.
   type ItemRow = {
