@@ -281,12 +281,21 @@ export async function setInventoryQuantityAction(
     .eq("id", id)
     .maybeSingle();
 
-  const { error } = await supabase
+  const { data: tocadas, error } = await supabase
     .from("inventory_items")
     .update({ quantity, updated_by: userId })
     .eq("household_id", household.id)
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) return { error: "No se pudo actualizar la cantidad." };
+  // Un update sin filas no es un error para Supabase, y aquí no revalidamos
+  // nada (el stepper es optimista), así que sin este recuento el número que se
+  // quedaba en pantalla no lo respaldaba ninguna fila: el otro móvil había
+  // borrado el producto y este seguía sumando y restando sobre un fantasma
+  // hasta la siguiente recarga.
+  if (!tocadas || tocadas.length === 0) {
+    return { error: "Ese producto ya no está en tu inventario." };
+  }
 
   // Evento de movimiento con folding anti-ruido (F5): delta<0 = consumido,
   // delta>0 = repuesto. Best-effort, no bloquea el stepper optimista.
@@ -488,7 +497,7 @@ export async function updateInventoryAction(
       .eq("household_id", household.id)
       .eq("id", d.inventoryId);
   } else {
-    const { error: invErr } = await supabase
+    const { data: tocadas, error: invErr } = await supabase
       .from("inventory_items")
       .update({
         location: d.location,
@@ -499,8 +508,25 @@ export async function updateInventoryAction(
         updated_by: userId,
       })
       .eq("household_id", household.id)
-      .eq("id", d.inventoryId);
+      .eq("id", d.inventoryId)
+      .select("id");
     if (invErr) return { error: "No se pudo guardar." };
+    /*
+      Aquí el «ok» sobre cero filas era peor que en el stepper, porque este
+      formulario ya ha escrito ANTES en `products` (nombre, unidad, mínimo,
+      envase). Si la fila de inventario desapareció entre tanto, el producto
+      quedaba renombrado y la fila sin actualizar —un guardado a medias— y la
+      pantalla decía «Cambios guardados» sobre las dos cosas.
+
+      No se puede deshacer lo de `products` (no hay transacción), así que lo que
+      toca es decir exactamente qué pasó en vez de fingir que todo fue bien.
+    */
+    if (!tocadas || tocadas.length === 0) {
+      return {
+        error:
+          "Ese producto ya no está en tu inventario: se guardaron sus datos, pero no la cantidad ni la caducidad.",
+      };
+    }
   }
 
   revalidatePath("/inventario");
@@ -837,8 +863,9 @@ export async function saveExpiryReviewAction(
   }
 
   const supabase = createServerSupabaseClient();
+  let guardadas = 0;
   for (const u of parsed.data.updates) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("inventory_items")
       .update({
         expiry_date: u.expiryDate,
@@ -846,8 +873,28 @@ export async function saveExpiryReviewAction(
         updated_by: userId,
       })
       .eq("household_id", household.id)
-      .eq("id", u.id);
+      .eq("id", u.id)
+      .select("id");
     if (error) return { error: "No se pudieron guardar los cambios." };
+    if (data && data.length > 0) guardadas += 1;
+  }
+
+  /*
+    Esta pantalla llega desde la confirmación de un ticket con una lista de ids
+    en la URL, así que entre que se abre y se pulsa «Guardar» cabe de todo: que
+    el otro móvil borre esos productos, o que la URL se haya compartido y lleve
+    ids de otro hogar. Con el bucle sin contar nada, el usuario repasaba veinte
+    caducidades, veía «Caducidades guardadas» y volvía al inventario con las
+    fechas sin poner.
+
+    No se exige que se guarden TODAS —que una fila de las veinte haya
+    desaparecido no invalida las otras diecinueve— pero cero de veinte no es un
+    éxito, es no haber hecho nada.
+  */
+  if (parsed.data.updates.length > 0 && guardadas === 0) {
+    return {
+      error: "Esos productos ya no están en tu inventario. Vuelve a abrir la revisión.",
+    };
   }
 
   revalidatePath("/inventario");
