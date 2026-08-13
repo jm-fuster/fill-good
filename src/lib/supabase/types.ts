@@ -25,6 +25,9 @@ export type Database = {
           preferred_chains: string[];
           // desde 20260728170000: caducidad del código de invitación.
           invite_code_expires_at: string;
+          // desde 20260813120000: repaso semanal de despensa.
+          pantry_review_enabled: boolean;
+          pantry_reviewed_at: string | null;
         };
         Insert: {
           id?: string;
@@ -35,6 +38,8 @@ export type Database = {
           monthly_budget?: number | null;
           preferred_chains?: string[];
           invite_code_expires_at?: string;
+          pantry_review_enabled?: boolean;
+          pantry_reviewed_at?: string | null;
         };
         Update: {
           id?: string;
@@ -45,6 +50,8 @@ export type Database = {
           monthly_budget?: number | null;
           preferred_chains?: string[];
           invite_code_expires_at?: string;
+          pantry_review_enabled?: boolean;
+          pantry_reviewed_at?: string | null;
         };
         Relationships: [];
       };
@@ -374,6 +381,8 @@ export type Database = {
           updated_by: string | null;
           created_at: string;
           updated_at: string;
+          // desde 20260813120000: última respuesta del repaso de despensa.
+          reviewed_at: string | null;
         };
         Insert: {
           id?: string;
@@ -388,6 +397,7 @@ export type Database = {
           updated_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          reviewed_at?: string | null;
         };
         Update: {
           id?: string;
@@ -402,6 +412,7 @@ export type Database = {
           updated_by?: string | null;
           created_at?: string;
           updated_at?: string;
+          reviewed_at?: string | null;
         };
         Relationships: [
           {

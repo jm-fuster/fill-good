@@ -24,6 +24,7 @@ import {
   starterItemsSchema,
 } from "./schemas";
 import { recordStockEvent } from "./events";
+import { answerToQuantity, type PantryAnswer } from "./pantry-review";
 
 export type ActionState = { error?: string; ok?: boolean };
 
@@ -897,6 +898,117 @@ export async function saveExpiryReviewAction(
     };
   }
 
+  revalidatePath("/inventario");
+  return { ok: true };
+}
+
+/**
+ * Guarda UNA respuesta del repaso semanal de despensa.
+ *
+ * Va de una en una y no en lote a propósito: el repaso son ocho preguntas que se
+ * contestan de un toque, y quien abandona a la cuarta no debe perder las tres
+ * anteriores. En lote, cerrar el sheet a medias tiraría todo el trabajo — y este
+ * es un ritual que se gana o se pierde por lo que cuesta la primera vez.
+ *
+ * Las tres respuestas sellan `reviewed_at`, incluida «queda», que no cambia
+ * ningún otro valor de la fila: ese sello es lo único que impide que la semana
+ * siguiente vuelva la misma pregunta (ver `pantry-review.ts` y
+ * `npm run check:repaso`). Solo «se acabó» toca la cantidad.
+ */
+export async function savePantryReviewAction(
+  id: string,
+  answer: PantryAnswer,
+): Promise<ActionState> {
+  if (answer !== "have" && answer !== "low" && answer !== "out") {
+    return { error: "Respuesta no válida." };
+  }
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const { userId } = await auth();
+  const supabase = createServerSupabaseClient();
+
+  // Se lee antes de escribir por dos motivos: el evento necesita el producto, la
+  // unidad y la cantidad que había (el delta se calcula SIEMPRE en el servidor),
+  // y hace falta saber si la fila sigue existiendo en ESTE hogar. Sin la lectura,
+  // un update que no encuentra fila no es un error para Supabase y la pantalla
+  // daría por guardada una respuesta que no se escribió en ninguna parte —basta
+  // que el otro móvil haya borrado el producto mientras tenías el repaso abierto.
+  const { data: prev } = await supabase
+    .from("inventory_items")
+    .select("product_id, quantity, unit")
+    .eq("household_id", household.id)
+    .eq("id", id)
+    .maybeSingle();
+  if (!prev) return { error: "Ese producto ya no está en tu inventario." };
+
+  const nueva = answerToQuantity(answer);
+  const { data: tocadas, error } = await supabase
+    .from("inventory_items")
+    .update({
+      reviewed_at: new Date().toISOString(),
+      updated_by: userId,
+      ...(nueva === null ? {} : { quantity: nueva }),
+    })
+    .eq("household_id", household.id)
+    .eq("id", id)
+    .select("id");
+  if (error) return { error: "No se pudo guardar la respuesta." };
+  if (!tocadas || tocadas.length === 0) {
+    return { error: "Ese producto ya no está en tu inventario." };
+  }
+
+  // Lo que se ha acabado salió de casa de verdad, aunque nadie sepa cuándo: se
+  // anota igual que el borrado de una fila con stock. SIN `fold`, porque agrupar
+  // esta corrección con el último movimiento del stepper mezclaría dos cosas
+  // distintas (ver el aviso de `events.ts`).
+  if (answer === "out" && Number(prev.quantity) > 0) {
+    await recordStockEvent(supabase, {
+      householdId: household.id,
+      productId: prev.product_id,
+      quantity: Number(prev.quantity),
+      unit: prev.unit,
+      kind: "consumed",
+      userId,
+    });
+  }
+
+  // El sello del hogar se pone en CADA respuesta, no al cerrar el repaso: es lo
+  // que hace que la tarjeta no vuelva a salir esta semana, y si dependiera de un
+  // paso final, quien contesta cuatro y se va se encontraría la pregunta otra
+  // vez. Es un timestamp, así que reescribirlo ocho veces no cuesta nada.
+  await supabase
+    .from("households")
+    .update({ pantry_reviewed_at: new Date().toISOString() })
+    .eq("id", household.id);
+
+  // Sin revalidatePath: el repaso vive en el shell y pinta lo que ya tiene en
+  // memoria; refrescar en cada respuesta haría desaparecer el sheet a media
+  // pregunta (el mismo motivo por el que el repaso de platos aplaza el refresco
+  // al cierre). Lo refresca el cliente al cerrar.
+  return { ok: true };
+}
+
+/**
+ * "No volver a preguntar" del repaso de despensa: lo apaga para todo el hogar.
+ * Por hogar y no por usuario, igual que el repaso de platos — la despensa es de
+ * la casa, y si uno decide que no quiere la pregunta el otro tampoco tiene que
+ * contestarla. Se reactiva en Ajustes.
+ */
+export async function setPantryReviewEnabledAction(
+  enabled: boolean,
+): Promise<ActionState> {
+  const household = await getCurrentHousehold();
+  if (!household) return { error: "No perteneces a ningún hogar." };
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("households")
+    .update({ pantry_review_enabled: enabled })
+    .eq("id", household.id)
+    .select("id");
+  if (error || !data || data.length === 0) {
+    return { error: "No se pudo guardar la preferencia." };
+  }
+  revalidatePath("/ajustes");
   revalidatePath("/inventario");
   return { ok: true };
 }
