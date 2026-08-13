@@ -8,6 +8,7 @@ import { NavListCountProvider } from "@/components/layout/nav-list-count";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { HouseholdSwitcherMenu } from "@/features/household/components/household-switcher";
+import { PantryReviewBanner } from "@/features/inventory/components/pantry-review-banner";
 import { CookedCheckinBanner } from "@/features/menus/components/cooked-checkin-banner";
 import {
   getCurrentHousehold,
@@ -90,6 +91,13 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   nav); sin pendientes no renderiza nada. */}
               <Suspense fallback={null}>
                 <CookedCheckinBanner />
+              </Suspense>
+              {/* Repaso de despensa, mismo sitio y mismo motivo: nadie entra al
+                  inventario a corregir cantidades. Los dos no salen a la vez
+                  —cede este, ver `PantryReviewBanner`—, así que el orden en el
+                  árbol solo fija cuál iría arriba si algún día conviven. */}
+              <Suspense fallback={null}>
+                <PantryReviewBanner />
               </Suspense>
               {children}
             </div>

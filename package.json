@@ -13,6 +13,7 @@
     "check:alexa": "node scripts/check-alexa.mjs",
     "check:lista": "node scripts/check-list-sync.mjs",
     "check:motivos": "node scripts/check-suggestion-reason.mjs",
+    "check:repaso": "node scripts/check-pantry-review.mjs",
     "check:cocinado": "node scripts/check-cooked.mjs",
     "check:fechas": "node scripts/check-dates.mjs",
     "check:cocina": "node scripts/check-cooking-flow.mjs",

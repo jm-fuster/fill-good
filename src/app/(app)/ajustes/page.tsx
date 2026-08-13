@@ -14,6 +14,8 @@ import { LogoutRow } from "@/features/account/components/logout-row";
 import { AiConsentSettingRow } from "@/features/ai-consent/components/ai-consent-setting-row";
 import { getAiConsent } from "@/features/ai-consent/queries";
 import { BudgetRow } from "@/features/household/components/budget-row";
+import { PantryReviewSettingRow } from "@/features/inventory/components/pantry-review-setting-row";
+import { getPantryReviewPrefs } from "@/features/inventory/queries";
 import { PushStatusRow } from "@/features/push/components/push-status-row";
 import {
   SettingsControlRow,
@@ -55,10 +57,11 @@ function alexaValue(count: number): string {
  * que se resuelve de un toque (tema) o en un modal corto (objetivo de gasto).
  */
 export default async function AjustesPage() {
-  const [user, household, aiConsent] = await Promise.all([
+  const [user, household, aiConsent, pantryReview] = await Promise.all([
     currentUser(),
     getCurrentHousehold(),
     getAiConsent(),
+    getPantryReviewPrefs(),
   ]);
   const email = user?.primaryEmailAddress?.emailAddress;
   const [members, storeChains, alexaLinks] = household
@@ -142,6 +145,9 @@ export default async function AjustesPage() {
             />
           ) : null}
           <AiConsentSettingRow consented={aiConsent.consented} />
+          {household ? (
+            <PantryReviewSettingRow enabled={pantryReview.enabled} />
+          ) : null}
           <SettingsControlRow
             icon={Palette}
             label="Tema"

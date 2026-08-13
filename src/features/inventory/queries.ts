@@ -1,6 +1,9 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { nowMs } from "@/lib/dates";
 import type {
   InventoryEventKind,
   LocationType,
@@ -13,6 +16,7 @@ import {
   getHouseholdMembers,
 } from "@/features/household/queries";
 import type { ChainSavingsTip } from "@/features/prices/chain-savings";
+import { pickPantryReview, type PantryReviewItem } from "./pantry-review";
 
 export type Category = {
   id: string;
@@ -507,3 +511,124 @@ export async function getInventoryItemsByIds(
     .map((id) => byId.get(id))
     .filter((e): e is ReviewEntry => Boolean(e));
 }
+
+/** Fila del repaso semanal de despensa, con lo que hace falta para pintarla. */
+export type PantryReviewEntry = PantryReviewItem & {
+  categoryIcon: string | null;
+  /** Icono manual del producto (L16); null = automático. */
+  productIcon: string | null;
+};
+
+type PantryReviewRow = {
+  id: string;
+  product_id: string;
+  location: LocationType;
+  quantity: number;
+  unit: UnitType;
+  reviewed_at: string | null;
+  updated_at: string;
+  product: {
+    name: string;
+    min_quantity: number | null;
+    purchase_count: number;
+    icon: string | null;
+    category: { id: string; icon: string | null } | null;
+  } | null;
+};
+
+/**
+ * Cuántas filas se traen para que elija `pickPantryReview`. Se piden más de las
+ * ocho que caben porque la elección no es "las más viejas": pondera ubicación,
+ * mínimo y habitualidad, y reparte por categoría. Con el tope justo, la despensa
+ * de una casa grande decidiría por antigüedad y el resto de reglas no se notaría.
+ * Sigue siendo una consulta acotada: no se lee el inventario entero.
+ */
+const PANTRY_REVIEW_POOL = 60;
+
+/**
+ * Candidatos al repaso semanal de despensa, ya elegidos y ordenados.
+ *
+ * El filtro por `quantity > 0` va en SQL (aprovecha el índice parcial
+ * `inventory_review_idx`) aunque `pickPantryReview` también lo aplique: aquí
+ * ahorra traer filas, y allí es una regla de producto que tiene que sostenerse
+ * sola. El orden de la consulta es solo para quedarse con las más prometedoras
+ * del pozo; el orden que se ve lo decide la función pura.
+ */
+export async function getPantryReviewCandidates(): Promise<PantryReviewEntry[]> {
+  const householdId = await getActiveHouseholdId();
+  if (!householdId) return [];
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("inventory_items")
+    .select(
+      "id, product_id, location, quantity, unit, reviewed_at, updated_at, product:products(name, min_quantity, purchase_count, icon, category:categories(id, icon))",
+    )
+    .eq("household_id", householdId)
+    .gt("quantity", 0)
+    .order("updated_at", { ascending: true })
+    .limit(PANTRY_REVIEW_POOL);
+  if (error) throw error;
+
+  const rows = (data ?? []) as unknown as PantryReviewRow[];
+  const entries = rows
+    .filter((r) => r.product)
+    .map(
+      (r) =>
+        ({
+          id: r.id,
+          productId: r.product_id,
+          name: r.product!.name,
+          quantity: Number(r.quantity),
+          unit: r.unit,
+          location: r.location,
+          categoryId: r.product!.category?.id ?? null,
+          categoryIcon: r.product!.category?.icon ?? null,
+          productIcon: r.product!.icon ?? null,
+          reviewedAt: r.reviewed_at,
+          updatedAt: r.updated_at,
+          purchaseCount: Number(r.product!.purchase_count),
+          hasMinimum: r.product!.min_quantity !== null,
+        }) satisfies PantryReviewEntry,
+    );
+
+  return pickPantryReview(entries, nowMs());
+}
+
+/** Ajustes del repaso de despensa que guarda el hogar. */
+export type PantryReviewPrefs = {
+  enabled: boolean;
+  /** Último repaso hecho en esta casa (instante ISO); null = ninguno. */
+  reviewedAt: string | null;
+  /**
+   * Cuándo se creó el hogar. Es la referencia de `shouldYieldToDishes` cuando no
+   * hay repasos previos: sin ella, «nunca repasado» no se distingue de «recién
+   * creado» y no se puede acotar cuánto lleva el repaso cediendo el sitio.
+   */
+  createdAt: string | null;
+};
+
+/**
+ * Ajustes del repaso, en consulta propia y no en `getCurrentHousehold`: solo los
+ * necesita el repaso, y `CurrentHousehold` lo lee el shell en cada página (mismo
+ * criterio que `getConfiguredChains`). Sin fila, los valores por defecto de la
+ * columna: activado y sin repasos.
+ */
+export const getPantryReviewPrefs = cache(
+  async (): Promise<PantryReviewPrefs> => {
+    const householdId = await getActiveHouseholdId();
+    if (!householdId) {
+      return { enabled: false, reviewedAt: null, createdAt: null };
+    }
+    const supabase = createServerSupabaseClient();
+    const { data } = await supabase
+      .from("households")
+      .select("pantry_review_enabled, pantry_reviewed_at, created_at")
+      .eq("id", householdId)
+      .maybeSingle();
+    return {
+      enabled: data?.pantry_review_enabled ?? true,
+      reviewedAt: data?.pantry_reviewed_at ?? null,
+      createdAt: data?.created_at ?? null,
+    };
+  },
+);
