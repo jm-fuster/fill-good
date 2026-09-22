@@ -10,6 +10,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { HouseholdSwitcherMenu } from "@/features/household/components/household-switcher";
 import { PantryReviewBanner } from "@/features/inventory/components/pantry-review-banner";
 import { CookedCheckinBanner } from "@/features/menus/components/cooked-checkin-banner";
+import { VisitPing } from "@/features/usage/components/visit-ping";
 import {
   getCurrentHousehold,
   getUserHouseholds,
@@ -51,6 +52,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
             con los cambios de Realtime) es del hogar activo, así que al cambiar
             de casa hay que olvidarla en vez de enseñar la de la otra. */}
         <NavListCountProvider key={household?.id ?? "sin-hogar"} badge={badge}>
+          {/* Visita del día (medición de uso). Dentro del proveedor con `key`
+              a propósito: cambiar de hogar lo remonta, y la visita queda
+              anotada en la casa que se está viendo. */}
+          <VisitPing />
           {/* Primer elemento focusable: salta la navegación e ir al contenido. */}
           <a
             href="#contenido"

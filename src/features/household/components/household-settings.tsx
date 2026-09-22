@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 
 import { safeAction } from "@/lib/action-error";
+import { trackFromClient } from "@/features/usage/track";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -87,10 +88,19 @@ export function HouseholdSettings({
     return `${window.location.origin}/unirse/${household.inviteCode}`;
   }
 
+  /*
+    Medición de uso: compartir solo lo ve el navegador. Se anota al TERMINAR
+    —copiado de verdad, o el diálogo de compartir completado— y no al pulsar,
+    porque lo que se quiere comparar con las invitaciones aceptadas son los
+    enlaces que salieron, no los diálogos que se abrieron y se cancelaron.
+  */
   function copyLink() {
     navigator.clipboard
       .writeText(inviteUrl())
-      .then(() => toast.success("Enlace copiado"))
+      .then(() => {
+        toast.success("Enlace copiado");
+        trackFromClient({ name: "invite_shared", props: { via: "copy" } });
+      })
       .catch(() => toast.error("No se pudo copiar"));
   }
 
@@ -101,6 +111,9 @@ export function HouseholdSettings({
         text: "Te invito a nuestro hogar en Fill Good para compartir la compra.",
         url: inviteUrl(),
       })
+      .then(() =>
+        trackFromClient({ name: "invite_shared", props: { via: "share" } }),
+      )
       .catch(() => {
         // El usuario canceló el diálogo de compartir: no es un error.
       });

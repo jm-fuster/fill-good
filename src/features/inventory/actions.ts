@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import { isKnownIcon } from "@/lib/product-icons/catalog";
+import { trackUsage } from "@/lib/usage";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { refreshPriceInsights } from "@/features/prices/materialize";
 import { getProductCatalog } from "@/features/shopping-list/queries";
@@ -981,6 +982,15 @@ export async function savePantryReviewAction(
     .update({ pantry_reviewed_at: new Date().toISOString() })
     .eq("id", household.id);
 
+  // Medición de uso: una respuesta por evento, y es de ahí de donde sale si el
+  // repaso se termina (respuestas frente a los productos ofrecidos al abrirlo).
+  // Solo la respuesta, no el producto: el informe cuenta, no mira qué hay en
+  // casa de nadie.
+  trackUsage(household.id, {
+    name: "pantry_review_answered",
+    props: { answer },
+  });
+
   // Sin revalidatePath: el repaso vive en el shell y pinta lo que ya tiene en
   // memoria; refrescar en cada respuesta haría desaparecer el sheet a media
   // pregunta (el mismo motivo por el que el repaso de platos aplaza el refresco
@@ -1008,6 +1018,9 @@ export async function setPantryReviewEnabledAction(
   if (error || !data || data.length === 0) {
     return { error: "No se pudo guardar la preferencia." };
   }
+  trackUsage(household.id, {
+    name: enabled ? "pantry_review_enabled" : "pantry_review_disabled",
+  });
   revalidatePath("/ajustes");
   revalidatePath("/inventario");
   return { ok: true };

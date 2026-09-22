@@ -21,6 +21,7 @@ import { safeAction } from "@/lib/action-error";
 import { vibrateTick } from "@/lib/haptics";
 import { formatQuantity, LOCATION_LABELS, LOCATION_ORDER } from "@/lib/units";
 import { addListItemsAction } from "@/features/shopping-list/actions";
+import { trackFromClient } from "@/features/usage/track";
 import { savePantryReviewAction } from "../actions";
 import { answerWantsRestock, type PantryAnswer } from "../pantry-review";
 import type { PantryReviewEntry } from "../queries";
@@ -174,6 +175,9 @@ export function PantryReviewModal({
           : `${total} productos apuntados en la lista`,
       );
       setAddedToList(true);
+      // Medición de uso: es la mitad del valor del repaso (corregir la
+      // despensa y además generar la compra), así que se cuenta aparte.
+      trackFromClient({ name: "pantry_review_to_list", props: { count: total } });
     })();
   }
 
