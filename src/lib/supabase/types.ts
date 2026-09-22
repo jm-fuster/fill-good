@@ -1201,6 +1201,21 @@ export type Database = {
         Args: { p_kind: string; p_household_id?: string };
         Returns: undefined;
       };
+      // desde 20260922200832: medición de uso (ver `src/lib/usage.ts`). Sus
+      // tablas no se tipan a propósito, igual que `ai_usage`: nadie las lee con
+      // este cliente, solo se escriben por estas dos funciones.
+      record_usage_day: {
+        Args: { p_household_id: string };
+        Returns: undefined;
+      };
+      record_usage_event: {
+        Args: {
+          p_household_id: string;
+          p_name: string;
+          p_props?: Record<string, string | number>;
+        };
+        Returns: undefined;
+      };
       refund_ai_usage: {
         Args: { p_kind: string; p_household_id?: string };
         Returns: undefined;

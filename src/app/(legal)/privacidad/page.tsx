@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function PrivacidadPage() {
   return (
-    <LegalPage title="Política de privacidad" updated="3 de agosto de 2026">
+    <LegalPage title="Política de privacidad" updated="22 de septiembre de 2026">
       <p>
         Esta política explica qué datos personales tratamos cuando usas{" "}
         <strong>Fill Good</strong>, con qué finalidad, con qué base legal y qué
@@ -89,6 +89,16 @@ export default function PrivacidadPage() {
           movimiento si Amazon reenvía la petición.
         </p>
         <p>
+          <strong>Uso de la app.</strong> Para saber qué partes de la app
+          sirven y cuáles no, anotamos qué días la abres y unos pocos pasos
+          concretos: cuándo abres, contestas, aplazas o desactivas el repaso de
+          despensa (qué respondes, no sobre qué producto), cuántos productos
+          apuntas desde él en la lista y cuándo compartes el enlace de
+          invitación a tu hogar. Cada anotación va asociada a tu cuenta y a tu
+          hogar. No registramos qué páginas visitas ni lo que escribes, y no se
+          usa para publicidad ni se cede a terceros.
+        </p>
+        <p>
           <strong>Datos técnicos.</strong> Nuestra infraestructura registra
           datos de conexión (como la dirección IP) en registros técnicos de
           corta duración, con fines de seguridad y diagnóstico.
@@ -126,6 +136,14 @@ export default function PrivacidadPage() {
             <strong>Seguridad y prevención de abuso</strong> (registros
             técnicos, límites de peticiones): interés legítimo — art. 6.1.f
             del RGPD.
+          </li>
+          <li>
+            <strong>Medir el uso para mejorar la app</strong> (qué días se abre
+            y si funciones como el repaso de despensa o la invitación se usan):
+            interés legítimo — art. 6.1.f del RGPD. Es una medición propia y
+            mínima, sin publicidad ni perfiles. Puedes oponerte escribiendo a{" "}
+            {LEGAL_OWNER.email}: dejaremos de anotar tu uso y borraremos lo que
+            ya esté anotado.
           </li>
         </ul>
       </LegalSection>
@@ -238,8 +256,9 @@ export default function PrivacidadPage() {
           Además, algunos datos se depuran solos antes incluso de que borres
           nada: los tickets escaneados que no confirmas se eliminan a los 30
           días, el historial de consumo y reposición a los 90 días, los
-          descartes a los 24 meses y los menús semanales pasadas 26 semanas. Los
-          registros técnicos se conservan durante periodos breves.
+          descartes a los 24 meses, los menús semanales pasadas 26 semanas y las
+          anotaciones de uso de la sección 2 a los 12 meses. Los registros
+          técnicos se conservan durante periodos breves.
         </p>
         <p>
           En cuanto a Alexa: los códigos de vinculación caducan a los diez
@@ -309,7 +328,9 @@ export default function PrivacidadPage() {
           preferencias (como el tema claro/oscuro) y para que la app funcione
           sin conexión (caché de la PWA). Al cerrar sesión borramos esa caché y
           el estado del hogar guardado en el dispositivo. No hay cookies de
-          publicidad, de analítica ni de seguimiento.
+          publicidad, de analítica ni de seguimiento: la medición de uso de la
+          sección 2 no guarda nada en tu dispositivo, se anota en nuestro
+          servidor cuando usas la app.
         </p>
       </LegalSection>
 

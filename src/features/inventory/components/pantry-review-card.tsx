@@ -8,6 +8,7 @@ import { PackageSearch, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { safeAction } from "@/lib/action-error";
 import { getWeekStart, todayLocalISO } from "@/lib/dates";
+import { trackFromClient } from "@/features/usage/track";
 import { setPantryReviewEnabledAction } from "../actions";
 import type { PantryReviewEntry } from "../queries";
 import { PantryReviewModal } from "./pantry-review-modal";
@@ -40,10 +41,27 @@ export function PantryReviewCard({ items }: { items: PantryReviewEntry[] }) {
 
   if (dismissed) return null;
 
+  /*
+    Medición de uso: abrir y aplazar solo los ve el navegador —aplazar es una
+    cookie, no pasa por el servidor—, así que se avisan desde aquí. Responder y
+    desactivar se anotan en sus propias acciones.
+  */
+  function openReview() {
+    setOpen(true);
+    trackFromClient({
+      name: "pantry_review_opened",
+      props: { offered: items.length },
+    });
+  }
+
   /** La X no niega nada: solo aparta la pregunta hasta mañana. */
   function snooze() {
     setCookie("pantry_review_snooze", todayLocalISO(), 2);
     setDismissed(true);
+    trackFromClient({
+      name: "pantry_review_postponed",
+      props: { until: "tomorrow" },
+    });
   }
 
   function silenceWeek() {
@@ -51,6 +69,10 @@ export function PantryReviewCard({ items }: { items: PantryReviewEntry[] }) {
     setOpen(false);
     setDismissed(true);
     toast.success("No preguntaremos más esta semana");
+    trackFromClient({
+      name: "pantry_review_postponed",
+      props: { until: "week" },
+    });
   }
 
   function disable() {
@@ -91,7 +113,7 @@ export function PantryReviewCard({ items }: { items: PantryReviewEntry[] }) {
               cada uno.
             </p>
           </div>
-          <Button size="sm" onClick={() => setOpen(true)} className="self-start">
+          <Button size="sm" onClick={openReview} className="self-start">
             Repasar
           </Button>
         </div>
