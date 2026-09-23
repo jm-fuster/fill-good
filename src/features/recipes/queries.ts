@@ -3,6 +3,7 @@ import "server-only";
 import { auth } from "@clerk/nextjs/server";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { normalizeName } from "@/lib/normalize";
 import type { UnitType } from "@/lib/supabase/types";
 import { getActiveHouseholdId } from "@/features/household/queries";
@@ -209,12 +210,18 @@ export async function getRecipeCostsForIds(
   const supabase = createServerSupabaseClient();
   // Las raciones van en la misma tanda: el importe se calcula para las
   // cantidades de la receta, así que sin ellas no se sabe para cuántos es.
+  // Los ingredientes de mil en mil: /recetas pide el coste de todo el
+  // recetario, y a unas ocho filas por receta pasa de mil hacia las 125.
   const [{ data: ings }, { data: recipeRows }, prices] = await Promise.all([
-    supabase
-      .from("recipe_ingredients")
-      .select("recipe_id, product_id, quantity, unit")
-      .eq("household_id", householdId)
-      .in("recipe_id", uniqueIds),
+    fetchAllRows((from, to) =>
+      supabase
+        .from("recipe_ingredients")
+        .select("recipe_id, product_id, quantity, unit")
+        .eq("household_id", householdId)
+        .in("recipe_id", uniqueIds)
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
     supabase
       .from("recipes")
       .select("id, servings")
@@ -514,11 +521,19 @@ export async function getRecipeSignals(
       .select("recipe_id, rating")
       .eq("household_id", householdId)
       .in("recipe_id", ids),
-    supabase
-      .from("menu_entries")
-      .select("recipe_id, cooked_at")
-      .eq("household_id", householdId)
-      .in("recipe_id", ids),
+    // Todo el historial de platos, de mil en mil: un hogar constante pasa de mil
+    // entradas en año y pico, y sin orden ni paginar, lo que quedaba fuera podía
+    // ser lo más reciente —`lastCookedAt` se quedaba viejo y el generador volvía
+    // a proponer lo de la semana pasada—.
+    fetchAllRows((from, to) =>
+      supabase
+        .from("menu_entries")
+        .select("recipe_id, cooked_at")
+        .eq("household_id", householdId)
+        .in("recipe_id", ids)
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
   ]);
 
   // Media y nº de votos por receta.

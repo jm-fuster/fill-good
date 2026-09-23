@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { getActiveHouseholdId } from "@/features/household/queries";
 import { baseUnitFactor, unitFamily } from "@/lib/units";
 import type { UnitType } from "@/lib/supabase/types";
@@ -72,16 +73,21 @@ export async function getPriceAlerts(): Promise<PriceAlert[]> {
   const householdId = await getActiveHouseholdId();
   if (!householdId) return [];
   const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("receipt_items")
-    .select(
-      "product_id, total_price, quantity, unit, purchased_at, product:products!receipt_items_product_id_fkey(name)",
-    )
-    .eq("household_id", householdId)
-    .not("product_id", "is", null)
-    .not("total_price", "is", null)
-    .not("purchased_at", "is", null)
-    .order("purchased_at", { ascending: true });
+  const { data, error } = await fetchAllRows((from, to) =>
+    supabase
+      .from("receipt_items")
+      .select(
+        "product_id, total_price, quantity, unit, purchased_at, product:products!receipt_items_product_id_fkey(name)",
+      )
+      .eq("household_id", householdId)
+      .not("product_id", "is", null)
+      .not("total_price", "is", null)
+      .not("purchased_at", "is", null)
+      .order("purchased_at", { ascending: true })
+      // Desempate por una columna única: orden total para paginar.
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
   if (error) throw error;
 
   const rows = (data ?? []) as unknown as Row[];
