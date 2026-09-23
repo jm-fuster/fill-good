@@ -15,7 +15,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { dispatchAlexaRequest } from "@/features/alexa/handlers";
-import { ordinalFromWord, pickCandidate } from "@/features/alexa/resolve";
+import {
+  ordinalFromWord,
+  pickCandidate,
+  planDeduction,
+} from "@/features/alexa/resolve";
 import { SPEECH, speak, type SessionState } from "@/features/alexa/respond";
 import {
   alexaEnvelopeSchema,
@@ -429,6 +433,23 @@ async function main() {
   }
 
   console.log("\n2. Cantidades habladas (AMAZON.NUMBER no sabe de fracciones)");
+  {
+    // 4 g de un lote contado en kg se redondean a 0,00 kg: antes se escribía
+    // ese «descuento» de cero y se anunciaba «he restado 4 gramos».
+    const lote = { id: "k", quantity: 1, unit: "kg" as const, location: "pantry" as const, expiryDate: null };
+    const plan = planDeduction({ quantity: 4, unit: "g", lots: [lote] });
+    check(
+      "un descuento que se redondea a cero no se planifica: se pide otra cantidad",
+      plan.kind === "invalid_quantity",
+      plan,
+    );
+    const bien = planDeduction({ quantity: 40, unit: "g", lots: [lote] });
+    check(
+      "y 40 g del mismo lote sí (1 kg → 0,96 kg)",
+      bien.kind === "deduct" && bien.steps[0]?.newQuantity === 0.96,
+      bien,
+    );
+  }
   check(
     "«medio kilo» → 0,5",
     getSpokenQuantity({
@@ -1278,6 +1299,46 @@ async function main() {
   }
 
   console.log("\n14. «Hemos cenado la lasaña»");
+  {
+    // Dos cenas y ninguna dicha: la pregunta queda PENDIENTE y la respuesta
+    // suelta la resuelve. Antes el micrófono se abría sin estado y «la
+    // lasaña» caía en «no hay nada pendiente».
+    const dosCenas = fakeAdmin({
+      alexa_links: LINK, household_members: MIEMBRO,
+      weekly_menus: { single: { id: "m1" } },
+      menu_entries: {
+        list: [
+          { id: "e1", meal_slot: "dinner", free_text: null, cooked_at: null,
+            recipe_id: null, recipe: { name: "Lasaña de verduras" } },
+          { id: "e2", meal_slot: "dinner", free_text: "Ensalada", cooked_at: null,
+            recipe_id: null, recipe: null },
+        ],
+      },
+    });
+    const r = await run(intentRequest("CocinadoIntent"), undefined, dosCenas);
+    const estado = siguienteTurno(r);
+    check(
+      "«¿cuál has hecho?» deja la pregunta pendiente",
+      text(r) === SPEECH.cookedWhich(["Lasaña de verduras", "Ensalada"]) &&
+        estado.pendiente?.tipo === "plato" &&
+        estado.pendiente.candidatos.length === 2,
+      estado.pendiente,
+    );
+    limpiarEscrituras(dosCenas);
+    const r2 = await run(
+      intentRequest("RespuestaIntent", { producto: slot("producto", "la ensalada") }),
+      estado,
+      dosCenas,
+    );
+    const marcadas = escriturasEn(dosCenas, "menu_entries");
+    check(
+      "y «la ensalada» marca esa cena",
+      text(r2) === SPEECH.cookedNoRecipe("Ensalada") &&
+        marcadas.length === 1 &&
+        marcadas[0].datos.cooked_at !== undefined,
+      text(r2),
+    );
+  }
   {
     limpiarEscrituras(CON_RECETA);
     const r = await run(

@@ -114,12 +114,13 @@ const SLOT_ORDER: MealSlotKey[] = ["breakfast", "lunch", "dinner"];
 async function currentMenuId(
   admin: Admin,
   householdId: string,
+  weekStart: string = getWeekStart(),
 ): Promise<string | null> {
   const { data } = await admin
     .from("weekly_menus")
     .select("id")
     .eq("household_id", householdId)
-    .eq("week_start", getWeekStart())
+    .eq("week_start", weekStart)
     .maybeSingle();
   return data?.id ?? null;
 }
@@ -184,8 +185,16 @@ export async function readTodayDishes(
   admin: Admin,
   householdId: string,
   only: MealSlotKey | null,
+  /** El día de los platos (por defecto hoy): ver `kitchenDay` en handlers. */
+  date: string = todayLocalISO(),
 ): Promise<TodayDish[]> {
-  const menuId = await currentMenuId(admin, householdId);
+  // La semana del DÍA pedido, no la de hoy: el lunes a las 00:30 la cena de
+  // la que se habla es la del domingo, que vive en el menú de la semana pasada.
+  const menuId = await currentMenuId(
+    admin,
+    householdId,
+    getWeekStart(new Date(`${date}T12:00:00Z`)),
+  );
   if (!menuId) return [];
 
   let query = admin
@@ -193,7 +202,7 @@ export async function readTodayDishes(
     .select("id, free_text, cooked_at, recipe_id, recipe:recipes(name)")
     .eq("household_id", householdId)
     .eq("menu_id", menuId)
-    .eq("date", todayLocalISO())
+    .eq("date", date)
     .order("position", { ascending: true });
   if (only) query = query.eq("meal_slot", only);
   const { data } = await query;
