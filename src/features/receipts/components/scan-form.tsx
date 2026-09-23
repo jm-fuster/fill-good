@@ -9,6 +9,11 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { compressImage } from "@/lib/image";
+import {
+  SHARE_CACHE,
+  SHARE_ERROR_COOKIE,
+  SHARE_KEY,
+} from "@/lib/share-target";
 import { scanReceiptAction } from "../actions";
 
 // El escáner solo se descarga cuando alguien lo abre: arrastra el visor, la
@@ -72,6 +77,62 @@ export function ScanForm() {
     },
     [submit],
   );
+
+  /*
+    Ticket compartido desde otra app (Web Share Target). El service worker lo
+    deja en la caché y redirige aquí con `?compartido=1`; se recoge UNA vez
+    (se borra al leerlo) y entra por `handleFile`, o sea comprimido y con la
+    orientación aplicada, como cualquier foto. El route handler de reserva
+    (sin service worker) no llega aquí con archivo: deja su error en una
+    cookie de un minuto, que se enseña y se borra.
+  */
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const errorCookie = document.cookie
+        .split("; ")
+        .find((c) => c.startsWith(`${SHARE_ERROR_COOKIE}=`));
+      if (errorCookie) {
+        document.cookie = `${SHARE_ERROR_COOKIE}=; path=/escanear; max-age=0`;
+        toast.error(decodeURIComponent(errorCookie.split("=")[1] ?? ""));
+      }
+
+      const flag = new URLSearchParams(window.location.search).get("compartido");
+      if (!flag) return;
+      router.replace("/escanear");
+      if (flag !== "1" || typeof caches === "undefined") {
+        toast.error("No llegó ningún archivo al compartir. Súbelo desde aquí.");
+        return;
+      }
+      try {
+        const cache = await caches.open(SHARE_CACHE);
+        const res = await cache.match(SHARE_KEY);
+        // Antes de borrar: en desarrollo React monta el efecto dos veces, y el
+        // primero no debe llevarse el archivo que va a recoger el segundo.
+        if (cancelled) return;
+        await cache.delete(SHARE_KEY);
+        if (!res) {
+          toast.error("No llegó ningún archivo al compartir. Súbelo desde aquí.");
+          return;
+        }
+        const blob = await res.blob();
+        const name = decodeURIComponent(res.headers.get("x-filename") ?? "ticket");
+        const file = new File([blob], name, { type: blob.type });
+        if (!isSupported(file)) {
+          toast.error("Formato no válido. Comparte una imagen o un PDF.");
+          return;
+        }
+        await handleFile(file);
+      } catch {
+        toast.error("No se pudo abrir el ticket compartido.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Solo al montar: el archivo compartido se recoge una vez.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Pegar (Ctrl/Cmd+V) una imagen del portapapeles: en escritorio es lo natural
   // cuando el ticket llega por email y se hace una captura. Solo actúa si hay un
