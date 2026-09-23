@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function PrivacidadPage() {
   return (
-    <LegalPage title="Política de privacidad" updated="22 de septiembre de 2026">
+    <LegalPage title="Política de privacidad" updated="23 de septiembre de 2026">
       <p>
         Esta política explica qué datos personales tratamos cuando usas{" "}
         <strong>Fill Good</strong>, con qué finalidad, con qué base legal y qué
@@ -321,6 +321,17 @@ export default function PrivacidadPage() {
             Una cookie propia, <strong>«sidebar_state»</strong> (dura una
             semana), que recuerda si el menú lateral está plegado en pantallas
             grandes.
+          </li>
+          <li>
+            Cuatro cookies propias que recuerdan que has aplazado uno de los
+            dos repasos, el de los platos de la semana o el de la despensa:{" "}
+            <strong>«menu_checkin_snooze»</strong> y{" "}
+            <strong>«pantry_review_snooze»</strong> (duran dos días) cuando
+            cierras la tarjeta con «Recordármelo mañana», y{" "}
+            <strong>«menu_checkin_silenced_week»</strong> y{" "}
+            <strong>«pantry_review_silenced_week»</strong> (duran dos semanas)
+            cuando eliges no volver a verla esa semana. Solo se crean si pulsas
+            esos botones, y solo afectan a ese dispositivo.
           </li>
         </ul>
         <p>
