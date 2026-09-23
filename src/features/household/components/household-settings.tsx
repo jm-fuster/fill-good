@@ -34,6 +34,7 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
+import type { InviteCodeStatus } from "../invite";
 import type { CurrentHousehold, HouseholdMember } from "../queries";
 import {
   leaveHouseholdAction,
@@ -63,11 +64,14 @@ export function HouseholdSettings({
   household,
   households,
   members,
+  invite,
 }: {
   household: CurrentHousehold;
   /** Todos los hogares del usuario, para alternar entre ellos. */
   households: SwitcherHousehold[];
   members: HouseholdMember[];
+  /** Si el código sigue valiendo; lo resuelve la página (depende del reloj). */
+  invite: InviteCodeStatus;
 }) {
   const [pending, startTransition] = useTransition();
   const [leaveOpen, setLeaveOpen] = useState(false);
@@ -168,44 +172,72 @@ export function HouseholdSettings({
           <CardTitle>Invitar al hogar</CardTitle>
           <CardDescription>
             Comparte el enlace para que otros miembros se unan con un solo toque.
-            También puedes dictarles el código. Caduca a los 7 días; regenéralo
-            cuando quieras con el botón de la derecha.
+            También puedes dictarles el código. Cada código vale 7 días, y al
+            regenerarlo el anterior deja de funcionar.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="mb-1.5 text-sm font-medium">Código de invitación</p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 rounded-lg border bg-muted px-3 py-2.5 font-mono text-lg tracking-widest">
-              {household.inviteCode}
-            </code>
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Copiar enlace de invitación"
-              onClick={copyLink}
-            >
-              <Copy aria-hidden />
-            </Button>
-            {canShare ? (
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label="Compartir enlace de invitación"
-                onClick={shareLink}
-              >
-                <Share2 aria-hidden />
+          {/*
+            Caducado, el código no se ofrece para copiar ni compartir: esos dos
+            botones repartían un enlace que `join_household_by_code` ya rechaza,
+            y quien lo recibía solo veía «no corresponde a ningún hogar» sin que
+            quien invitaba se enterase. En su lugar, un solo paso: generar uno
+            nuevo, que la acción revalida y trae de vuelta con sus botones.
+          */}
+          {invite.expired ? (
+            <div className="flex flex-col gap-3">
+              <code className="rounded-lg border bg-muted px-3 py-2.5 font-mono text-lg tracking-widest text-muted-foreground line-through">
+                {household.inviteCode}
+              </code>
+              <p className="text-sm text-destructive">
+                Este código caducó{invite.when ? ` ${invite.when}` : ""}: genera
+                uno nuevo para poder invitar.
+              </p>
+              <Button onClick={regenerate} loading={pending}>
+                <RefreshCw aria-hidden />
+                Generar código nuevo
               </Button>
-            ) : null}
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Regenerar código"
-              onClick={regenerate}
-              loading={pending}
-            >
-              <RefreshCw aria-hidden />
-            </Button>
-          </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded-lg border bg-muted px-3 py-2.5 font-mono text-lg tracking-widest">
+                  {household.inviteCode}
+                </code>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Copiar enlace de invitación"
+                  onClick={copyLink}
+                >
+                  <Copy aria-hidden />
+                </Button>
+                {canShare ? (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    aria-label="Compartir enlace de invitación"
+                    onClick={shareLink}
+                  >
+                    <Share2 aria-hidden />
+                  </Button>
+                ) : null}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="Regenerar código"
+                  onClick={regenerate}
+                  loading={pending}
+                >
+                  <RefreshCw aria-hidden />
+                </Button>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Caduca {invite.when}.
+              </p>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -331,7 +363,7 @@ export function HouseholdSettings({
                   </ResponsiveModalTitle>
                   <ResponsiveModalDescription>
                     Dejarás de ver su inventario y sus listas. Podrás volver a
-                    unirte con el código de invitación.
+                    unirte si alguien del hogar te invita de nuevo.
                   </ResponsiveModalDescription>
                 </ResponsiveModalHeader>
                 <ResponsiveModalFooter className="gap-2">

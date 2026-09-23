@@ -18,6 +18,13 @@ export type CurrentHousehold = {
   id: string;
   name: string;
   inviteCode: string;
+  /**
+   * Cuándo deja de valer el código (7 días desde que se creó el hogar o se
+   * regeneró; lo exige `join_household_by_code`). La pantalla de invitar tiene
+   * que saberlo: sin esto repartía enlaces muertos en todo hogar con más de una
+   * semana, y quien los recibía solo veía «no corresponde a ningún hogar».
+   */
+  inviteCodeExpiresAt: string;
   role: MemberRole;
   monthlyBudget: number | null;
 };
@@ -39,6 +46,7 @@ type MembershipRow = {
     id: string;
     name: string;
     invite_code: string;
+    invite_code_expires_at: string;
     created_at: string;
     monthly_budget: number | null;
   } | null;
@@ -59,7 +67,7 @@ export const getUserHouseholds = cache(async (): Promise<UserHousehold[]> => {
   const { data, error } = await supabase
     .from("household_members")
     .select(
-      "role, joined_at, household:households(id, name, invite_code, created_at, monthly_budget)",
+      "role, joined_at, household:households(id, name, invite_code, invite_code_expires_at, created_at, monthly_budget)",
     )
     .eq("user_id", userId)
     .order("joined_at", { ascending: true });
@@ -74,6 +82,7 @@ export const getUserHouseholds = cache(async (): Promise<UserHousehold[]> => {
             id: row.household.id,
             name: row.household.name,
             inviteCode: row.household.invite_code,
+            inviteCodeExpiresAt: row.household.invite_code_expires_at,
             role: row.role,
             monthlyBudget: row.household.monthly_budget,
             joinedAt: row.joined_at,
