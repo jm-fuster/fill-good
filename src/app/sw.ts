@@ -2,6 +2,8 @@ import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import { Serwist } from "serwist";
 import { defaultCache } from "@serwist/next/worker";
 
+import { SHARE_CACHE, SHARE_KEY } from "@/lib/share-target";
+
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
     __SW_MANIFEST: (PrecacheEntry | string)[] | undefined;
@@ -31,6 +33,59 @@ const serwist = new Serwist({
       },
     ],
   },
+});
+
+// --- Web Share Target (M10b) ------------------------------------------------
+// El ticket compartido desde la galería se recoge AQUÍ y no en el servidor.
+// Llegando al route handler (`/escanear/compartir`) iba el original sin
+// comprimir —una foto de móvil pasa con facilidad del límite de 4,5 MB de
+// Vercel, y ahí el POST muere antes de llegar a la app— y sin orientación:
+// quitar el EXIF (privacidad) se llevaba también el giro, y la IA recibía el
+// ticket tumbado. Se guarda en la caché y se redirige a /escanear, donde pasa
+// por la misma `compressImage` que una foto normal, que aplica la orientación.
+// Sin service worker (primera visita, navegador sin soporte) el POST sigue
+// llegando al route handler, que queda de reserva.
+// Va ANTES de los listeners de Serwist: el primero que llama a respondWith
+// gana.
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (
+    event.request.method !== "POST" ||
+    url.origin !== self.location.origin ||
+    url.pathname !== "/escanear/compartir"
+  ) {
+    return;
+  }
+  event.respondWith(
+    (async () => {
+      try {
+        const form = await event.request.formData();
+        const file = form.get("file");
+        if (file instanceof File && file.size > 0) {
+          const cache = await caches.open(SHARE_CACHE);
+          await cache.put(
+            SHARE_KEY,
+            new Response(file, {
+              headers: {
+                "content-type": file.type || "application/octet-stream",
+                "x-filename": encodeURIComponent(file.name || "ticket"),
+              },
+            }),
+          );
+          return Response.redirect(
+            new URL("/escanear?compartido=1", self.location.origin).href,
+            303,
+          );
+        }
+      } catch {
+        // Cae abajo: la pantalla de escanear dice que no llegó nada.
+      }
+      return Response.redirect(
+        new URL("/escanear?compartido=vacio", self.location.origin).href,
+        303,
+      );
+    })(),
+  );
 });
 
 serwist.addEventListeners();
