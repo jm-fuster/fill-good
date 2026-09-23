@@ -25,18 +25,22 @@
  * CONTARLO, porque un borrado que no encuentra fila no es un error para Supabase
  * y la action devolvía «ok» sobre un ticket que seguía existiendo.
  *
- * Lo que NO cubre: el cliente falso entiende `.eq()`/`.is()` sobre listas y
- * devuelve una fila fija por tabla para `maybeSingle()`, no es un motor de SQL.
- * Así que no se prueba el camino feliz de copiar la semana (necesita que la
- * semana de origen tenga platos y la de destino no, o sea dos respuestas
- * distintas para la misma tabla), ni el reparto FIFO, ni nada que dependa de lo
- * que devolvería Postgres de verdad. Se prueban las DECISIONES de las actions.
+ * Lo que NO cubre: el cliente falso entiende `.eq()`/`.is()`/`.gte()` sobre
+ * listas y da una fila única por tabla para `maybeSingle()` (que puede
+ * depender de los filtros: así se prueba copiar la semana, que lee dos menús
+ * distintos de la misma tabla), pero no es un motor de SQL. No se prueba el
+ * reparto FIFO, ni la carrera de «Otra idea» (su escritura va detrás de la
+ * IA), ni nada que dependa de lo que devolvería Postgres de verdad. Se prueban
+ * las DECISIONES de las actions.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import {
+  computeMissingForMenuAction,
   copyPreviousWeekAction,
   duplicateMenuEntryAction,
+  generateSlotEntryAction,
+  moveMenuEntryAction,
   removeMenuEntryAction,
   rerollMenuEntryAction,
   toggleEntryCookedAction,
@@ -44,8 +48,14 @@ import {
   toggleEntrySkippedAction,
   updateMenuEntryAction,
 } from "@/features/menus/actions";
+import { PLACEHOLDER_DISH_TEXT } from "@/features/menus/rules";
 import { deleteReceiptAction } from "@/features/receipts/actions";
-import { getWeekDays, getWeekStart, shiftWeek } from "@/lib/dates";
+import {
+  getWeekDays,
+  getWeekStart,
+  shiftWeek,
+  todayLocalISO,
+} from "@/lib/dates";
 import type { Database } from "@/lib/supabase/types";
 
 let fallos = 0;
@@ -65,7 +75,17 @@ function check(nombre: string, condicion: boolean, extra?: unknown) {
 // Cliente falso
 // ---------------------------------------------------------------------------
 
-type TableData = { single?: unknown; list?: unknown[] };
+/**
+ * `single` puede ser una FUNCIÓN de los filtros `.eq()`/`.is()` de la cadena
+ * (`{ columna: valor }`), para las actions que leen la misma tabla dos veces
+ * esperando filas distintas: copiar la semana busca el menú de la semana
+ * anterior y el de la de destino en `weekly_menus`, y con una fila fija las
+ * dos lecturas devolvían el mismo menú y el camino bueno no se podía probar.
+ */
+type TableData = {
+  single?: unknown | ((filtros: Record<string, unknown>) => unknown);
+  list?: unknown[];
+};
 type Escritura = { tabla: string; op: string; datos: Record<string, unknown> };
 
 /**
@@ -88,13 +108,24 @@ function fake(
   const from = (table: string): unknown => {
     const filtros: [string, unknown][] = [];
     const negados: [string, unknown][] = [];
+    /** `.gte()`: «de hoy en adelante», que es como se acotan los días vividos. */
+    const desde: [string, unknown][] = [];
     /** ¿Esta cadena escribe? Cambia qué significa lo que devuelve el `then`. */
     let escribe = false;
     const alcanza = (row: unknown) => {
       const fila = row as Record<string, unknown>;
       const pasa = ([columna, valor]: [string, unknown]) =>
         !(columna in fila) || fila[columna] === valor;
-      return filtros.every(pasa) && !negados.some(pasa);
+      const llega = ([columna, valor]: [string, unknown]) =>
+        !(columna in fila) || String(fila[columna]) >= String(valor);
+      return filtros.every(pasa) && !negados.some(pasa) && desde.every(llega);
+    };
+    /** La fila única del caso, resuelta con los filtros si es una función. */
+    const unica = () => {
+      const s = tables[table]?.single;
+      return typeof s === "function"
+        ? (s(Object.fromEntries(filtros)) ?? null)
+        : (s ?? null);
     };
     const rows = () => (tables[table]?.list ?? []).filter(alcanza);
     /**
@@ -113,7 +144,7 @@ function fake(
     const resultado = () => {
       if (!escribe) return rows();
       if (tables[table]?.list) return rows();
-      const fila = tables[table]?.single ?? null;
+      const fila = unica();
       return fila !== null && alcanza(fila) ? [fila] : [];
     };
     const chain: unknown = new Proxy(
@@ -126,10 +157,7 @@ function fake(
           }
           if (prop === "maybeSingle" || prop === "single") {
             return () =>
-              Promise.resolve({
-                data: tables[table]?.single ?? null,
-                error: null,
-              });
+              Promise.resolve({ data: unica(), error: null });
           }
           if (prop === "eq" || prop === "is") {
             return (columna: string, valor: unknown) => {
@@ -139,6 +167,12 @@ function fake(
           }
           // `.neq` se entiende para no aprobar por accidente: un filtro que el
           // falso ignorase dejaría pasar filas que en la base quedan fuera.
+          if (prop === "gte") {
+            return (columna: string, valor: unknown) => {
+              desde.push([columna, valor]);
+              return chain;
+            };
+          }
           if (prop === "neq") {
             return (columna: string, valor: unknown) => {
               negados.push([columna, valor]);
@@ -286,6 +320,9 @@ function entrada(extra: Record<string, unknown>) {
   return {
     single: {
       menu_id: "m1",
+      // Un día que siempre está por llegar: los casos de esta sección hablan de
+      // la marca, no del día (el del día vivido va en la sección 7).
+      date: DIA_DE_OTRA_SEMANA,
       meal_slot: "dinner",
       cooked_at: null,
       skipped_at: null,
@@ -576,6 +613,258 @@ const SIN_ENTRADA = { menu_entries: { single: null } };
     escriturasEn(cliente, "menu_entries")[0]?.datos.pinned === true,
     escriturasEn(cliente, "menu_entries"),
   );
+}
+
+// ---------------------------------------------------------------------------
+// 7. Días ya vividos y marcas resueltas en las hermanas
+// ---------------------------------------------------------------------------
+
+/*
+  La auditoría del 23-sep-2026 encontró la forma de siempre en cinco sitios más:
+  la regla estaba razonada en una action y faltaba en su hermana. El candado de
+  días vividos de `generateMenuAction` no estaba en copiar la semana EN CURSO,
+  ni en «Otra idea», ni en generar un hueco; la limpieza de `skipped_at` del
+  reroll no estaba en mover; y marcar «cocinado» o «no se hizo» no miraba la
+  marca que ya había. Cada caso mira el error y lo que se escribe.
+*/
+console.log("\nDías ya vividos y marcas resueltas");
+
+const HOY = todayLocalISO();
+const SEMANA_ANTERIOR = shiftWeek(SEMANA, -1);
+
+/** Una entrada de menú tal como la lee `getMenuEntries`. */
+function plato(extra: Record<string, unknown>) {
+  return {
+    id: "e",
+    menu_id: "m-prev",
+    date: HOY,
+    meal_slot: "dinner",
+    position: 0,
+    recipe_id: null,
+    free_text: "Plato",
+    cooked_at: null,
+    skipped_at: null,
+    skipped_reason: null,
+    source: "manual",
+    pinned: false,
+    recipe: null,
+    ...extra,
+  };
+}
+
+/*
+  Copiar la semana anterior sobre la semana EN CURSO: el veto de semana entera no
+  aplica, así que lo que se comprueba es el candado día a día. Con un plato por
+  día en la semana de origen, se copian exactamente los días de hoy en adelante
+  (un lunes, los siete; un domingo, uno). Y el marcador «(elegir plato)» no se
+  copia: como `manual`, «Completar» ya no lo rellenaría nunca.
+*/
+{
+  const cliente = usar({
+    weekly_menus: {
+      single: (f: Record<string, unknown>) =>
+        f.week_start === SEMANA_ANTERIOR
+          ? { id: "m-prev" }
+          : f.week_start === SEMANA
+            ? { id: "m-esta" }
+            : null,
+    },
+    menu_entries: {
+      list: [
+        ...getWeekDays(SEMANA_ANTERIOR).map((date, i) =>
+          plato({ id: `e${i}`, date, free_text: `Plato ${i}` }),
+        ),
+        plato({
+          id: "hueco",
+          date: getWeekDays(SEMANA_ANTERIOR)[6],
+          meal_slot: "lunch",
+          free_text: PLACEHOLDER_DISH_TEXT,
+        }),
+      ],
+    },
+  });
+  const r = await copyPreviousWeekAction(SEMANA);
+  const copiadas = escriturasEn(cliente, "menu_entries")
+    .filter((e) => e.op === "insert")
+    .flatMap((e) => e.datos as unknown as Record<string, unknown>[]);
+  const pendientes = getWeekDays(SEMANA).filter((d) => d >= HOY).length;
+
+  check("copiar sobre la semana en curso funciona", !r.error, r);
+  check(
+    "pero no siembra ningún día ya vivido",
+    copiadas.every((row) => String(row.date) >= HOY),
+    copiadas.map((row) => row.date),
+  );
+  check(
+    "y copia justo los días que quedan",
+    copiadas.length === pendientes,
+    { copiadas: copiadas.length, pendientes },
+  );
+  check(
+    "sin arrastrar los marcadores «(elegir plato)»",
+    copiadas.every((row) => row.free_text !== PLACEHOLDER_DISH_TEXT),
+    copiadas,
+  );
+}
+
+/*
+  «Otra idea» y generar un hueco en un día ya vivido: se niegan, y ANTES del rate
+  limit (con el contador diciendo «rate_limited», el error delata quién habló
+  primero). Sin esto escribían un plato inventado en un día que ya ocurrió.
+*/
+{
+  usar(
+    { menu_entries: entrada({ date: getWeekDays(SEMANA_PASADA)[2] }) },
+    { rateLimited: true },
+  );
+  const r = await rerollMenuEntryAction(ENTRADA_ID);
+  check(
+    "«Otra idea» en un día vivido se niega antes del rate limit",
+    (r.error ?? "").includes("ya ha pasado"),
+    r,
+  );
+}
+
+{
+  const cliente = usar({}, { rateLimited: true });
+  const r = await generateSlotEntryAction(
+    SEMANA_PASADA,
+    getWeekDays(SEMANA_PASADA)[2]!,
+    "dinner",
+  );
+  check(
+    "generar un hueco de un día vivido se niega antes del rate limit",
+    (r.error ?? "").includes("ya ha pasado"),
+    r,
+  );
+  check(
+    "sin crear menú ni plato",
+    escriturasEn(cliente, "weekly_menus").length === 0 &&
+      escriturasEn(cliente, "menu_entries").length === 0,
+  );
+}
+
+/*
+  Mover es replanificar: un «no se hizo» se queda en el día de origen. Sin
+  limpiarlo, el plato llegaba descartado a su día nuevo y el repaso no lo
+  preguntaba nunca.
+*/
+{
+  const cliente = usar({
+    menu_entries: {
+      single: {
+        menu_id: "m1",
+        date: DIA_DE_OTRA_SEMANA,
+        meal_slot: "dinner",
+        cooked_at: null,
+        menu: { week_start: shiftWeek(SEMANA, 1) },
+      },
+    },
+  });
+  const r = await moveMenuEntryAction(ENTRADA_ID, DIA_DE_OTRA_SEMANA, "lunch");
+  const datos = escriturasEn(cliente, "menu_entries").find(
+    (e) => e.op === "update",
+  )?.datos;
+  check("mover un plato funciona", !r.error, r);
+  check(
+    "y se lleva por delante el «no se hizo» y su motivo",
+    datos !== undefined &&
+      "skipped_at" in datos &&
+      datos.skipped_at === null &&
+      "skipped_reason" in datos &&
+      datos.skipped_reason === null,
+    datos,
+  );
+}
+
+/*
+  Marcas sobre un plato ya cocinado. Re-marcarlo no escribe y lo dice
+  (`already`), para que nadie vuelva a proponer el descuento: dos vistas viejas
+  del repaso contestando lo mismo descontaban la despensa dos veces. Y «no se
+  hizo» encima se niega: borraba en silencio el `cooked_at`.
+*/
+const COCINADO = { menu_entries: { single: { date: "2020-01-01", cooked_at: "2020-01-01" } } };
+
+{
+  const cliente = usar(COCINADO);
+  const r = await toggleEntryCookedAction(ENTRADA_ID, true);
+  check("re-marcar «cocinado» avisa de que ya lo estaba", r.already === true && !r.error, r);
+  check(
+    "sin escribir nada",
+    escriturasEn(cliente, "menu_entries").length === 0,
+    escriturasEn(cliente, "menu_entries"),
+  );
+}
+
+{
+  const cliente = usar(COCINADO);
+  const r = await toggleEntrySkippedAction(ENTRADA_ID, true);
+  check(
+    "«no se hizo» sobre un plato cocinado se niega",
+    (r.error ?? "").includes("cocinado"),
+    r,
+  );
+  check(
+    "sin tocar su cooked_at",
+    escriturasEn(cliente, "menu_entries").length === 0,
+    escriturasEn(cliente, "menu_entries"),
+  );
+}
+
+{
+  const cliente = usar({
+    menu_entries: { single: { date: "2020-01-01", cooked_at: null } },
+  });
+  const r = await toggleEntrySkippedAction(ENTRADA_ID, true);
+  check("y sobre uno sin cocinar sí se marca", !r.error, r);
+  check(
+    "escribiendo la marca",
+    escriturasEn(cliente, "menu_entries")[0]?.datos.skipped_at === "2020-01-01",
+    escriturasEn(cliente, "menu_entries"),
+  );
+}
+
+/*
+  «Añadir a la lista lo que falte» solo cuenta lo que queda POR COCINAR. Con el
+  menú entero resuelto o en el pasado, no queda nada que comprar; antes proponía
+  los ingredientes de lo ya comido (y recién descontado).
+*/
+const NO_QUEDAN = "No quedan platos con receta por cocinar en este menú.";
+const MANANA_O_DESPUES = DIA_DE_OTRA_SEMANA;
+
+{
+  usar({
+    shopping_lists: { single: { id: "l1", name: "Lista" } },
+    menu_entries: {
+      list: [
+        { recipe_id: "r-pasado", date: getWeekDays(SEMANA_PASADA)[0], cooked_at: null, skipped_at: null },
+        { recipe_id: "r-cocinado", date: MANANA_O_DESPUES, cooked_at: HOY, skipped_at: null },
+        { recipe_id: "r-descartado", date: MANANA_O_DESPUES, cooked_at: null, skipped_at: HOY },
+      ],
+    },
+  });
+  const r = await computeMissingForMenuAction("m1");
+  check("sin platos por cocinar no propone comprar nada", r.error === NO_QUEDAN, r);
+}
+
+{
+  usar({
+    shopping_lists: { single: { id: "l1", name: "Lista" } },
+    menu_entries: {
+      list: [
+        { recipe_id: "r-pendiente", date: MANANA_O_DESPUES, cooked_at: null, skipped_at: null },
+      ],
+    },
+  });
+  // Pasado el filtro entra en el cálculo, que consulta tablas que este falso no
+  // simula: basta con que NO conteste «no quedan».
+  let error: string | undefined;
+  try {
+    error = (await computeMissingForMenuAction("m1")).error;
+  } catch {
+    error = undefined;
+  }
+  check("con un plato pendiente sí entra en el cálculo", error !== NO_QUEDAN, error);
 }
 
 console.log(
