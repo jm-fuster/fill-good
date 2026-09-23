@@ -89,6 +89,19 @@ const pendingSchema = z.discriminatedUnion("tipo", [
     name: z.string(),
   }),
   z.object({
+    tipo: z.literal("plato"),
+    dia: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    candidatos: z
+      .array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          recipeId: z.string().nullable(),
+        }),
+      )
+      .min(1),
+  }),
+  z.object({
     tipo: z.literal("descontar"),
     recipeName: z.string(),
     lines: z

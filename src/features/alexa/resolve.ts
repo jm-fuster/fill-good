@@ -307,6 +307,13 @@ export function planDeduction({
     const takenInLotUnit = exhausts
       ? lot.quantity
       : roundQuantity(convertQuantity(take, unit, lot.unit) ?? 0);
+    // Lo pedido no llega ni a una centésima en la unidad del lote (4 g de un
+    // lote contado en kg): el paso no restaría nada, pero se escribía y se
+    // anunciaba «he restado 4 gramos». Ese lote no cuenta como tocado.
+    if (!exhausts && takenInLotUnit <= 0) {
+      stockLeft += lotInAskedUnit;
+      continue;
+    }
     steps.push({
       lotId: lot.id,
       newQuantity: exhausts ? 0 : roundQuantity(lot.quantity - takenInLotUnit),
@@ -316,6 +323,9 @@ export function planDeduction({
     pending -= take;
     stockLeft += lotInAskedUnit - take;
   }
+  // Había stock pero nada que se pueda restar de verdad: se pide otra cantidad
+  // en vez de decir «no te queda» (sí queda) o anunciar un descuento de cero.
+  if (steps.length === 0) return { kind: "invalid_quantity" };
 
   return {
     kind: "deduct",

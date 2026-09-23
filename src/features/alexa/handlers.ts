@@ -8,7 +8,12 @@ import {
   mergeIntoExisting,
   nextListPosition,
 } from "@/features/shopping-list/items";
-import { getExpiryStatus, todayLocalISO } from "@/lib/dates";
+import {
+  getExpiryStatus,
+  hourInSpain,
+  shiftDays,
+  todayLocalISO,
+} from "@/lib/dates";
 import { loadHouseholdMatchData } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
 import type {
@@ -1235,6 +1240,11 @@ function askAgain(pendiente: PendingState): AlexaResponse {
         reprompt: SPEECH.cookedAskReprompt,
         state,
       });
+    case "plato":
+      return speak(
+        SPEECH.cookedWhich(pendiente.candidatos.map((c) => c.name)),
+        { endSession: false, reprompt: SPEECH.fallbackReprompt, state },
+      );
     case "elegir":
       return speak(
         SPEECH.ambiguousRetry(
@@ -1267,7 +1277,11 @@ async function handleSi(
   }
   // Un «sí» solo confirma preguntas de sí o no: con un «¿cuál de ellas?» abierto
   // no hay nada que confirmar, así que se vuelve a preguntar.
-  if (pendiente.tipo === "elegir" || pendiente.tipo === "unidad") {
+  if (
+    pendiente.tipo === "elegir" ||
+    pendiente.tipo === "unidad" ||
+    pendiente.tipo === "plato"
+  ) {
     return askAgain(pendiente);
   }
 
@@ -1411,6 +1425,17 @@ async function handleRespuesta(
   const link = linked.link;
 
   const requestId = envelope.request.requestId ?? null;
+  if (pendiente.tipo === "plato") {
+    const elegido = chooseCandidate(intent, pendiente.candidatos);
+    const plato = pendiente.candidatos.find((c) => c.id === elegido?.id);
+    if (!plato) return askAgain(pendiente);
+    return markCooked(
+      admin,
+      link,
+      { entryId: plato.id, name: plato.name, recipeId: plato.recipeId },
+      pendiente.dia,
+    );
+  }
   if (pendiente.tipo === "elegir") {
     const elegido = chooseCandidate(intent, pendiente.candidatos);
     if (!elegido) return askAgain(pendiente);
@@ -1440,6 +1465,20 @@ async function handleRespuesta(
 }
 
 /**
+ * Hasta qué hora la noche sigue siendo del día anterior en la cocina. «Ya
+ * hemos cenado» dicho a la 01:00 habla de la cena de ANOCHE, y con la fecha
+ * del calendario marcaba la del día nuevo (que ni se había hecho) y descontaba
+ * sus ingredientes.
+ */
+const KITCHEN_DAY_ROLLOVER_HOUR = 4;
+
+/** El día del que habla quien dice «hemos cenado»: hoy, o ayer de madrugada. */
+function kitchenDay(): string {
+  const today = todayLocalISO();
+  return hourInSpain() < KITCHEN_DAY_ROLLOVER_HOUR ? shiftDays(today, -1) : today;
+}
+
+/**
  * «Hemos cenado la lasaña»: marca el plato de hoy como cocinado y, si tiene
  * receta, ofrece descontar sus ingredientes.
  *
@@ -1459,8 +1498,9 @@ async function handleCocinado(
   const link = linked.link;
 
   const hueco = asMealSlot(getSlotResolutionId(intent, "comida"));
+  const dia = kitchenDay();
   const [platos] = await Promise.all([
-    readTodayDishes(admin, link.householdId, hueco),
+    readTodayDishes(admin, link.householdId, hueco, dia),
     touchLink(admin, link),
   ]);
   if (platos.length === 0) return speak(SPEECH.cookedNoDish);
@@ -1474,30 +1514,56 @@ async function handleCocinado(
       ? platos[0]
       : null;
   if (!plato) {
-    return speak(
-      dicho
-        ? SPEECH.cookedNoDish
-        : SPEECH.cookedWhich(platos.map((p) => p.name)),
-      { endSession: false, reprompt: SPEECH.fallbackReprompt },
-    );
+    if (dicho) return speak(SPEECH.cookedNoDish);
+    // La pregunta queda PENDIENTE: la respuesta suelta («la lasaña», «la
+    // segunda») la recoge `handleRespuesta`.
+    return askAgain({
+      tipo: "plato",
+      dia,
+      candidatos: platos.map((p) => ({
+        id: p.entryId,
+        name: p.name,
+        recipeId: p.recipeId,
+      })),
+    });
   }
   if (plato.cookedAt) return speak(SPEECH.cookedAlready(plato.name));
+  return markCooked(admin, link, plato, dia);
+}
 
+/**
+ * Marca el plato como cocinado y, si tiene receta, ofrece el descuento. Lo
+ * comparten «hemos cenado la lasaña» y la respuesta a «¿cuál has hecho?».
+ */
+async function markCooked(
+  admin: Admin,
+  link: AlexaLink,
+  plato: { entryId: string; name: string; recipeId: string | null },
+  dia: string,
+): Promise<AlexaResponse> {
   // Marcar cocinado va primero y sin preguntar: es reversible desde la app y no
   // toca existencias. `skipped_at` se limpia porque las dos marcas se excluyen,
   // y con él su motivo: la base no admite un motivo sin descarte, así que sin
   // esta línea decir «ya lo cociné» por voz fallaría —contestando el error
   // genérico— justo en los platos que alguien había descartado con motivo.
-  const { error } = await admin
+  // Condicionada a que siga sin cocinar: entre «¿cuál has hecho?» y la
+  // respuesta pudo marcarlo alguien desde la app, y volver a ofrecer el
+  // descuento restaría los ingredientes dos veces.
+  const { data: marcadas, error } = await admin
     .from("menu_entries")
     .update({
-      cooked_at: todayLocalISO(),
+      cooked_at: dia,
       skipped_at: null,
       skipped_reason: null,
     })
     .eq("household_id", link.householdId)
-    .eq("id", plato.entryId);
+    .eq("id", plato.entryId)
+    .is("cooked_at", null)
+    .select("id");
   if (error) return speak(SPEECH.error);
+  if (!marcadas || marcadas.length === 0) {
+    return speak(SPEECH.cookedAlready(plato.name));
+  }
 
   if (!plato.recipeId) return speak(SPEECH.cookedNoRecipe(plato.name));
 

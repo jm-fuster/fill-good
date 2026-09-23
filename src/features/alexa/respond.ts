@@ -65,6 +65,17 @@ export type PendingState =
   /** Producto a granel del que falta la unidad: «¿medio kilo o dos kilos?». */
   | { tipo: "unidad"; accion: VoiceAction; productId: string; name: string }
   /**
+   * «Hemos cenado» con varios platos ese día: «dime cuál has hecho». Sin esto
+   * el micrófono se abría sin recordar la pregunta, y la respuesta («la
+   * lasaña») llegaba a `RespuestaIntent` sin nada pendiente. `id` es la
+   * entrada del menú y `dia` el de la cocina (ver `kitchenDay`).
+   */
+  | {
+      tipo: "plato";
+      dia: string;
+      candidatos: { id: string; name: string; recipeId: string | null }[];
+    }
+  /**
    * Receta ya marcada como cocinada, esperando un sí para descontar sus
    * ingredientes. Las líneas viajan ya resueltas: el cálculo se hizo con el
    * inventario del turno anterior y no se vuelve a rehacer, así que lo que se

@@ -141,8 +141,16 @@ function validateChain(chain: X509Certificate[], now: number): VerifyResult {
     return { ok: false, reason: "certificado_no_es_de_echo_api" };
   }
 
-  // Cada certificado debe estar firmado por el siguiente de la cadena.
+  // Cada certificado debe estar firmado por el siguiente de la cadena, y ese
+  // siguiente tiene que ser una CA (basicConstraints CA:TRUE). Sin lo segundo
+  // bastaba con que la firma cuadrase: un certificado FINAL de cualquier
+  // dominio, colgado de una raíz de confianza, podía firmar uno a nombre de
+  // echo-api. Defensa en profundidad: además hace falta la clave de Amazon
+  // para firmar la petición.
   for (let i = 0; i < chain.length - 1; i += 1) {
+    if (!chain[i + 1].ca) {
+      return { ok: false, reason: "emisor_no_es_ca" };
+    }
     if (!chain[i].verify(chain[i + 1].publicKey)) {
       return { ok: false, reason: "cadena_inconsistente" };
     }
