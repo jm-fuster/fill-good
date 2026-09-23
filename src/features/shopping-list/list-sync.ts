@@ -78,6 +78,16 @@ export const HEAL_SETTLE_MS = 1_200;
  */
 export const ADD_GRACE_MS = 5_000;
 
+/**
+ * Ventana en la que una instantánea NO puede deshacer el cambio AJENO que acaba
+ * de llegar por Realtime a una fila (lo marcó o cambió la cantidad la otra
+ * persona). Es el mismo desfase que `ADD_GRACE_MS`, en otra cara: una cura
+ * pedida justo antes del cambio de tu pareja llega justo después, con el valor
+ * viejo, y la fila volvía a «pendiente» hasta el siguiente latido (≤ 30 s). Y
+ * mientras tanto, tu siguiente «+» escribía sobre la cantidad vieja.
+ */
+export const CHANGE_GRACE_MS = 5_000;
+
 /** Cantidad de Postgres (`numeric` llega como cadena) a número o null. */
 function quantityOf(value: number | string | null): number | null {
   return value === null ? null : Number(value);
@@ -138,6 +148,8 @@ export type SyncGuards = {
   tombstones: Set<string>;
   /** Id → cuándo apareció aquí (ms). Ver `ADD_GRACE_MS`. */
   recentAdds: Map<string, number>;
+  /** Id → cuándo llegó aquí un cambio ajeno de la fila (ms). Ver `CHANGE_GRACE_MS`. */
+  recentChanges: Map<string, number>;
   /** ¿Hay escritura propia en vuelo sobre esta fila? */
   isBusy: (id: string) => boolean;
 };
@@ -148,6 +160,8 @@ export type SyncGuards = {
  *  · lo quitado aquí no vuelve (`tombstones`);
  *  · en las filas con escritura propia en vuelo se conserva lo local (marcado,
  *    cantidad y posición): el servidor va por detrás en esos campos;
+ *  · lo mismo en las que acaban de recibir un cambio AJENO (`CHANGE_GRACE_MS`):
+ *    la instantánea pudo leerse antes de ese cambio;
  *  · una fila que la instantánea no trae solo se conserva si acaba de aparecer
  *    (`ADD_GRACE_MS`) o tiene escritura en vuelo; si no, es que se borró.
  */
@@ -160,12 +174,16 @@ export function mergeSnapshot<T extends SyncedItem>(
   const now = Date.now();
   const localById = new Map(local.map((item) => [item.id, item]));
   const merged: T[] = [];
+  const changedRecently = (id: string) => {
+    const at = guards.recentChanges.get(id);
+    return at !== undefined && now - at < CHANGE_GRACE_MS;
+  };
 
   for (const row of snapshot) {
     if (guards.tombstones.has(row.id)) continue;
     const mine = localById.get(row.id);
     merged.push(
-      mine && guards.isBusy(row.id)
+      mine && (guards.isBusy(row.id) || changedRecently(row.id))
         ? {
             ...row,
             isChecked: mine.isChecked,
@@ -188,6 +206,9 @@ export function mergeSnapshot<T extends SyncedItem>(
   // crecería con cada alta de la sesión.
   for (const [id, at] of guards.recentAdds) {
     if (now - at >= ADD_GRACE_MS) guards.recentAdds.delete(id);
+  }
+  for (const [id, at] of guards.recentChanges) {
+    if (now - at >= CHANGE_GRACE_MS) guards.recentChanges.delete(id);
   }
 
   return sortSyncedItems(merged, options);

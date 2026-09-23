@@ -16,6 +16,7 @@
  */
 import {
   ADD_GRACE_MS,
+  CHANGE_GRACE_MS,
   createHealScheduler,
   mergeDeltaInto,
   mergeSnapshot,
@@ -72,6 +73,7 @@ function guards(over: Partial<SyncGuards> = {}): SyncGuards {
   return {
     tombstones: new Set<string>(),
     recentAdds: new Map<string, number>(),
+    recentChanges: new Map<string, number>(),
     isBusy: () => false,
     ...over,
   };
@@ -179,6 +181,42 @@ seccion("Escritura propia en vuelo");
     libre[0].isChecked === false && libre[0].quantity === 2,
     libre[0],
   );
+}
+
+// ── Cambio ajeno durante una lectura ───────────────────────────────────────
+/*
+  El que faltaba (auditoría del 23-sep-2026). En el móvil A salta el latido y
+  sale una cura; 100 ms después B marca «Leche» y el cambio llega a A por
+  Realtime, que la pinta marcada; 200 ms más tarde llega la respuesta de la cura,
+  leída ANTES del cambio de B, con «Leche» sin marcar. Sin salvaguarda, A volvía
+  a verla pendiente hasta el siguiente latido, y con la cantidad era peor: el
+  siguiente «+» de A escribía sobre el número viejo, pisando el de B. Con ~40
+  latidos por móvil en una compra de veinte minutos, pasaba más de una vez.
+*/
+seccion("Cambio ajeno durante una lectura");
+{
+  // A ya aplicó el cambio de B (marcada, 2 ud); la cura trae lo de antes.
+  const local = [item("a", { isChecked: true, quantity: 2 })];
+  const curaVieja = [item("a", { isChecked: false, quantity: 3 })];
+
+  const reciente = guards({ recentChanges: new Map([["a", Date.now()]]) });
+  const r = mergeSnapshot(local, curaVieja, reciente);
+  check(
+    "una cura leída antes del cambio de la pareja no lo deshace",
+    r[0].isChecked === true && r[0].quantity === 2,
+    r[0],
+  );
+
+  const vieja = guards({
+    recentChanges: new Map([["a", Date.now() - CHANGE_GRACE_MS - 1_000]]),
+  });
+  const r2 = mergeSnapshot(local, curaVieja, vieja);
+  check(
+    "pasada la ventana, manda el servidor (no se congela lo local)",
+    r2[0].isChecked === false && r2[0].quantity === 3,
+    r2[0],
+  );
+  check("y la memoria de cambios recientes se poda", vieja.recentChanges.size === 0);
 }
 
 // ── Cambios sueltos de Realtime ────────────────────────────────────────────
