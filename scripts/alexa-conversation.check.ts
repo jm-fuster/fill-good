@@ -49,7 +49,8 @@ const APP = "amzn1.ask.skill.test";
  * escribiendo un motor de SQL. Lo que se prueba son las decisiones de la
  * conversación.
  */
-type TableData = { single?: unknown; list?: unknown[] };
+/** `error`: lo que devuelve la lectura de una fila (un fallo transitorio). */
+type TableData = { single?: unknown; list?: unknown[]; error?: unknown };
 type Escritura = { tabla: string; op: string; datos: Record<string, unknown> };
 
 /** Las escrituras que ha intentado el código, para poder mirarlas después. */
@@ -102,8 +103,8 @@ function fakeAdmin(tables: Record<string, TableData>): SupabaseClient<Database> 
           if (prop === "maybeSingle" || prop === "single") {
             return () =>
               Promise.resolve({
-                data: tables[table]?.single ?? null,
-                error: null,
+                data: tables[table]?.error ? null : (tables[table]?.single ?? null),
+                error: tables[table]?.error ?? null,
               });
           }
           // `.is(col, null)` filtra igual que `.eq` con null, y es como se pide
@@ -1096,6 +1097,28 @@ async function main() {
     );
   }
 
+  {
+    // Lo marcado ya está en el carro: borrarlo por voz perdía la compra.
+    const enCarro = fakeAdmin({
+      alexa_links: LINK, household_members: MIEMBRO,
+      shopping_lists: LISTA,
+      shopping_list_items: {
+        list: [{ id: "c1", name: "Pan", is_checked: true, product: null }],
+      },
+    });
+    const r = await run(
+      intentRequest("BorrarDeListaIntent", { producto: slot("producto", "pan") }),
+      undefined,
+      enCarro,
+    );
+    check(
+      "lo que ya está en el carro no se borra por voz",
+      text(r) === SPEECH.listDeleteChecked("Pan") &&
+        escriturasEn(enCarro, "shopping_list_items").length === 0,
+      text(r),
+    );
+  }
+
   console.log("\n13. Deshacer la última orden");
   {
     limpiarEscrituras(YOGURES);
@@ -1480,6 +1503,98 @@ async function main() {
     );
   }
 
+  {
+    // Deshacer suma la DIFERENCIA sobre lo que hay ahora: entre la orden
+    // (6 → 4) y el «deshaz» entró una compra y el lote está en 10.
+    const conCompra = fakeAdmin({
+      alexa_links: LINK, household_members: MIEMBRO,
+      alexa_requests: {
+        single: {
+          request_id: "r-resta",
+          undo: {
+            name: "Yogur natural",
+            lots: [{ id: "i1", quantity: 6, after: 4 }],
+            events: [],
+          },
+          undone_at: null,
+        },
+      },
+      inventory_items: {
+        single: { quantity: 10 },
+        list: [{ id: "i1", quantity: 10 }],
+      },
+    });
+    const r = await run(intentRequest("DeshacerIntent"), undefined, conCompra);
+    const lotes = escriturasEn(conCompra, "inventory_items");
+    check(
+      "deshacer devuelve lo suyo sin pisar lo que entró después (10 → 12)",
+      text(r) === SPEECH.undone("Yogur natural") &&
+        lotes.length === 1 &&
+        lotes[0].op === "update" &&
+        lotes[0].datos.quantity === 12,
+      lotes,
+    );
+  }
+  {
+    // La orden creó la fila con 2 y luego entraron 3 más: no se borra.
+    const creadaYRepuesta = fakeAdmin({
+      alexa_links: LINK, household_members: MIEMBRO,
+      alexa_requests: {
+        single: {
+          request_id: "r-alta2",
+          undo: {
+            name: "Arroz",
+            lots: [{ id: "nuevo", quantity: null, after: 2 }],
+            events: [],
+          },
+          undone_at: null,
+        },
+      },
+      inventory_items: {
+        single: { quantity: 5 },
+        list: [{ id: "nuevo", quantity: 5 }],
+      },
+    });
+    await run(intentRequest("DeshacerIntent"), undefined, creadaYRepuesta);
+    const lotes = escriturasEn(creadaYRepuesta, "inventory_items");
+    check(
+      "una fila creada por la orden y repuesta después se queda, sin lo suyo",
+      lotes.length === 1 && lotes[0].op === "update" && lotes[0].datos.quantity === 3,
+      lotes,
+    );
+  }
+  {
+    // La última orden fue «apunta pan» (sin plan): «deshaz» no puede ir a
+    // buscar la anterior que sí lo tenía.
+    const ultimaSinPlan = fakeAdmin({
+      alexa_links: LINK, household_members: MIEMBRO,
+      alexa_requests: {
+        single: { request_id: "r-apunta", undo: null, undone_at: null },
+      },
+    });
+    const r = await run(intentRequest("DeshacerIntent"), undefined, ultimaSinPlan);
+    check(
+      "si la última orden no se puede deshacer, no se deshace la anterior",
+      text(r) === SPEECH.nothingToUndo &&
+        escriturasEn(ultimaSinPlan, "inventory_items").length === 0,
+      text(r),
+    );
+  }
+  {
+    limpiarEscrituras(CON_AVISOS);
+    await run(
+      intentRequest("ApuntarListaIntent", { producto: slot("producto", "pan") }),
+      undefined,
+      CON_AVISOS,
+    );
+    check(
+      "toda orden que modifica queda firmada con su altavoz",
+      escriturasEn(CON_AVISOS, "alexa_requests").some(
+        (e) => e.op === "update" && e.datos.link_id === "l1",
+      ),
+    );
+  }
+
   console.log("\n15. Un ex-miembro se queda sin voz");
   {
     // Vínculo vivo pero sin membresía: quien vinculó el Echo salió del hogar
@@ -1504,6 +1619,31 @@ async function main() {
     check(
       "y el vínculo huérfano se borra",
       escriturasEn(EX_MIEMBRO, "alexa_links").some((e) => e.op === "delete"),
+    );
+  }
+
+  {
+    // Un fallo al leer la membresía no es una expulsión.
+    const cortado = fakeAdmin({
+      alexa_links: LINK,
+      household_members: { error: { message: "timeout" } },
+      shopping_lists: LISTA,
+    });
+    const r = await run(
+      {
+        type: "LaunchRequest",
+        requestId: "r-corte-1",
+        timestamp: "2026-07-29T10:00:00Z",
+        locale: "es-ES",
+      },
+      undefined,
+      cortado,
+    );
+    check(
+      "un error transitorio se disculpa y NO desvincula el Echo",
+      text(r) === SPEECH.error &&
+        !escriturasEn(cortado, "alexa_links").some((e) => e.op === "delete"),
+      text(r),
     );
   }
 

@@ -364,6 +364,8 @@ export const SPEECH = {
   // Borrar NO es tachar: lo tachado acaba en el inventario al finalizar la
   // compra, y esto es justo lo que ya no quieres.
   listDeleted: (name: string) => `Hecho, he borrado ${name} de la lista.`,
+  listDeleteChecked: (name: string) =>
+    `${name} ya está en el carro. Si no lo vas a comprar, desmárcalo en la app y bórralo desde allí.`,
 
   // Cocinado. Marcar el plato y descontar sus ingredientes son dos cosas: la
   // primera es inofensiva y se hace ya, la segunda toca varios productos de
