@@ -209,8 +209,10 @@ los planes ya ejecutados, como registro de cómo se decidió cada cosa.
 ## Licencia
 
 El código es público para que se pueda leer, pero no tiene licencia de uso:
-todos los derechos reservados.
+todos los derechos reservados ([LICENSE](LICENSE)).
 
 Los iconos de producto son de
 [Fluent Emoji](https://github.com/microsoft/fluentui-emoji), de Microsoft, con
-licencia MIT, salvo 14 dibujados para la app en `assets/product-icons/`.
+licencia MIT, salvo 14 dibujados para la app en `assets/product-icons/`. Sus
+avisos de licencia, y los de los componentes de shadcn/ui, están en
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

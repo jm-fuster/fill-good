@@ -1,0 +1,18 @@
+Copyright (c) 2026 Jorge Molina Fuster. Todos los derechos reservados.
+
+El código de este repositorio se publica para que se pueda leer. No se concede
+ninguna licencia para usarlo, copiarlo, modificarlo ni distribuirlo, ni entero
+ni en parte.
+
+Quedan fuera los componentes de terceros que se incluyen con su propia licencia
+(Fluent Emoji y shadcn/ui, las dos MIT): ver THIRD-PARTY-NOTICES.md.
+
+---
+
+Copyright (c) 2026 Jorge Molina Fuster. All rights reserved.
+
+The code in this repository is published to be read. No license is granted to
+use, copy, modify or distribute it, in whole or in part.
+
+Third-party components included under their own licenses (Fluent Emoji and
+shadcn/ui, both MIT) are excluded: see THIRD-PARTY-NOTICES.md.
