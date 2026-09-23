@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { checkoutAction } from "../actions";
+import { safeAction } from "@/lib/action-error";
 
 /**
  * Lógica de "Finalizar compra" compartida por la CheckoutBar de `/lista` y el
@@ -22,7 +23,10 @@ export function useCheckout(exitTo?: string) {
 
   function checkout() {
     startTransition(async () => {
-      const r = await checkoutAction();
+      const r = await safeAction(
+        checkoutAction(),
+        "No se pudo finalizar la compra.",
+      );
       if (r?.error) {
         toast.error(r.error);
         return;

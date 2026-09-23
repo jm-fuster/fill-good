@@ -29,7 +29,7 @@ import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { useNavListBadge } from "@/components/layout/nav-list-count";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
-import { actionErrorMessage } from "@/lib/action-error";
+import { actionErrorMessage, safeAction } from "@/lib/action-error";
 import { cn } from "@/lib/utils";
 import {
   usePersistedChoice,
@@ -432,7 +432,10 @@ export function ShoppingMode({
   // Realtime (sin optimismo local aquí, aceptable en v1) y la cura le pone
   // pasillo y precio, que es lo que el evento no trae.
   async function addItem(input: AddInput): Promise<boolean> {
-    const result = await runAddAction(input);
+    const result = await safeAction(
+      runAddAction(input),
+      "No se pudo añadir a la lista.",
+    );
     if (result.error) {
       toast.error(result.error);
       return false;

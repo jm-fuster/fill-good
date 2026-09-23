@@ -44,7 +44,7 @@ import {
   ProductCombobox,
   type ComboboxProduct,
 } from "@/components/product-combobox";
-import { actionErrorMessage } from "@/lib/action-error";
+import { actionErrorMessage, safeAction } from "@/lib/action-error";
 import { cn } from "@/lib/utils";
 import { chainLabel, chainOptions, orderChains } from "@/features/prices/chains";
 import { relativeDaysLabel } from "@/lib/dates";
@@ -130,7 +130,10 @@ export function EditItemDrawer({
   function togglePin(next: boolean) {
     setIsPinned(next);
     startPin(async () => {
-      const res = await togglePinAction(entry.productId);
+      const res = await safeAction(
+        togglePinAction(entry.productId),
+        "No se pudo cambiar «Mis habituales».",
+      );
       if (res.error) {
         toast.error(res.error);
         setIsPinned(!next);
@@ -214,7 +217,10 @@ export function EditItemDrawer({
     const prev = aliases;
     setAliases((a) => a.filter((x) => x.id !== id));
     startRemove(async () => {
-      const res = await deleteAliasAction(id);
+      const res = await safeAction(
+        deleteAliasAction(id),
+        "No se pudo quitar ese nombre.",
+      );
       if (res.error) {
         toast.error(res.error);
         setAliases(prev);
@@ -243,7 +249,10 @@ export function EditItemDrawer({
   function confirmMerge() {
     if (!mergeTarget) return;
     startMerge(async () => {
-      const res = await mergeProductsAction(entry.productId, mergeTarget);
+      const res = await safeAction(
+        mergeProductsAction(entry.productId, mergeTarget),
+        "No se pudieron juntar los productos.",
+      );
       if (res.error) {
         toast.error(res.error);
         return;
@@ -291,7 +300,10 @@ export function EditItemDrawer({
 
   function joinLocations() {
     startJoin(async () => {
-      const res = await mergeInventoryRowsAction(entry.id);
+      const res = await safeAction(
+        mergeInventoryRowsAction(entry.id),
+        "No se pudieron juntar las filas.",
+      );
       if (res.error) {
         toast.error(res.error);
         return;
@@ -448,7 +460,10 @@ export function EditItemDrawer({
 
   async function handleDelete() {
     setDeleting(true);
-    const result = await deleteInventoryAction(entry.id);
+    const result = await safeAction(
+      deleteInventoryAction(entry.id),
+      "No se pudo eliminar el producto.",
+    );
     setDeleting(false);
     if (result?.error) {
       toast.error(result.error);

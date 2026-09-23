@@ -144,7 +144,10 @@ async function runToggleCooked({
   onResolved: (cookedAt: string | null) => void;
   onProposeDeductions: (recipeName: string, items: CookedDeduction[]) => void;
 }): Promise<void> {
-  const r = await toggleEntryCookedAction(entryId, cooked);
+  const r = await safeAction(
+    toggleEntryCookedAction(entryId, cooked),
+    "No se pudo marcar el plato.",
+  );
   if (r.error) {
     toast.error(r.error);
     return;
@@ -156,7 +159,17 @@ async function runToggleCooked({
     return;
   }
   toast.success("Marcado como cocinado");
-  const d = await computeCookedDeductionsAction(recipeId);
+  const d = await safeAction(
+    computeCookedDeductionsAction(recipeId),
+    "No se pudo calcular el descuento.",
+  );
+  // El plato ya está marcado: si lo que falla es la propuesta, se dice y se da
+  // por resuelto, en vez de callarse como si no hubiera nada que descontar.
+  if (d.error) {
+    toast.error(d.error);
+    onResolved(date);
+    return;
+  }
   const items = d.deductions ?? [];
   if (items.some((it) => it.deductible)) {
     onProposeDeductions(recipeName, items);
@@ -423,7 +436,10 @@ export function MenuView({
 
   function copyPrevious() {
     startCopy(async () => {
-      const r = await copyPreviousWeekAction(weekStart);
+      const r = await safeAction(
+        copyPreviousWeekAction(weekStart),
+        "No se pudo copiar la semana.",
+      );
       if (r.error) toast.error(r.error);
       else {
         toast.success("Semana copiada de la anterior");
@@ -513,7 +529,10 @@ export function MenuView({
   function reviewMissing(id: string | null = menuId) {
     if (!id) return;
     startAddList(async () => {
-      const r = await computeMissingForMenuAction(id);
+      const r = await safeAction(
+        computeMissingForMenuAction(id),
+        "No se pudo calcular lo que falta.",
+      );
       if (r.error) {
         toast.error(r.error);
         return;
@@ -599,7 +618,10 @@ export function MenuView({
     vibrateTick();
     setSkippingId(entry.id);
     startSkip(async () => {
-      const r = await toggleEntrySkippedAction(entry.id, true);
+      const r = await safeAction(
+        toggleEntrySkippedAction(entry.id, true),
+        "No se pudo guardar.",
+      );
       setSkippingId(null);
       if (r.error) {
         toast.error(r.error);
@@ -614,7 +636,10 @@ export function MenuView({
   function pickSkipReason(entryId: string, reason: SkipReason | null) {
     setSkippingId(entryId);
     startSkip(async () => {
-      const r = await setEntrySkippedReasonAction(entryId, reason);
+      const r = await safeAction(
+        setEntrySkippedReasonAction(entryId, reason),
+        "No se pudo guardar el motivo.",
+      );
       setSkippingId(null);
       if (r.error) {
         toast.error(r.error);
@@ -1489,12 +1514,13 @@ function EditEntryDrawer({
     }
     startTransition(async () => {
       const r = editing.entryId
-        ? await updateMenuEntryAction(editing.entryId, trimmed)
-        : await addMenuEntryAction(
-            weekStart,
-            editing.date,
-            editing.slot,
-            trimmed,
+        ? await safeAction(
+            updateMenuEntryAction(editing.entryId, trimmed),
+            "No se pudo guardar el plato.",
+          )
+        : await safeAction(
+            addMenuEntryAction(weekStart, editing.date, editing.slot, trimmed),
+            "No se pudo guardar el plato.",
           );
       if (r.error) toast.error(r.error);
       else onSaved();
@@ -1532,7 +1558,10 @@ function EditEntryDrawer({
     const { date, slot } = editing;
     setAddingRecipeId(recipeId);
     startAddRecipe(async () => {
-      const r = await addRecipeToSlotAction(weekStart, date, slot, recipeId);
+      const r = await safeAction(
+        addRecipeToSlotAction(weekStart, date, slot, recipeId),
+        "No se pudo añadir la receta.",
+      );
       if (r.error) toast.error(r.error);
       else {
         toast.success("Receta añadida al menú");
@@ -1566,7 +1595,10 @@ function EditEntryDrawer({
   function remove() {
     if (!editing?.entryId) return;
     startTransition(async () => {
-      const r = await removeMenuEntryAction(editing.entryId!);
+      const r = await safeAction(
+        removeMenuEntryAction(editing.entryId!),
+        "No se pudo quitar el plato.",
+      );
       if (r.error) toast.error(r.error);
       else onSaved();
     });
@@ -1575,7 +1607,10 @@ function EditEntryDrawer({
   function saveToRecipes() {
     if (!editing?.recipeId) return;
     startSaveRecipe(async () => {
-      const r = await saveGeneratedRecipeAction(editing.recipeId!);
+      const r = await safeAction(
+        saveGeneratedRecipeAction(editing.recipeId!),
+        "No se pudo guardar la receta.",
+      );
       if (r.error) toast.error(r.error);
       else {
         toast.success("Guardada en tu recetario");
@@ -1622,7 +1657,10 @@ function EditEntryDrawer({
     const date = editing.date;
     const next = !skipped;
     startSkipping(async () => {
-      const r = await toggleEntrySkippedAction(entryId, next);
+      const r = await safeAction(
+        toggleEntrySkippedAction(entryId, next),
+        "No se pudo guardar.",
+      );
       if (r.error) {
         toast.error(r.error);
         return;
@@ -1642,7 +1680,10 @@ function EditEntryDrawer({
     if (!editing?.entryId) return;
     const entryId = editing.entryId;
     startReason(async () => {
-      const r = await setEntrySkippedReasonAction(entryId, reason);
+      const r = await safeAction(
+        setEntrySkippedReasonAction(entryId, reason),
+        "No se pudo guardar el motivo.",
+      );
       if (r.error) {
         toast.error(r.error);
         return;
@@ -1658,8 +1699,14 @@ function EditEntryDrawer({
     startPicking(async () => {
       const r =
         mode === "move"
-          ? await moveMenuEntryAction(entryId, date, slot)
-          : await duplicateMenuEntryAction(entryId, date, slot);
+          ? await safeAction(
+              moveMenuEntryAction(entryId, date, slot),
+              "No se pudo mover el plato.",
+            )
+          : await safeAction(
+              duplicateMenuEntryAction(entryId, date, slot),
+              "No se pudo duplicar el plato.",
+            );
       if (r.error) toast.error(r.error);
       else {
         toast.success(mode === "move" ? "Plato movido" : "Plato duplicado");
@@ -1673,7 +1720,10 @@ function EditEntryDrawer({
     const entryId = editing.entryId;
     const next = !pinned;
     startPinning(async () => {
-      const r = await toggleEntryPinnedAction(entryId, next);
+      const r = await safeAction(
+        toggleEntryPinnedAction(entryId, next),
+        "No se pudo fijar el plato.",
+      );
       if (r.error) toast.error(r.error);
       else {
         toast.success(next ? "Plato fijado" : "Plato desfijado");
@@ -1713,7 +1763,10 @@ function EditEntryDrawer({
     setDetail(null);
     setMode("recipe");
     startLoadDetail(async () => {
-      const r = await getRecipeCookingAction(recipeId);
+      const r = await safeAction(
+        getRecipeCookingAction(recipeId),
+        "No se pudo cargar la receta.",
+      );
       // Una respuesta que llega tarde se tira. Sin esto: abres un plato, la
       // consulta se atasca, cierras, abres otro y pides su receta —y encima de
       // ella cae la del primero, con el título del segundo. Y lo peor no es lo
@@ -1763,7 +1816,10 @@ function EditEntryDrawer({
         ese momento contesta «esta receta ya tiene sus pasos» — un callejón que se
         contradice en dos toques.
       */
-      const fresh = await getRecipeCookingAction(recipeId);
+      const fresh = await safeAction(
+        getRecipeCookingAction(recipeId),
+        "No se pudo cargar la receta.",
+      );
       if (peticion === detailRequest.current && fresh.recipe) {
         setDetail(fresh.recipe);
       }
@@ -2295,7 +2351,10 @@ function MissingReviewDrawer({
   function confirm() {
     if (!review) return;
     startTransition(async () => {
-      const r = await confirmMissingToListAction(review.menuId, [...included]);
+      const r = await safeAction(
+        confirmMissingToListAction(review.menuId, [...included]),
+        "No se pudo apuntar en la lista.",
+      );
       if (r.error) {
         toast.error(r.error);
         return;
@@ -2667,7 +2726,10 @@ function TonightDrawer({
   function add(recipeId: string) {
     setAddingId(recipeId);
     startAdd(async () => {
-      const r = await addRecipeToMenuAction(recipeId);
+      const r = await safeAction(
+        addRecipeToMenuAction(recipeId),
+        "No se pudo añadir al menú.",
+      );
       if (r.error) toast.error(r.error);
       else {
         toast.success("Añadida al menú de hoy");

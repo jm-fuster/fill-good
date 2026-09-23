@@ -35,7 +35,7 @@ import {
   UNIT_OPTIONS,
   unitFamily,
 } from "@/lib/units";
-import { actionErrorMessage } from "@/lib/action-error";
+import { actionErrorMessage, safeAction } from "@/lib/action-error";
 import { normalizeName } from "@/lib/normalize";
 import { cn } from "@/lib/utils";
 import type { UnitType } from "@/lib/supabase/types";
@@ -505,7 +505,10 @@ export function RecipeForm({
   async function handleDelete() {
     if (!recipe) return;
     setDeleting(true);
-    const result = await deleteRecipeAction(recipe.id);
+    const result = await safeAction(
+      deleteRecipeAction(recipe.id),
+      "No se pudo eliminar la receta.",
+    );
     setDeleting(false);
     if (result.error) {
       toast.error(result.error);
