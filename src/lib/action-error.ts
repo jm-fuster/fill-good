@@ -1,3 +1,6 @@
+import { unstable_isUnrecognizedActionError } from "next/navigation";
+import { toast } from "sonner";
+
 /**
  * El mensaje para un fallo INESPERADO de una Server Action: el `catch`, no el
  * `{ error }` que devuelve la propia acción.
@@ -79,9 +82,45 @@ function isNextControlFlow(err: unknown): boolean {
   );
 }
 
+/** Id fijo del aviso de versión nueva: varias acciones fallidas, un solo aviso. */
+const NEW_VERSION_TOAST = "version-nueva";
+
+/**
+ * Esta pestaña es de un despliegue anterior y el servidor ya no reconoce sus
+ * acciones: se ofrece recargar, y se ofrece, no se hace.
+ *
+ * Los ids de las Server Actions cambian en cada build, y una PWA abierta desde
+ * por la mañana sigue con el JavaScript viejo después de un push a `main` (el
+ * service worker nuevo se activa sin recargar: `skipWaiting` + `clientsClaim`).
+ * Desde ese momento TODAS las acciones de la pantalla fallan igual, y la app
+ * decía «No hubo respuesta del servidor. Vuelve a intentarlo», que era falso y
+ * no servía: reintentar da el mismo fallo. En el modo compra, cada marca se
+ * revertía con ese aviso hasta que alguien mataba la app.
+ *
+ * No se recarga sola a propósito: la pantalla que falla puede tener trabajo a
+ * medias —pulsar «Confirmar» en una revisión de ticket de treinta líneas justo
+ * después de un despliegue—. Recargar es la única salida, pero es quien la usa
+ * quien decide cuándo, y el aviso dice por qué. Con un id fijo, diez acciones
+ * fallidas dejan un solo aviso, y si se cierra vuelve con el siguiente fallo.
+ */
+function offerReloadForNewVersion(): void {
+  toast("Hay una versión nueva de Fill Good", {
+    id: NEW_VERSION_TOAST,
+    description:
+      "Esta pantalla es de la anterior y ya no puede guardar cambios. Recarga para seguir.",
+    duration: Infinity,
+    action: { label: "Recargar", onClick: () => window.location.reload() },
+  });
+}
+
 export function actionErrorMessage(what: string, err?: unknown): string {
   if (typeof navigator !== "undefined" && navigator.onLine === false) {
     return `${what} Parece que te has quedado sin conexión.`;
+  }
+
+  if (unstable_isUnrecognizedActionError(err)) {
+    offerReloadForNewVersion();
+    return `${what} Hay una versión nueva de la app: recarga la página.`;
   }
 
   // `digest` no está en el tipo `Error`: lo añade Next al error que llega al
