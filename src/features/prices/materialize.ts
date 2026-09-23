@@ -4,6 +4,7 @@ import { format, subDays } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@/lib/supabase/types";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { baseUnitFactor, unitFamily } from "@/lib/units";
 import { computeInferredChains } from "./infer-chain";
 import { computeChainSavings, type ChainSavingsTip } from "./chain-savings";
@@ -38,21 +39,34 @@ export async function refreshPriceInsights(
   if (ids.length === 0) return;
 
   try {
-    const [{ data: rows }, { data: products }] = await Promise.all([
-      supabase
-        .from("receipt_items")
-        .select("product_id, total_price, quantity, unit, store_chain")
-        .eq("household_id", householdId)
-        .in("product_id", ids)
-        .not("product_id", "is", null)
-        .not("total_price", "is", null)
-        .not("store_chain", "is", null),
-      supabase
-        .from("products")
-        .select("id, preferred_chain")
-        .eq("household_id", householdId)
-        .in("id", ids),
-    ]);
+    // Todas las compras de esos productos, de mil en mil (`fetchAllRows`): un
+    // ticket de treinta productos habituales pasa de mil líneas de historial en
+    // menos de un año, y cortado ahí el consejo de cadena salía de las compras
+    // más viejas.
+    const [{ data: rows, error: rowsErr }, { data: products, error: prodErr }] =
+      await Promise.all([
+        fetchAllRows((from, to) =>
+          supabase
+            .from("receipt_items")
+            .select("product_id, total_price, quantity, unit, store_chain")
+            .eq("household_id", householdId)
+            .in("product_id", ids)
+            .not("product_id", "is", null)
+            .not("total_price", "is", null)
+            .not("store_chain", "is", null)
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+        supabase
+          .from("products")
+          .select("id, preferred_chain")
+          .eq("household_id", householdId)
+          .in("id", ids),
+      ]);
+    // Sin esto, una lectura fallida se leía como «no hay historial» y la
+    // escritura de abajo —que pone TODOS los ids pedidos, con null si no hay
+    // señal— borraba la cadena inferida y el consejo de ahorro que había.
+    if (rowsErr || prodErr) throw rowsErr ?? prodErr;
 
     // Cadena manual por producto e inferida del histórico de esos productos.
     const manual = new Map(

@@ -5,6 +5,7 @@ import { addMonths, format, formatISO, parseISO, subHours } from "date-fns";
 
 import { startOfDayInSpain, todayLocalISO } from "@/lib/dates";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import {
   getActiveHouseholdId,
   getCurrentHousehold,
@@ -611,13 +612,20 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
       .eq("household_id", householdId)
       .eq("list_id", listId)
       .not("product_id", "is", null),
-    supabase
-      .from("receipt_items")
-      .select("product_id, purchased_at")
-      .eq("household_id", householdId)
-      .not("product_id", "is", null)
-      .not("purchased_at", "is", null)
-      .order("purchased_at", { ascending: true }),
+    // Todo el historial, de mil en mil: de aquí salen la cadencia y el «hace
+    // N días» de cada producto, y cortado en mil —con el orden ascendente— lo
+    // que se perdía era lo más reciente: se proponía reponer lo comprado ayer.
+    fetchAllRows((from, to) =>
+      supabase
+        .from("receipt_items")
+        .select("product_id, purchased_at")
+        .eq("household_id", householdId)
+        .not("product_id", "is", null)
+        .not("purchased_at", "is", null)
+        .order("purchased_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    ),
   ]);
   const fallo = prodErr ?? invErr ?? itemsErr ?? histErr;
   if (fallo) {

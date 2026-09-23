@@ -3,6 +3,7 @@ import "server-only";
 import { cache } from "react";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { getActiveHouseholdId } from "@/features/household/queries";
 import type { UnitType } from "@/lib/supabase/types";
 import type { UnitContent } from "@/lib/units";
@@ -96,18 +97,23 @@ export async function getPriceOverview(): Promise<PriceOverviewRow[]> {
   const householdId = await getActiveHouseholdId();
   if (!householdId) return [];
   const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("receipt_items")
-    .select(
-      // receipt_items tiene DOS FKs a products (product_id y suggested_product_id,
-      // esta última de E7): hay que nombrar la relación o PostgREST da PGRST201.
-      "product_id, total_price, quantity, unit, purchased_at, store_chain, product:products!receipt_items_product_id_fkey(name, pack_size, content_size, content_unit, content_is_estimate)",
-    )
-    .eq("household_id", householdId)
-    .not("product_id", "is", null)
-    .not("total_price", "is", null)
-    .not("purchased_at", "is", null)
-    .order("purchased_at", { ascending: true });
+  const { data, error } = await fetchAllRows((from, to) =>
+    supabase
+      .from("receipt_items")
+      .select(
+        // receipt_items tiene DOS FKs a products (product_id y suggested_product_id,
+        // esta última de E7): hay que nombrar la relación o PostgREST da PGRST201.
+        "product_id, total_price, quantity, unit, purchased_at, store_chain, product:products!receipt_items_product_id_fkey(name, pack_size, content_size, content_unit, content_is_estimate)",
+      )
+      .eq("household_id", householdId)
+      .not("product_id", "is", null)
+      .not("total_price", "is", null)
+      .not("purchased_at", "is", null)
+      .order("purchased_at", { ascending: true })
+      // Desempate por una columna única: orden total para paginar.
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
   if (error) throw error;
 
   const rows = (data ?? []) as unknown as Row[];
@@ -157,19 +163,24 @@ export const getLatestUnitPrices = cache(async (): Promise<
   const householdId = await getActiveHouseholdId();
   if (!householdId) return new Map();
   const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("receipt_items")
-    // El contenido del envase viaja con el precio: sin él, costear "300 ml de
-    // caldo" contra un precio por brick sería imposible. Hay DOS FKs a products,
-    // así que la relación va nombrada (PGRST201).
-    .select(
-      "product_id, total_price, quantity, unit, purchased_at, product:products!receipt_items_product_id_fkey(pack_size, content_size, content_unit, content_is_estimate)",
-    )
-    .eq("household_id", householdId)
-    .not("product_id", "is", null)
-    .not("total_price", "is", null)
-    .not("purchased_at", "is", null)
-    .order("purchased_at", { ascending: true });
+  const { data, error } = await fetchAllRows((from, to) =>
+    supabase
+      .from("receipt_items")
+      // El contenido del envase viaja con el precio: sin él, costear "300 ml de
+      // caldo" contra un precio por brick sería imposible. Hay DOS FKs a products,
+      // así que la relación va nombrada (PGRST201).
+      .select(
+        "product_id, total_price, quantity, unit, purchased_at, product:products!receipt_items_product_id_fkey(pack_size, content_size, content_unit, content_is_estimate)",
+      )
+      .eq("household_id", householdId)
+      .not("product_id", "is", null)
+      .not("total_price", "is", null)
+      .not("purchased_at", "is", null)
+      .order("purchased_at", { ascending: true })
+      // Desempate por una columna única: orden total para paginar.
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
   if (error) throw error;
 
   const rows = (data ?? []) as unknown as LatestPriceRow[];
