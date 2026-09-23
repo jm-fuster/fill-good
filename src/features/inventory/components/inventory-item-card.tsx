@@ -176,7 +176,10 @@ export function InventoryItemCard({
               label: "Deshacer",
               onClick: () => {
                 setListOverride(true);
-                restoreListItemAction(snapshot).then((res) => {
+                safeAction(
+                  restoreListItemAction(snapshot),
+                  "No se pudo deshacer.",
+                ).then((res) => {
                   if (res?.error) {
                     toast.error(res.error);
                     setListOverride(false);

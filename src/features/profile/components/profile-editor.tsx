@@ -19,6 +19,7 @@ import {
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
 import { compressImage } from "@/lib/image";
+import { safeAction } from "@/lib/action-error";
 
 import { updateDisplayNameAction } from "../actions";
 
@@ -113,7 +114,10 @@ export function ProfileEditor({
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
     startSaveName(async () => {
-      const result = await updateDisplayNameAction(formData);
+      const result = await safeAction(
+        updateDisplayNameAction(formData),
+        "No se pudo guardar el nombre.",
+      );
       if (result?.error) {
         setError(result.error);
         return;

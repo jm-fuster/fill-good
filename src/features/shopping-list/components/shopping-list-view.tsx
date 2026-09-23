@@ -33,7 +33,7 @@ import { Fab, fabButtonClass } from "@/components/layout/fab";
 import { useNavListBadge } from "@/components/layout/nav-list-count";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
-import { actionErrorMessage } from "@/lib/action-error";
+import { actionErrorMessage, safeAction } from "@/lib/action-error";
 import { cn } from "@/lib/utils";
 import { vibrateTick } from "@/lib/haptics";
 import { useSwipeAction } from "@/hooks/use-swipe-action";
@@ -373,7 +373,12 @@ export function ShoppingListView({
   // significaría no volver a ver ese producto sugerido en un mes.
   function dismissSuggestion(s: Suggestion) {
     setDismissedIds((prev) => new Set(prev).add(s.productId));
-    dismissSuggestionAction(s.productId).then((r) => {
+    // `safeAction`: sin red, el rechazo llega como `{ error }` y revierte aquí
+    // mismo; antes se perdía y la sugerencia quedaba oculta sin silenciarse.
+    safeAction(
+      dismissSuggestionAction(s.productId),
+      "No se pudo descartar la sugerencia.",
+    ).then((r) => {
       if (r?.error) {
         setDismissedIds((prev) => {
           const next = new Set(prev);
@@ -393,7 +398,10 @@ export function ShoppingListView({
               next.delete(s.productId);
               return next;
             });
-            restoreSuggestionAction(s.productId).then((res) => {
+            safeAction(
+              restoreSuggestionAction(s.productId),
+              "No se pudo recuperar la sugerencia.",
+            ).then((res) => {
               if (res?.error) toast.error(res.error);
             });
           },

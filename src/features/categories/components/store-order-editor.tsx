@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { ProductIcon } from "@/components/product-icon";
+import { safeAction } from "@/lib/action-error";
 import { cn } from "@/lib/utils";
 import { useDragReorder } from "@/hooks/use-drag-reorder";
 import type { StoreCategory } from "../queries";
@@ -38,7 +39,12 @@ export function StoreOrderEditor({
 
   const commit = useCallback(
     (orderedIds: string[]) => {
-      reorderCategoriesAction(orderedIds, chain).then((r) => {
+      // Sin red, el rechazo llega como `{ error }` y se recarga el orden real,
+      // en vez de quedarse la pantalla con uno que no se guardó.
+      safeAction(
+        reorderCategoriesAction(orderedIds, chain),
+        "No se pudo guardar el orden.",
+      ).then((r) => {
         if (r?.error) {
           toast.error(r.error);
           router.refresh();

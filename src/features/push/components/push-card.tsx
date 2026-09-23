@@ -13,6 +13,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { safeAction } from "@/lib/action-error";
 import {
   deletePushSubscriptionAction,
   getMyPushPrefsAction,
@@ -83,7 +84,9 @@ export function PushCard() {
       setEnabled(true);
       setPrefs(saved);
     }
-    init();
+    // Sin red al abrir, la lectura falla y la tarjeta se queda en «Activar»,
+    // lo mismo que sin fila en el servidor: no hay nada más que enseñar.
+    init().catch(() => {});
     return () => {
       active = false;
     };
@@ -146,7 +149,10 @@ export function PushCard() {
     const next = { ...prefs, [key]: value };
     setPrefs(next);
     startBusy(async () => {
-      const res = await updatePushPrefsAction(endpoint, next);
+      const res = await safeAction(
+        updatePushPrefsAction(endpoint, next),
+        "No se pudo guardar la preferencia.",
+      );
       if (res.error) {
         toast.error(res.error);
         // Revierte SOLO este toggle sobre el estado vigente: restaurar el

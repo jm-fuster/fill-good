@@ -51,6 +51,7 @@ import {
   restockPayload,
   restockToastMessage,
 } from "@/features/menus/components/cooked-restock-fields";
+import { safeAction } from "@/lib/action-error";
 import type { RecipeCooking, RecipeRatingSummary } from "../queries";
 import {
   finishOffer,
@@ -418,9 +419,12 @@ function CookingPrep({
   function addMissing() {
     vibrateTick();
     startAdding(async () => {
-      const r = await confirmMissingForRecipeAction(
-        recipeId,
-        missing.map((m) => m.key),
+      const r = await safeAction(
+        confirmMissingForRecipeAction(
+          recipeId,
+          missing.map((m) => m.key),
+        ),
+        "No se pudo apuntar en la lista.",
       );
       if (r.error) {
         toast.error(r.error);
@@ -1026,7 +1030,10 @@ function CookingFinish({
     vibrateTick();
     setPendingKind("mark");
     startAction(async () => {
-      const r = await toggleEntryCookedAction(entry.id, true);
+      const r = await safeAction(
+        toggleEntryCookedAction(entry.id, true),
+        "No se pudo marcar el plato.",
+      );
       setPendingKind(null);
       if (r.error) {
         toast.error(r.error);
@@ -1043,8 +1050,11 @@ function CookingFinish({
     if (!deductions) return;
     setPendingKind("deduct");
     startAction(async () => {
-      const r = await confirmCookedDeductionsAction(
-        deductionPayload(deductions, qty),
+      const r = await safeAction(
+        confirmCookedDeductionsAction(
+          deductionPayload(deductions, qty),
+        ),
+        "No se pudo descontar del inventario.",
       );
       setPendingKind(null);
       if (r.error) {
@@ -1074,7 +1084,10 @@ function CookingFinish({
   function addRestock() {
     setPendingKind("restock");
     startAction(async () => {
-      const r = await addListItemsAction(restockPayload(restock, selected));
+      const r = await safeAction(
+        addListItemsAction(restockPayload(restock, selected)),
+        "No se pudo apuntar en la lista.",
+      );
       setPendingKind(null);
       if (r.error) {
         toast.error(r.error);

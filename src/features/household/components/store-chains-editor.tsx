@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Sparkles, Store, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { actionErrorMessage } from "@/lib/action-error";
+import { actionErrorMessage, safeAction } from "@/lib/action-error";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -126,7 +126,10 @@ export function StoreChainsEditor({
     setAddError(null);
     // La lista de delante viaja como base: en modo automático son las deducidas,
     // y añadir una tienda propia las convierte en elección del hogar.
-    const result = await addCustomChainAction(householdId, name, [...selected]);
+    const result = await safeAction(
+      addCustomChainAction(householdId, name, [...selected]),
+      "No se pudo añadir la tienda.",
+    );
     setAdding(false);
     if (result.error) {
       setAddError(result.error);
