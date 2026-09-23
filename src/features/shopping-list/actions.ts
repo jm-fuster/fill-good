@@ -429,6 +429,7 @@ export async function addListItemsAction(
         normalized: normalizeName(product.name),
         quantity: entry.quantity ?? defaultListQuantity(product.default_unit),
         unit: product.default_unit,
+        ifMissing: entry.ifMissing,
       });
       continue;
     }
@@ -1036,7 +1037,15 @@ export async function checkoutAction(): Promise<
       } else {
         const { error: invErr } = await supabase
           .from("inventory_items")
-          .update({ quantity: merged, updated_by: userId })
+          .update({
+            quantity: merged,
+            updated_by: userId,
+            // Reponer una fila a cero: la fecha y el «gastar pronto» eran del
+            // lote que se acabó (mismo criterio que el ticket).
+            ...(Number(inv.quantity) === 0
+              ? { expiry_date: null, use_soon: false }
+              : {}),
+          })
           .eq("id", inv.id);
         if (invErr) {
           failures += 1;

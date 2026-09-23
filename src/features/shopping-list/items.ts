@@ -169,6 +169,12 @@ export type BulkAddItem = {
   normalized: string;
   quantity: number | null;
   unit: UnitType | null;
+  /**
+   * Apuntar solo si no está ya: quien lo pide dice «hace falta», no «cuánto»,
+   * así que sobre una fila existente no suma nada (el repaso de despensa
+   * convertía «Leche 6» + «queda poco» en 7).
+   */
+  ifMissing?: boolean;
 };
 
 /** Cuántas filas nuevas y cuántas fusiones ha supuesto un alta múltiple. */
@@ -218,7 +224,7 @@ export async function addManyToList(
       toInsert.push(entry);
       continue;
     }
-    if (plan.kind === "keep") {
+    if (plan.kind === "keep" || entry.ifMissing) {
       merged += 1;
       continue;
     }
