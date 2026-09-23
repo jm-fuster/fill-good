@@ -99,7 +99,23 @@ export default async function AjustesPage() {
               <p className="truncate text-sm text-muted-foreground">{email}</p>
             ) : null}
           </div>
-          <UserButton />
+          {/*
+            Sin la sección de borrar cuenta de Clerk: borraría el usuario sin
+            pasar por `delete_account()`, y quedaría su fila de propietario en
+            el hogar (nadie podría gestionarlo), su vínculo de Alexa vivo y sus
+            datos sin borrar, contra lo que promete /privacidad. Borrar la
+            cuenta es la fila de abajo, que sí limpia. La sección solo sale si la
+            instancia de Clerk permite el auto-borrado (lo hace por defecto); con
+            el ajuste apagado en el dashboard, esto no cambia nada. Su «Cerrar
+            sesión» lo cubre `SessionEndCleanup` en el layout raíz.
+          */}
+          <UserButton
+            userProfileProps={{
+              appearance: {
+                elements: { profileSection__danger: { display: "none" } },
+              },
+            }}
+          />
         </div>
 
         {household ? (
