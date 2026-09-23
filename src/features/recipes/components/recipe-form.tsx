@@ -174,7 +174,8 @@ export function RecipeForm({
   );
   const [mealTypes, setMealTypes] = useState<MealTypeValue[]>(
     (recipe?.mealTypes ?? ["lunch"]).filter(
-      (m): m is MealTypeValue => m === "lunch" || m === "dinner",
+      (m): m is MealTypeValue =>
+        m === "breakfast" || m === "lunch" || m === "dinner",
     ),
   );
   const [season, setSeason] = useState<SeasonValue>(
@@ -416,12 +417,13 @@ export function RecipeForm({
     setRows(nextRows.length > 0 ? nextRows : [emptyRow(0)]);
     nextKey.current = Math.max(nextRows.length, 1);
 
-    const nextSteps: StepRow[] = details.steps.map((text, i) => ({
-      key: i,
-      text,
-    }));
-    setSteps(nextSteps.length > 0 ? nextSteps : [emptyStep(0)]);
-    nextStepKey.current = Math.max(nextSteps.length, 1);
+    // Sin pasos en la respuesta, se quedan los que había: el modelo a veces
+    // trae solo ingredientes, y aplicar la lista vacía borraba del borrador
+    // unos pasos escritos a mano bajo un «Receta escrita».
+    if (details.steps.length > 0) {
+      setSteps(details.steps.map((text, i) => ({ key: i, text })));
+      nextStepKey.current = details.steps.length;
+    }
 
     // Los minutos, solo si no los habías puesto tú: ese dato ya era tuyo.
     if (!prepMinutes.trim() && details.prepMinutes !== null) {
@@ -477,7 +479,7 @@ export function RecipeForm({
       return;
     }
     if (mealTypes.length === 0) {
-      setError("Marca si es para comida, cena o ambas.");
+      setError("Marca para qué comida es.");
       return;
     }
 
@@ -586,9 +588,10 @@ export function RecipeForm({
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm font-medium">Tipo de comida</legend>
         <p className="mb-1 text-xs text-muted-foreground">
-          Puedes marcar comida, cena o ambas.
+          Puedes marcar varias.
         </p>
-        <div className="flex gap-2">
+        {/* `flex-wrap`: con Desayuno son tres botones grandes, y a 375 px no caben. */}
+        <div className="flex flex-wrap gap-2">
           {MEAL_TYPE_OPTIONS.map((o) => {
             const active = mealTypes.includes(o.value);
             return (

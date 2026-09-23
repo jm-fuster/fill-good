@@ -103,8 +103,10 @@ export function sanitizeQuantity(quantity: number | null): number | null {
   if (quantity === null || !Number.isFinite(quantity)) return null;
   if (quantity <= 0 || quantity > MAX_INGREDIENT_QUANTITY) return null;
   // Redondeo a los dos decimales de la columna, para que lo que se guarda sea lo
-  // mismo que se enseñó en el borrador.
-  return Math.round(quantity * 100) / 100;
+  // mismo que se enseñó en el borrador. Lo que el redondeo deja en 0 (0,004 g)
+  // es «no lo sé», no una cantidad: el contrato es positivo o null.
+  const rounded = Math.round(quantity * 100) / 100;
+  return rounded > 0 ? rounded : null;
 }
 
 /**

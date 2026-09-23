@@ -788,6 +788,8 @@ export type Database = {
           quantity: number | null;
           unit: UnitType | null;
           optional: boolean;
+          // desde 20260923110149: orden en la receta.
+          position: number;
         };
         Insert: {
           id?: string;
@@ -798,6 +800,7 @@ export type Database = {
           quantity?: number | null;
           unit?: UnitType | null;
           optional?: boolean;
+          position?: number;
         };
         Update: {
           id?: string;
@@ -808,6 +811,7 @@ export type Database = {
           quantity?: number | null;
           unit?: UnitType | null;
           optional?: boolean;
+          position?: number;
         };
         Relationships: [
           {

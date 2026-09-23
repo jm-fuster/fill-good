@@ -126,10 +126,13 @@ export function RecipeRating({
               aria-checked={checked}
               aria-label={`${n} ${n === 1 ? "estrella" : "estrellas"}`}
               tabIndex={tabbable ? 0 : -1}
-              disabled={pending}
+              // `aria-disabled` y no `disabled`: deshabilitar la estrella que
+              // tiene el foco lo tiraba a <body> tras cada flecha, y la
+              // siguiente ya no hacía nada. `choose` ignora los toques en vuelo.
+              aria-disabled={pending}
               onClick={() => choose(n)}
               onMouseEnter={() => setHover(n)}
-              className="flex size-11 items-center justify-center rounded-lg transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-60"
+              className="flex size-11 items-center justify-center rounded-lg transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:opacity-60"
             >
               <Star
                 className={cn(

@@ -80,6 +80,8 @@ async function buildIngredientRows(
   householdId: string,
   recipeId: string,
   ingredients: RecipeIngredientInput[],
+  /** Posición del primero: 0 al reemplazar la lista, el total al añadir. */
+  startPosition = 0,
 ) {
   const norms = [
     ...new Set(ingredients.map((i) => normalizeName(i.name)).filter(Boolean)),
@@ -114,7 +116,7 @@ async function buildIngredientRows(
     for (const p of owned ?? []) validIds.add(p.id);
   }
 
-  return ingredients.map((i) => {
+  return ingredients.map((i, index) => {
     // El id explícito y validado tiene prioridad; si no, matching por nombre.
     const explicit = i.productId && validIds.has(i.productId) ? i.productId : null;
     return {
@@ -125,6 +127,9 @@ async function buildIngredientRows(
       unit: i.unit,
       optional: i.optional,
       product_id: explicit ?? productByNorm.get(normalizeName(i.name)) ?? null,
+      // El orden en que se escribieron: sin él, las lecturas ordenaban por un
+      // uuid aleatorio y la lista salía barajada en cada guardado.
+      position: startPosition + index,
     };
   });
 }
@@ -241,7 +246,7 @@ export async function updateRecipeAction(
     return { error: "Ya tienes otra receta con ese nombre en tu recetario." };
   }
 
-  const { error: updErr } = await supabase
+  const { data: updated, error: updErr } = await supabase
     .from("recipes")
     .update({
       name: d.name,
@@ -254,8 +259,20 @@ export async function updateRecipeAction(
       steps: d.steps,
     })
     .eq("household_id", household.id)
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (updErr) return { error: "No se pudo guardar la receta." };
+  /*
+    Cero filas = la receta no es de ESTE hogar (la cookie del hogar activo
+    cambió en otra pestaña) o ya no existe. Hay que pararse aquí: un update sin
+    filas no es error para Supabase, y seguir insertaba los ingredientes con el
+    `recipe_id` del cliente y el `household_id` del otro hogar —la RLS lo deja
+    y la FK no mira hogares—, dejando filas huérfanas colgando de una receta
+    ajena y respondiendo «Receta actualizada» sin haber cambiado nada.
+  */
+  if (!updated || updated.length === 0) {
+    return { error: "Esa receta ya no está en este hogar." };
+  }
 
   /*
     Los ingredientes se reemplazan enteros, pero PRIMERO se insertan los nuevos
@@ -324,12 +341,17 @@ export async function deleteRecipeAction(
   const supabase = createServerSupabaseClient();
   // menu_entries.recipe_id es ON DELETE SET NULL: el menú conserva el hueco
   // como texto vacío en vez de romperse.
-  const { error } = await supabase
+  const { data: deleted, error } = await supabase
     .from("recipes")
     .delete()
     .eq("household_id", household.id)
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) return { error: "No se pudo eliminar la receta." };
+  // Mismo caso que al guardar: sin filas, decir «eliminada» sería mentir.
+  if (!deleted || deleted.length === 0) {
+    return { error: "Esa receta ya no está en este hogar." };
+  }
   revalidatePath("/recetas");
   revalidatePath("/menus");
   return { ok: true };
@@ -767,6 +789,7 @@ async function fillRecipeDetails(
     .select("id, name, quantity, unit, optional, product_id")
     .eq("household_id", household.id)
     .eq("recipe_id", recipeId)
+    .order("position", { ascending: true })
     .order("id", { ascending: true });
 
   /*
@@ -858,11 +881,13 @@ async function fillRecipeDetails(
   }
 
   if (added.length > 0) {
+    // Detrás de los que ya había: el orden es contrato (ver `ai-draft.ts`).
     const newRows = await buildIngredientRows(
       supabase,
       household.id,
       recipeId,
       added,
+      existing.length,
     );
     const { error: ingErr } = await supabase
       .from("recipe_ingredients")

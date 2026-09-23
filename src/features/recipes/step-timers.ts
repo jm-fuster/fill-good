@@ -45,10 +45,12 @@ export const MAX_TIMERS_PER_STEP = 3;
 const NUM = String.raw`\d{1,4}(?:[.,]\d{1,2})?`;
 /**
  * Separadores de un intervalo: «10-12 minutos», «10 a 12 minutos», «entre 10 y
- * 12 minutos». Los de palabra exigen espacios a los lados para no comerse otras
- * cosas.
+ * 12 minutos», «3 o 4 minutos» (y «5 ó 6», «8 u 10»). Los de palabra exigen
+ * espacios a los lados para no comerse otras cosas. Sin la «o», «3 o 4
+ * minutos» se leía como un «4 minutos» suelto: el extremo ALTO, justo lo que la
+ * regla del intervalo quiere evitar.
  */
-const RANGE = String.raw`(?:\s*[-–—]\s*|\s+a\s+|\s+y\s+)`;
+const RANGE = String.raw`(?:\s*[-–—]\s*|\s+a\s+|\s+y\s+|\s+[oóu]\s+)`;
 /**
  * Unidades aceptadas. Ojo con las que NO están: `m` y `s` a secas se quedan
  * fuera porque en una receta son metros y son segundos con la misma
@@ -76,9 +78,20 @@ function toNumber(raw: string): number {
   return Number(raw.replace(",", "."));
 }
 
-/** «45 s» · «35 min» · «1 h» · «1 h 30 min». */
+/**
+ * «45 s» · «35 min» · «1 min 30 s» · «1 h» · «1 h 30 min».
+ *
+ * Por debajo de la hora se dicen los segundos que sobran: redondeando a
+ * minutos, «90 segundos» salía como un chip de «2 min» que luego contaba 1:30.
+ */
 export function timerLabel(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)} s`;
+  if (seconds < 3600) {
+    const whole = Math.round(seconds);
+    const min = Math.floor(whole / 60);
+    const sec = whole % 60;
+    return sec === 0 ? `${min} min` : `${min} min ${sec} s`;
+  }
   const totalMin = Math.round(seconds / 60);
   if (totalMin < 60) return `${totalMin} min`;
   const h = Math.floor(totalMin / 60);
@@ -126,10 +139,13 @@ export function findStepTimers(step: string): StepTimer[] {
     if (!Number.isFinite(value)) continue;
     const start = m.index ?? 0;
     const end = start + m[0].length;
-    // «hora y media», «media hora» escrito como «1 hora y media»: la mitad de la
-    // unidad se suma. Es la única forma con palabras que se acepta, porque no es
-    // un número suelto sino una coletilla pegada a un tiempo ya detectado.
-    if (/^\s*y\s+media(?![a-záéíóúüñ])/i.test(step.slice(end))) value += 0.5;
+    // «1 hora y media»: la media hora se suma. Es la única forma con palabras
+    // que se acepta, porque no es un número suelto sino una coletilla pegada a
+    // un tiempo ya detectado. Solo detrás de HORAS: «10 minutos y media hora»
+    // sumaba medio minuto y salía un chip de «11 min».
+    if (unit === "h" && /^\s*y\s+media(?![a-záéíóúüñ])/i.test(step.slice(end))) {
+      value += 0.5;
+    }
     raw.push({ start, end, unit, seconds: value * FACTOR[unit] });
   }
 

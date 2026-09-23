@@ -98,6 +98,18 @@ type RunningTimer = {
 type Stage = "mark" | "deduct" | "restock" | "done";
 
 /**
+ * Lo que ya pasó en el cierre y tiene que sobrevivir a «Volver a los pasos»
+ * (que desmonta `CookingFinish`). Sin esto, al terminar otra vez el cierre
+ * empezaba de cero y volvía a proponer el descuento ya prellenado: pulsarlo
+ * restaba otra vez de la despensa lo que ya se había restado.
+ */
+type FinishMemo = {
+  marked: boolean;
+  stage: Stage;
+  restock: RestockCandidate[];
+};
+
+/**
  * Modo cocinado: la receta paso a paso, a pantalla completa, y un cierre que
  * recoge lo que hasta ahora había que contestar al día siguiente.
  *
@@ -185,6 +197,14 @@ export function CookingMode({
   const resumed = step > 0 && !moved;
 
   const [finished, setFinished] = useState(false);
+  const [finishMemo, setFinishMemo] = useState<FinishMemo | null>(null);
+  /*
+    Las veces que se ha cocinado, tal como estaban al ABRIR la pantalla. «Lo
+    cocinamos» revalida la ruta y el servidor devuelve ya la cuenta con la
+    marca incluida; como el cierre suma la suya (`marked`), un plato cocinado
+    por primera vez celebraba «Es la 2.ª vez».
+  */
+  const [timesAtOpen] = useState(timesCookedBefore);
   /*
     El repaso de ingredientes es la pantalla de entrada, y se sale de ella
     pulsando: `started` es ese pulsado y nada más.
@@ -329,7 +349,13 @@ export function CookingMode({
         timers={timers}
         now={now}
         muted={muted}
-        onToggleMute={() => setMuted(!muted)}
+        onToggleMute={() => {
+          // Al QUITAR el silencio se prepara el audio en este mismo toque: iOS
+          // solo deja sonar lo que se desbloqueó con un gesto, y si todos los
+          // tiempos se pusieron en marcha en silencio, el aviso no sonaba.
+          if (muted) primeChime();
+          setMuted(!muted);
+        }}
         onStop={stopTimer}
       />
       {finished ? (
@@ -338,9 +364,11 @@ export function CookingMode({
           recipe={recipe}
           entry={entry}
           today={today}
-          timesCookedBefore={timesCookedBefore}
+          timesCookedBefore={timesAtOpen}
           rating={rating}
           backHref={backHref}
+          memo={finishMemo}
+          onMemo={setFinishMemo}
           onBackToSteps={() => setFinished(false)}
           onDone={() => setProgress(null)}
         />
@@ -959,6 +987,8 @@ function CookingFinish({
   timesCookedBefore,
   rating,
   backHref,
+  memo,
+  onMemo,
   onBackToSteps,
   onDone,
 }: {
@@ -969,20 +999,32 @@ function CookingFinish({
   timesCookedBefore: number;
   rating: RecipeRatingSummary;
   backHref: string;
+  /** Lo que ya pasó en un cierre anterior de esta misma sesión. */
+  memo: FinishMemo | null;
+  onMemo: (memo: FinishMemo) => void;
   onBackToSteps: () => void;
   /** Al salir por la puerta buena: el progreso guardado ya no sirve de nada. */
   onDone: () => void;
 }) {
   const offer = finishOffer(entry, today);
-  const [marked, setMarked] = useState(false);
+  const [marked, setMarked] = useState(memo?.marked ?? false);
   const [stage, setStage] = useState<Stage>(
-    offer === "mark" ? "mark" : "deduct",
+    memo?.stage ?? (offer === "mark" ? "mark" : "deduct"),
   );
   // null = todavía cargando la propuesta de descuento.
   const [deductions, setDeductions] = useState<CookedDeduction[] | null>(null);
   const [qty, setQty] = useState<Record<string, string>>({});
-  const [restock, setRestock] = useState<RestockCandidate[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [restock, setRestock] = useState<RestockCandidate[]>(
+    memo?.restock ?? [],
+  );
+  const [selected, setSelected] = useState<Set<string>>(() =>
+    memo?.stage === "restock" ? initialRestockSelection(memo.restock) : new Set(),
+  );
+  // Cada avance del cierre se guarda arriba: al volver de los pasos, el cierre
+  // retoma donde estaba en vez de ofrecer otra vez lo ya hecho.
+  useEffect(() => {
+    onMemo({ marked, stage, restock });
+  }, [marked, stage, restock, onMemo]);
   const [busy, startAction] = useTransition();
   const [pendingKind, setPendingKind] = useState<Stage | null>(null);
 

@@ -11,7 +11,7 @@ import { getLatestUnitPrices } from "@/features/prices/queries";
 import { computeRecipeCost, type CostIngredient, type RecipeCost } from "./cost";
 import { SEED_RECIPES } from "./seed";
 
-export type MealTypeValue = "lunch" | "dinner";
+export type MealTypeValue = "breakfast" | "lunch" | "dinner";
 export type SeasonValue = "all" | "winter" | "summer";
 
 /** Tarjeta del listado del recetario. */
@@ -219,6 +219,7 @@ export async function getRecipeCostsForIds(
         .select("recipe_id, product_id, quantity, unit")
         .eq("household_id", householdId)
         .in("recipe_id", uniqueIds)
+        .order("position", { ascending: true })
         .order("id", { ascending: true })
         .range(from, to),
     ),
@@ -308,12 +309,17 @@ export async function getRecipeForEdit(
   const row = recipe as RecipeRow | null;
   if (!row || !row.is_saved) return null;
 
-  const { data: ingredients } = await supabase
+  const { data: ingredients, error: ingErr } = await supabase
     .from("recipe_ingredients")
     .select("name, quantity, unit, optional, product_id")
     .eq("household_id", householdId)
     .eq("recipe_id", id)
+    .order("position", { ascending: true })
     .order("id", { ascending: true });
+  // Un fallo aquí NO puede leerse como «la receta no tiene ingredientes»: el
+  // formulario abriría vacío y guardar borraría todos los de verdad (el
+  // guardado reemplaza la lista entera). Mejor la barrera de error que eso.
+  if (ingErr) throw ingErr;
 
   return {
     id: row.id,
@@ -390,6 +396,7 @@ export async function getRecipeForCooking(
     .select("name, quantity, unit, optional")
     .eq("household_id", householdId)
     .eq("recipe_id", recipeId)
+    .order("position", { ascending: true })
     .order("id", { ascending: true });
 
   return {

@@ -839,12 +839,13 @@ async function generateMenu(
         const ings = payload?.ingredients ?? [];
         if (ings.length > 0) {
           await supabase.from("recipe_ingredients").insert(
-            ings.map((ing) => ({
+            ings.map((ing, position) => ({
               recipe_id: recipe.id,
               household_id: household.id,
               name: ing.name,
               quantity: ing.quantity,
               unit: ing.unit,
+              position,
             })),
           );
         }
@@ -1432,12 +1433,13 @@ async function generateDishForSlot({
 
   if (dish.ingredients.length > 0) {
     await supabase.from("recipe_ingredients").insert(
-      dish.ingredients.map((ing) => ({
+      dish.ingredients.map((ing, position) => ({
         recipe_id: recipe.id,
         household_id: householdId,
         name: ing.name,
         quantity: ing.quantity,
         unit: ing.unit,
+        position,
       })),
     );
   }
