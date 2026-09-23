@@ -776,9 +776,6 @@ async function fillRecipeDetails(
     };
   }
 
-  const rateError = await enforceAiRateLimit(supabase, "recipe", household.id);
-  if (rateError) return { error: rateError };
-
   // El `id` de cada fila viaja porque las cantidades se escriben una a una sobre
   // la fila que ya existe. Borrar e insertar de nuevo (lo que hace el formulario
   // al guardar) perdería aquí un `product_id` elegido a mano en el
@@ -805,6 +802,12 @@ async function fillRecipeDetails(
   if (ingsErr) {
     return { error: "No se pudieron leer los ingredientes. Vuelve a intentarlo." };
   }
+
+  // El cobro de cuota va DESPUÉS de leer los ingredientes: si esa lectura
+  // falla, la acción devuelve error sin llamar al modelo, y cobrar antes
+  // gastaba una unidad por nada (ese camino no devolvía la cuota).
+  const rateError = await enforceAiRateLimit(supabase, "recipe", household.id);
+  if (rateError) return { error: rateError };
 
   const rows = ings ?? [];
   const existing: DraftIngredient[] = rows.map((i) => ({

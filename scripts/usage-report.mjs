@@ -89,7 +89,10 @@ const DAY = 86_400_000;
 const t = (s) => (s ? new Date(s).getTime() : null);
 const fecha = (ms) =>
   ms == null ? "—" : new Date(ms).toLocaleDateString("sv-SE", { timeZone: "Europe/Madrid" });
-const hace = (ms) => (ms == null ? "—" : `${Math.floor((NOW - ms) / DAY)}d`);
+// Con tope en 0: una visita de HOY se lee a mediodía (`dayMs`), así que por la
+// mañana quedaba en el futuro y salía «-1d».
+const hace = (ms) =>
+  ms == null ? "—" : `${Math.max(0, Math.floor((NOW - ms) / DAY))}d`;
 const tras = (ms, base) => (ms == null ? "—" : `+${Math.floor((ms - base) / DAY)}d`);
 const of = (rows, id) => (rows ?? []).filter((r) => r.household_id === id);
 const maxOf = (arr) => {
