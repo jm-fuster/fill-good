@@ -57,7 +57,7 @@
   "devDependencies": {
     "@serwist/cli": "^9.5.11",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^26",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/web-push": "^3.6.4",
