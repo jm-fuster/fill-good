@@ -10,10 +10,10 @@ import { ErrorScreen } from "@/components/layout/error-screen";
  */
 export default function RootError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }) {
-  return <ErrorScreen error={error} reset={reset} fullScreen />;
+  return <ErrorScreen error={error} retry={retry} fullScreen />;
 }

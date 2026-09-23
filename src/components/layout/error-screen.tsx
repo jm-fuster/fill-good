@@ -16,16 +16,25 @@ const RETRY_WINDOW_MS = 10_000;
  * Muchos fallos aquí son transitorios: arranque en frío del servidor o del
  * proyecto Supabase, y sobre todo el handshake de sesión de Clerk al abrir el
  * PWA en frío. Para no mostrar la pantalla de error del navegador ni obligar a
- * recargar a mano, intenta recuperarse sola UNA vez llamando a `reset()`. Si
+ * recargar a mano, intenta recuperarse sola UNA vez llamando a `retry()`. Si
  * vuelve a fallar dentro de una ventana corta, deja de reintentar y ofrece el
  * botón manual.
+ *
+ * `retry` y no `reset`, y la diferencia es todo el sentido de esta pantalla. En
+ * Next 16, `reset()` solo limpia el estado de la barrera y repinta lo que ya
+ * había —el mismo payload con el error dentro—; el que vuelve a PEDIR la página
+ * al servidor es `retry()` (`router.refresh()` + `reset`, ver la doc de
+ * `error.js`). Con `reset`, tanto el reintento automático como el botón
+ * repintaban el fallo: justo en los fallos transitorios de servidor para los
+ * que existe esto, y en la barrera raíz, que no tiene navegación, el usuario se
+ * quedaba atrapado hasta matar la PWA.
  */
 export function ErrorScreen({
-  reset,
+  retry,
   error,
   fullScreen = false,
 }: {
-  reset: () => void;
+  retry: () => void;
   error?: Error & { digest?: string };
   fullScreen?: boolean;
 }) {
@@ -49,7 +58,7 @@ export function ErrorScreen({
       } catch {
         // ignore
       }
-      reset();
+      retry();
     }
     // Solo al montar: un único auto-reintento por cada aparición del error.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,7 +84,7 @@ export function ErrorScreen({
           vuelve a intentarlo.
         </p>
       </div>
-      <Button onClick={reset}>
+      <Button onClick={retry}>
         <RotateCw aria-hidden />
         Reintentar
       </Button>

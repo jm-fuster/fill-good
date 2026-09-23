@@ -10,14 +10,14 @@ import { PageContainer } from "@/components/layout/page-container";
  */
 export default function AppError({
   error,
-  reset,
+  retry,
 }: {
   error: Error & { digest?: string };
-  reset: () => void;
+  retry: () => void;
 }) {
   return (
     <PageContainer>
-      <ErrorScreen error={error} reset={reset} />
+      <ErrorScreen error={error} retry={retry} />
     </PageContainer>
   );
 }
