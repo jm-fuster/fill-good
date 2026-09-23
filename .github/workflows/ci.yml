@@ -1,33 +1,86 @@
 name: CI
 
 # Vigilancia de calidad en cada push a main y en cada PR.
-# Tres gates, ninguno necesita secretos reales:
+# Cuatro gates, ninguno necesita secretos reales:
 #   1. Lint (ESLint + jsx-a11y strict, --max-warnings 0)
 #   2. Typecheck (tsc --noEmit)
 #   3. Build de producción + presupuesto de bundle base
+#   4. Los `check:*` de reglas (fechas, guardas, menú, lista…)
 on:
   push:
     branches: [main]
   pull_request:
+
+# El valor por defecto del repo ya es solo lectura; se declara aquí para que no
+# dependa de un ajuste que no se ve en el código. Ningún job escribe nada.
+permissions:
+  contents: read
 
 # Cancela ejecuciones anteriores de la misma rama/PR al hacer push nuevo.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Las actions van fijadas por SHA, no por etiqueta: una etiqueta se puede mover
+# (o la puede mover quien comprometa el repo de la action) y el CI ejecutaría
+# otro código sin que cambie una línea aquí. Dependabot (`github-actions` en
+# .github/dependabot.yml) sube el SHA y el comentario de versión a la vez.
 jobs:
   quality:
     name: Lint + typecheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "24"
           cache: npm
       - run: npm ci
       - run: npm run lint
       - run: npm run typecheck
+
+  checks:
+    name: Checks de reglas
+    runs-on: ubuntu-latest
+    # Cada `check:*` defiende una regla que ni tsc ni el lint ven (ver
+    # AGENTS.md, «Vigilancia de calidad»). Hasta aquí solo corrían si alguien
+    # se acordaba. No necesitan base, credenciales ni build: son Node sobre el
+    # TS del repo con los clientes falseados, y tardan segundos cada uno.
+    # `check:fechas` ya se lanza a sí mismo en UTC, Madrid y Nueva York.
+    # Un paso por check para que el fallo diga cuál ha caído; `if: !cancelled()`
+    # hace que se ejecuten todos aunque falle uno.
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm run check:legal
+      - if: ${{ !cancelled() }}
+        run: npm run check:acciones
+      - if: ${{ !cancelled() }}
+        run: npm run check:fechas
+      - if: ${{ !cancelled() }}
+        run: npm run check:guardas
+      - if: ${{ !cancelled() }}
+        run: npm run check:menu
+      - if: ${{ !cancelled() }}
+        run: npm run check:lista
+      - if: ${{ !cancelled() }}
+        run: npm run check:cocinado
+      - if: ${{ !cancelled() }}
+        run: npm run check:cocina
+      - if: ${{ !cancelled() }}
+        run: npm run check:repaso
+      - if: ${{ !cancelled() }}
+        run: npm run check:motivos
+      - if: ${{ !cancelled() }}
+        run: npm run check:rotulos
+      - if: ${{ !cancelled() }}
+        run: npm run check:receta-ia
+      - if: ${{ !cancelled() }}
+        run: npm run check:alexa
 
   bundle:
     name: Build + presupuesto de bundle
@@ -43,8 +96,8 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://dummy.supabase.co
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_dummy_ci
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "24"
           cache: npm
