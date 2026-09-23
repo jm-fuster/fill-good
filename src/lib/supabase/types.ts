@@ -1231,9 +1231,14 @@ export type Database = {
         };
         Returns: undefined;
       };
+      // Solo `service_role` desde 20260923130000 (ver `refundAiUsage`).
       refund_ai_usage: {
-        Args: { p_kind: string; p_household_id?: string };
+        Args: { p_user_id: string; p_kind: string; p_household_id?: string };
         Returns: undefined;
+      };
+      create_alexa_link_code: {
+        Args: { p_household_id: string };
+        Returns: { code: string; expires_at: string }[];
       };
       remove_household_member: {
         Args: { p_household_id: string; p_user_id: string };

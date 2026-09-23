@@ -1,7 +1,5 @@
 "use server";
 
-import { randomInt } from "node:crypto";
-
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 
@@ -15,9 +13,6 @@ export type GenerateCodeState = {
   expiresAt?: string;
 };
 
-/** Intentos ante una colisión del código (con un millón de combinaciones, sobra). */
-const CODE_ATTEMPTS = 3;
-
 /**
  * Genera el código de 6 dígitos que se le dicta al Echo para vincularlo con el
  * hogar activo. Solo hay un código vivo por usuario: generar otro invalida el
@@ -27,9 +22,10 @@ const CODE_ATTEMPTS = 3;
  * parseado, así que un «cero cuatro dos…» llegaría con cinco cifras y no casaría
  * nunca (la restricción de la tabla lo garantiza también en la base).
  *
- * Usa el cliente con JWT de Clerk a propósito: las políticas de la tabla
- * comprueban que eres miembro del hogar y que el código sale a tu nombre. El
- * cliente service-role solo lo toca el webhook, que no tiene sesión.
+ * El código lo genera la base (`create_alexa_link_code`), no esta acción: el
+ * cliente insertaba el suyo con la caducidad que quisiera, y como el código es
+ * clave primaria global, un alta masiva delataba los códigos vivos de otros
+ * hogares. La RPC comprueba la membresía y firma a tu nombre.
  */
 export async function generateAlexaCodeAction(): Promise<GenerateCodeState> {
   const [household, { userId }] = await Promise.all([
@@ -40,24 +36,15 @@ export async function generateAlexaCodeAction(): Promise<GenerateCodeState> {
   if (!userId) return { error: "Debes iniciar sesión." };
 
   const supabase = createServerSupabaseClient();
-  await supabase.from("alexa_link_codes").delete().eq("user_id", userId);
-
-  for (let attempt = 0; attempt < CODE_ATTEMPTS; attempt += 1) {
-    const code = String(randomInt(100_000, 1_000_000));
-    const { data, error } = await supabase
-      .from("alexa_link_codes")
-      .insert({ code, household_id: household.id, user_id: userId })
-      .select("code, expires_at")
-      .single();
-    if (!error && data) {
-      return { code: data.code, expiresAt: data.expires_at };
-    }
-    // 23505 = clave duplicada: otro hogar tiene ese código vivo. Se reintenta.
-    if (error && error.code !== "23505") {
-      return { error: "No se pudo generar el código." };
-    }
+  const { data, error } = await supabase.rpc("create_alexa_link_code", {
+    p_household_id: household.id,
+  });
+  const row = data?.[0];
+  if (error || !row) {
+    if (error) console.error("create_alexa_link_code:", error);
+    return { error: "No se pudo generar el código. Inténtalo otra vez." };
   }
-  return { error: "No se pudo generar el código. Inténtalo otra vez." };
+  return { code: row.code, expiresAt: row.expires_at };
 }
 
 /**
