@@ -68,6 +68,7 @@ export function useSyncedList<T extends SyncedItem>({
   const pending = usePendingWrites();
   const tombstones = useRef(new Set<string>());
   const recentAdds = useRef(new Map<string, number>());
+  const recentChanges = useRef(new Map<string, number>());
 
   // Espejo síncrono del estado: dentro de una ráfaga de eventos (un alta de
   // quince artículos llega como quince mensajes) el `items` del render todavía
@@ -89,6 +90,7 @@ export function useSyncedList<T extends SyncedItem>({
           {
             tombstones: tombstones.current,
             recentAdds: recentAdds.current,
+            recentChanges: recentChanges.current,
             isBusy: pending.isBusy,
           },
           sortOptions,
@@ -121,6 +123,10 @@ export function useSyncedList<T extends SyncedItem>({
         return;
       }
       const known = itemsRef.current.some((item) => item.id === delta.id);
+      // Un cambio ajeno sobre una fila que ya está aquí: que una cura en vuelo
+      // (pedida antes de este cambio) no lo deshaga al llegar. Ver
+      // `CHANGE_GRACE_MS`.
+      if (known) recentChanges.current.set(delta.id, Date.now());
       if (!known) {
         recentAdds.current.set(delta.id, Date.now());
         // Falta lo que cuelga del producto (y en un UPDATE de una fila que aquí
