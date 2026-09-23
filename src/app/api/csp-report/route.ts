@@ -59,17 +59,66 @@ function normalizeReports(payload: unknown): Violation[] {
   return [];
 }
 
+/**
+ * Tope del cuerpo. Un informe real ocupa unos cientos de bytes y un lote de
+ * report-to unos pocos KB; sin tope, `request.json()` leía entero lo que
+ * mandara cualquiera —el endpoint es público y sin sesión— y lo volcaba a los
+ * logs, que se pagan y se llenan.
+ */
+const MAX_BODY_BYTES = 64 * 1024;
+/** Tope de violaciones registradas por petición (un lote no inunda los logs). */
+const MAX_LOGGED = 20;
+
+/**
+ * Lee el cuerpo cortando al pasar del tope. Se cuenta sobre el flujo y no sobre
+ * `Content-Length`, que lo pone quien envía (y puede faltar o mentir).
+ * Devuelve null si se pasa.
+ */
+async function readLimited(request: NextRequest): Promise<string | null> {
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (declared > MAX_BODY_BYTES) return null;
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BODY_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
+}
+
 export async function POST(request: NextRequest) {
+  const body = await readLimited(request);
+  if (body === null) return new NextResponse(null, { status: 413 });
+
   let payload: unknown = null;
   try {
-    payload = await request.json();
+    payload = JSON.parse(body);
   } catch {
     return new NextResponse(null, { status: 204 });
   }
 
-  for (const v of normalizeReports(payload)) {
-    if (isBrowserNoise(v.blocked)) continue;
-    console.warn("[CSP violation]", JSON.stringify(v));
+  const reales = normalizeReports(payload).filter((v) => !isBrowserNoise(v.blocked));
+  for (const v of reales.slice(0, MAX_LOGGED)) {
+    // Cada campo, recortado: son URLs que manda el navegador (o cualquiera).
+    console.warn(
+      "[CSP violation]",
+      JSON.stringify({
+        directive: v.directive.slice(0, 100),
+        blocked: v.blocked.slice(0, 300),
+        documentUri: v.documentUri.slice(0, 300),
+      }),
+    );
+  }
+  if (reales.length > MAX_LOGGED) {
+    console.warn(`[CSP violation] …y ${reales.length - MAX_LOGGED} más en el mismo lote`);
   }
 
   // 204: al navegador no le importa la respuesta del endpoint de informes.

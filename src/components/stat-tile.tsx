@@ -35,7 +35,7 @@ export function StatTile({
           "text-lg font-semibold tabular-nums",
           accent === "success" && "text-success",
           accent === "warning" && "text-warning",
-          accent === "chart-3" && "text-chart-3",
+          accent === "chart-3" && "text-price",
         )}
       >
         {value}

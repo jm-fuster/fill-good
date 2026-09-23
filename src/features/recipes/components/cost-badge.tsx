@@ -27,7 +27,7 @@ export function CostBadge({
     <span
       aria-label={label}
       className={cn(
-        "inline-flex items-center gap-1 rounded-lg bg-chart-3/10 px-2 py-0.5 text-xs font-medium text-chart-3",
+        "inline-flex items-center gap-1 rounded-lg bg-chart-3/10 px-2 py-0.5 text-xs font-medium text-price",
         className,
       )}
     >

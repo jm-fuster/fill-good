@@ -164,6 +164,15 @@ export default function StyleguidePage() {
             </div>
           ))}
         </div>
+        <p className="mt-3 text-sm">
+          <span className="font-medium text-price">3,49 €/kg</span>{" "}
+          <span className="text-muted-foreground">
+            — como TEXTO, el acento de precios va con <code>text-price</code>,
+            no con <code>text-chart-3</code>: el de gráfica se quedaba en 4,0:1
+            sobre los fondos claros (3,7 sobre su propio tinte). Iconos y
+            estrellas sí siguen en <code>chart-3</code> (les basta 3:1).
+          </span>
+        </p>
       </Section>
 
       <Section

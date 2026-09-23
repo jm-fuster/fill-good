@@ -38,7 +38,7 @@ function Comparable({
 }) {
   const label = comparablePriceLabel(unitPrice, unit, content, packSize);
   if (!label) return null;
-  return <p className="text-sm text-chart-3">{label}</p>;
+  return <p className="text-sm text-price">{label}</p>;
 }
 
 export default async function PreciosPage({

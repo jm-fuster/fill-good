@@ -31,6 +31,7 @@
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
+  --color-price: var(--price);
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
@@ -187,6 +188,14 @@
   --chart-1: oklch(0.52 0.13 155);
   --chart-2: oklch(0.55 0.15 255);
   --chart-3: oklch(0.6 0.15 55);
+  /*
+    El acento de precios cuando es TEXTO. chart-3 está pensado para gráficas e
+    iconos (3:1) y como texto se quedaba en 4,0–4,2 sobre los fondos claros,
+    por debajo de AA (4,5). Mismo tono y croma, más oscuro: 4,7 sobre accent,
+    4,9 sobre muted y 5,4–5,5 sobre background y card (calculado desde los
+    oklch de este archivo). Va aparte para no oscurecer las gráficas.
+  */
+  --price: oklch(0.53 0.15 55);
   --chart-4: oklch(0.55 0.17 305);
   --chart-5: oklch(0.55 0.11 195);
   /*
@@ -252,6 +261,8 @@
   --chart-1: oklch(0.7 0.13 155);
   --chart-2: oklch(0.68 0.13 255);
   --chart-3: oklch(0.72 0.14 60);
+  /* En oscuro chart-3 ya pasa como texto (5,2 sobre accent, 7,5 sobre background). */
+  --price: oklch(0.72 0.14 60);
   --chart-4: oklch(0.68 0.15 305);
   --chart-5: oklch(0.7 0.11 195);
   /* En oscuro el degradado se invierte respecto al tema claro: aquí el texto del
@@ -438,5 +449,6 @@
     --muted: oklch(0.955 0.01 150);
     --muted-foreground: oklch(0.48 0.02 155);
     --border: oklch(0.92 0.01 150);
+    --price: oklch(0.53 0.15 55);
   }
 }

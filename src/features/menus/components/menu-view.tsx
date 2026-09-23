@@ -1172,7 +1172,7 @@ export function MenuView({
         <div className="flex flex-col gap-1 print:hidden">
           <p className="text-center text-xs text-muted-foreground">
             Coste estimado de la semana:{" "}
-            <span className="font-medium text-chart-3">
+            <span className="font-medium text-price">
               {weekCost.complete ? "≈ " : "≥ "}
               {formatEuro(weekCost.total)}
             </span>

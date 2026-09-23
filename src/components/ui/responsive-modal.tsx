@@ -84,6 +84,14 @@ function useHistoryDismiss({
         ? crypto.randomUUID()
         : `sheet-${performance.now()}`;
     window.history.pushState({ fgSheetId: id }, "");
+    // Huella de la entrada recién empujada, por si Next le borra la marca: al
+    // completar una navegación suave —y la revalidación de una Server Action lo
+    // es— reescribe `history.state` SIN conservar el estado propio
+    // (`preserveCustomHistoryState: false`), así que `fgSheetId` desaparece con
+    // el sheet abierto. Entonces el cierre por botón no reconocía su entrada, no
+    // la consumía y quedaba huérfana: el siguiente «atrás» no hacía nada visible.
+    const pushedHref = window.location.href;
+    const pushedLength = window.history.length;
     let poppedByUser = false;
 
     const onPop = () => {
@@ -96,11 +104,17 @@ function useHistoryDismiss({
       window.removeEventListener("popstate", onPop);
       // Cerrado por botón/swipe/overlay: si NUESTRA entrada sigue en el tope, la
       // consumimos. Si el usuario navegó, el tope es otro estado → no tocamos nada.
-      if (
-        !poppedByUser &&
-        (window.history.state as { fgSheetId?: string } | null)?.fgSheetId ===
-          id
-      ) {
+      // La entrada es nuestra si conserva la marca, o si la perdió pero ni la URL
+      // ni la longitud del historial han cambiado desde que la empujamos (Next
+      // la REEMPLAZÓ al revalidar; una navegación de verdad cambia una de las
+      // dos). Otro sheet encima tendría su propia entrada y cambiaría la longitud.
+      const state = window.history.state as { fgSheetId?: string } | null;
+      const ours =
+        state?.fgSheetId === id ||
+        (state?.fgSheetId === undefined &&
+          window.location.href === pushedHref &&
+          window.history.length === pushedLength);
+      if (!poppedByUser && ours) {
         window.history.back();
       }
     };
@@ -111,7 +125,28 @@ function ResponsiveModal({
   children,
   ...props
 }: React.ComponentProps<typeof Drawer>) {
-  const isDesktop = useMediaQuery(DESKTOP_MEDIA_QUERY);
+  const liveIsDesktop = useMediaQuery(DESKTOP_MEDIA_QUERY);
+
+  /*
+    La variante se decide AL ABRIR y no cambia hasta cerrar. Girar el móvil con
+    un sheet abierto cruza el breakpoint (en horizontal pasa de 768 px), y con la
+    variante en vivo el árbol saltaba de Drawer a Dialog: todo lo de dentro se
+    remontaba y se perdía lo que estuvieras escribiendo, y de paso se apagaba y
+    encendía la integración con el historial a mitad. Solo en modales
+    controlados (`open` definido), que son los que sabemos cuándo abren.
+  */
+  const [frozenIsDesktop, setFrozenIsDesktop] = React.useState<boolean | null>(
+    null,
+  );
+  if (props.open === true && frozenIsDesktop === null) {
+    setFrozenIsDesktop(liveIsDesktop);
+  } else if (props.open !== true && frozenIsDesktop !== null) {
+    setFrozenIsDesktop(null);
+  }
+  const isDesktop =
+    props.open === true && frozenIsDesktop !== null
+      ? frozenIsDesktop
+      : liveIsDesktop;
 
   // Atrás cierra el sheet en móvil (rama Drawer). En escritorio no se toca: Radix
   // Dialog ya cierra con Escape y no debe interferir con el historial.

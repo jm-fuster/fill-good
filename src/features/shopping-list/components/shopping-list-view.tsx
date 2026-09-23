@@ -974,7 +974,7 @@ function ChainBadge({ chain }: { chain: string }) {
 function SavingsBadge({ tip }: { tip: ChainSavingsTip }) {
   return (
     <span
-      className="ml-1.5 inline-flex items-center gap-0.5 rounded-md bg-chart-3/10 px-1.5 py-0.5 align-middle text-[11px] font-medium text-chart-3 no-underline"
+      className="ml-1.5 inline-flex items-center gap-0.5 rounded-md bg-chart-3/10 px-1.5 py-0.5 align-middle text-[11px] font-medium text-price no-underline"
       title={`Más barato en ${chainLabel(tip.cheaperChain)} que en ${chainLabel(tip.currentChain)}`}
     >
       <TrendingDown className="size-3" aria-hidden />

@@ -748,7 +748,7 @@ export function EditItemDrawer({
               {entry.savings ? (
                 // Fase 3: otra cadena sale más barata según tus tickets. Informativo
                 // (acento cálido de precios); el aviso también aparece en la lista.
-                <div className="flex items-start gap-1.5 rounded-lg bg-chart-3/10 p-2 text-sm text-chart-3">
+                <div className="flex items-start gap-1.5 rounded-lg bg-chart-3/10 p-2 text-sm text-price">
                   <TrendingDown className="mt-0.5 size-4 shrink-0" aria-hidden />
                   <span>
                     En{" "}
