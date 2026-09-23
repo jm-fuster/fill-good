@@ -6,6 +6,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { SerwistProvider } from "@serwist/next/react";
 
 import { ThemeProvider } from "@/components/theme-provider";
+import { SessionEndCleanup } from "@/features/account/components/session-end-cleanup";
 import { Toaster } from "@/components/ui/sonner";
 
 import "./globals.css";
@@ -70,6 +71,9 @@ export default function RootLayout({
             >
               {children}
               <Toaster position="top-center" />
+              {/* Purga el dispositivo al terminar la sesión por CUALQUIER vía
+                  (también el menú de Clerk o una sesión revocada). */}
+              <SessionEndCleanup />
             </ThemeProvider>
           </SerwistProvider>
         </ClerkProvider>
