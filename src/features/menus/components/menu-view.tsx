@@ -89,7 +89,11 @@ import {
 } from "./cooked-restock-fields";
 import { AiGenerateButton, SLOT_GENERATION_STEPS } from "./ai-generate-button";
 import { EntryActionTile } from "./entry-action-tile";
-import { MenuSettings } from "./menu-settings";
+import {
+  MenuSettings,
+  MenuSettingsPanel,
+  useMenuSettingsState,
+} from "./menu-settings";
 import { SlotPickerGrid } from "./slot-picker-grid";
 import { TodayStrip } from "./today-strip";
 import {
@@ -316,6 +320,16 @@ export function MenuView({
   const [, startSkip] = useTransition();
   // Repaso de platos pasados (R2): se abre desde el chip de la cabecera.
   const [checkinOpen, setCheckinOpen] = useState(false);
+  // El panel de ajustes guarda aquí su estado: ver `useMenuSettingsState`.
+  const menuSettings = useMenuSettingsState(prefs);
+  /*
+    Cada apertura del repaso es una sesión nueva. En /menus el modal vive
+    montado toda la visita, y lo que recordaba de la vez anterior (qué filas ya
+    había contestado) seguía ahí: si luego desmarcabas «cocinado» en la
+    cuadrícula, ese plato volvía a estar pendiente pero el repaso lo seguía
+    escondiendo. La clave lo remonta limpio al abrir.
+  */
+  const [checkinSession, setCheckinSession] = useState(0);
   /*
     Feedback inmediato de la acción rápida: el ✔ aparece en la celda antes de que
     el servidor conteste y la capa optimista se desvanece sola cuando termina la
@@ -702,9 +716,8 @@ export function MenuView({
             de generar y la semana.
           */}
           <MenuSettings
-            prefs={prefs}
+            settings={menuSettings}
             rules={rules}
-            recipes={recipes}
             onReplaceAll={
               hasPreservable ? () => setConfirmReplace(true) : undefined
             }
@@ -799,7 +812,10 @@ export function MenuView({
           {pendingCheckin.length > 0 ? (
             <Button
               variant="ghost"
-              onClick={() => setCheckinOpen(true)}
+              onClick={() => {
+                setCheckinSession((n) => n + 1);
+                setCheckinOpen(true);
+              }}
               className="text-muted-foreground"
               aria-label={
                 pendingCheckin.length === 1
@@ -1280,7 +1296,16 @@ export function MenuView({
         }}
       />
 
+      {/* Fuera del bloque de generar, que cambia de sitio: ver `MenuSettings`. */}
+      <MenuSettingsPanel
+        settings={menuSettings}
+        prefs={prefs}
+        rules={rules}
+        recipes={recipes}
+      />
+
       <CookedCheckinModal
+        key={checkinSession}
         open={checkinOpen}
         onOpenChange={setCheckinOpen}
         entries={pendingCheckin}

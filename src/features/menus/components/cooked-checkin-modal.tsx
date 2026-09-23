@@ -169,9 +169,16 @@ export function CookedCheckinModal({
     `/menus` no re-renderiza `/lista`), que es por dónde entra casi todo el mundo
     a este repaso: de ahí que solo se viera en el menú.
   */
+  //
+  // Y se vuelve a meter en SU sitio, con el mismo orden que usa la consulta
+  // (fecha y hueco): añadida al final, la fila que estabas contestando saltaba
+  // al fondo de la lista a mitad de pregunta.
   const remaining =
     held && !pending.some((e) => e.id === held.id)
-      ? [...pending, held]
+      ? [...pending, held].sort(
+          (a, b) =>
+            a.date.localeCompare(b.date) || a.slot.localeCompare(b.slot),
+        )
       : pending;
   const isBusy = (id: string, kind: Busy["kind"]) =>
     busy?.id === id && busy.kind === kind;

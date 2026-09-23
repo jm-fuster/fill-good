@@ -78,7 +78,13 @@ export const menuSchema = z.object({
               // rechazada es la semana entera a la basura y un error genérico.
               // Que la semana NO venga vacía del todo se comprueba en
               // `generateMenuAction`, que es donde se puede contestar algo útil.
-              .max(2)
+              //
+              // Tampoco máximo, por lo mismo: `@ai-sdk/google` no traslada
+              // `maxItems` al esquema que recibe Gemini, así que el tope no
+              // guiaba al modelo — solo tiraba la semana entera cuando un hueco
+              // traía 3 platos. El tope real lo aplica `generateMenuAction`
+              // recortando a `MAX_DISHES_PER_SLOT`; al modelo se le pide en la
+              // descripción.
               .describe(
                 "1 o 2 platos del hueco, o ninguno si es un hueco que el hogar " +
                   "no planifica. La comida (lunch) puede llevar 2 (p. ej. " +
