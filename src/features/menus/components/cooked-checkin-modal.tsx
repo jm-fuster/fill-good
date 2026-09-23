@@ -209,6 +209,13 @@ export function CookedCheckinModal({
         toast.error(r.error);
         return;
       }
+      // Otra persona lo marcó antes (este repaso es una vista vieja): no se
+      // propone descontar otra vez, que la despensa ya pagó ese plato.
+      if (r.already) {
+        toast.info("Ya estaba marcado como cocinado.");
+        resolve(entry.id);
+        return;
+      }
       toast.success("Marcado como cocinado");
       setDirty(true);
       // La fila ya está escrita: conservarla es lo que la mantiene a la vista si

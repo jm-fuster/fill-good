@@ -152,6 +152,13 @@ async function runToggleCooked({
     toast.error(r.error);
     return;
   }
+  // Ya estaba cocinado (lo marcó otra persona, o una vista vieja): nada que
+  // descontar otra vez.
+  if (r.already) {
+    toast.info("Ya estaba marcado como cocinado.");
+    onResolved(date);
+    return;
+  }
   // Al desmarcar (o si es texto libre) no se toca el inventario.
   if (!cooked || !recipeId) {
     toast.success(cooked ? "Marcado como cocinado" : "Ya no está cocinado");
@@ -1456,8 +1463,14 @@ function EditEntryDrawer({
     dejaba el descuento de inventario pagando un plato retirado (el veto y el
     porqué completo están en `rerollMenuEntryAction`). Para cambiarlo de verdad
     está «deshacer» la marca, que sigue a un toque justo al lado.
+
+    Tampoco en un día ya vivido, aunque siga sin marcar: el servidor lo niega
+    (`rerollMenuEntryAction`, con el candado de `generateMenuAction`), y ofrecer
+    un botón cuyo único desenlace es un error es el patrón que `finishOffer` ya
+    evita en el modo cocinado. Lo mismo el «Generar este hueco con IA».
   */
-  const canReroll = !cooked && !skipped;
+  const isPastDay = Boolean(editing && editing.date < todayLocalISO());
+  const canReroll = !cooked && !skipped && !isPastDay;
   const days = getWeekDays(weekStart);
 
   // Sincroniza el input al abrir con un plato distinto (o al pasar a "añadir").
@@ -2068,7 +2081,7 @@ function EditEntryDrawer({
             Hueco vacío: la IA rellena SOLO este hueco (1 plato, sin tocar el
             resto de la semana). Es la vía rápida; debajo quedan las manuales.
           */}
-          {isNew ? (
+          {isNew && !isPastDay ? (
             <AiGenerateButton
               type="button"
               size="lg"

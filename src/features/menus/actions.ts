@@ -83,6 +83,7 @@ import {
   type CookedDeduction,
 } from "./cooked";
 import {
+  PLACEHOLDER_DISH_TEXT,
   validateAndPatchRules,
   type MenuDay,
   type MenuDish,
@@ -105,6 +106,11 @@ export type MenuState = {
   error?: string;
   ok?: boolean;
   added?: number;
+  /**
+   * `toggleEntryCookedAction`: el plato YA estaba cocinado y no se ha escrito
+   * nada. Quien llama no debe volver a proponer el descuento de la despensa.
+   */
+  already?: boolean;
   /**
    * Id del menú de la semana, que devuelve `generateMenuAction` porque puede
    * acabar de CREARLO (`ensureMenu`). La vista lo recibe como prop del servidor,
@@ -1075,9 +1081,24 @@ export async function moveMenuEntryAction(
   );
 
   // Mover es un gesto manual: la entrada pasa a protegerse de la regeneración (N2).
+  //
+  // Y es REPLANIFICAR, así que un «no se hizo» se queda en el día de origen: la
+  // marca hablaba de ese día, no del plato. Sin limpiarla, el plato llegaba ya
+  // descartado a su día nuevo —con el motivo y la fecha del viejo—, no salía en
+  // la tira de hoy, el repaso no lo preguntaba nunca y «Completar» daba el hueco
+  // por resuelto. Es el mismo destrozo que `rerollMenuEntryAction` documenta
+  // para `skipped_at`, en la hermana que no lo tenía en cuenta.
   const { error } = await supabase
     .from("menu_entries")
-    .update({ menu_id: menuId, date, meal_slot: slot, position, source: "manual" })
+    .update({
+      menu_id: menuId,
+      date,
+      meal_slot: slot,
+      position,
+      source: "manual",
+      skipped_at: null,
+      skipped_reason: null,
+    })
     .eq("household_id", household.id)
     .eq("id", entryId);
   if (error) return { error: "No se pudo mover el plato." };
@@ -1211,12 +1232,26 @@ export async function copyPreviousWeekAction(
 
   const prevDays = getWeekDays(prevWeekStart);
   const destDays = getWeekDays(weekStart);
+  const today = todayLocalISO();
 
   const rows = prevEntries
     .map((e) => {
       const idx = prevDays.indexOf(e.date);
       const date = destDays[idx];
       if (!date) return null;
+      /*
+        Día a día, no solo por semana: el veto de arriba cubría la semana ENTERA
+        pasada, pero el caso común es la semana en curso a medias —un miércoles
+        con la semana vacía, que es justo cuando aparece el botón— y ahí se
+        sembraban el lunes y el martes, ya vividos, con platos que nadie
+        planificó y que el repaso preguntaba uno a uno. Es el mismo candado que
+        pone `generateMenuAction` con `isPast`.
+      */
+      if (date < today) return null;
+      // Los marcadores «(elegir plato)» son huecos que el validador de reglas
+      // dejó para rellenar, no platos: copiados como `manual`, «Completar» ya
+      // no los tocaría nunca.
+      if (!e.recipeId && e.freeText === PLACEHOLDER_DISH_TEXT) return null;
       return {
         menu_id: menuId,
         household_id: household.id,
@@ -1229,7 +1264,9 @@ export async function copyPreviousWeekAction(
       };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
-  if (rows.length === 0) return { error: "No se pudo copiar la semana." };
+  if (rows.length === 0) {
+    return { error: "No queda ningún día por planificar en esta semana." };
+  }
 
   const { error } = await supabase.from("menu_entries").insert(rows);
   if (error) return { error: "No se pudo copiar la semana." };
@@ -1445,7 +1482,7 @@ async function rerollMenuEntry(
   const { data: entry } = await supabase
     .from("menu_entries")
     .select(
-      "menu_id, meal_slot, cooked_at, skipped_at, menu:weekly_menus(week_start)",
+      "menu_id, date, meal_slot, cooked_at, skipped_at, menu:weekly_menus(week_start)",
     )
     .eq("household_id", household.id)
     .eq("id", entryId)
@@ -1475,6 +1512,17 @@ async function rerollMenuEntry(
     };
   }
 
+  /*
+    Un día ya vivido tampoco se replanifica con IA, aunque su plato siga sin
+    marcar: es el candado de `generateMenuAction` (`isPast`), que aquí faltaba.
+    Sin él, «Otra idea» sobre la cena del lunes pasado escribía un plato
+    inventado en un día que ya ocurrió —y que el repaso preguntaría después— y
+    gastaba cuota. Va antes del rate limit por lo mismo que la guarda de arriba.
+  */
+  if (entry.date < todayLocalISO()) {
+    return { error: "Ese día ya ha pasado: no se puede planificar." };
+  }
+
   const rateError = await enforceAiRateLimit(supabase, "menu", household.id);
   if (rateError) return { error: rateError };
 
@@ -1497,7 +1545,14 @@ async function rerollMenuEntry(
   // Reemplaza la entrada en su sitio: nueva receta, sin texto libre, source 'ai'
   // y sin cocinar. Con el veto de arriba `cooked_at` ya llega a null; se deja
   // escrito para que relajar el veto no reviva el desfase en silencio.
-  const { error } = await supabase
+  //
+  // La guarda de arriba se leyó ANTES de varios segundos de IA, y en ese rato
+  // cabe un «Lo cocinamos» —del propio panel, que no se bloquea mientras
+  // piensa, o de la pareja desde su móvil—. Por eso se vuelve a exigir en la
+  // escritura (`.is(…, null)`) y se cuentan las filas: sin eso, el update
+  // borraba el `cooked_at` recién puesto y el descuento de la despensa se
+  // quedaba pagando un plato retirado.
+  const { data: tocadas, error } = await supabase
     .from("menu_entries")
     .update({
       recipe_id: dish.recipeId,
@@ -1506,8 +1561,19 @@ async function rerollMenuEntry(
       cooked_at: null,
     })
     .eq("household_id", household.id)
-    .eq("id", entryId);
+    .eq("id", entryId)
+    .is("cooked_at", null)
+    .is("skipped_at", null)
+    .select("id");
   if (error) return { error: "No se pudo cambiar el plato." };
+  if (!tocadas || tocadas.length === 0) {
+    // La receta efímera recién generada se queda sin entrada: fuera.
+    await cleanupOrphanEphemeralRecipes(supabase, household.id);
+    return {
+      error:
+        "Mientras pensaba, ese plato se ha marcado o ya no está: no lo he cambiado.",
+    };
+  }
 
   // La receta efímera anterior puede haber quedado huérfana.
   await cleanupOrphanEphemeralRecipes(supabase, household.id);
@@ -1550,6 +1616,13 @@ async function generateSlotEntry(
     return { error: parsed.error.issues[0]?.message ?? "Datos no válidos." };
   }
   ({ weekStart, date, slot } = parsed.data);
+
+  // El mismo candado de días vividos que `generateMenuAction` y el reroll: un
+  // plato inventado en un día que ya pasó es una pregunta más para el repaso,
+  // no un plan. Antes de la IA y del rate limit, para no gastar cuota en negar.
+  if (date < todayLocalISO()) {
+    return { error: "Ese día ya ha pasado: no se puede planificar." };
+  }
 
   // Puerta de IA: el consentimiento y también el caso de no haberlo podido
   // comprobar (ver `aiConsentError`). Las seis rutas la cruzan con esta misma
@@ -1707,7 +1780,7 @@ export async function toggleEntryCookedAction(
   // Recupera la fecha real de la entrada, acotada al hogar activo.
   const { data: entry } = await supabase
     .from("menu_entries")
-    .select("date")
+    .select("date, cooked_at")
     .eq("household_id", household.id)
     .eq("id", entryId)
     .maybeSingle();
@@ -1716,6 +1789,16 @@ export async function toggleEntryCookedAction(
   if (entry.date > todayLocalISO()) {
     return { error: "Solo puedes marcar como cocinado un día que ya ha pasado." };
   }
+
+  /*
+    Ya cocinado: no se escribe nada y se dice (`already`), para que quien llama
+    no vuelva a proponer el descuento. El repaso de platos vive en el shell de
+    cada miembro y no se refresca al volver a la PWA, así que dos personas
+    pueden contestar «lo cocinamos» al mismo plato desde dos vistas viejas; con
+    un «ok» a secas, las dos recibían la propuesta y la despensa se descontaba
+    dos veces.
+  */
+  if (entry.cooked_at) return { ok: true, already: true };
 
   const { data, error } = await supabase
     .from("menu_entries")
@@ -1774,7 +1857,7 @@ export async function toggleEntrySkippedAction(
 
   const { data: entry } = await supabase
     .from("menu_entries")
-    .select("date")
+    .select("date, cooked_at")
     .eq("household_id", household.id)
     .eq("id", entryId)
     .maybeSingle();
@@ -1782,6 +1865,19 @@ export async function toggleEntrySkippedAction(
 
   if (entry.date > todayLocalISO()) {
     return { error: "Ese día todavía no ha pasado." };
+  }
+
+  /*
+    Sobre un plato ya COCINADO, «no se hizo» se niega en vez de pisarlo. La
+    pantalla ya esconde el botón en ese caso, pero una vista vieja (el repaso
+    del otro móvil) podía mandarlo igual, y el update borraba en silencio el
+    `cooked_at`: la única prueba de que se cocinó, con el descuento de la
+    despensa ya hecho. Para cambiarlo está deshacer «cocinado», que es explícito.
+  */
+  if (entry.cooked_at) {
+    return {
+      error: "Ese plato está marcado como cocinado: deshaz esa marca primero.",
+    };
   }
 
   const { data, error } = await supabase
@@ -2248,17 +2344,30 @@ export async function computeMissingForMenuAction(
   if (!list) return { error: "No hay lista activa." };
 
   // Ingredientes de las recetas del menú (con su product_id si B1 lo vinculó).
+  //
+  // Solo de lo que queda POR COCINAR: de hoy en adelante, ni cocinado ni
+  // descartado. Es la misma regla que la pantalla aplica a la semana entera
+  // (en una semana pasada ni se ofrece el botón), bajada al plato: comprar los
+  // ingredientes de lo que ya se comió no lleva a ningún sitio, y encima
+  // salía justo lo que acababas de gastar, porque cocinar descuenta la despensa
+  // hasta 0 — el lunes cocinabas lentejas y el miércoles «Añadir lo que falte»
+  // te proponía lentejas, marcadas.
   const { data: entries } = await supabase
     .from("menu_entries")
     .select("recipe_id")
     .eq("household_id", household.id)
     .eq("menu_id", menuId)
+    .gte("date", todayLocalISO())
+    .is("cooked_at", null)
+    .is("skipped_at", null)
     .not("recipe_id", "is", null);
   const recipeIds = [...new Set((entries ?? []).map((e) => e.recipe_id))].filter(
     (id): id is string => Boolean(id),
   );
   if (recipeIds.length === 0) {
-    return { error: "El menú no tiene recetas con ingredientes." };
+    return {
+      error: "No quedan platos con receta por cocinar en este menú.",
+    };
   }
 
   const candidates = await computeMissingForRecipes(
