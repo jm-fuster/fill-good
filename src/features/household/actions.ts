@@ -147,8 +147,14 @@ export async function joinHouseholdAction(
     return { error: message };
   }
   if (!data) {
-    // El RPC devuelve null cuando el código no corresponde a ningún hogar.
-    return { error: "Ese código no corresponde a ningún hogar." };
+    // El RPC devuelve null cuando el código no corresponde a ningún hogar O
+    // cuando ha caducado (7 días), y no dice cuál de las dos: el mensaje tiene
+    // que cubrir las dos. Con «no corresponde a ningún hogar» a secas, quien
+    // recibía un enlace viejo creía haberlo copiado mal y nadie pedía otro.
+    return {
+      error:
+        "Ese código no es válido o ha caducado. Pide a quien te invitó que te envíe uno nuevo.",
+    };
   }
 
   // El hogar al que se une (o al que ya pertenecía) pasa a ser el activo.

@@ -4,11 +4,13 @@ import { redirect } from "next/navigation";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { HouseholdSettings } from "@/features/household/components/household-settings";
+import { inviteCodeStatus } from "@/features/household/invite";
 import {
   getCurrentHousehold,
   getHouseholdMembers,
   getUserHouseholds,
 } from "@/features/household/queries";
+import { nowMs } from "@/lib/dates";
 
 export const metadata: Metadata = { title: "Mi hogar" };
 
@@ -37,6 +39,7 @@ export default async function HogarPage() {
           role: h.role,
         }))}
         members={members}
+        invite={inviteCodeStatus(household.inviteCodeExpiresAt, nowMs())}
       />
     </PageContainer>
   );
