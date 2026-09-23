@@ -31,9 +31,18 @@ const PRESERVED_CACHE_SUBSTRING = "precache";
 /**
  * Prefijos de claves de localStorage que guardan estado del hogar y deben
  * limpiarse. `theme` (next-themes) queda fuera a propósito: es una preferencia
- * del dispositivo, no un dato del hogar.
+ * del dispositivo, no un dato del hogar. Y `inventario:collapsed:*` también:
+ * qué secciones tienes plegadas no dice nada de nadie.
+ *
+ * Una pantalla nueva que guarde algo del hogar en el dispositivo tiene que
+ * añadir aquí su prefijo, porque `/privacidad` §10 promete que al cerrar sesión
+ * se borra. `cocinar:` —el paso de la receta que se está cocinando, del modo
+ * cocinado de ago-2026— nació sin entrar en esta lista, y la promesa estuvo en
+ * falso hasta sep-2026. Se lleva por delante también `cocinar:silencio`, que es
+ * una preferencia, igual que `lista:` ya se llevaba `lista:grouped`: un prefijo
+ * por pantalla se mantiene solo; una lista de excepciones, no.
  */
-const HOUSEHOLD_LOCALSTORAGE_PREFIXES = ["lista:"];
+const HOUSEHOLD_LOCALSTORAGE_PREFIXES = ["lista:", "cocinar:"];
 
 /**
  * Cancela la suscripción push de ESTE dispositivo: borra la fila del servidor y

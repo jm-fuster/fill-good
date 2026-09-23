@@ -336,9 +336,13 @@ export default function PrivacidadPage() {
         </ul>
         <p>
           También usamos el almacenamiento local del dispositivo para
-          preferencias (como el tema claro/oscuro) y para que la app funcione
-          sin conexión (caché de la PWA). Al cerrar sesión borramos esa caché y
-          el estado del hogar guardado en el dispositivo. No hay cookies de
+          preferencias (como el tema claro/oscuro o qué secciones tienes
+          plegadas), para recordar por dónde vas (la lista de la compra y la
+          tienda en la que compras, o el paso de la receta que estás cocinando)
+          y para que la app funcione sin conexión (caché de la PWA). Al cerrar
+          sesión borramos esa caché y todo lo que guardaba de tu hogar; solo se
+          quedan algunas preferencias del dispositivo, como el tema. No hay
+          cookies de
           publicidad, de analítica ni de seguimiento: la medición de uso de la
           sección 2 no guarda nada en tu dispositivo, se anota en nuestro
           servidor cuando usas la app.
