@@ -322,6 +322,24 @@ check("minutos justos", timerLabel(2100) === "35 min");
 check("una hora en punto no dice «60 min»", timerLabel(3600) === "1 h");
 check("hora y algo", timerLabel(5400) === "1 h 30 min");
 check("el rótulo del chip sale del mismo sitio", rotulos("Asa 1 h 30 min")[0] === "1 h 30 min");
+// Auditoría del 23-sep-2026: tres lecturas que salían mal.
+check(
+  "«90 segundos» dice lo que cuenta (no un «2 min» que cuenta 1:30)",
+  rotulos("Deja reposar 90 segundos")[0] === "1 min 30 s",
+  { real: rotulos("Deja reposar 90 segundos") },
+);
+check(
+  "«3 o 4 minutos» es un intervalo: el extremo bajo",
+  tiempos("Cuece 3 o 4 minutos")[0] === 180,
+  { real: tiempos("Cuece 3 o 4 minutos") },
+);
+check("y «5 ó 6» también", tiempos("Saltea 5 ó 6 minutos")[0] === 300);
+check(
+  "«y media» solo suma detrás de horas (no «10 minutos y media hora» → 11 min)",
+  tiempos("Hornea 10 minutos y media hora más")[0] === 600,
+  { real: tiempos("Hornea 10 minutos y media hora más") },
+);
+check("«1 hora y media» sigue siendo hora y media", tiempos("Guisa 1 hora y media")[0] === 5400);
 
 seccion("La cuenta atrás");
 check("mm:ss", formatCountdown(95_000) === "01:35", { real: formatCountdown(95_000) });

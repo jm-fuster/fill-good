@@ -9,6 +9,7 @@ export const MEAL_TYPE_LABELS: Record<string, string> = {
 };
 
 export const MEAL_TYPE_OPTIONS: { value: MealTypeValue; label: string }[] = [
+  { value: "breakfast", label: "Desayuno" },
   { value: "lunch", label: "Comida" },
   { value: "dinner", label: "Cena" },
 ];

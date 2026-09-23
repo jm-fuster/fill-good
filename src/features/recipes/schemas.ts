@@ -1,7 +1,10 @@
 import { z } from "zod";
 
 const unit = z.enum(["ud", "g", "kg", "ml", "l"]);
-const mealType = z.enum(["lunch", "dinner"]);
+// El desayuno también: sin él, editar una de las recetas de desayuno del pack
+// obligaba a elegir comida o cena y la receta dejaba de ofrecerse para
+// desayunar (el generador respeta `meal_types`).
+const mealType = z.enum(["breakfast", "lunch", "dinner"]);
 const season = z.enum(["all", "winter", "summer"]);
 
 /**
@@ -107,8 +110,8 @@ export const recipeInputSchema = z.object({
     .catch(null),
   mealTypes: z
     .array(mealType)
-    .min(1, "Marca si es para comida, cena o ambas.")
-    .max(2),
+    .min(1, "Marca para qué comida es.")
+    .max(3),
   seasons: z
     .array(season)
     .min(1, "Elige una temporada.")
