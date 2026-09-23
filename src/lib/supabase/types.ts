@@ -41,15 +41,16 @@ export type Database = {
           pantry_review_enabled?: boolean;
           pantry_reviewed_at?: string | null;
         };
+        // SOLO las columnas con `grant update (…) to authenticated`, a
+        // propósito. El blindaje de 2026-07 revocó el UPDATE de tabla, así que
+        // una columna sin su grant por columna se rechaza (42501) aunque la RLS
+        // lo permita. Con todas las columnas aquí, `tsc` daba por buena la
+        // escritura de `pantry_reviewed_at`, que llegó a producción sin grant.
+        // Columna nueva que escriba un miembro = su grant en la migración + su
+        // línea aquí. El resto se cambia por RPC definer (nombre, código…).
         Update: {
-          id?: string;
-          name?: string;
-          invite_code?: string;
-          created_by?: string;
-          created_at?: string;
           monthly_budget?: number | null;
           preferred_chains?: string[];
-          invite_code_expires_at?: string;
           pantry_review_enabled?: boolean;
           pantry_reviewed_at?: string | null;
         };
