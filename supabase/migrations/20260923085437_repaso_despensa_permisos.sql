@@ -1,0 +1,25 @@
+-- ============================================================================
+-- Repaso de despensa: los miembros pueden escribir sus dos columnas de
+-- `households`
+-- ============================================================================
+-- `20260813120000_repaso_despensa.sql` añadió `pantry_review_enabled` y
+-- `pantry_reviewed_at` sin su grant por columna. El blindaje de 2026-07
+-- (`20260724130000_security_hardening.sql`) revocó el UPDATE de tabla completa
+-- de `households` y concede columna a columna, así que una columna nueva nace
+-- SIN permiso de escritura para `authenticated`: la RLS de fila
+-- (households_update_member) deja pasar el UPDATE y Postgres lo rechaza igual,
+-- con `42501 permission denied for table households`. Es el mismo fallo que ya
+-- se vio con `preferred_chains`, cuya migración sí lleva el grant.
+--
+-- Lo que rompía, las dos cosas en silencio para quien no mira los logs:
+--   · el sello semanal (`savePantryReviewAction`) no se guardaba nunca, así que
+--     al cerrar el repaso el shell volvía a pintar la tarjeta con los ocho
+--     productos siguientes, y así hasta vaciar la despensa;
+--   · «No volver a preguntar» y el interruptor de Ajustes contestaban siempre
+--     «No se pudo guardar la preferencia»: el repaso no se podía apagar.
+--
+-- Comprobado en Postgres 17 (PGlite) con la secuencia real de grants: antes de
+-- esto las dos columnas dan 42501 y `monthly_budget` pasa; después pasan las
+-- tres.
+grant update (pantry_review_enabled, pantry_reviewed_at)
+  on public.households to authenticated;

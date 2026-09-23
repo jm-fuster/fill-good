@@ -977,10 +977,21 @@ export async function savePantryReviewAction(
   // que hace que la tarjeta no vuelva a salir esta semana, y si dependiera de un
   // paso final, quien contesta cuatro y se va se encontraría la pregunta otra
   // vez. Es un timestamp, así que reescribirlo ocho veces no cuesta nada.
-  await supabase
+  //
+  // Su fallo NO se devuelve como error: la respuesta ya está guardada en su
+  // fila, y revertirla en pantalla por el sello del hogar sería mentir al
+  // revés. Pero tampoco se calla: sin sello la tarjeta vuelve con los ocho
+  // siguientes. Así estuvo en producción desde el primer día sin que nada lo
+  // dijera: faltaba el grant de la columna (migración
+  // `20260923085437_repaso_despensa_permisos.sql`) y este `await` tiraba el
+  // error.
+  const { error: selloErr } = await supabase
     .from("households")
     .update({ pantry_reviewed_at: new Date().toISOString() })
     .eq("id", household.id);
+  if (selloErr) {
+    console.error("Repaso de despensa: no se pudo sellar la semana:", selloErr);
+  }
 
   // Medición de uso: una respuesta por evento, y es de ahí de donde sale si el
   // repaso se termina (respuestas frente a los productos ofrecidos al abrirlo).
