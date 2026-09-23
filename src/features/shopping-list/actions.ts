@@ -157,7 +157,7 @@ export async function addListItemAction(
   // L3: si ya está en la lista (sin marcar), fusionar en vez de duplicar.
   const merged = await mergeIntoExisting(
     supabase,
-    list.id,
+    { listId: list.id, householdId: household.id },
     { productId: product?.id ?? null, normalized },
     { quantity, unit },
   );
@@ -175,7 +175,10 @@ export async function addListItemAction(
     };
   }
 
-  const position = await nextListPosition(supabase, list.id);
+  const position = await nextListPosition(supabase, {
+    listId: list.id,
+    householdId: household.id,
+  });
 
   const { data: inserted, error } = await supabase
     .from("shopping_list_items")
@@ -229,7 +232,7 @@ export async function addProductToListAction(
   // L3: fusionar con el ítem existente (sin marcar) si ya está en la lista.
   const merged = await mergeIntoExisting(
     supabase,
-    list.id,
+    { listId: list.id, householdId: household.id },
     { productId: product.id, normalized: normalizeName(product.name) },
     { quantity: qty, unit: resolvedUnit },
   );
@@ -246,7 +249,10 @@ export async function addProductToListAction(
     };
   }
 
-  const position = await nextListPosition(supabase, list.id);
+  const position = await nextListPosition(supabase, {
+    listId: list.id,
+    householdId: household.id,
+  });
 
   const { data: inserted, error } = await supabase
     .from("shopping_list_items")

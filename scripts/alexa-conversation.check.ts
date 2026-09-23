@@ -1708,6 +1708,48 @@ async function main() {
     );
   }
 
+  console.log("\n16. Una fila de otro hogar colada en la lista");
+  {
+    // `list_id` no ata una fila a su hogar: la clave foránea es simple, así que
+    // un miembro de OTRO hogar puede crear en el suyo una fila con el id de
+    // esta lista si lo conoce (un ex-miembro lo conoce). A quien usa la app se
+    // la esconde la RLS; el webhook lee con la clave de servicio, así que el
+    // filtro por hogar lo tiene que poner el código. Sin él, «apunta pan» daba
+    // el pan por apuntado —el de la fila ajena— y no escribía nada.
+    const colada = fakeAdmin({
+      alexa_links: LINK, household_members: MIEMBRO,
+      shopping_lists: LISTA,
+      shopping_list_items: {
+        list: [
+          {
+            id: "sli-ajena",
+            household_id: "h2",
+            list_id: "list1",
+            name: "Pan",
+            quantity: null,
+            unit: null,
+            product_id: null,
+            is_checked: false,
+            product: null,
+          },
+        ],
+      },
+    });
+    const r = await run(
+      intentRequest("ApuntarListaIntent", { producto: slot("producto", "pan") }),
+      undefined,
+      colada,
+    );
+    const escrituras = escriturasEn(colada, "shopping_list_items");
+    check(
+      "«apunta pan» no se funde con la fila de otro hogar: apunta en el suyo",
+      escrituras.length === 1 &&
+        escrituras[0].op === "insert" &&
+        escrituras[0].datos.household_id === "h1",
+      { speech: text(r), escrituras },
+    );
+  }
+
   if (fallos > 0) {
     console.log(`\n${fallos} comprobaciones FALLIDAS.\n`);
     process.exit(1);

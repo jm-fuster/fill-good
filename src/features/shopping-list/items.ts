@@ -18,15 +18,27 @@ import type { Database, UnitType } from "@/lib/supabase/types";
 
 type Supabase = SupabaseClient<Database>;
 
+/**
+ * La lista a la que va un alta, CON su hogar, aunque el id de la lista parezca
+ * bastar: `list_id` no ata una fila a su hogar (la clave foránea es simple, y
+ * otro hogar puede crear una fila con este `list_id` si conoce el UUID). Con el
+ * cliente de Clerk eso lo tapa la RLS, pero el webhook de Alexa escribe con la
+ * clave de servicio, que se la salta: sin el filtro por hogar, «apunta pan» se
+ * fundía con la fila ajena, le cambiaba la cantidad y decía su nombre en voz
+ * alta, y en tu lista no aparecía nada. Lo fija `check:alexa`.
+ */
+export type ListTarget = { listId: string; householdId: string };
+
 /** Siguiente `position` al final de la lista (max + 1); 1 si está vacía. */
 export async function nextListPosition(
   supabase: Supabase,
-  listId: string,
+  target: ListTarget,
 ): Promise<number> {
   const { data: last } = await supabase
     .from("shopping_list_items")
     .select("position")
-    .eq("list_id", listId)
+    .eq("household_id", target.householdId)
+    .eq("list_id", target.listId)
     .order("position", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -118,14 +130,15 @@ function planMerge(
  */
 export async function mergeIntoExisting(
   supabase: Supabase,
-  listId: string,
+  target: ListTarget,
   match: { productId: string | null; normalized: string },
   incoming: { quantity: number | null; unit: UnitType | null },
 ): Promise<MergeResult | null> {
   const { data } = await supabase
     .from("shopping_list_items")
     .select(SELECT_CANDIDATES)
-    .eq("list_id", listId)
+    .eq("household_id", target.householdId)
+    .eq("list_id", target.listId)
     .eq("is_checked", false);
 
   const plan = planMerge(
@@ -193,7 +206,7 @@ export type BulkAddResult = { added: number; merged: number };
  */
 export async function addManyToList(
   supabase: Supabase,
-  target: { listId: string; householdId: string; userId: string | null },
+  target: ListTarget & { userId: string | null },
   entries: BulkAddItem[],
 ): Promise<BulkAddResult | null> {
   const { data } = await supabase
@@ -263,7 +276,7 @@ export async function addManyToList(
 
   if (toInsert.length === 0) return { added: 0, merged };
 
-  let position = await nextListPosition(supabase, target.listId);
+  let position = await nextListPosition(supabase, target);
   const { error } = await supabase.from("shopping_list_items").insert(
     toInsert.map((entry) => ({
       list_id: target.listId,
