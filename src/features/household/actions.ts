@@ -31,6 +31,13 @@ const ACTIVE_COOKIE_OPTIONS = {
   maxAge: 60 * 60 * 24 * 365,
 } as const;
 
+/**
+ * El tope lo pone la base (trigger de household_members, migración
+ * 20260923205224) y cuenta tanto los hogares creados como aquellos a los que te
+ * uniste; si cambia allí, cambia aquí.
+ */
+const TOO_MANY_HOUSEHOLDS = "Ya estás en 10 hogares, que es el máximo.";
+
 /** Marca un hogar como activo para los próximos requests. */
 async function setActiveHouseholdCookie(householdId: string) {
   (await cookies()).set(
@@ -109,7 +116,10 @@ export async function createHouseholdAction(
     p_display_name: parsed.data.displayName ?? null,
   });
   if (error) {
-    return { error: "No se pudo crear el hogar. Inténtalo de nuevo." };
+    const message = error.message?.includes("too_many_households")
+      ? `${TOO_MANY_HOUSEHOLDS} Sal de alguno para crear otro.`
+      : "No se pudo crear el hogar. Inténtalo de nuevo.";
+    return { error: message };
   }
 
   // El hogar recién creado pasa a ser el activo (puede ser el segundo o más).
@@ -143,7 +153,9 @@ export async function joinHouseholdAction(
     // rate_limited: demasiados intentos fallidos (anti fuerza-bruta de códigos).
     const message = error.message?.includes("rate_limited")
       ? "Demasiados intentos. Espera unos minutos e inténtalo de nuevo."
-      : "No se pudo unir al hogar. Inténtalo de nuevo.";
+      : error.message?.includes("too_many_households")
+        ? `${TOO_MANY_HOUSEHOLDS} Sal de alguno para unirte a este.`
+        : "No se pudo unir al hogar. Inténtalo de nuevo.";
     return { error: message };
   }
   if (!data) {
