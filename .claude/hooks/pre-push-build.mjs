@@ -50,16 +50,29 @@ function denegar(motivo) {
  * push`, `git push --force-with-lease` y un `npm test && git push` (que un
  * filtro por prefijo se dejaría fuera, y es justo el caso en el que más duele).
  *
- * Se descartan tres cosas que llevan la palabra sin empujar nada: consultar el
- * historial (`git log --grep=push`), pedir ayuda, y el ensayo (`--dry-run`), que
- * por definición no publica y no necesita build.
+ * Lo que decide es el SUBCOMANDO: la primera palabra tras `git` que no sea una
+ * opción global (`-C <ruta>`, `-c clave=valor`…). Así `git log --grep=push` y
+ * `git help push` no cuentan, ni el ensayo (`--dry-run`, `-n`), que por
+ * definición no publica. Antes se descartaba el tramo entero si contenía `log`
+ * o `help` en cualquier sitio, así que `git push origin fix/help-page` o una
+ * rama `log-rotacion` se saltaban la puerta sin que nadie lo pidiera.
  */
 export function esPush(comando) {
   const tramos = comando.split(/;|&&|\|\||\||\n/);
   return tramos.some((tramo) => {
-    if (!/\bgit\b/.test(tramo) || !/\bpush\b/.test(tramo)) return false;
-    if (/--grep|--dry-run|\blog\b|\bhelp\b/.test(tramo)) return false;
-    return true;
+    const palabras = tramo.trim().split(/\s+/);
+    const i = palabras.findIndex((p) => /(^|[\\/])git(\.exe)?$/.test(p));
+    if (i === -1) return false;
+    let j = i + 1;
+    while (j < palabras.length && palabras[j].startsWith("-")) {
+      // Opciones globales que llevan su valor en la palabra siguiente.
+      if (["-C", "-c", "--git-dir", "--work-tree", "--namespace"].includes(palabras[j])) {
+        j += 1;
+      }
+      j += 1;
+    }
+    if (palabras[j] !== "push") return false;
+    return !palabras.slice(j + 1).some((p) => p === "--dry-run" || p === "-n");
   });
 }
 
