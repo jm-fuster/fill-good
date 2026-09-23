@@ -1,0 +1,32 @@
+# Actualizaciones de VERSIÓN. Las de seguridad ya salían solas (alertas de
+# Dependabot + security updates, activadas en los ajustes del repo) y no
+# dependen de este fichero.
+version: 2
+updates:
+  # Las actions del CI van fijadas por SHA (.github/workflows/ci.yml); esto es
+  # lo que las mantiene al día, SHA y comentario de versión a la vez.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(ci)"
+
+  # Un PR por semana con los parches y menores agrupados, no uno por paquete.
+  # Las MAYORES van sueltas a propósito: son las que traen cambios de API
+  # (Next, Clerk, Supabase…) y se revisan una a una.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Europe/Madrid
+    open-pull-requests-limit: 5
+    groups:
+      menores:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: "chore(deps)"
