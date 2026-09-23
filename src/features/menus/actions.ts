@@ -83,6 +83,7 @@ import {
   type CookedDeduction,
 } from "./cooked";
 import {
+  MAX_DISHES_PER_SLOT,
   PLACEHOLDER_DISH_TEXT,
   validateAndPatchRules,
   type MenuDay,
@@ -590,7 +591,10 @@ async function generateMenu(
       if (!weekDays.includes(e.date)) return null;
       return {
         day: format(parseISO(e.date), "EEEE d", { locale: es }),
-        slot: e.slot === "dinner" ? "cena" : "comida",
+        // Con el nombre de SU hueco: el ternario decía «comida» a todo lo que
+        // no era cena, y un desayuno conservado le llegaba al modelo como una
+        // comida ya cubierta.
+        slot: slotLabel(e.slot).toLowerCase(),
         name: e.recipeName ?? e.freeText ?? "",
       };
     })
@@ -708,7 +712,7 @@ async function generateMenu(
       }
       openSlots += 1;
       const m = genDay?.meals.find((x) => x.slot === slot);
-      const dishes: MenuDish[] = (m?.dishes ?? []).slice(0, 2).map((dish) => {
+      const dishes: MenuDish[] = (m?.dishes ?? []).slice(0, MAX_DISHES_PER_SLOT).map((dish) => {
         const payload: DishPayload = {
           description: dish.description,
           ingredients: dish.ingredients.map((ing) => ({

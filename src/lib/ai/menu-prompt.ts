@@ -56,7 +56,7 @@ export type MenuRuleLine =
 export type MenuPinnedLine = {
   /** Etiqueta del día ("lunes 22"). */
   day: string;
-  /** "comida" | "cena". */
+  /** "desayuno" | "comida" | "cena". */
   slot: string;
   /** Nombre del plato conservado. */
   name: string;

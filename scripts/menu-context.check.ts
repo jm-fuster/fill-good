@@ -1199,9 +1199,14 @@ seccion("El contrato con el modelo: un hueco puede llegar vacío");
     menuSchema.safeParse(semana(() => [])).success,
   );
 
+  // El tope de platos por hueco NO está en el schema (sep-2026): `@ai-sdk/google`
+  // no traslada `maxItems` a Gemini, así que no guiaba al modelo y lo único que
+  // hacía era tirar la semana entera por un hueco con 3 platos. Lo recorta
+  // `generateMenuAction` a `MAX_DISHES_PER_SLOT`, igual que el mínimo lo juzga
+  // la acción y no el schema.
   check(
-    "el tope de 2 platos por hueco sigue en pie",
-    !menuSchema.safeParse(semana(() => [plato(), plato(), plato()])).success,
+    "un hueco con 3 platos no tira la semana (el tope lo aplica la acción)",
+    menuSchema.safeParse(semana(() => [plato(), plato(), plato()])).success,
   );
 
   check(
