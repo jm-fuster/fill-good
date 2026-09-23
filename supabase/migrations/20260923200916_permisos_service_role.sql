@@ -1,0 +1,27 @@
+-- ============================================================================
+-- Permisos de service_role escritos, no heredados
+-- ============================================================================
+-- Hasta hoy ninguna migración le daba nada a `service_role`: cada tabla nueva
+-- de `public` nacía con permisos para los tres roles de la Data API por los
+-- privilegios por defecto del proyecto, y las migraciones solo escribían el
+-- de `authenticated`. Supabase deja de hacerlo el 2026-10-30 (aviso por correo
+-- del 23-sep): desde entonces una tabla nueva nace cerrada, y también TODAS
+-- las de un proyecto montado desde cero con estas migraciones.
+--
+-- `service_role` es el servidor sin nadie delante (`src/lib/supabase/admin.ts`):
+-- el webhook de Alexa, los dos crones de push, el límite de uso de la IA y los
+-- scripts de informe y backfill. Sin esto, en un proyecto nuevo se caerían los
+-- cuatro a la vez, y lo harían en segundo plano, sin pantalla que lo enseñe.
+--
+-- En producción no cambia nada: las tablas que ya existen conservan lo que
+-- recibieron por defecto (ALL), y esto es un subconjunto. Lo que cambia es que
+-- las migraciones se bastan solas. Comprobado en PGlite con las migraciones
+-- reales y sin privilegios por defecto sobre tablas: antes, `service_role` no
+-- podía leer ninguna; con esto, todas.
+--
+-- `anon` no recibe nada a propósito: ninguna consulta de la app va sin sesión.
+-- A partir de aquí la convención es la de AGENTS.md: una tabla nueva lleva en
+-- su migración el grant de `authenticated` y, si la toca el cliente admin,
+-- también el de `service_role`.
+grant select, insert, update, delete on all tables in schema public to service_role;
+grant usage, select on all sequences in schema public to service_role;
