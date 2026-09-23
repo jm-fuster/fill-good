@@ -653,13 +653,17 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
   }
   const onList = new Set((items ?? []).map((i) => i.product_id));
 
-  // Fechas de compra por producto, en orden cronológico.
+  // Días de compra por producto, en orden cronológico y SIN repetir: dos líneas
+  // del mismo ticket (dos packs de leche escaneados por separado) son una sola
+  // compra. Contadas como dos, metían un intervalo de 0 días que hundía la
+  // mediana —con tres compras de las que dos eran del mismo día, salía 0— y la
+  // fuente se descartaba (`median <= 0`): el producto no se sugería nunca.
   const datesByProduct = new Map<string, string[]>();
   for (const row of history ?? []) {
     if (!row.product_id || !row.purchased_at) continue;
     const arr = datesByProduct.get(row.product_id);
-    if (arr) arr.push(row.purchased_at);
-    else datesByProduct.set(row.product_id, [row.purchased_at]);
+    if (!arr) datesByProduct.set(row.product_id, [row.purchased_at]);
+    else if (arr[arr.length - 1] !== row.purchased_at) arr.push(row.purchased_at);
   }
 
   const nowISO = new Date().toISOString();

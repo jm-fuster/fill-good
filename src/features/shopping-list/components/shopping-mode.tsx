@@ -445,18 +445,24 @@ export function ShoppingMode({
     return true;
   }
 
-  // Recomendaciones aún no añadidas (el servidor ya excluye las que están en la
-  // lista; `dismissed` cubre las recién añadidas hasta que llega el refresh).
-  const visibleSuggestions = suggestions.filter(
-    (s) => !dismissed.has(s.productId),
-  );
-
   // Lo que ya está en la lista, para que el selector lo marque como tal: volver
   // a marcarlo suma cantidad en vez de duplicar la fila (L3).
   const onListProductIds = useMemo(
     () => visible.flatMap((i) => (i.productId ? [i.productId] : [])),
     [visible],
   );
+
+  // Recomendaciones aún no añadidas. El servidor excluye lo que estaba en la
+  // lista AL ENTRAR, pero no se recalcula durante la compra: lo que apunta
+  // después la otra persona (o tú desde el selector) seguía ofreciéndose, y
+  // tocarlo sumaba cantidad a una fila que ya estaba. Se filtra también contra
+  // la lista viva; `dismissed` cubre el instante entre el toque y el eco.
+  const visibleSuggestions = useMemo(() => {
+    const onList = new Set(onListProductIds);
+    return suggestions.filter(
+      (s) => !dismissed.has(s.productId) && !onList.has(s.productId),
+    );
+  }, [suggestions, dismissed, onListProductIds]);
 
   // Añadir una recomendación con su cantidad sugerida, de un toque.
   async function addSuggestion(s: Suggestion) {

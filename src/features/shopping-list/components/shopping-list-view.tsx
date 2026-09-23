@@ -34,6 +34,7 @@ import { useNavListBadge } from "@/components/layout/nav-list-count";
 import { ProductIcon } from "@/components/product-icon";
 import { ChainChip } from "@/components/chain-chip";
 import { actionErrorMessage, safeAction } from "@/lib/action-error";
+import { normalizeName } from "@/lib/normalize";
 import { cn } from "@/lib/utils";
 import { vibrateTick } from "@/lib/haptics";
 import { useSwipeAction } from "@/hooks/use-swipe-action";
@@ -90,7 +91,24 @@ import { EditListItemDrawer } from "./edit-list-item-drawer";
  * elimina. Conservarla «por si acaso» con el id real era el bug de la fila
  * fantasma: quitar el artículo dejaba la entrada viva y el filtro la resucitaba.
  */
-type PendingAdd = { tempId: string; item: ListItem };
+type PendingAdd = {
+  tempId: string;
+  item: ListItem;
+  /**
+   * Ids que ya estaban en la lista al pulsar. El eco de Realtime del alta
+   * suele llegar ANTES que la respuesta de la acción, y entraba como fila
+   * provisional con su id real mientras la optimista seguía viva: el artículo
+   * salía dos veces hasta que la acción contestaba. Una fila nueva (fuera de
+   * este conjunto) que sea el mismo artículo es esa, y la optimista se aparta.
+   */
+  before: Set<string>;
+};
+
+/** ¿La fila `row` es el mismo artículo que la optimista `item`? */
+function sameArticle(row: ListItem, item: ListItem): boolean {
+  if (item.productId && row.productId) return row.productId === item.productId;
+  return normalizeName(row.name) === normalizeName(item.name);
+}
 
 export function ShoppingListView({
   listId,
@@ -335,7 +353,8 @@ export function ShoppingListView({
       // servidor por nombre normalizado, así que llega con la cura (igual que el
       // contenido y el aviso de ahorro, que no están en el catálogo ligero).
     };
-    setPendingAdds((prev) => [...prev, { tempId, item: optimistic }]);
+    const before = new Set(list.items.map((i) => i.id));
+    setPendingAdds((prev) => [...prev, { tempId, item: optimistic, before }]);
 
     let result: Awaited<ReturnType<typeof runAddAction>>;
     try {
@@ -360,8 +379,9 @@ export function ShoppingListView({
       // L3, la fila que había ya está en la lista y solo cambia su cantidad) y
       // la optimista se retira en el mismo lote de render.
       if (!result.merged) list.add({ ...optimistic, id: realId });
-      setPendingAdds((prev) => prev.filter((p) => p.tempId !== tempId));
     }
+    // Siempre, con id o sin él: una optimista que no se retira no se va nunca.
+    setPendingAdds((prev) => prev.filter((p) => p.tempId !== tempId));
     // Y la cura completa lo que el catálogo ligero no trae (contenido, aviso de
     // ahorro, el pasillo de un alta de texto libre).
     list.heal();
@@ -412,7 +432,15 @@ export function ShoppingListView({
 
   // Ítems optimistas aún sin confirmar contra el servidor (los confirmados ya
   // viven en `list.items` con su id real y las salvaguardas de `list-sync`).
-  const optimisticItems = pendingAdds.map((p) => p.item);
+  // La que ya tiene su eco de Realtime en la lista se aparta (ver `before`).
+  const optimisticItems = pendingAdds
+    .filter(
+      (p) =>
+        !list.items.some(
+          (row) => !p.before.has(row.id) && sameArticle(row, p.item),
+        ),
+    )
+    .map((p) => p.item);
   const allItems = [...list.items, ...optimisticItems];
 
   const pending = allItems.filter((i) => !i.isChecked);
