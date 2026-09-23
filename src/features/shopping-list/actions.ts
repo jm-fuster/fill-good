@@ -880,19 +880,36 @@ export async function checkoutAction(): Promise<
     botón ya estaba protegido por dispositivo (`loading` lo deshabilita), así que
     esto cubre justo lo que faltaba: dos dispositivos distintos.
 
-    Desmarcar es el reclamo más barato que existe sin tocar el esquema, y es
-    reversible: lo que no se llegue a pasar se vuelve a marcar al final, tal cual
-    estaba (`checked_by`/`checked_at` no se tocan aquí).
+    El reclamo NO desmarca (hasta sep-2026 sí: era lo más barato sin tocar el
+    esquema). Desmarcar es justo lo que se ve, así que durante el checkout el
+    carro volvía a «pendiente» en los dos móviles, y si la otra persona lo
+    volvía a marcar y finalizaba antes del borrado final, su reclamo lo
+    procesaba otra vez. Ahora el reclamo es `checkout_claimed_at`, que la
+    interfaz no pinta, puesto por `claim_checked_items` en una sola sentencia
+    con el reloj de la base; caduca a los 5 minutos por si esta función se
+    cortara a mitad (ver la migración `20260923103427`).
   */
-  const { data: claimed, error: fetchErr } = await supabase
-    .from("shopping_list_items")
-    .update({ is_checked: false })
-    .eq("household_id", household.id)
-    .eq("list_id", list.id)
-    .eq("is_checked", true)
-    .select("id, name, quantity, unit, product_id");
+  const { data: claimed, error: fetchErr } = await supabase.rpc(
+    "claim_checked_items",
+    { p_household_id: household.id, p_list_id: list.id },
+  );
   if (fetchErr) return { error: "No se pudieron leer los productos." };
   if (!claimed || claimed.length === 0) {
+    // Nada libre pero sí marcado = otro «Finalizar» lo tiene reclamado ahora
+    // mismo (el reclamo ya no desmarca, así que lo marcado sigue a la vista).
+    // Decir «no hay productos marcados» con el carro lleno en pantalla sería
+    // falso.
+    const { count } = await supabase
+      .from("shopping_list_items")
+      .select("id", { count: "exact", head: true })
+      .eq("household_id", household.id)
+      .eq("list_id", list.id)
+      .eq("is_checked", true);
+    if (count && count > 0) {
+      return {
+        error: "Otra persona está finalizando esta compra. Espera un momento.",
+      };
+    }
     return { error: "No hay productos marcados." };
   }
 
@@ -1072,9 +1089,9 @@ export async function checkoutAction(): Promise<
     doneIds.push(item.id);
   }
 
-  // Lo reclamado que no se pudo pasar vuelve a estar marcado, tal como lo dejó
-  // quien lo marcó: el reclamo de arriba lo desmarcó para que ninguna otra
-  // ejecución lo procesara, no para deshacer el trabajo del usuario.
+  // Lo reclamado que no se pudo pasar se suelta: sigue marcado (el reclamo ya
+  // no lo desmarca), así que basta con quitarle la marca de reclamo para que el
+  // siguiente «Finalizar» lo pueda reintentar sin esperar a que caduque.
   const done = new Set(doneIds);
   const unresolvedIds = claimed
     .map((i) => i.id)
@@ -1082,7 +1099,7 @@ export async function checkoutAction(): Promise<
   if (unresolvedIds.length > 0) {
     await supabase
       .from("shopping_list_items")
-      .update({ is_checked: true })
+      .update({ checkout_claimed_at: null })
       .eq("household_id", household.id)
       .in("id", unresolvedIds);
   }
