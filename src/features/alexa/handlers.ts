@@ -1095,10 +1095,11 @@ async function apuntarEnLista(
 ): Promise<ApuntarResultado> {
   const listId = await ensureActiveListId(admin, link.householdId);
   if (!listId) return { ok: false };
+  const target = { listId, householdId: link.householdId };
 
   const merged = await mergeIntoExisting(
     admin,
-    listId,
+    target,
     { productId: item.productId, normalized: item.normalized },
     { quantity: item.quantity, unit: item.unit },
   );
@@ -1112,7 +1113,7 @@ async function apuntarEnLista(
     };
   }
 
-  const position = await nextListPosition(admin, listId);
+  const position = await nextListPosition(admin, target);
   const { error } = await admin.from("shopping_list_items").insert({
     list_id: listId,
     household_id: link.householdId,
