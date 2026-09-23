@@ -44,7 +44,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { getWeekDays, shiftWeek, todayLocalISO } from "@/lib/dates";
-import { actionErrorMessage } from "@/lib/action-error";
+import { actionErrorMessage, safeAction } from "@/lib/action-error";
 import { vibrateTick } from "@/lib/haptics";
 import { formatEuro } from "@/lib/money";
 import { normalizeName } from "@/lib/normalize";
@@ -1237,12 +1237,6 @@ export function MenuView({
           setEditing((prev) => (prev ? { ...prev, skippedReason } : prev));
           router.refresh();
         }}
-        onProposeDeductions={(recipeName, items) => {
-          // El plato queda cocinado; se cierra la edición y se propone descontar.
-          setEditing(null);
-          setCookedDeductions({ recipeName, items });
-          router.refresh();
-        }}
       />
 
       <CookedDeductionsDrawer
@@ -1296,7 +1290,6 @@ function EditEntryDrawer({
   onCookedChange,
   onSkippedChange,
   onSkippedReasonChange,
-  onProposeDeductions,
 }: {
   editing: Editing | null;
   weekStart: string;
@@ -1307,17 +1300,27 @@ function EditEntryDrawer({
   onCookedChange: (cookedAt: string | null) => void;
   onSkippedChange: (skippedAt: string | null) => void;
   onSkippedReasonChange: (reason: string | null) => void;
-  onProposeDeductions: (recipeName: string, items: CookedDeduction[]) => void;
 }) {
   const [value, setValue] = useState("");
   /*
     Vistas del panel, nunca modales encadenados: un ResponsiveModal que abre otro
     se cierra solo (cierre por historial de E11). «remove» es la confirmación de
     quitar, y solo se usa cuando el plato está resuelto —ver `askRemove`—.
+
+    «deduct» es el descuento de la despensa tras «Lo cocinamos». Antes era el
+    caso de libro de lo que este comentario prohíbe: el panel se cerraba y en el
+    mismo commit se abría el modal de descontar; el `history.back()` del que se
+    cerraba llegaba como `popstate` al recién abierto, que lo tomaba por «atrás»
+    y se cerraba solo. En móvil el plato quedaba cocinado, la propuesta asomaba
+    y desaparecía, y la despensa no se tocaba nunca por este camino.
   */
   const [mode, setMode] = useState<
-    "edit" | "move" | "duplicate" | "remove" | "recipe"
+    "edit" | "move" | "duplicate" | "remove" | "recipe" | "deduct"
   >("edit");
+  const [deductData, setDeductData] = useState<DeductionData | null>(null);
+  // Terminado el descuento (o el «¿lo apuntamos?»), el panel se cierra con
+  // refresco: el inventario ha cambiado.
+  const deduction = useDeductionFlow(deductData, onSaved);
 
   /*
     Foco al cambiar de vista, el mismo patrón que el selector de icono de
@@ -1368,7 +1371,8 @@ function EditEntryDrawer({
 
   /** «Volver» de cualquier vista: apunta a dónde devolver el foco y sale. */
   function volverAlPlato() {
-    volverA.current = mode === "edit" ? null : mode;
+    // Del descuento no se vuelve al plato: se sale del panel.
+    volverA.current = mode === "edit" || mode === "deduct" ? null : mode;
     setMode("edit");
   }
   const [pending, startTransition] = useTransition();
@@ -1440,6 +1444,7 @@ function EditEntryDrawer({
     setLastKey(key);
     setValue(editing?.current ?? "");
     setMode("edit");
+    setDeductData(null);
     setAddingRecipeId(null);
     // Sin esto, abrir otro plato enseñaría la receta del anterior mientras llega
     // la suya (el panel no se desmonta al cambiar de entrada).
@@ -1594,7 +1599,14 @@ function EditEntryDrawer({
         recipeName,
         date,
         onResolved: onCookedChange,
-        onProposeDeductions,
+        // El descuento se propone como vista de ESTE panel, no en un modal
+        // nuevo (ver el comentario de `mode`). El plato ya está cocinado, así
+        // que se refleja igual que en `onResolved`.
+        onProposeDeductions: (name, items) => {
+          onCookedChange(date);
+          setDeductData({ recipeName: name, items });
+          setMode("deduct");
+        },
       }),
     );
   }
@@ -1764,7 +1776,14 @@ function EditEntryDrawer({
   const picker = mode === "move" || mode === "duplicate";
 
   return (
-    <ResponsiveModal open={editing !== null} onOpenChange={(o) => !o && onClose()}>
+    <ResponsiveModal
+      open={editing !== null}
+      // Con el descuento ya escrito, cerrar (botón o gesto) tiene que refrescar:
+      // el inventario ha cambiado aunque no se apunte nada en la lista.
+      onOpenChange={(o) =>
+        !o && (mode === "deduct" && deduction.applied ? onSaved() : onClose())
+      }
+    >
       <ResponsiveModalContent>
         <ResponsiveModalHeader>
           {/*
@@ -1773,34 +1792,58 @@ function EditEntryDrawer({
             cocina» se pintaría «Cómo Se Cocina».
           */}
           <ResponsiveModalTitle
-            className={picker || mode === "recipe" ? undefined : "capitalize"}
+            className={
+              picker || mode === "recipe" || mode === "deduct"
+                ? undefined
+                : "capitalize"
+            }
           >
-            {mode === "move"
-              ? "Mover a…"
-              : mode === "duplicate"
-                ? "Duplicar en…"
-                : mode === "remove"
-                  ? "¿Quitar este plato?"
-                  : mode === "recipe"
-                    ? "Cómo se cocina"
-                    : editing?.label}
+            {mode === "deduct"
+              ? deductionTitle(deduction)
+              : mode === "move"
+                ? "Mover a…"
+                : mode === "duplicate"
+                  ? "Duplicar en…"
+                  : mode === "remove"
+                    ? "¿Quitar este plato?"
+                    : mode === "recipe"
+                      ? "Cómo se cocina"
+                      : editing?.label}
           </ResponsiveModalTitle>
           <ResponsiveModalDescription>
-            {mode === "move"
-              ? "Elige el día y el hueco de destino."
-              : mode === "duplicate"
-                ? "Elige dónde añadir una copia de este plato."
-                : mode === "remove"
-                  ? "Ya lo marcaste como cocinado."
-                  : mode === "recipe"
-                    ? (detail?.name ?? editing?.current)
-                    : isNew
-                      ? "Genéralo con IA, elige una receta de tu recetario o escríbelo."
-                      : "Edita o quita este plato."}
+            {mode === "deduct"
+              ? deductionDescription(deduction, deductData?.recipeName)
+              : mode === "move"
+                ? "Elige el día y el hueco de destino."
+                : mode === "duplicate"
+                  ? "Elige dónde añadir una copia de este plato."
+                  : mode === "remove"
+                    ? "Ya lo marcaste como cocinado."
+                    : mode === "recipe"
+                      ? (detail?.name ?? editing?.current)
+                      : isNew
+                        ? "Genéralo con IA, elige una receta de tu recetario o escríbelo."
+                        : "Edita o quita este plato."}
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
 
-        {picker ? (
+        {mode === "deduct" ? (
+          <div
+            ref={viewRef}
+            tabIndex={-1}
+            role="group"
+            aria-label={deductionTitle(deduction)}
+            className="flex flex-col gap-3 outline-none"
+          >
+            <CookedDeductionsSteps
+              flow={deduction}
+              // «No descontar»: el plato ya quedó cocinado y refrescado al
+              // marcarlo; solo se cierra el panel.
+              onSkip={onClose}
+              onDone={onSaved}
+            />
+          </div>
+        ) : picker ? (
           // `tabIndex={-1}` para poder recibir el foco al entrar sin quedar en el
           // orden de tabulación (no es un control, es el destino del foco).
           <div
@@ -2362,15 +2405,17 @@ function MissingReviewDrawer({
  * dentro del MISMO modal —vista que sustituye a la anterior, como el "Mover a…"
  * del repaso— porque anidar `ResponsiveModal` hace que el segundo se cierre solo.
  */
-function CookedDeductionsDrawer({
-  data,
-  onClose,
-  onDone,
-}: {
-  data: { recipeName: string; items: CookedDeduction[] } | null;
-  onClose: () => void;
-  onDone: () => void;
-}) {
+type DeductionData = { recipeName: string; items: CookedDeduction[] };
+
+/**
+ * Estado del flujo «descontar → ¿lo apuntamos?» tras marcar un plato como
+ * cocinado. Va en un hook y no dentro de un modal porque se pinta en dos
+ * sitios: en su propio modal (el ✔ de la celda o de la tira, que no tienen
+ * ningún panel abierto) y como VISTA del panel del plato (ver
+ * `EditEntryDrawer`), que es la única forma de encadenarlo sin que se cierre
+ * solo.
+ */
+function useDeductionFlow(data: DeductionData | null, onDone: () => void) {
   const [qty, setQty] = useState<Record<string, string>>({});
   const [pending, startTransition] = useTransition();
   /*
@@ -2397,8 +2442,9 @@ function CookedDeductionsDrawer({
   function confirm() {
     if (!data) return;
     startTransition(async () => {
-      const r = await confirmCookedDeductionsAction(
-        deductionPayload(items, qty),
+      const r = await safeAction(
+        confirmCookedDeductionsAction(deductionPayload(items, qty)),
+        "No se pudo descontar del inventario.",
       );
       if (r.error) {
         toast.error(r.error);
@@ -2425,7 +2471,10 @@ function CookedDeductionsDrawer({
   function addToList() {
     if (!restock) return;
     startTransition(async () => {
-      const r = await addListItemsAction(restockPayload(restock, selected));
+      const r = await safeAction(
+        addListItemsAction(restockPayload(restock, selected)),
+        "No se pudo apuntar en la lista.",
+      );
       if (r.error) {
         toast.error(r.error);
         return;
@@ -2435,98 +2484,164 @@ function CookedDeductionsDrawer({
     });
   }
 
+  return {
+    items,
+    qty,
+    setQty,
+    restock,
+    selected,
+    setSelected,
+    pending,
+    count,
+    confirm,
+    addToList,
+    /** El descuento ya se escribió: cerrar tiene que refrescar. */
+    applied: restock !== null,
+  };
+}
+
+type DeductionFlow = ReturnType<typeof useDeductionFlow>;
+
+function deductionTitle(flow: DeductionFlow): string {
+  return flow.restock ? "¿Lo apuntamos?" : "Descontar del inventario";
+}
+
+function deductionDescription(
+  flow: DeductionFlow,
+  recipeName: string | undefined,
+): string {
+  return flow.restock
+    ? "Al cocinar se te ha terminado esto. Desmarca lo que no quieras apuntar."
+    : `Ajusta lo que has gastado de «${recipeName ?? ""}». Se descuenta del lote que caduca antes. Desmarcar «cocinado» no repone el stock.`;
+}
+
+/**
+ * Los dos pasos (campos y botones), sin modal alrededor ni cabecera: quien los
+ * monta pone el título con `deductionTitle`/`deductionDescription`.
+ */
+function CookedDeductionsSteps({
+  flow,
+  onSkip,
+  onDone,
+}: {
+  flow: DeductionFlow;
+  /** «No descontar»: el plato se queda cocinado y la despensa, como estaba. */
+  onSkip: () => void;
+  onDone: () => void;
+}) {
+  const { restock, selected, setSelected, pending, count } = flow;
+  return (
+    <>
+      <div className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto px-4">
+        {restock ? (
+          <CookedRestockFields
+            candidates={restock}
+            selected={selected}
+            onToggle={(productId, on) =>
+              setSelected((prev) => {
+                const next = new Set(prev);
+                if (on) next.add(productId);
+                else next.delete(productId);
+                return next;
+              })
+            }
+          />
+        ) : (
+          <CookedDeductionsFields
+            items={flow.items}
+            qty={flow.qty}
+            onQtyChange={(k, value) =>
+              flow.setQty((prev) => ({ ...prev, [k]: value }))
+            }
+          />
+        )}
+      </div>
+
+      <ResponsiveModalFooter className="gap-2">
+        {restock ? (
+          <>
+            <Button
+              type="button"
+              size="lg"
+              onClick={flow.addToList}
+              disabled={selected.size === 0}
+              loading={pending}
+            >
+              <ShoppingCart aria-hidden />
+              {selected.size <= 1
+                ? "Apuntar 1 en la lista"
+                : `Apuntar ${selected.size} en la lista`}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onDone}
+              disabled={pending}
+            >
+              Ahora no
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              type="button"
+              size="lg"
+              onClick={flow.confirm}
+              disabled={count === 0}
+              loading={pending}
+            >
+              <Check aria-hidden />
+              {pending
+                ? "Descontando…"
+                : count <= 1
+                  ? "Descontar 1 ingrediente"
+                  : `Descontar ${count} ingredientes`}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onSkip}
+              disabled={pending}
+            >
+              No descontar
+            </Button>
+          </>
+        )}
+      </ResponsiveModalFooter>
+    </>
+  );
+}
+
+/**
+ * El descuento en su propio modal: para el ✔ de la celda o de la tira, que
+ * marcan sin tener ningún panel abierto. Desde el panel del plato NO se usa
+ * (ahí es una vista del mismo panel, ver `EditEntryDrawer`).
+ */
+function CookedDeductionsDrawer({
+  data,
+  onClose,
+  onDone,
+}: {
+  data: DeductionData | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const flow = useDeductionFlow(data, onDone);
   return (
     <ResponsiveModal
       open={data !== null}
       // Con el descuento ya aplicado, cerrar sin apuntar sigue necesitando
       // refresco: el inventario cambió aunque no se apunte nada.
-      onOpenChange={(o) => !o && (restock ? onDone() : onClose())}
+      onOpenChange={(o) => !o && (flow.applied ? onDone() : onClose())}
     >
       <ResponsiveModalContent>
         <ResponsiveModalHeader>
-          <ResponsiveModalTitle>
-            {restock ? "¿Lo apuntamos?" : "Descontar del inventario"}
-          </ResponsiveModalTitle>
+          <ResponsiveModalTitle>{deductionTitle(flow)}</ResponsiveModalTitle>
           <ResponsiveModalDescription>
-            {restock
-              ? "Al cocinar se te ha terminado esto. Desmarca lo que no quieras apuntar."
-              : `Ajusta lo que has gastado de «${data?.recipeName}». Se descuenta del lote que caduca antes. Desmarcar «cocinado» no repone el stock.`}
+            {deductionDescription(flow, data?.recipeName)}
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
-
-        <div className="flex max-h-[55vh] flex-col gap-3 overflow-y-auto px-4">
-          {restock ? (
-            <CookedRestockFields
-              candidates={restock}
-              selected={selected}
-              onToggle={(productId, on) =>
-                setSelected((prev) => {
-                  const next = new Set(prev);
-                  if (on) next.add(productId);
-                  else next.delete(productId);
-                  return next;
-                })
-              }
-            />
-          ) : (
-            <CookedDeductionsFields
-              items={items}
-              qty={qty}
-              onQtyChange={(k, value) =>
-                setQty((prev) => ({ ...prev, [k]: value }))
-              }
-            />
-          )}
-        </div>
-
-        <ResponsiveModalFooter className="gap-2">
-          {restock ? (
-            <>
-              <Button
-                type="button"
-                size="lg"
-                onClick={addToList}
-                disabled={selected.size === 0}
-                loading={pending}
-              >
-                <ShoppingCart aria-hidden />
-                {selected.size <= 1
-                  ? "Apuntar 1 en la lista"
-                  : `Apuntar ${selected.size} en la lista`}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={onDone}
-                disabled={pending}
-              >
-                Ahora no
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button
-                type="button"
-                size="lg"
-                onClick={confirm}
-                disabled={count === 0}
-                loading={pending}
-              >
-                <Check aria-hidden />
-                {pending
-                  ? "Descontando…"
-                  : count <= 1
-                    ? "Descontar 1 ingrediente"
-                    : `Descontar ${count} ingredientes`}
-              </Button>
-              <ResponsiveModalClose asChild>
-                <Button type="button" variant="ghost">
-                  No descontar
-                </Button>
-              </ResponsiveModalClose>
-            </>
-          )}
-        </ResponsiveModalFooter>
+        <CookedDeductionsSteps flow={flow} onSkip={onClose} onDone={onDone} />
       </ResponsiveModalContent>
     </ResponsiveModal>
   );

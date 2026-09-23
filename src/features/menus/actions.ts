@@ -1924,7 +1924,7 @@ export type CookedDeductionInput = {
  * M2, fase 2: descuenta del inventario las cantidades confirmadas. Consumo FIFO
  * por caducidad (el lote que caduca antes primero; nulls al final), en cascada
  * si un lote no cubre la cantidad. Nunca deja stock negativo (clamp a 0; el lote
- * a 0 se conserva como agotado, igual que `setInventoryQuantityAction`).
+ * a 0 se conserva como agotado, igual que `changeInventoryQuantityAction`).
  *
  * Las cantidades llegan en la unidad de la RECETA y se restan en la del
  * INVENTARIO: de qué unidad y con qué factor lo decide `resolveStockTarget`, el
