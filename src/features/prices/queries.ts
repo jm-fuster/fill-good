@@ -6,7 +6,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
 import { getActiveHouseholdId } from "@/features/household/queries";
 import type { UnitType } from "@/lib/supabase/types";
-import type { UnitContent } from "@/lib/units";
+import { baseUnitFactor, unitFamily, type UnitContent } from "@/lib/units";
 
 export type PriceOverviewRow = {
   productId: string;
@@ -234,14 +234,34 @@ export async function getProductPriceHistory(
   if (error) throw error;
   if (!product) return null;
 
-  const points: PricePoint[] = (data ?? []).map((r) => {
-    const qty = Number(r.quantity) || 1;
+  /*
+    Una sola unidad por ficha. Antes cada punto era `total / cantidad` en SU
+    unidad y la página rotulaba con la del primero, así que una compra de
+    500 g a 2 € salía como «4 €/kg»… o como «0,004 €/g» según la otra, y el
+    mínimo y el máximo comparaban gramos con kilos. Mismo criterio que las
+    alertas y la hucha: se queda la familia dominante (una serie en ud no se
+    mezcla con una a peso) y todo se expresa en la unidad de la compra más
+    reciente de esa familia.
+  */
+  const rows = (data ?? []).filter((r) => Number(r.quantity) > 0);
+  const familyCount = new Map<string, number>();
+  for (const r of rows) {
+    const f = unitFamily(r.unit);
+    familyCount.set(f, (familyCount.get(f) ?? 0) + 1);
+  }
+  const dominant = [...familyCount].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const inFamily = rows.filter((r) => unitFamily(r.unit) === dominant);
+  const target = inFamily[inFamily.length - 1]?.unit;
+  const points: PricePoint[] = inFamily.map((r) => {
+    const qty =
+      (Number(r.quantity) * baseUnitFactor(r.unit)) /
+      baseUnitFactor(target ?? r.unit);
     return {
       date: r.purchased_at as string,
       unitPrice: Number(r.total_price) / qty,
       totalPrice: Number(r.total_price),
       quantity: qty,
-      unit: r.unit,
+      unit: target ?? r.unit,
       storeChain: r.store_chain ?? "otro",
     };
   });

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ChevronRight, ReceiptText } from "lucide-react";
 
-import { relativeDaysLabel } from "@/lib/dates";
+import { isoDateInSpain, relativeDaysLabel } from "@/lib/dates";
 import type { PendingReceipt } from "../queries";
 import { DeleteReceiptButton } from "./delete-receipt-button";
 
@@ -37,7 +37,7 @@ export function PendingReceipts({ receipts }: { receipts: PendingReceipt[] }) {
                   {r.storeName ?? "Ticket sin tienda"}
                 </span>
                 <span className="block text-sm text-muted-foreground">
-                  {relativeDaysLabel(r.createdAt.slice(0, 10))} ·{" "}
+                  {relativeDaysLabel(isoDateInSpain(r.createdAt))} ·{" "}
                   {r.itemCount} {r.itemCount === 1 ? "línea" : "líneas"}
                 </span>
               </span>

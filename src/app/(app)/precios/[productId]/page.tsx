@@ -56,6 +56,7 @@ export default async function PrecioDetallePage({
   if (!history) notFound();
 
   const { name, points, content, packSize } = history;
+  // Todas en la misma unidad (la normaliza `getProductPriceHistory`).
   const unit = points[0]?.unit ?? "ud";
   // Con pack, lo que el histórico guarda es el precio de la CAJA: la pantalla
   // entera habla de packs y deja el precio por unidad como equivalencia.

@@ -185,6 +185,24 @@ export function hourInSpain(date: Date = new Date()): number {
   return Number(spainHourFormat.format(date));
 }
 
+/**
+ * Si es una fecha YYYY-MM-DD que EXISTE. La forma no basta: «2026-02-30»
+ * pasa cualquier regex y Postgres la rechaza en una columna `date`, que en el
+ * ticket era perder el insert con la llamada de IA ya pagada. Se comprueba
+ * en UTC puro porque aquí no hay instante ni zona: solo si el día existe.
+ */
+export function isCalendarDate(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  return (
+    date.getUTCFullYear() === y &&
+    date.getUTCMonth() === mo - 1 &&
+    date.getUTCDate() === d
+  );
+}
+
 /** Desplaza una fecha YYYY-MM-DD N días (negativo = hacia atrás). */
 export function shiftDays(dateISO: string, days: number): string {
   const d = new Date(`${dateISO}T00:00:00`);
