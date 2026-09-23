@@ -15,6 +15,7 @@ import {
 } from "@/lib/units";
 import { getCurrentHousehold } from "@/features/household/queries";
 import { recordStockEvent } from "@/features/inventory/events";
+import { findUnclaimedRecentReceipt } from "./trips";
 import type { UnitType } from "@/lib/supabase/types";
 import {
   getActiveList,
@@ -926,6 +927,11 @@ export async function checkoutAction(): Promise<
   const unitConflicts: string[] = [];
   let added = 0;
   let failures = 0;
+  // Ticket de esta misma compra escaneado ANTES de finalizar: lo suyo ya entró
+  // en el inventario, así que aquí cuenta como compra pero no suma stock (ver
+  // `findUnclaimedRecentReceipt`). Solo se enlaza si de verdad coincide algo.
+  const receiptFirst = await findUnclaimedRecentReceipt(supabase, household.id);
+  let matchedReceipt = false;
 
   for (const item of claimed) {
     // Resolver producto: enlazado, o resolver/crear por nombre normalizado.
@@ -999,6 +1005,15 @@ export async function checkoutAction(): Promise<
     }
     if (!productId) {
       failures += 1;
+      continue;
+    }
+
+    if (receiptFirst?.productIds.has(productId)) {
+      matchedReceipt = true;
+      // Sin bump_product_purchase: ya lo contó el ticket, y contarlo dos
+      // veces corre la cadencia de reposición.
+      tripProductIds.push(productId);
+      doneIds.push(item.id);
       continue;
     }
 
@@ -1143,6 +1158,9 @@ export async function checkoutAction(): Promise<
       closed_by: userId,
       product_ids: [...new Set(tripProductIds)],
       item_count: doneIds.length,
+      ...(matchedReceipt && receiptFirst
+        ? { receipt_id: receiptFirst.receiptId }
+        : {}),
     });
     if (tripErr) {
       console.error("Snapshot de compra falló (best-effort):", tripErr);

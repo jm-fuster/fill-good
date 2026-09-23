@@ -11,7 +11,7 @@ import { serverFailureMessage } from "@/lib/server-failure";
 import { buildReceiptSchema } from "@/lib/ai/receipt-schema";
 import type { ReceiptItemExtraction } from "@/lib/ai/receipt-schema";
 import { buildReceiptPrompt } from "@/lib/ai/receipt-prompt";
-import { isoDateInSpain } from "@/lib/dates";
+import { isCalendarDate, isoDateInSpain } from "@/lib/dates";
 import { loadHouseholdMatchData, matchLineExact } from "@/lib/matching";
 import { normalizeName } from "@/lib/normalize";
 import { aliasKeyFor, cleanReceiptLabel } from "@/lib/receipt-label";
@@ -231,7 +231,7 @@ async function scanReceipt(
   // columna es `date`) con la llamada de IA ya pagada — mejor sin fecha, que la
   // revisión permite corregir y la confirmación siempre completa.
   const purchaseDate =
-    extraction.purchase_date && /^\d{4}-\d{2}-\d{2}$/.test(extraction.purchase_date)
+    extraction.purchase_date && isCalendarDate(extraction.purchase_date)
       ? extraction.purchase_date
       : null;
 
@@ -935,11 +935,23 @@ export async function confirmReceiptAction(
       .eq("added_to_inventory", false)
       .select("id"),
   );
+  const claimedIds = itemUpdateResults.flatMap((res) =>
+    (res.data ?? []).map((row) => row.id),
+  );
   if (itemUpdateResults.some((res) => res.error)) {
     console.error(
       "Error al actualizar líneas del ticket:",
       itemUpdateResults.find((res) => res.error)?.error,
     );
+    // Lo que sí se reclamó se suelta, igual que abajo: si no, el reintento que
+    // pide el mensaje las encontraba «ya añadidas» y no sumaba su stock.
+    if (claimedIds.length > 0) {
+      await supabase
+        .from("receipt_items")
+        .update({ added_to_inventory: false })
+        .eq("receipt_id", payload.receiptId)
+        .in("id", claimedIds);
+    }
     return {
       error:
         "La confirmación falló a mitad. Vuelve a intentarlo: lo ya añadido no se duplicará.",
@@ -949,9 +961,6 @@ export async function confirmReceiptAction(
   // delante. Se sueltan las que sí habíamos cogido —si no, quedarían marcadas
   // como añadidas sin haber sumado stock, que es la única forma de PERDER
   // género— y se para aquí, con el inventario todavía sin tocar.
-  const claimedIds = itemUpdateResults.flatMap((res) =>
-    (res.data ?? []).map((row) => row.id),
-  );
   if (claimedIds.length < processable.length) {
     if (claimedIds.length > 0) {
       await supabase
@@ -1219,6 +1228,7 @@ export async function confirmReceiptAction(
     receiptId: payload.receiptId,
     householdId: household.id,
     purchasedAt,
+    productIds: processable.map((r) => r.productId),
   });
   const trip = tripProductIds
     ? compareTripToReceipt(

@@ -3,6 +3,7 @@ import "server-only";
 import { addHours, formatISO, subHours } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { shiftDays, todayLocalISO } from "@/lib/dates";
 import type { Database } from "@/lib/supabase/types";
 
 type Supabase = SupabaseClient<Database>;
@@ -36,7 +37,18 @@ export async function findPendingTrip(
   {
     householdId,
     purchasedAt,
-  }: { householdId: string; purchasedAt: string | null },
+    productIds,
+  }: {
+    householdId: string;
+    purchasedAt: string | null;
+    /**
+     * Productos del ticket, si ya se conocen (al confirmar). Con ellos solo
+     * vale una compra que comparta alguno: si no, el ticket de la farmacia
+     * del mismo día se quedaba la compra del súper, y cuando llegaba el ticket
+     * bueno ya no había compra con la que emparejarlo.
+     */
+    productIds?: readonly string[];
+  },
 ): Promise<PendingTrip | null> {
   try {
     // `purchased_at` es una fecha sin hora; se ancla al mediodía para que la
@@ -52,9 +64,15 @@ export async function findPendingTrip(
       .gte("closed_at", formatISO(subHours(anchor, TRIP_MATCH_WINDOW_HOURS)))
       .lte("closed_at", formatISO(addHours(anchor, TRIP_MATCH_WINDOW_HOURS)));
     if (error) throw error;
-    if (!candidates || candidates.length === 0) return null;
+    const wanted = productIds ? new Set(productIds) : null;
+    const eligible = wanted
+      ? (candidates ?? []).filter((t) =>
+          (t.product_ids ?? []).some((id) => wanted.has(id)),
+        )
+      : (candidates ?? []);
+    if (eligible.length === 0) return null;
 
-    const target = candidates.reduce((best, t) => {
+    const target = eligible.reduce((best, t) => {
       const d = Math.abs(new Date(t.closed_at).getTime() - anchor.getTime());
       const bestD = Math.abs(new Date(best.closed_at).getTime() - anchor.getTime());
       return d < bestD ? t : best;
@@ -82,9 +100,19 @@ export async function linkReceiptToTrip(
     receiptId,
     householdId,
     purchasedAt,
-  }: { receiptId: string; householdId: string; purchasedAt: string | null },
+    productIds,
+  }: {
+    receiptId: string;
+    householdId: string;
+    purchasedAt: string | null;
+    productIds: readonly string[];
+  },
 ): Promise<string[] | null> {
-  const trip = await findPendingTrip(supabase, { householdId, purchasedAt });
+  const trip = await findPendingTrip(supabase, {
+    householdId,
+    purchasedAt,
+    productIds,
+  });
   if (!trip) return null;
   try {
     const { error: updateErr } = await supabase
@@ -98,6 +126,65 @@ export async function linkReceiptToTrip(
     return trip.productIds;
   } catch (err) {
     console.error("linkReceiptToTrip falló (best-effort):", err);
+    return null;
+  }
+}
+
+/**
+ * La guarda inversa, para «Finalizar compra»: un ticket ya confirmado de estos
+ * días que ninguna compra ha reclamado. La deduplicación de stock solo iba en
+ * un sentido —el ticket se salta lo que ya entró por la lista—, así que
+ * escanear el ticket en la caja y finalizar la lista al llegar a casa sumaba
+ * dos veces todo lo que coincidía.
+ *
+ * Devuelve el más reciente con sus productos, o `null`. Best-effort: ante un
+ * fallo se comporta como antes (se suma), porque perder stock en silencio es
+ * peor que duplicarlo a la vista.
+ */
+export async function findUnclaimedRecentReceipt(
+  supabase: Supabase,
+  householdId: string,
+): Promise<{ receiptId: string; productIds: Set<string> } | null> {
+  try {
+    const today = todayLocalISO();
+    const { data: receipts, error } = await supabase
+      .from("receipts")
+      .select("id, purchased_at, created_at")
+      .eq("household_id", householdId)
+      .eq("status", "confirmed")
+      .gte("purchased_at", shiftDays(today, -Math.ceil(TRIP_MATCH_WINDOW_HOURS / 24)))
+      .lte("purchased_at", today)
+      .order("purchased_at", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    if (!receipts || receipts.length === 0) return null;
+
+    const { data: linked, error: linkErr } = await supabase
+      .from("shopping_trips")
+      .select("receipt_id")
+      .eq("household_id", householdId)
+      .in(
+        "receipt_id",
+        receipts.map((r) => r.id),
+      );
+    if (linkErr) throw linkErr;
+    const taken = new Set((linked ?? []).map((t) => t.receipt_id));
+    const receipt = receipts.find((r) => !taken.has(r.id));
+    if (!receipt) return null;
+
+    const { data: lines, error: linesErr } = await supabase
+      .from("receipt_items")
+      .select("product_id")
+      .eq("receipt_id", receipt.id)
+      .neq("match_status", "skipped")
+      .not("product_id", "is", null);
+    if (linesErr) throw linesErr;
+    const productIds = new Set(
+      (lines ?? []).flatMap((l) => (l.product_id ? [l.product_id] : [])),
+    );
+    return productIds.size > 0 ? { receiptId: receipt.id, productIds } : null;
+  } catch (err) {
+    console.error("findUnclaimedRecentReceipt falló (best-effort):", err);
     return null;
   }
 }

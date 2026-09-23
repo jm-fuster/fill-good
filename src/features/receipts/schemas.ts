@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { isCalendarDate } from "@/lib/dates";
+
 /** Unidades admitidas (coincide con el enum unit_type de la BD). */
 const unit = z.enum(["ud", "g", "kg", "ml", "l"]);
 
@@ -72,7 +74,7 @@ export const confirmPayloadSchema = z.object({
   storeChain: z.string().trim().max(40).nullable().optional(),
   purchaseDate: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Fecha no válida.")
+    .refine(isCalendarDate, "Fecha no válida.")
     .nullable(),
   total: z.number().finite().min(0).max(1_000_000).nullable(),
   items: z.array(confirmItemDecisionSchema).max(500),
