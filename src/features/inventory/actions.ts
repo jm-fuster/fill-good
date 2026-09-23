@@ -821,6 +821,9 @@ export async function mergeProductsAction(
       different_household: "Los productos son de hogares distintos.",
       not_a_member: "No perteneces a este hogar.",
       not_authenticated: "No autenticado.",
+      // Desde 20260923150000: antes se perdía el stock del origen.
+      unit_conflict:
+        "Los dos tienen existencias en el mismo sitio con unidades distintas. Unifica las unidades antes de fusionarlos.",
     };
     const key = Object.keys(messages).find((k) => error.message.includes(k));
     return { error: key ? messages[key] : "No se pudieron fusionar los productos." };
