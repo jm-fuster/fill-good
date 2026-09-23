@@ -62,7 +62,7 @@
     "@types/react-dom": "^19",
     "@types/web-push": "^3.6.4",
     "esbuild": "^0.28.1",
-    "eslint": "^9",
+    "eslint": "^10",
     "eslint-config-next": "16.3.6",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "shadcn": "^4.13.1",
