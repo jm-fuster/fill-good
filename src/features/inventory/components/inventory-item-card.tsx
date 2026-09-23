@@ -27,7 +27,8 @@ import {
 } from "@/features/shopping-list/actions";
 import type { Category, InventoryEntry } from "../queries";
 import { getInventoryStatus } from "../status";
-import { setInventoryQuantityAction } from "../actions";
+import { changeInventoryQuantityAction } from "../actions";
+import { latestQuantity, rememberQuantity } from "../quantity-store";
 import { EditItemDrawer } from "./edit-item-drawer";
 
 export function InventoryItemCard({
@@ -46,8 +47,13 @@ export function InventoryItemCard({
   /** El producto está en "Mis habituales" del usuario actual (E5). */
   pinned?: boolean;
 }) {
-  const [qty, setQty] = useState(entry.quantity);
-  const [serverQty, setServerQty] = useState(entry.quantity);
+  // Nace con la cantidad más reciente conocida, no con la de los props: la
+  // página no se revalida tras el stepper, así que al remontarse (chip de
+  // estado, plegar una ubicación, buscar, volver a la página) los props traen
+  // el número de la carga. Ver `quantity-store.ts`.
+  const [qty, setQty] = useState(() => latestQuantity(entry));
+  const propsKey = `${entry.quantity}|${entry.updatedAt}`;
+  const [seenPropsKey, setSeenPropsKey] = useState(propsKey);
   const [editing, setEditing] = useState(false);
   // «Está en la lista» lo sabe el servidor (`onList`), pero el botón lo cambia
   // sin recargar la página: este override manda hasta que llega un valor nuevo.
@@ -57,13 +63,16 @@ export function InventoryItemCard({
   const [, startTransition] = useTransition();
   const [listBusy, startListWork] = useTransition();
   // Ref para que clics rápidos consecutivos acumulen (evita el closure obsoleto).
-  const qtyRef = useRef(entry.quantity);
+  const qtyRef = useRef(qty);
+  // Escrituras del stepper todavía en vuelo: mientras quede alguna, el número
+  // optimista manda sobre lo que conteste el servidor.
+  const pendingRef = useRef(0);
 
-  // Sincroniza el estado local cuando el servidor devuelve un valor nuevo
-  // (patrón de ajuste de estado en render, no en efecto).
-  if (serverQty !== entry.quantity) {
-    setServerQty(entry.quantity);
-    setQty(entry.quantity);
+  // Sincroniza el estado local cuando llegan props nuevos (patrón de ajuste de
+  // estado en render, no en efecto). Se queda con el más reciente de los dos.
+  if (seenPropsKey !== propsKey) {
+    setSeenPropsKey(propsKey);
+    setQty(latestQuantity(entry));
   }
 
   // Igual con la lista: cuando el servidor trae un valor nuevo manda él y el
@@ -77,22 +86,48 @@ export function InventoryItemCard({
   // El ref (para acumular clics rápidos) se sincroniza en un efecto, no en
   // render.
   useEffect(() => {
-    qtyRef.current = entry.quantity;
-  }, [entry.quantity]);
+    if (pendingRef.current === 0) {
+      qtyRef.current = latestQuantity({
+        id: entry.id,
+        quantity: entry.quantity,
+        updatedAt: entry.updatedAt,
+      });
+    }
+  }, [entry.id, entry.quantity, entry.updatedAt]);
 
+  /*
+    Se manda el DELTA, no la cantidad final: el servidor lo aplica sobre lo que
+    hay en la fila y contesta con lo que quedó. Mandando el número absoluto, uno
+    calculado sobre una pantalla vieja pisaba la base (ver
+    `changeInventoryQuantityAction`).
+  */
   function changeBy(delta: number) {
     const next = Math.max(0, roundQuantity(qtyRef.current + delta));
+    const applied = roundQuantity(next - qtyRef.current);
+    if (applied === 0) return;
     qtyRef.current = next;
     setQty(next);
+    pendingRef.current += 1;
     startTransition(async () => {
       const result = await safeAction(
-        setInventoryQuantityAction(entry.id, next),
+        changeInventoryQuantityAction(entry.id, applied),
         "No se pudo guardar la cantidad.",
       );
-      if (result?.error) {
+      pendingRef.current -= 1;
+      if (result.error) {
         toast.error(result.error);
-        qtyRef.current = entry.quantity;
-        setQty(entry.quantity);
+        // Se deshace solo ESTE toque: los que ya se guardaron siguen en la base.
+        qtyRef.current = Math.max(0, roundQuantity(qtyRef.current - applied));
+        setQty(qtyRef.current);
+        return;
+      }
+      if (result.quantity === undefined || !result.updatedAt) return;
+      rememberQuantity(entry.id, result.quantity, result.updatedAt);
+      // Con la última escritura asentada, manda lo que dice el servidor: recoge
+      // lo que cambió otro móvil o Alexa, y el recorte a 0.
+      if (pendingRef.current === 0) {
+        qtyRef.current = result.quantity;
+        setQty(result.quantity);
       }
     });
   }

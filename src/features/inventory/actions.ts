@@ -15,6 +15,7 @@ import {
   addStockQuantity,
   formatQuantity,
   LOCATION_LABELS,
+  roundQuantity,
   UNIT_LABELS,
   type UnitContent,
 } from "@/lib/units";
@@ -262,11 +263,40 @@ export async function addStarterItemsAction(
   return { ok: true, added: inserted?.length ?? rows.length };
 }
 
-export async function setInventoryQuantityAction(
+/** Lo que devuelve el stepper: la cantidad que quedó DE VERDAD en la fila. */
+export type QuantityState = ActionState & {
+  quantity?: number;
+  /** `updated_at` de la fila tras escribir: fecha el número para la tarjeta. */
+  updatedAt?: string;
+};
+
+/** Cuántas veces se reintenta si la fila cambia entre la lectura y la escritura. */
+const QUANTITY_ATTEMPTS = 3;
+
+/**
+ * El stepper de la tarjeta: suma o resta `delta` a lo que hay en la fila.
+ *
+ * Recibe un DELTA y no la cantidad final, y eso es todo el arreglo. Antes el
+ * cliente mandaba el número absoluto que calculaba sobre el que tenía en
+ * pantalla, y ese número podía ser viejo: la tarjeta se remonta al cambiar el
+ * chip de estado, al plegar una ubicación o al buscar, y vuelve al valor con el
+ * que cargó la página (esta acción no revalida). Leche en 3, dos «−» (base: 1),
+ * tocar un chip → la tarjeta vuelve a decir 3, y el siguiente «−» escribía 2:
+ * la base SUBÍA al pulsar menos y el historial apuntaba «Repuesto +1». Lo mismo
+ * pasaba contra el otro móvil o contra lo dictado a Alexa, que la pantalla no
+ * ve. Con un delta, lo que se escribe sale de lo que hay en la base, no de lo
+ * que cree la pantalla.
+ *
+ * Leer y escribir son dos sentencias, así que la escritura va condicionada a
+ * que la cantidad siga siendo la leída; si otra escritura se coló en medio, se
+ * vuelve a leer (`QUANTITY_ATTEMPTS`). Devuelve la cantidad resultante para que
+ * la tarjeta se ponga al día aunque partiera de un número viejo.
+ */
+export async function changeInventoryQuantityAction(
   id: string,
-  quantity: number,
-): Promise<ActionState> {
-  if (!Number.isFinite(quantity) || quantity < 0) {
+  delta: number,
+): Promise<QuantityState> {
+  if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 100_000) {
     return { error: "Cantidad no válida." };
   }
   const household = await getCurrentHousehold();
@@ -274,51 +304,57 @@ export async function setInventoryQuantityAction(
   const { userId } = await auth();
   const supabase = createServerSupabaseClient();
 
-  // Cantidad previa para calcular el delta del evento (F5). El delta se calcula
-  // SIEMPRE en el servidor (no confiamos en el cliente para el historial).
-  const { data: prev } = await supabase
-    .from("inventory_items")
-    .select("household_id, product_id, quantity, unit")
-    .eq("household_id", household.id)
-    .eq("id", id)
-    .maybeSingle();
+  for (let attempt = 0; attempt < QUANTITY_ATTEMPTS; attempt += 1) {
+    const { data: prev, error: readErr } = await supabase
+      .from("inventory_items")
+      .select("household_id, product_id, quantity, unit")
+      .eq("household_id", household.id)
+      .eq("id", id)
+      .maybeSingle();
+    if (readErr) return { error: "No se pudo actualizar la cantidad." };
+    // Leer antes también cuenta filas: el otro móvil pudo borrar el producto, y
+    // sin esto el número de la pantalla no lo respaldaría ninguna fila.
+    if (!prev) return { error: "Ese producto ya no está en tu inventario." };
 
-  const { data: tocadas, error } = await supabase
-    .from("inventory_items")
-    .update({ quantity, updated_by: userId })
-    .eq("household_id", household.id)
-    .eq("id", id)
-    .select("id");
-  if (error) return { error: "No se pudo actualizar la cantidad." };
-  // Un update sin filas no es un error para Supabase, y aquí no revalidamos
-  // nada (el stepper es optimista), así que sin este recuento el número que se
-  // quedaba en pantalla no lo respaldaba ninguna fila: el otro móvil había
-  // borrado el producto y este seguía sumando y restando sobre un fantasma
-  // hasta la siguiente recarga.
-  if (!tocadas || tocadas.length === 0) {
-    return { error: "Ese producto ya no está en tu inventario." };
-  }
+    const before = Number(prev.quantity);
+    const next = Math.max(0, roundQuantity(before + delta));
 
-  // Evento de movimiento con folding anti-ruido (F5): delta<0 = consumido,
-  // delta>0 = repuesto. Best-effort, no bloquea el stepper optimista.
-  if (prev) {
-    const delta = quantity - Number(prev.quantity);
-    if (delta !== 0) {
+    const { data: written, error } = await supabase
+      .from("inventory_items")
+      .update({ quantity: next, updated_by: userId })
+      .eq("household_id", household.id)
+      .eq("id", id)
+      .eq("quantity", prev.quantity)
+      .select("quantity, updated_at");
+    if (error) return { error: "No se pudo actualizar la cantidad." };
+    // Cero filas con la fila delante = alguien cambió la cantidad entre las dos
+    // sentencias. Otra vuelta, sobre lo que haya ahora.
+    if (!written || written.length === 0) continue;
+
+    // Evento de movimiento con folding anti-ruido (F5): lo que cambió DE VERDAD
+    // (el recorte a 0 cuenta), nunca lo que pidió el cliente.
+    const moved = roundQuantity(next - before);
+    if (moved !== 0) {
       await recordStockEvent(supabase, {
         householdId: prev.household_id,
         productId: prev.product_id,
-        quantity: Math.abs(delta),
+        quantity: Math.abs(moved),
         unit: prev.unit,
-        kind: delta < 0 ? "consumed" : "restocked",
+        kind: moved < 0 ? "consumed" : "restocked",
         userId,
         fold: true,
       });
     }
-  }
 
-  // Sin revalidatePath: el stepper es optimista en el cliente y persiste en
-  // segundo plano; evita un refetch de toda la página en cada pulsación.
-  return { ok: true };
+    // Sin revalidatePath: el stepper es optimista en el cliente y persiste en
+    // segundo plano; evita un refetch de toda la página en cada pulsación.
+    return {
+      ok: true,
+      quantity: Number(written[0].quantity),
+      updatedAt: written[0].updated_at,
+    };
+  }
+  return { error: "La cantidad ha cambiado en otro dispositivo. Vuelve a intentarlo." };
 }
 
 export async function updateInventoryAction(

@@ -21,7 +21,7 @@ export const EVENT_FOLD_WINDOW_MS = 15 * 60 * 1000;
 /*
   QUIÉN ANOTA Y QUIÉN NO, porque no es simétrico y buscarlo cuesta:
 
-    anotan → el stepper de la tarjeta (`setInventoryQuantityAction`), el borrado
+    anotan → el stepper de la tarjeta (`changeInventoryQuantityAction`), el borrado
              de una fila con stock (`deleteInventoryAction`), la confirmación de
              un ticket, el checkout de la lista, el descuento al cocinar y las
              órdenes de Alexa;

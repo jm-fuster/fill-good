@@ -36,6 +36,12 @@ export type InventoryEntry = {
   productIcon: string | null;
   location: LocationType;
   quantity: number;
+  /**
+   * `updated_at` de la fila al leerla. Fecha la cantidad: la tarjeta la compara
+   * con la última que confirmó el stepper para no volver a un número viejo al
+   * remontarse (ver `quantity-store.ts`).
+   */
+  updatedAt: string;
   unit: UnitType;
   expiryDate: string | null;
   useSoon: boolean;
@@ -386,6 +392,7 @@ type InventoryRow = {
   unit: UnitType;
   expiry_date: string | null;
   use_soon: boolean;
+  updated_at: string;
   product: {
     name: string;
     min_quantity: number | null;
@@ -412,7 +419,7 @@ export async function getInventory(): Promise<InventoryEntry[]> {
   const { data, error } = await supabase
     .from("inventory_items")
     .select(
-      "id, product_id, location, quantity, unit, expiry_date, use_soon, product:products(name, min_quantity, pack_size, content_size, content_unit, content_is_estimate, preferred_chain, inferred_chain, savings_tip, icon, category:categories(id, name, icon))",
+      "id, product_id, location, quantity, unit, expiry_date, use_soon, updated_at, product:products(name, min_quantity, pack_size, content_size, content_unit, content_is_estimate, preferred_chain, inferred_chain, savings_tip, icon, category:categories(id, name, icon))",
     )
     .eq("household_id", householdId)
     .order("updated_at", { ascending: false });
@@ -431,6 +438,7 @@ export async function getInventory(): Promise<InventoryEntry[]> {
       productIcon: r.product!.icon ?? null,
       location: r.location,
       quantity: Number(r.quantity),
+      updatedAt: r.updated_at,
       unit: r.unit,
       expiryDate: r.expiry_date,
       useSoon: r.use_soon,
