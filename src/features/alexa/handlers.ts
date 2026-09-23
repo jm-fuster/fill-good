@@ -180,15 +180,34 @@ async function requireLink(
   // expulsado). Este cliente es service-role, sin RLS que lo pare, así que el
   // vínculo se re-verifica en cada petición y muere aquí si ya no procede; la
   // migración 20260731180000 limpia además al salir/expulsar.
-  const { data: member } = await admin
+  //
+  // Solo se desvincula ante un «no» de verdad: un error de lectura (un corte
+  // de red, un timeout de la base) devolvía `member` nulo igual que una
+  // expulsión, y borraba el vínculo — obligando a vincular otra vez desde la
+  // app por un fallo de un segundo.
+  const { data: member, error: memberErr } = await admin
     .from("household_members")
     .select("user_id")
     .eq("household_id", link.householdId)
     .eq("user_id", link.userId)
     .maybeSingle();
+  if (memberErr) return { ok: false, response: speak(SPEECH.error) };
   if (!member) {
     await admin.from("alexa_links").delete().eq("id", link.id);
     return { ok: false, response: notLinkedResponse() };
+  }
+  // Cada orden que modifica algo queda firmada con su altavoz, tenga o no
+  // plan de deshacer: así «deshaz» sabe cuál fue la ÚLTIMA. Antes solo se
+  // firmaban las que tenían plan, y «apunta pan» → «deshaz» revertía el
+  // «quita dos yogures» de antes. La fila solo existe para las órdenes que
+  // modifican (la crea `withRequestDedupe`); para las demás no toca nada.
+  const requestId = envelope.request.requestId;
+  if (requestId) {
+    await admin
+      .from("alexa_requests")
+      .update({ link_id: link.id })
+      .eq("request_id", requestId)
+      .is("link_id", null);
   }
   return { ok: true, link };
 }
@@ -363,8 +382,15 @@ type UndoPlan = {
    *  cuando la orden tocó varios productos (una receta cocinada). */
   productId?: string;
   name: string;
-  /** Cantidad previa de cada lote tocado; null = la fila no existía. */
-  lots: { id: string; quantity: number | null }[];
+  /**
+   * Cantidad previa de cada lote tocado (null = la fila no existía) y la que
+   * dejó la orden. Con las dos se deshace la DIFERENCIA y no se escribe el
+   * número viejo: si entre la orden y el «deshaz» entró una compra o el otro
+   * móvil tocó el stepper, restaurar el absoluto se lo llevaba por delante.
+   * `after` falta en los planes anteriores a este campo (se deshacen como
+   * antes).
+   */
+  lots: { id: string; quantity: number | null; after?: number }[];
   events: UndoEvent[];
 };
 
@@ -382,7 +408,8 @@ function storedUndo(value: unknown): UndoPlan | null {
   const lotesOk = plan.lots.every(
     (lot) =>
       typeof lot?.id === "string" &&
-      (lot.quantity === null || typeof lot.quantity === "number"),
+      (lot.quantity === null || typeof lot.quantity === "number") &&
+      (lot.after === undefined || typeof lot.after === "number"),
   );
   const eventosOk = plan.events.every(
     (event) => typeof event?.id === "string" && typeof event.quantity === "number",
@@ -656,6 +683,7 @@ async function runRestar(
       const previas = plan.steps.map((step) => ({
         id: step.lotId,
         quantity: lots.find((lot) => lot.id === step.lotId)?.quantity ?? null,
+        after: step.newQuantity,
       }));
       const applied = await applySteps(admin, link, plan.steps);
       if (!applied) return speak(SPEECH.error);
@@ -786,7 +814,9 @@ async function runSumar(
       await recordUndo(admin, target, {
         productId,
         name,
-        lots: lotId ? [{ id: lotId, quantity: previa }] : [],
+        lots: lotId
+          ? [{ id: lotId, quantity: previa, after: plan.newQuantity }]
+          : [],
         events: eventId ? [{ id: eventId, quantity: plan.added }] : [],
       });
       // El eco repite lo que dijo el usuario («500 gramos»), no su equivalente en
@@ -1169,7 +1199,11 @@ async function runAgotar(
   await recordUndo(admin, target, {
     productId,
     name: product.name,
-    lots: conStock.map((lot) => ({ id: lot.id, quantity: lot.quantity })),
+    lots: conStock.map((lot) => ({
+      id: lot.id,
+      quantity: lot.quantity,
+      after: 0,
+    })),
     events,
   });
 
@@ -1538,6 +1572,7 @@ async function applyCookedDeductions(
       undoLots.push({
         id: step.lotId,
         quantity: lots.find((lot) => lot.id === step.lotId)?.quantity ?? null,
+        after: step.newQuantity,
       });
     }
     if (!(await applySteps(admin, link, plan.steps))) continue;
@@ -1613,6 +1648,55 @@ async function revertEvents(
   }
 }
 
+type RevertibleLot = { id: string; quantity: number | null; after: number };
+
+/**
+ * Deshace lo que la orden le hizo a un lote sumando la diferencia sobre lo que
+ * haya AHORA (condicionado a esa lectura, con reintentos, como el stepper).
+ * Una fila que creó la orden solo se borra si sigue exactamente como la dejó;
+ * si después entró más, se le resta lo de la orden y se queda. Devuelve false
+ * solo ante un error de la base.
+ */
+async function revertLot(
+  admin: Admin,
+  link: AlexaLink,
+  lot: RevertibleLot,
+): Promise<boolean> {
+  const delta = (lot.quantity ?? 0) - lot.after;
+  for (let intento = 0; intento < 3; intento++) {
+    const { data: row, error: readErr } = await admin
+      .from("inventory_items")
+      .select("quantity")
+      .eq("household_id", link.householdId)
+      .eq("id", lot.id)
+      .maybeSingle();
+    if (readErr) return false;
+    if (!row) return true; // ya no existe: nada que devolver
+    const actual = Number(row.quantity);
+    const nueva = Math.max(0, roundQuantity(actual + delta));
+    const q =
+      lot.quantity === null && nueva === 0
+        ? admin
+            .from("inventory_items")
+            .delete()
+            .eq("household_id", link.householdId)
+            .eq("id", lot.id)
+            .eq("quantity", row.quantity)
+            .select("id")
+        : admin
+            .from("inventory_items")
+            .update({ quantity: nueva, updated_by: link.userId })
+            .eq("household_id", link.householdId)
+            .eq("id", lot.id)
+            .eq("quantity", row.quantity)
+            .select("id");
+    const { data: tocadas, error } = await q;
+    if (error) return false;
+    if (tocadas && tocadas.length > 0) return true;
+  }
+  return false;
+}
+
 /**
  * «Deshaz lo último»: devuelve el inventario a como estaba antes de la última
  * orden dictada por ESTE altavoz. Es la red de seguridad que faltaba — si Alexa
@@ -1636,7 +1720,9 @@ async function handleDeshacer(
       .from("alexa_requests")
       .select("request_id, undo, undone_at")
       .eq("link_id", link.id)
-      .not("undo", "is", null)
+      // La última orden, tenga plan o no (una sin plan no se puede deshacer,
+      // y eso es lo que hay que contestar). Sin contar este mismo «deshaz».
+      .neq("request_id", envelope.request.requestId ?? "")
       .gte("created_at", new Date(Date.now() - UNDO_WINDOW_MS).toISOString())
       .order("created_at", { ascending: false })
       .limit(1)
@@ -1645,11 +1731,19 @@ async function handleDeshacer(
   ]);
   if (!row) return speak(SPEECH.nothingToUndo);
   if (row.undone_at) return speak(SPEECH.alreadyUndone);
+  if (row.undo === null) return speak(SPEECH.nothingToUndo);
 
   const plan = storedUndo(row.undo);
   if (!plan) return speak(SPEECH.nothingToUndo);
 
   for (const lot of plan.lots) {
+    if (lot.after !== undefined) {
+      if (!(await revertLot(admin, link, lot as RevertibleLot))) {
+        return speak(SPEECH.error);
+      }
+      continue;
+    }
+    // Plan antiguo, sin `after`: se restaura el absoluto como antes.
     // Sin cantidad previa, la fila la creó la propia orden: deshacerla no es
     // dejarla a cero (eso sería un «agotado» que nunca existió), es borrarla.
     const { error } =
@@ -1831,12 +1925,23 @@ async function handleBorrarDeLista(
   if (!prepared.ok) return prepared.response;
   const { link, item } = prepared;
 
-  const { error } = await admin
+  // Lo marcado ya está en el carro y es lo que «Finalizar compra» pasa al
+  // inventario: borrarlo por voz perdía esa compra sin rastro. La app lo
+  // prohíbe igual (`removeProductFromListAction`), y la escritura lo vuelve a
+  // exigir por si alguien lo marcó entre la lectura y el borrado.
+  if (item.isChecked) return speak(SPEECH.listDeleteChecked(item.name));
+
+  const { data: borradas, error } = await admin
     .from("shopping_list_items")
     .delete()
     .eq("household_id", link.householdId)
-    .eq("id", item.id);
+    .eq("id", item.id)
+    .eq("is_checked", false)
+    .select("id");
   if (error) return speak(SPEECH.error);
+  if (!borradas || borradas.length === 0) {
+    return speak(SPEECH.listDeleteChecked(item.name));
+  }
 
   return speak(SPEECH.listDeleted(item.name));
 }
