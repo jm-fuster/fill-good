@@ -22,7 +22,7 @@ import { build } from "esbuild";
 import { spawn } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 const raiz = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const salida = join(raiz, "node_modules", ".cache", "check-dates", "bundle.mjs");
@@ -51,7 +51,10 @@ function ejecutar(tz) {
   return new Promise((resolveRun) => {
     const hijo = spawn(
       process.execPath,
-      [pathToFileURL(salida).href.replace("file:///", "")],
+      // La ruta tal cual: `node` la acepta absoluta en los dos sistemas. Pasarla
+      // por URL y quitarle `file:///` daba `C:/…` en Windows pero `home/…`
+      // en Linux, relativa, y el check no llegaba a correr en el CI.
+      [salida],
       { env: { ...process.env, TZ: tz }, stdio: "inherit" },
     );
     hijo.on("close", (code) => resolveRun(code ?? 1));
