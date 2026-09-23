@@ -1,4 +1,7 @@
+import { auth } from "@clerk/nextjs/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+
+import { createAdminClient } from "@/lib/supabase/admin";
 
 import type { Database } from "@/lib/supabase/types";
 
@@ -124,14 +127,27 @@ export async function enforceAiRateLimit(
  * que pasa es que el contador se queda como estaba —y añadir un segundo mensaje
  * de error encima del primero no le sirve a nadie—.
  */
+/*
+ * Va con la clave de SERVICIO, y es la única Server Action que la usa: la RPC
+ * ya no la puede ejecutar ninguna sesión (migración
+ * `20260923130000_codigos_alexa_y_cuota_ia.sql`). Cuando cualquiera podía
+ * llamarla por PostgREST, llamarla tras cada generación que SÍ salía devolvía
+ * la cuota sin fin. El usuario sale de la sesión de Clerk, nunca de la entrada.
+ */
 export async function refundAiUsage(
-  supabase: SupabaseClient<Database>,
   kind: AiRateKind,
   householdId: string,
 ): Promise<void> {
-  const { error } = await supabase.rpc("refund_ai_usage", {
-    p_kind: kind,
-    p_household_id: householdId,
-  });
-  if (error) console.error(`refund_ai_usage (${kind}):`, error);
+  try {
+    const { userId } = await auth();
+    if (!userId) return;
+    const { error } = await createAdminClient().rpc("refund_ai_usage", {
+      p_user_id: userId,
+      p_kind: kind,
+      p_household_id: householdId,
+    });
+    if (error) console.error(`refund_ai_usage (${kind}):`, error);
+  } catch (err) {
+    console.error(`refund_ai_usage (${kind}):`, err);
+  }
 }

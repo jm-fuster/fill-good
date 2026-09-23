@@ -686,7 +686,7 @@ async function generateRecipeDetails(
     // devuelve. Va en el llamador y no en `askForRecipeDetails` porque ese
     // helper no toca la base a propósito: es lo que le permite servir a las dos
     // generaciones (la del formulario y la del menú) sin saber de dónde vienen.
-    await refundAiUsage(supabase, "recipe", household.id);
+    await refundAiUsage("recipe", household.id);
     return { error: result.error ?? "No se pudo escribir la receta." };
   }
   return { details: result.details };
@@ -800,7 +800,7 @@ async function fillRecipeDetails(
     existing,
   });
   if (!result.details) {
-    await refundAiUsage(supabase, "recipe", household.id);
+    await refundAiUsage("recipe", household.id);
     return { error: result.error ?? "No se pudo escribir la receta." };
   }
   const details = result.details;

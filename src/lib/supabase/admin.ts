@@ -17,6 +17,8 @@ import type { Database } from "./types";
  *
  * No usarlo en Server Actions ni en Server Components: ahí hay JWT de Clerk y el
  * cliente normal (`createServerSupabaseClient`) es la opción correcta y segura.
+ * Única excepción, deliberada: `refundAiUsage` (`lib/ai/rate-limit.ts`), porque
+ * devolver cuota de IA no puede estar al alcance de ninguna sesión.
  */
 export function createAdminClient(): SupabaseClient<Database> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

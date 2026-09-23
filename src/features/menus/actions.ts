@@ -652,7 +652,7 @@ async function generateMenu(
   } catch (err) {
     console.error("Error al generar el menú:", err);
     // Cuota devuelta: esta generación no ha dejado ningún menú.
-    await refundAiUsage(supabase, "menu", household.id);
+    await refundAiUsage("menu", household.id);
     const kind = classifyAiError(err);
     return {
       error:
@@ -1392,7 +1392,7 @@ async function generateDishForSlot({
     console.error("Error al generar el plato:", err);
     // Cuota devuelta: no hay plato. Las dos puertas que llegan aquí (el «+» de
     // un hueco y «otra idea») ya la habían apuntado antes de llamar.
-    await refundAiUsage(supabase, "menu", householdId);
+    await refundAiUsage("menu", householdId);
     const kind = classifyAiError(err);
     return {
       error:

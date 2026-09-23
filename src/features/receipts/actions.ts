@@ -212,7 +212,7 @@ async function scanReceipt(
     // La cuota se apuntó antes de llamar; esta lectura no ha dado nada, así que
     // se devuelve. Si no, obedecer al mensaje de «espera un minuto» veinte veces
     // acababa acusando al usuario de escanear demasiados tickets.
-    await refundAiUsage(supabase, "receipt", household.id);
+    await refundAiUsage("receipt", household.id);
     const kind = classifyAiError(err);
     return {
       error:
