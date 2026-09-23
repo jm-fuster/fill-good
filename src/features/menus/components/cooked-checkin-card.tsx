@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -12,7 +13,12 @@ import { getWeekStart, relativeDaysLabel, todayLocalISO } from "@/lib/dates";
 import { setCheckinEnabledAction } from "../actions";
 import type { PendingCheckinEntry } from "../queries";
 import { slotLabel, type SlotDef } from "../slots";
-import { CookedCheckinModal } from "./cooked-checkin-modal";
+// Diferido por lo mismo que el modal del repaso de despensa: la tarjeta va en
+// el shell y el modal (descuento, oferta de lista…) solo hace falta al abrirlo.
+const CookedCheckinModal = dynamic(
+  () => import("./cooked-checkin-modal").then((m) => m.CookedCheckinModal),
+  { ssr: false },
+);
 
 /**
  * Página que YA tiene su propia puerta al repaso: /menus enseña «Repasar días

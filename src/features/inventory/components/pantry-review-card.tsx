@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { PackageSearch, X } from "lucide-react";
@@ -11,7 +12,14 @@ import { getWeekStart, todayLocalISO } from "@/lib/dates";
 import { trackFromClient } from "@/features/usage/track";
 import { setPantryReviewEnabledAction } from "../actions";
 import type { PantryReviewEntry } from "../queries";
-import { PantryReviewModal } from "./pantry-review-modal";
+// Diferido: esta tarjeta vive en el shell, o sea en TODAS las rutas, y el
+// modal arrastra `ProductIcon` y con él el registro de iconos (~78 KB gz).
+// Importado directo, ese registro se cargaba en /ajustes, /perfil o /precios,
+// que no pintan un solo icono de producto, aunque nadie abriera el repaso.
+const PantryReviewModal = dynamic(
+  () => import("./pantry-review-modal").then((m) => m.PantryReviewModal),
+  { ssr: false },
+);
 
 /**
  * Snooze diario y silencio semanal viven en COOKIES por dispositivo, no en la

@@ -236,7 +236,7 @@ function Stat({
         {value}
       </p>
       {perMeasure ? (
-        <p className="text-xs text-chart-3 tabular-nums">{perMeasure}</p>
+        <p className="text-xs text-price tabular-nums">{perMeasure}</p>
       ) : null}
     </div>
   );
