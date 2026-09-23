@@ -325,6 +325,8 @@ export type Database = {
           is_checked: boolean;
           checked_by: string | null;
           checked_at: string | null;
+          // desde 20260923103427: reclamo de un «Finalizar compra» en curso.
+          checkout_claimed_at: string | null;
           added_by: string | null;
           position: number;
           created_at: string;
@@ -340,6 +342,7 @@ export type Database = {
           is_checked?: boolean;
           checked_by?: string | null;
           checked_at?: string | null;
+          checkout_claimed_at?: string | null;
           added_by?: string | null;
           position?: number;
           created_at?: string;
@@ -355,6 +358,7 @@ export type Database = {
           is_checked?: boolean;
           checked_by?: string | null;
           checked_at?: string | null;
+          checkout_claimed_at?: string | null;
           added_by?: string | null;
           position?: number;
           created_at?: string;
@@ -1185,6 +1189,12 @@ export type Database = {
       ensure_active_list: {
         Args: { hid: string };
         Returns: undefined;
+      };
+      // Reclamo de lo marcado para «Finalizar compra» sin desmarcarlo
+      // (20260923103427). Invoker: corre con el JWT y la RLS aplica.
+      claim_checked_items: {
+        Args: { p_household_id: string; p_list_id: string };
+        Returns: Database["public"]["Tables"]["shopping_list_items"]["Row"][];
       };
       bump_product_purchase: {
         Args: { pid: string };
