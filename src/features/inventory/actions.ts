@@ -175,8 +175,12 @@ export async function addInventoryAction(
     }
     // De las caducidades, la MÁS PRÓXIMA: el aviso de «caduca pronto» no se
     // pierde porque el lote nuevo dure más (mismo criterio que la fusión).
-    const expiry =
-      d.expiryDate && invExisting.expiry_date
+    // Salvo que la fila estuviera a cero: esa fecha era del lote que se acabó,
+    // y heredarla hacía nacer «Caducado» lo recién comprado.
+    const wasEmpty = Number(invExisting.quantity) === 0;
+    const expiry = wasEmpty
+      ? (d.expiryDate ?? null)
+      : d.expiryDate && invExisting.expiry_date
         ? d.expiryDate < invExisting.expiry_date
           ? d.expiryDate
           : invExisting.expiry_date
@@ -187,6 +191,7 @@ export async function addInventoryAction(
         quantity: merged,
         updated_by: userId,
         expiry_date: expiry,
+        ...(wasEmpty ? { use_soon: false } : {}),
       })
       .eq("id", invExisting.id);
     if (updErr) return { error: "No se pudo añadir al inventario." };
@@ -512,8 +517,12 @@ export async function updateInventoryAction(
     // (mismo criterio que mergeInventoryRowsAction). Antes los valores del
     // formulario pisaban los del destino: mover una fila sin fecha encima de
     // «caduca el sábado» borraba la fecha.
-    const expiry =
-      d.expiryDate && target.expiry_date
+    // Un destino a cero no aporta lote: su fecha y su aviso eran de lo que se
+    // acabó, así que mandan los de la fila movida.
+    const targetEmpty = Number(target.quantity) === 0;
+    const expiry = targetEmpty
+      ? d.expiryDate
+      : d.expiryDate && target.expiry_date
         ? d.expiryDate < target.expiry_date
           ? d.expiryDate
           : target.expiry_date
@@ -523,7 +532,7 @@ export async function updateInventoryAction(
       .update({
         quantity: Number(target.quantity) + d.quantity,
         expiry_date: expiry,
-        use_soon: d.useSoon || target.use_soon,
+        use_soon: d.useSoon || (!targetEmpty && target.use_soon),
         updated_by: userId,
       })
       .eq("household_id", household.id)
@@ -970,29 +979,38 @@ export async function savePantryReviewAction(
   // un update que no encuentra fila no es un error para Supabase y la pantalla
   // daría por guardada una respuesta que no se escribió en ninguna parte —basta
   // que el otro móvil haya borrado el producto mientras tenías el repaso abierto.
-  const { data: prev } = await supabase
-    .from("inventory_items")
-    .select("product_id, quantity, unit")
-    .eq("household_id", household.id)
-    .eq("id", id)
-    .maybeSingle();
-  if (!prev) return { error: "Ese producto ya no está en tu inventario." };
-
+  //
+  // La escritura va condicionada a la cantidad leída (como el stepper): «Se
+  // acabó» deja la fila a cero pase lo que pase, pero el consumo que se anota
+  // es lo que había, y si el otro móvil tocó el stepper entre medias el evento
+  // contaría un número viejo. Si la fila cambió, se relee y se reintenta.
   const nueva = answerToQuantity(answer);
-  const { data: tocadas, error } = await supabase
-    .from("inventory_items")
-    .update({
-      reviewed_at: new Date().toISOString(),
-      updated_by: userId,
-      ...(nueva === null ? {} : { quantity: nueva }),
-    })
-    .eq("household_id", household.id)
-    .eq("id", id)
-    .select("id");
-  if (error) return { error: "No se pudo guardar la respuesta." };
-  if (!tocadas || tocadas.length === 0) {
-    return { error: "Ese producto ya no está en tu inventario." };
+  let prev: { product_id: string; quantity: number; unit: UnitType } | null =
+    null;
+  for (let intento = 0; intento < 3 && !prev; intento++) {
+    const { data: leida } = await supabase
+      .from("inventory_items")
+      .select("product_id, quantity, unit")
+      .eq("household_id", household.id)
+      .eq("id", id)
+      .maybeSingle();
+    if (!leida) return { error: "Ese producto ya no está en tu inventario." };
+
+    const { data: tocadas, error } = await supabase
+      .from("inventory_items")
+      .update({
+        reviewed_at: new Date().toISOString(),
+        updated_by: userId,
+        ...(nueva === null ? {} : { quantity: nueva }),
+      })
+      .eq("household_id", household.id)
+      .eq("id", id)
+      .eq("quantity", leida.quantity)
+      .select("id");
+    if (error) return { error: "No se pudo guardar la respuesta." };
+    if (tocadas && tocadas.length > 0) prev = leida;
   }
+  if (!prev) return { error: "No se pudo guardar la respuesta." };
 
   // Lo que se ha acabado salió de casa de verdad, aunque nadie sepa cuándo: se
   // anota igual que el borrado de una fila con stock. SIN `fold`, porque agrupar

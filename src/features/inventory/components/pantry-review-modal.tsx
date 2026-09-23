@@ -150,35 +150,69 @@ export function PantryReviewModal({
       return;
     }
     setAdding(true);
-    void (async () => {
-      const r = await safeAction(
-        addListItemsAction(
-          // Sin cantidad a propósito: el usuario ha dicho que hace falta, no
-          // cuánto. Inventar un número aquí sería una cifra que nadie ha
-          // decidido, y la lista ya sabe proponerla cuando toca.
-          chosen.map(({ item }) => ({
-            kind: "product" as const,
-            productId: item.productId,
-          })),
-        ),
-        "No se pudo apuntar en la lista.",
-      );
-      setAdding(false);
-      if (r.error) {
-        toast.error(r.error);
-        return;
+    void pushToList(chosen.map(({ item }) => item));
+  }
+
+  /*
+    Cerrar a media pregunta no puede tirar lo ya contestado como «se acabó» o
+    «queda poco»: la oferta de la lista solo salía al terminar, y al cerrar la
+    tarjeta se refresca y desaparece (la semana ya está sellada), así que eso no
+    llegaba a la lista ni volvía a ofrecerse. Tampoco se apunta solo —cerrar no
+    es decir que sí—: se ofrece en un aviso, que sobrevive al desmontaje.
+  */
+  function handleOpenChange(next: boolean) {
+    if (!next && view === "review" && !addedToList && !restockDismissed) {
+      const chosen = toBuy
+        .filter(({ item }) => !skipped.has(item.id))
+        .map(({ item }) => item);
+      if (chosen.length > 0) {
+        toast(
+          chosen.length === 1
+            ? `¿Apunto «${chosen[0].name}» en la lista?`
+            : `¿Apunto en la lista los ${chosen.length} que faltan?`,
+          {
+            duration: 10_000,
+            action: {
+              label: "Apuntar",
+              onClick: () => void pushToList(chosen),
+            },
+          },
+        );
       }
-      const total = (r.added ?? 0) + (r.merged ?? 0);
-      toast.success(
-        total === 1
-          ? "1 producto apuntado en la lista"
-          : `${total} productos apuntados en la lista`,
-      );
-      setAddedToList(true);
-      // Medición de uso: es la mitad del valor del repaso (corregir la
-      // despensa y además generar la compra), así que se cuenta aparte.
-      trackFromClient({ name: "pantry_review_to_list", props: { count: total } });
-    })();
+    }
+    onOpenChange(next);
+  }
+
+  async function pushToList(chosen: PantryReviewEntry[]) {
+    const r = await safeAction(
+      addListItemsAction(
+        // Sin cantidad a propósito: el usuario ha dicho que hace falta, no
+        // cuánto. Inventar un número aquí sería una cifra que nadie ha
+        // decidido, y la lista ya sabe proponerla cuando toca. Por lo mismo,
+        // lo que ya está apuntado se deja como está (`ifMissing`).
+        chosen.map((item) => ({
+          kind: "product" as const,
+          productId: item.productId,
+          ifMissing: true,
+        })),
+      ),
+      "No se pudo apuntar en la lista.",
+    );
+    setAdding(false);
+    if (r.error) {
+      toast.error(r.error);
+      return;
+    }
+    const total = (r.added ?? 0) + (r.merged ?? 0);
+    toast.success(
+      total === 1
+        ? "1 producto apuntado en la lista"
+        : `${total} productos apuntados en la lista`,
+    );
+    setAddedToList(true);
+    // Medición de uso: es la mitad del valor del repaso (corregir la
+    // despensa y además generar la compra), así que se cuenta aparte.
+    trackFromClient({ name: "pantry_review_to_list", props: { count: total } });
   }
 
   // Agrupado por ubicación para que el repaso sea un paseo por la casa y no un
@@ -191,7 +225,7 @@ export function PantryReviewModal({
   const finished = pending.length === 0;
 
   return (
-    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+    <ResponsiveModal open={open} onOpenChange={handleOpenChange}>
       <ResponsiveModalContent>
         <ResponsiveModalHeader>
           <ResponsiveModalTitle>

@@ -984,6 +984,10 @@ export async function confirmReceiptAction(
     unit: UnitType;
     existing: boolean;
     dirty: boolean;
+    // Estaba a cero antes del ticket: su fecha y su «gastar pronto» eran del
+    // lote que se acabó, y se limpian al reponer (si no, el yogur recién
+    // comprado sale «Caducado»). La revisión de caducidades pone la nueva.
+    wasEmpty: boolean;
   };
   const invSim = new Map<string, InvSim>();
   for (const [k, r] of invByKey) {
@@ -995,6 +999,7 @@ export async function confirmReceiptAction(
       unit: r.unit,
       existing: true,
       dirty: false,
+      wasEmpty: Number(r.quantity) === 0,
     });
   }
 
@@ -1076,6 +1081,7 @@ export async function confirmReceiptAction(
         unit: r.stockUnit,
         existing: false,
         dirty: true,
+        wasEmpty: false,
       });
       addedToInventory = true;
     }
@@ -1104,7 +1110,11 @@ export async function confirmReceiptAction(
   const invUpdateResults = await inChunks(invUpdates, (s) =>
     supabase
       .from("inventory_items")
-      .update({ quantity: s.quantity, updated_by: userId })
+      .update({
+        quantity: s.quantity,
+        updated_by: userId,
+        ...(s.wasEmpty ? { expiry_date: null, use_soon: false } : {}),
+      })
       .eq("id", s.id as string),
   );
   if (invUpdateResults.some((res) => res.error)) {

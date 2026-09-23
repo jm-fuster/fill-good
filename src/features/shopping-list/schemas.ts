@@ -37,6 +37,7 @@ export const addListItemsSchema = z
         kind: z.literal("product"),
         productId: z.string().uuid(),
         quantity: z.number().positive().finite().nullish(),
+        ifMissing: z.boolean().optional(),
       }),
       z.object({
         kind: z.literal("free"),
