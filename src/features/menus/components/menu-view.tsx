@@ -3,6 +3,7 @@
 import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { aiProvenanceAttrs } from "@/lib/ai/provenance";
 import { AiConsentModal } from "@/features/ai-consent/components/ai-consent-modal";
 import {
   BookmarkPlus,
@@ -207,6 +208,8 @@ type Editing = {
   /** Motivo del descarte, para que los chips lleguen con el suyo ya marcado. */
   skippedReason: string | null;
   pinned: boolean;
+  /** La receta enlazada la inventó la IA al generar el menú (`recipes.source`). */
+  recipeFromAi: boolean;
 };
 
 export function MenuView({
@@ -580,6 +583,7 @@ export function MenuView({
       skippedAt: null,
       skippedReason: null,
       pinned: false,
+      recipeFromAi: false,
     });
   }
 
@@ -596,6 +600,7 @@ export function MenuView({
       skippedAt: entry.skippedAt,
       skippedReason: entry.skippedReason,
       pinned: entry.pinned,
+      recipeFromAi: entry.recipeSource === "ai",
     });
   }
 
@@ -1028,6 +1033,9 @@ export function MenuView({
                         */
                         <div
                           key={entry.id}
+                          // Marca legible por máquina de lo que escribió la IA
+                          // (Reglamento de IA, art. 50.2); ver `lib/ai/provenance.ts`.
+                          {...aiProvenanceAttrs(entry.source === "ai")}
                           className="flex flex-col rounded-lg border @min-[9rem]:flex-row print:block print:border-0"
                         >
                           <button
@@ -2025,6 +2033,7 @@ function EditEntryDrawer({
             tabIndex={-1}
             role="group"
             aria-label="Cómo se cocina"
+            {...aiProvenanceAttrs(editing?.recipeFromAi ?? false)}
             className="flex flex-col gap-3 px-4 outline-none"
           >
             {/*

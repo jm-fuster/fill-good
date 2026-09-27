@@ -235,7 +235,9 @@ export default function PrivacidadPage() {
         <p>
           Lo que se envía es contenido compartido del hogar: cuando un miembro
           usa estas funciones, viaja también lo que han apuntado los demás. A la
-          IA no le llega tu nombre, tu email ni el nombre del hogar.
+          IA no le llega tu nombre, tu email ni el nombre del hogar. Los platos
+          y las recetas que propone la IA quedan marcados como tales, también en
+          la exportación de tus datos.
         </p>
         <p>
           <strong>Te pedimos tu consentimiento</strong> antes de usar estas

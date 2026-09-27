@@ -5,6 +5,7 @@ import type { PostgrestError } from "@supabase/supabase-js";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/supabase/fetch-all";
+import { AI_DIGITAL_SOURCE_TYPE } from "@/lib/ai/provenance";
 import { getCurrentHousehold } from "@/features/household/queries";
 
 export type DeleteAccountState = { error?: string; ok?: boolean };
@@ -132,6 +133,16 @@ export async function exportMyDataAction(): Promise<ExportDataState> {
 
   const data = {
     exportedAt: new Date().toISOString(),
+    // Marca legible por máquina de lo generado por IA (Reglamento de IA,
+    // art. 50.2): las filas ya la llevan, esto dice dónde. Ver `lib/ai/provenance.ts`.
+    aiProvenance: {
+      digitalSourceType: AI_DIGITAL_SOURCE_TYPE,
+      fields: {
+        "menuEntries[].source": "'ai' = plato propuesto por la IA",
+        "weeklyMenus[].generated_by": "'ai' = semana generada con IA",
+        "recipes[].source": "'ai' = receta inventada por la IA al generar el menú",
+      },
+    },
     account: {
       email: user?.primaryEmailAddress?.emailAddress ?? null,
       name: user?.fullName ?? null,
