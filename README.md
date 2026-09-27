@@ -208,8 +208,10 @@ los planes ya ejecutados, como registro de cómo se decidió cada cosa.
 
 ## Licencia
 
-El código es público para que se pueda leer, pero no tiene licencia de uso:
-todos los derechos reservados ([LICENSE](LICENSE)).
+El repositorio es público para que se pueda leer, pero no tiene licencia de
+uso: todos los derechos reservados ([LICENSE](LICENSE)). Sí puedes clonarlo y
+arrancarlo en tu equipo para evaluarlo o proponer cambios, sin desplegarlo para
+otros ni redistribuirlo.
 
 Los iconos de producto son de
 [Fluent Emoji](https://github.com/microsoft/fluentui-emoji), de Microsoft, con

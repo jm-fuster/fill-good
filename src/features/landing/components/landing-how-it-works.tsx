@@ -11,13 +11,13 @@ const STEPS = [
   },
   {
     icon: Refrigerator,
-    title: "Tu despensa se actualiza sola",
+    title: "Tu despensa al día con cada ticket",
     body: "El inventario refleja lo que hay en casa y avisa de lo que caduca.",
   },
   {
     icon: ShoppingCart,
     title: "Compra solo lo que falta",
-    body: "La lista compartida se rellena con lo que se agota. Sin duplicados ni olvidos.",
+    body: "La lista compartida te sugiere lo que se agota, sin duplicados.",
   },
 ];
 

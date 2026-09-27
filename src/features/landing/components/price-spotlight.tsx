@@ -6,10 +6,12 @@ import { Reveal } from "./reveal";
 const SERIES = [8.1, 8.45, 8.3, 8.95, 9.25, 9.1, 9.7, 9.95];
 
 // datos de ejemplo: mismo producto hoy en tres súpers; el más barato en verde.
+// Tiendas ficticias a propósito: con cadenas reales, unos precios inventados
+// se leerían como un dato sobre ellas.
 const PRICE_ROWS = [
-  { chain: "Mercadona", price: "9,85 €", cheapest: false },
-  { chain: "Carrefour", price: "10,20 €", cheapest: false },
-  { chain: "Lidl", price: "9,49 €", cheapest: true },
+  { chain: "Súper A", price: "9,85 €", cheapest: false },
+  { chain: "Súper B", price: "10,20 €", cheapest: false },
+  { chain: "Súper C", price: "9,49 €", cheapest: true },
 ];
 
 const VIEW_W = 320;

@@ -59,7 +59,7 @@ export function LandingFooter() {
         </div>
 
         <p className="mt-6 text-xs text-muted-foreground">
-          © {year} Fill Good
+          © {year} Jorge Molina Fuster
         </p>
       </PageContainer>
     </footer>

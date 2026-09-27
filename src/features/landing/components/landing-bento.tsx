@@ -19,9 +19,9 @@ const EXPIRY_ROWS: { name: string; label: string; status: PantryStatus }[] = [
 
 // datos de ejemplo: mismo producto en tres súpers; el más barato en verde.
 const PRICE_CHIPS = [
-  { chain: "Mercadona", price: "1,89 €", swatch: "bg-chart-1" },
-  { chain: "Carrefour", price: "2,05 €", swatch: "bg-chart-2" },
-  { chain: "Lidl", price: "1,79 €", swatch: "bg-chart-3" },
+  { chain: "Súper A", price: "1,89 €", swatch: "bg-chart-1" },
+  { chain: "Súper B", price: "2,05 €", swatch: "bg-chart-2" },
+  { chain: "Súper C", price: "1,79 €", swatch: "bg-chart-3" },
 ];
 
 const CELL = "rounded-xl border border-border p-6";
