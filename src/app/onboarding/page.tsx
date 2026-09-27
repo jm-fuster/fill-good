@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
+import { DeleteAccountRow } from "@/features/account/components/delete-account-row";
 import { OnboardingForm } from "@/features/household/components/onboarding-form";
 import { getCurrentHousehold } from "@/features/household/queries";
 
@@ -23,6 +24,13 @@ export default async function OnboardingPage() {
         </p>
       </div>
       <OnboardingForm />
+      {/* Sin hogar no se llega a Ajustes (el layout de la app redirige aquí),
+          así que borrar la cuenta tiene que estar también en esta pantalla:
+          si no, quien sale de su único hogar no podría ejercer la supresión
+          desde la app (arts. 12.2 y 17 RGPD). */}
+      <div className="mt-10 border-t pt-4">
+        <DeleteAccountRow />
+      </div>
     </main>
   );
 }

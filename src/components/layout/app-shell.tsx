@@ -8,6 +8,7 @@ import { NavListCountProvider } from "@/components/layout/nav-list-count";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { HouseholdSwitcherMenu } from "@/features/household/components/household-switcher";
+import { LegalNoticeCard } from "@/features/legal-notice/components/legal-notice-card";
 import { PantryReviewBanner } from "@/features/inventory/components/pantry-review-banner";
 import { CookedCheckinBanner } from "@/features/menus/components/cooked-checkin-banner";
 import { VisitPing } from "@/features/usage/components/visit-ping";
@@ -94,6 +95,10 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
                   no solo en /menus. En Suspense para que sus consultas no
                   retrasen el primer paint (mismo espíritu que el badge de la
                   nav); sin pendientes no renderiza nada. */}
+              {/* Aviso de cambios legales: una vez por versión, antes que los
+                  repasos porque es lo que prometen /privacidad §12 y /terminos
+                  §13. Se decide en el cliente (ver el componente). */}
+              <LegalNoticeCard />
               <Suspense fallback={null}>
                 <CookedCheckinBanner />
               </Suspense>
