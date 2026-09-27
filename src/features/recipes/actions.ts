@@ -8,7 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import type { Database } from "@/lib/supabase/types";
-import { classifyAiError } from "@/lib/ai/errors";
+import { classifyAiError, type AiErrorKind } from "@/lib/ai/errors";
 import { serverFailureMessage } from "@/lib/server-failure";
 import { getModel } from "@/lib/ai/models";
 import { enforceAiRateLimit, refundAiUsage } from "@/lib/ai/rate-limit";
@@ -583,7 +583,11 @@ async function askForRecipeDetails(input: {
   servings: number;
   mealTypes: string[];
   existing: DraftIngredient[];
-}): Promise<{ error?: string; details?: RecipeDetailsDraft }> {
+}): Promise<{
+  error?: string;
+  details?: RecipeDetailsDraft;
+  failure?: AiErrorKind;
+}> {
   let generated;
   try {
     const { object } = await generateObject({
@@ -609,6 +613,7 @@ async function askForRecipeDetails(input: {
     console.error("Error al escribir la receta:", err);
     const kind = classifyAiError(err);
     return {
+      failure: kind,
       error:
         kind === "rate_limit"
           ? "El servicio de IA está saturado ahora mismo. Espera un minuto y vuelve a intentarlo."
@@ -704,11 +709,13 @@ async function generateRecipeDetails(
     })),
   });
   if (!result.details) {
-    // Sin borrador no hay nada que enseñar, así que la cuota apuntada arriba se
-    // devuelve. Va en el llamador y no en `askForRecipeDetails` porque ese
-    // helper no toca la base a propósito: es lo que le permite servir a las dos
-    // generaciones (la del formulario y la del menú) sin saber de dónde vienen.
-    await refundAiUsage("recipe", household.id);
+    // Sin borrador no hay nada que enseñar; la cuota apuntada arriba se
+    // devuelve si Google no llegó a generar (`refundAiUsage`). Una respuesta
+    // VACÍA no trae `failure`: el modelo trabajó y la cuota se gastó. Va en el
+    // llamador y no en `askForRecipeDetails` porque ese helper no toca la base
+    // a propósito: es lo que le permite servir a las dos generaciones (la del
+    // formulario y la del menú) sin saber de dónde vienen.
+    await refundAiUsage("recipe", household.id, result.failure ?? "other");
     return { error: result.error ?? "No se pudo escribir la receta." };
   }
   return { details: result.details };
@@ -826,7 +833,7 @@ async function fillRecipeDetails(
     existing,
   });
   if (!result.details) {
-    await refundAiUsage("recipe", household.id);
+    await refundAiUsage("recipe", household.id, result.failure ?? "other");
     return { error: result.error ?? "No se pudo escribir la receta." };
   }
   const details = result.details;

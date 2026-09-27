@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import type { AiErrorKind } from "@/lib/ai/errors";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 import type { Database } from "@/lib/supabase/types";
@@ -116,11 +117,22 @@ export async function enforceAiRateLimit(
  * Devuelve la unidad de cuota que `enforceAiRateLimit` acaba de apuntar, para
  * cuando la llamada a la IA no llega a dar nada aprovechable.
  *
- * El apunte va por delante porque es lo que hace atómico el límite (ver la
- * migración `..._ai_cuota_se_devuelve_si_falla`), pero cobrarlo pase lo que
- * pase convertía los fallos del SERVICIO en castigos al usuario: con el free
- * tier saturado, veinte reintentos obedientes agotaban el cupo y la app pasaba
- * a acusarle de escanear demasiados tickets sin haber leído ninguno.
+ * El apunte va por delante porque apuntar DESPUÉS dejaría pasar a todas las
+ * llamadas que salgan mientras la primera espera al modelo (el cerrojo de la
+ * RPC solo ordena a quienes apuntan; ver `..._cuota_ia_con_cerrojo`). Pero
+ * cobrarlo pase lo que pase convertía los fallos del SERVICIO en castigos al
+ * usuario: con el free tier saturado, veinte reintentos obedientes agotaban el
+ * cupo y la app pasaba a acusarle de escanear demasiados tickets sin haber
+ * leído ninguno.
+ *
+ * Solo se devuelve cuando Google NO llegó a trabajar (`refundsQuota`): un
+ * 429 o una configuración rota los rechaza antes de generar nada. Un timeout o
+ * una respuesta que no cuadra con el schema ya han gastado la cuota gratuita
+ * —el modelo generó, aunque no nos sirva—, y devolverla ahí es lo que hacía el
+ * límite gratis de saltar: un PDF enorme que siempre agota el tiempo se podía
+ * repetir sin fin, veinte a la vez, y la cuota de TODOS los hogares se iba en
+ * eso. El precio lo paga quien sufre un timeout de verdad, con una unidad de
+ * veinte por hora; es el lado barato del error.
  *
  * Silenciosa por definición: esto corre dentro del `catch` de un fallo que ya
  * se le va a contar al usuario, así que si la devolución tampoco sale, lo único
@@ -137,7 +149,9 @@ export async function enforceAiRateLimit(
 export async function refundAiUsage(
   kind: AiRateKind,
   householdId: string,
+  failure: AiErrorKind,
 ): Promise<void> {
+  if (!refundsQuota(failure)) return;
   try {
     const { userId } = await auth();
     if (!userId) return;
@@ -149,5 +163,23 @@ export async function refundAiUsage(
     if (error) console.error(`refund_ai_usage (${kind}):`, error);
   } catch (err) {
     console.error(`refund_ai_usage (${kind}):`, err);
+  }
+}
+
+/**
+ * ¿Este fallo deja la cuota de Gemini como estaba? Solo cuando el proveedor
+ * rechazó la petición sin generar: saturado (429) o mal configurado. Va en un
+ * `switch` exhaustivo para que un tipo de fallo nuevo en `classifyAiError`
+ * obligue a decidir aquí si se devuelve, en vez de caer callado en uno de los
+ * dos lados.
+ */
+function refundsQuota(failure: AiErrorKind): boolean {
+  switch (failure) {
+    case "rate_limit":
+    case "config":
+      return true;
+    case "timeout":
+    case "other":
+      return false;
   }
 }
