@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function TerminosPage() {
   return (
-    <LegalPage title="Términos de uso" updated="24 de julio de 2026">
+    <LegalPage title="Términos de uso" updated="27 de septiembre de 2026">
       <p>
         Estos términos regulan el uso de <strong>Fill Good</strong>, la
         aplicación para gestionar la despensa del hogar, la lista de la
