@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { generateObject } from "ai";
 
 import { getModel } from "@/lib/ai/models";
-import { classifyAiError } from "@/lib/ai/errors";
+import { aiErrorForLog, classifyAiError } from "@/lib/ai/errors";
 import { serverFailureMessage } from "@/lib/server-failure";
 import { buildReceiptSchema } from "@/lib/ai/receipt-schema";
 import type { ReceiptItemExtraction } from "@/lib/ai/receipt-schema";
@@ -208,7 +208,7 @@ async function scanReceipt(
     });
     extraction = object;
   } catch (err) {
-    console.error("Error de extracción del ticket:", err);
+    console.error("Error de extracción del ticket:", aiErrorForLog(err));
     // La cuota se apuntó antes de llamar; si Google rechazó la lectura sin
     // hacerla, se devuelve. Si no, obedecer al mensaje de «espera un minuto»
     // veinte veces acababa acusando al usuario de escanear demasiados tickets.

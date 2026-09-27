@@ -13,7 +13,7 @@ import { grantAiConsentAction } from "../actions";
 
 /**
  * Aviso de primera capa + consentimiento para el procesamiento con IA de Google.
- * Se muestra antes del primer escaneo o generación de menú. Al aceptar registra
+ * Se muestra antes del primer escaneo, menú o receta con IA. Al aceptar registra
  * el consentimiento y llama a `onAccepted` para que la vista contenedora
  * continúe (mostrar el formulario, reintentar la generación…).
  */
@@ -54,16 +54,18 @@ export function AiConsentCard({
 
       <div className="flex flex-col gap-2 text-sm text-muted-foreground">
         <p>
-          Para leer tickets y generar menús enviamos esos datos (la imagen del
-          ticket, tu despensa, tus recetas, la lista de la compra, los platos de
-          las dos semanas anteriores y las preferencias que indiques) a la{" "}
-          <strong className="text-foreground">IA de Google (Gemini)</strong>.
+          Para leer tickets, generar menús y escribir recetas enviamos a la{" "}
+          <strong className="text-foreground">IA de Google (Gemini)</strong> lo
+          que hace falta: el ticket, tu despensa, tus recetas con sus
+          valoraciones y costes, la lista de la compra, los platos recientes, el
+          presupuesto y las preferencias del menú, incluida una dieta «sin
+          gluten» si la eliges. Es contenido compartido del hogar: viaja también
+          lo que han apuntado los demás.
         </p>
         <p>
-          Usamos su nivel gratuito, en el que Google puede utilizar lo enviado
-          para mejorar sus modelos. Por eso te pedimos que no incluyas datos
-          personales que no hagan falta —por ejemplo, tapa la zona de la tarjeta
-          del ticket antes de escanearlo—.
+          Según sus términos, Google no usa lo enviado para mejorar sus
+          productos. Aun así, tapa la zona de la tarjeta del ticket antes de
+          escanearlo. Puedes retirar este permiso cuando quieras en Ajustes.
         </p>
       </div>
 

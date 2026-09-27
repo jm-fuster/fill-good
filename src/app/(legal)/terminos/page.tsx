@@ -17,7 +17,8 @@ export default function TerminosPage() {
         Estos términos regulan el uso de <strong>Fill Good</strong>, la
         aplicación para gestionar la despensa del hogar, la lista de la
         compra, los tickets, los precios y los menús semanales. Al crear una
-        cuenta o usar la app aceptas estos términos y la{" "}
+        cuenta o usar la app aceptas estos términos. Cómo tratamos tus datos
+        se explica en la{" "}
         <Link href="/privacidad">política de privacidad</Link>.
       </p>
 
@@ -55,7 +56,7 @@ export default function TerminosPage() {
 
       <LegalSection title="3. Tu cuenta">
         <p>
-          Para usar la app necesitas una cuenta. Debes tener al menos 14
+          Para usar la app necesitas una cuenta. Debes tener al menos 18
           años, facilitar información veraz y custodiar tus credenciales: lo
           que ocurra desde tu sesión se entiende hecho por ti. Si sospechas
           que alguien ha accedido a tu cuenta, cambia la contraseña y
@@ -92,12 +93,18 @@ export default function TerminosPage() {
 
       <LegalSection title="6. Funciones de inteligencia artificial">
         <p>
-          La lectura de tickets y la generación de menús usan modelos de IA,
-          y los modelos de IA se equivocan: una línea del ticket puede
-          extraerse mal, un precio puede quedar descuadrado y un menú puede
-          proponer algo que no encaje contigo. La app te pide revisar los
-          resultados antes de confirmarlos, y esa revisión es tu
+          La lectura de tickets, la generación de menús y la escritura de
+          recetas usan modelos de IA, y los modelos de IA se equivocan: una
+          línea del ticket puede extraerse mal, un precio puede quedar
+          descuadrado, un menú puede proponer algo que no encaje contigo y una
+          receta puede traer cantidades o tiempos que no cuadran. La app te pide
+          revisar los resultados antes de confirmarlos, y esa revisión es tu
           responsabilidad.
+        </p>
+        <p>
+          Cualquier miembro del hogar que las active puede usar estas funciones
+          sobre el contenido compartido del hogar, también sobre lo que hayas
+          apuntado tú.
         </p>
         <p>
           <strong>
@@ -183,7 +190,8 @@ export default function TerminosPage() {
           derivados de decisiones tomadas confiando exclusivamente en la
           información de la app (extracciones de tickets, precios,
           caducidades, menús), de la pérdida de datos por causas ajenas a
-          nuestro control razonable ni de interrupciones del servicio. Nada
+          nuestro control razonable ni de interrupciones del servicio, salvo
+          que medie dolo o culpa grave por nuestra parte. Nada
           en estos términos limita derechos que la legislación de consumo te
           reconozca de forma irrenunciable.
         </p>

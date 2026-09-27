@@ -58,3 +58,26 @@ function isConfigLike(e: unknown): boolean {
   const status = e.statusCode ?? 0;
   return status >= 400 && status < 500 && status !== 429 && !e.isRetryable;
 }
+
+/**
+ * Lo que se registra de un fallo de IA: el tipo y el código, NUNCA el contenido.
+ *
+ * Registrar el error entero volcaba en los logs de Vercel lo que es del hogar:
+ * `NoObjectGeneratedError.text` es la respuesta completa del modelo (las líneas
+ * del ticket, la semana, la receta), `TypeValidationError.message` incrusta el
+ * valor en JSON y `APICallError.requestBodyValues` lleva el prompt y el archivo.
+ * La política de privacidad solo anuncia registros técnicos, y para depurar
+ * basta con saber qué falló, no qué decía.
+ */
+export function aiErrorForLog(err: unknown): Record<string, unknown> {
+  const unwrapped = RetryError.isInstance(err) ? err.lastError : err;
+  const e = unwrapped instanceof Error ? unwrapped : null;
+  return {
+    kind: classifyAiError(err),
+    name: e?.name ?? typeof unwrapped,
+    ...(APICallError.isInstance(unwrapped)
+      ? { statusCode: unwrapped.statusCode }
+      : {}),
+    ...(RetryError.isInstance(err) ? { retryReason: err.reason } : {}),
+  };
+}
