@@ -173,6 +173,21 @@ export default function TerminosPage() {
           no te ceden ninguno de esos derechos más allá del uso normal de la
           app.
         </p>
+        <p>
+          Los nombres de supermercados que aparecen en la app y en esta web
+          solo sirven para identificar tiendas; Fill Good no está afiliada a
+          ninguna cadena.
+        </p>
+        <p id="creditos">
+          <strong>Créditos.</strong> La app incluye piezas de terceros con su
+          propia licencia: los iconos de producto Fluent Emoji (© Microsoft
+          Corporation) y los componentes de shadcn/ui (© 2023 shadcn), con
+          licencia MIT; los iconos de interfaz de Lucide (© Lucide
+          Contributors, licencia ISC); y la tipografía Geist (© Vercel, SIL
+          Open Font License 1.1). Esas licencias permiten su uso siempre que se
+          conserve su aviso, y se ofrecen «tal cual», sin garantía de sus
+          autores.
+        </p>
       </LegalSection>
 
       <LegalSection title="11. Baja del servicio">

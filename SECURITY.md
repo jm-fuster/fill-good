@@ -70,6 +70,10 @@ estas pautas y me avise en privado.
 Please report security issues privately through **Security → Report a
 vulnerability** in this repository, never in a public issue. Include the
 affected route or file, steps to reproduce and the impact. This is a
-one-person project with no bug bounty; expect a first answer within a week.
-Test only with your own accounts, stop and report if you reach someone else's
-data, and avoid denial of service and exhausting the shared AI quota.
+one-person project with no bug bounty; I try to answer within a week. You can
+also write to the email in the privacy policy. Test only with your own
+accounts, stop and report if you reach someone else's data, and avoid denial
+of service and exhausting the shared AI quota. Please allow 90 days (or less
+if it is already fixed) before publishing. I will not take legal action
+against good-faith research that follows these guidelines and is reported
+privately.

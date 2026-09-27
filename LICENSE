@@ -1,18 +1,25 @@
 Copyright (c) 2026 Jorge Molina Fuster. Todos los derechos reservados.
 
-El código de este repositorio se publica para que se pueda leer. No se concede
-ninguna licencia para usarlo, copiarlo, modificarlo ni distribuirlo, ni entero
-ni en parte.
+El contenido de este repositorio (el código, los textos, el diseño, el logo,
+las capturas, el recetario y la documentación) se publica para que se pueda
+leer. No se concede ninguna licencia para usarlo, copiarlo, modificarlo ni
+distribuirlo, ni entero ni en parte, salvo esto: puedes clonarlo y ejecutarlo
+en tu propio equipo para evaluarlo o para proponer cambios en este
+repositorio, sin desplegarlo para terceros ni redistribuirlo.
 
-Quedan fuera los componentes de terceros que se incluyen con su propia licencia
-(Fluent Emoji y shadcn/ui, las dos MIT): ver THIRD-PARTY-NOTICES.md.
+Quedan fuera los componentes de terceros que se incluyen con su propia
+licencia: ver THIRD-PARTY-NOTICES.md.
 
 ---
 
 Copyright (c) 2026 Jorge Molina Fuster. All rights reserved.
 
-The code in this repository is published to be read. No license is granted to
-use, copy, modify or distribute it, in whole or in part.
+The contents of this repository (code, texts, design, logo, screenshots,
+recipe collection and documentation) are published to be read. No license is
+granted to use, copy, modify or distribute them, in whole or in part, except
+this: you may clone and run it on your own machine to evaluate it or to
+propose changes to this repository, without deploying it for others or
+redistributing it.
 
-Third-party components included under their own licenses (Fluent Emoji and
-shadcn/ui, both MIT) are excluded: see THIRD-PARTY-NOTICES.md.
+Third-party components included under their own licenses are excluded: see
+THIRD-PARTY-NOTICES.md.

@@ -60,9 +60,20 @@ export default function AcercaDePage() {
                 de Microsoft, variante Flat (licencia MIT).
               </li>
               <li>
-                Seis iconos (calabaza, col, puerro, espárragos, remolacha y
-                cerillas) están dibujados para Fill Good, porque no existen a
-                color en ninguna librería abierta.
+                Catorce iconos están dibujados para Fill Good, porque no existen
+                a color en ninguna librería abierta.
+              </li>
+              <li>
+                Iconos de la interfaz: Lucide (licencia ISC). Componentes:
+                shadcn/ui (licencia MIT). Tipografía: Geist (SIL Open Font
+                License 1.1). Los avisos completos están en los{" "}
+                <a
+                  href="/terminos#creditos"
+                  className="underline underline-offset-4 hover:text-foreground"
+                >
+                  términos de uso
+                </a>
+                .
               </li>
             </ul>
           </CardContent>
