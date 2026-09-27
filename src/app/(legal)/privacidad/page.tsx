@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function PrivacidadPage() {
   return (
-    <LegalPage title="Política de privacidad" updated="23 de septiembre de 2026">
+    <LegalPage title="Política de privacidad" updated="27 de septiembre de 2026">
       <p>
         Esta política explica qué datos personales tratamos cuando usas{" "}
         <strong>Fill Good</strong>, con qué finalidad, con qué base legal y qué

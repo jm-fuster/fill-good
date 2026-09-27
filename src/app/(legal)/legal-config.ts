@@ -24,7 +24,7 @@ export const LEGAL_OWNER: LegalOwner = {
   /** Nombre y apellidos (persona física) o razón social (empresa). OBLIGATORIO. */
   name: "Jorge Molina Fuster",
   /** Buzón para ejercicio de derechos RGPD y consultas legales. OBLIGATORIO. */
-  email: "jorgemolinafuster@gmail.com",
+  email: "fillgood@jorgemolinafuster.com",
   /** NIF o CIF del titular. OPCIONAL ("" = no se muestra en las páginas legales). */
   taxId: "",
   /** Dirección postal profesional de contacto. OPCIONAL ("" = no se muestra). */
