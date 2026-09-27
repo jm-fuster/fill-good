@@ -9,7 +9,7 @@ import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 
 import { getModel } from "@/lib/ai/models";
-import { classifyAiError } from "@/lib/ai/errors";
+import { aiErrorForLog, classifyAiError } from "@/lib/ai/errors";
 import { serverFailureMessage } from "@/lib/server-failure";
 import { menuSchema, singleDishSchema } from "@/lib/ai/menu-schema";
 import {
@@ -654,7 +654,7 @@ async function generateMenu(
     });
     generated = object;
   } catch (err) {
-    console.error("Error al generar el menú:", err);
+    console.error("Error al generar el menú:", aiErrorForLog(err));
     // Cuota devuelta si Google no llegó a generar (ver `refundAiUsage`).
     const kind = classifyAiError(err);
     await refundAiUsage("menu", household.id, kind);
@@ -1394,7 +1394,7 @@ async function generateDishForSlot({
     });
     dish = object;
   } catch (err) {
-    console.error("Error al generar el plato:", err);
+    console.error("Error al generar el plato:", aiErrorForLog(err));
     // Cuota devuelta si Google no llegó a generar (ver `refundAiUsage`). Las
     // dos puertas que llegan aquí (el «+» de un hueco y «otra idea») ya la
     // habían apuntado antes de llamar.

@@ -8,7 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { normalizeName } from "@/lib/normalize";
 import type { Database } from "@/lib/supabase/types";
-import { classifyAiError, type AiErrorKind } from "@/lib/ai/errors";
+import { aiErrorForLog, classifyAiError, type AiErrorKind } from "@/lib/ai/errors";
 import { serverFailureMessage } from "@/lib/server-failure";
 import { getModel } from "@/lib/ai/models";
 import { enforceAiRateLimit, refundAiUsage } from "@/lib/ai/rate-limit";
@@ -610,7 +610,7 @@ async function askForRecipeDetails(input: {
     });
     generated = object;
   } catch (err) {
-    console.error("Error al escribir la receta:", err);
+    console.error("Error al escribir la receta:", aiErrorForLog(err));
     const kind = classifyAiError(err);
     return {
       failure: kind,

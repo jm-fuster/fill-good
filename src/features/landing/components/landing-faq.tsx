@@ -18,7 +18,7 @@ const FAQS = [
   },
   {
     q: "¿Quién ve mis datos?",
-    a: "Los miembros de tu hogar, a quienes invitas con un código. Para leer los tickets y crear los menús procesamos esos datos con la IA de Google (Gemini); lo explicamos en la política de privacidad.",
+    a: "Los miembros de tu hogar, a quienes invitas con un código. Para leer los tickets, crear los menús y escribir recetas procesamos esos datos con la IA de Google (Gemini), solo si nos das permiso; lo explicamos en la política de privacidad.",
   },
   {
     q: "¿Cuántas personas pueden usarla?",

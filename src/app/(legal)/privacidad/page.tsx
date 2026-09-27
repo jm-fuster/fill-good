@@ -84,16 +84,18 @@ export default function PrivacidadPage() {
           llega únicamente la transcripción que hace Amazon de tu orden (por
           ejemplo, «resta dos yogures»), y le devolvemos el texto que debe leerte
           en voz alta: nombres de producto, cantidades y avisos de caducidad de tu
-          hogar. Durante un día conservamos el identificador de cada orden junto
-          con la respuesta que dimos, para no aplicar dos veces el mismo
-          movimiento si Amazon reenvía la petición.
+          hogar. Durante uno o dos días conservamos el identificador de cada
+          orden que cambia algo, junto con la respuesta que dimos y lo necesario
+          para deshacerla, para no aplicar dos veces el mismo movimiento si
+          Amazon reenvía la petición.
         </p>
         <p>
           <strong>Uso de la app.</strong> Para saber qué partes de la app
           sirven y cuáles no, anotamos qué días la abres y unos pocos pasos
-          concretos: cuándo abres, contestas, aplazas o desactivas el repaso de
-          despensa (qué respondes, no sobre qué producto), cuántos productos
-          apuntas desde él en la lista y cuándo compartes el enlace de
+          concretos: cuándo abres, contestas, aplazas, desactivas o reactivas
+          el repaso de despensa (qué respondes, no sobre qué producto; cuántos
+          productos te ofrece y hasta cuándo lo aplazas), cuántos productos
+          apuntas desde él en la lista y cuándo compartes o copias el enlace de
           invitación a tu hogar. Cada anotación va asociada a tu cuenta y a tu
           hogar. No registramos qué páginas visitas ni lo que escribes, y no se
           usa para publicidad ni se cede a terceros.
@@ -121,14 +123,14 @@ export default function PrivacidadPage() {
             Ajustes.
           </li>
           <li>
-            <strong>Leer tickets y generar menús con IA</strong>: tu
-            consentimiento — art. 6.1.a del RGPD. Te lo pedimos antes de usar
+            <strong>Leer tickets, generar menús y escribir recetas con IA</strong>:
+            tu consentimiento — art. 6.1.a del RGPD. Te lo pedimos antes de usar
             estas funciones por primera vez y puedes retirarlo cuando quieras en
             Ajustes (ver sección 5).
           </li>
           <li>
             <strong>Enviarte notificaciones push</strong> (caducidades,
-            subidas de precio, reposición): tu consentimiento — art. 6.1.a del
+            subidas de precio, resumen del mes): tu consentimiento — art. 6.1.a del
             RGPD. Puedes retirarlo en cualquier momento desactivándolas en
             Ajustes.
           </li>
@@ -162,7 +164,8 @@ export default function PrivacidadPage() {
         <ul>
           <li>
             <strong>Clerk</strong> (Clerk Inc., EE. UU.): registro, inicio de
-            sesión y gestión de cuentas.
+            sesión y gestión de cuentas. Su código se carga en todas las páginas
+            de la web para saber si hay una sesión abierta.
           </li>
           <li>
             <strong>Supabase</strong> (Supabase Inc., EE. UU.): base de datos
@@ -175,7 +178,11 @@ export default function PrivacidadPage() {
           </li>
           <li>
             <strong>Google</strong> (API de Gemini): procesamiento con
-            inteligencia artificial de tickets y menús (ver sección 5).
+            inteligencia artificial de tickets, menús y recetas (ver sección 5).
+          </li>
+          <li>
+            <strong>Cloudflare</strong> (Cloudflare Inc., EE. UU.): reenvío del
+            correo que escribes a nuestra dirección de contacto.
           </li>
           <li>
             <strong>El servicio de notificaciones de tu navegador</strong>{" "}
@@ -201,32 +208,56 @@ export default function PrivacidadPage() {
 
       <LegalSection title="5. Inteligencia artificial">
         <p>
-          Dos funciones usan IA: la lectura de tickets y la generación de
-          menús. Para la primera se envía a Google (API de Gemini) el archivo
-          del ticket junto con los nombres de productos de tu catálogo, para
-          casar las líneas; para la segunda, la información de tu despensa, tus
-          recetas, lo que tengas apuntado en la lista de la compra, los platos
-          de las dos semanas anteriores y las preferencias y reglas que
-          indiques. El archivo del ticket no se conserva
-          después del procesado. Antes de que la imagen salga, eliminamos sus
-          metadatos técnicos (por ejemplo, la geolocalización que algunas
-          cámaras incrustan en la foto).
+          Tres funciones usan IA, y en las tres se envía a Google (API de
+          Gemini) solo lo necesario:
+        </p>
+        <ul>
+          <li>
+            <strong>Leer un ticket:</strong> el archivo (foto o PDF), los
+            nombres de productos de tu catálogo y tus tiendas habituales, para
+            casar las líneas. El archivo no se conserva después del procesado.
+            A las fotos les quitamos antes sus metadatos técnicos (por ejemplo,
+            la geolocalización que algunas cámaras incrustan); los PDF se envían
+            tal como los subes.
+          </li>
+          <li>
+            <strong>Generar menús:</strong> tu despensa, tus recetas (con su
+            valoración, cuántas veces las habéis cocinado y su coste por ración
+            según vuestros tickets), lo apuntado en la lista de la compra, los
+            platos de esa semana y de las dos anteriores, el presupuesto semanal
+            y las preferencias y reglas que indiques.
+          </li>
+          <li>
+            <strong>Escribir una receta:</strong> su nombre, su descripción, las
+            raciones y los ingredientes que ya tenga.
+          </li>
+        </ul>
+        <p>
+          Lo que se envía es contenido compartido del hogar: cuando un miembro
+          usa estas funciones, viaja también lo que han apuntado los demás. A la
+          IA no le llega tu nombre, tu email ni el nombre del hogar.
         </p>
         <p>
           <strong>Te pedimos tu consentimiento</strong> antes de usar estas
           funciones por primera vez, y puedes retirarlo cuando quieras desde
-          Ajustes; mientras no lo hagas, no enviamos nada a la IA.
+          Ajustes. Sin él, no enviamos nada a la IA.
         </p>
         <p>
-          El servicio se presta actualmente a través del nivel gratuito de la
-          API de Gemini. Conforme a los términos de ese nivel, Google puede
-          utilizar las entradas y salidas para mejorar sus productos y modelos,
-          y ese uso puede incluir la revisión del contenido por personas. En ese
-          nivel, Google no actúa como un mero proveedor por cuenta nuestra sino
-          para sus propios fines. Por eso te recomendamos no incluir información
-          personal que no sea necesaria: tapa la zona de la tarjeta del ticket
-          antes de escanearlo y no escribas datos de salud en las preferencias
-          del menú.
+          Usamos la cuota gratuita de la API de Gemini. Los términos de Google
+          establecen que, para quien la usa desde el Espacio Económico Europeo,
+          se aplican las condiciones de datos de su servicio de pago: Google no
+          utiliza lo enviado para mejorar sus productos, lo trata por cuenta
+          nuestra conforme a su anexo de tratamiento de datos y conserva los
+          registros durante un tiempo limitado, solo para detectar abusos. Aun
+          así, no incluyas información personal que no haga falta: tapa la zona
+          de la tarjeta del ticket antes de escanearlo.
+        </p>
+        <p>
+          Entre las preferencias del menú puedes elegir una dieta «sin gluten».
+          Si la eliges porque alguien del hogar lo necesita por salud, ese dato
+          dice algo sobre su salud: solo lo usamos para generar vuestros menús,
+          y lo cubre el consentimiento que das antes de usar la IA. No escribas
+          otros datos de salud en las preferencias ni en las reglas del menú.
         </p>
       </LegalSection>
 
@@ -255,15 +286,15 @@ export default function PrivacidadPage() {
         <p>
           Además, algunos datos se depuran solos antes incluso de que borres
           nada: los tickets escaneados que no confirmas se eliminan a los 30
-          días, el historial de consumo y reposición a los 90 días, los
-          descartes a los 24 meses, los menús semanales pasadas 26 semanas y las
+          días, el historial de consumo y reposición a los 90 días, lo que
+          marcas como tirado a los 24 meses, los menús semanales pasadas 26 semanas y las
           anotaciones de uso de la sección 2 a los 12 meses. Los registros
           técnicos se conservan durante periodos breves.
         </p>
         <p>
           En cuanto a Alexa: los códigos de vinculación caducan a los diez
           minutos, y el identificador y la respuesta de cada orden de voz se
-          borran al día siguiente. El vínculo con un altavoz dura mientras lo
+          borran en uno o dos días. El vínculo con un altavoz dura mientras lo
           quieras: desaparece cuando lo revocas desde Ajustes, cuando cualquier
           miembro del hogar lo retira y cuando borras tu cuenta.
         </p>
@@ -298,7 +329,7 @@ export default function PrivacidadPage() {
 
       <LegalSection title="9. Menores de edad">
         <p>
-          Fill Good no está dirigida a menores de 14 años. Si detectamos una
+          Fill Good no está dirigida a menores de 18 años. Si detectamos una
           cuenta de un menor de esa edad, la eliminaremos.
         </p>
       </LegalSection>
@@ -315,7 +346,9 @@ export default function PrivacidadPage() {
           </li>
           <li>
             Una cookie propia, <strong>«active_household»</strong> (dura un año),
-            que recuerda qué hogar tienes activo si perteneces a varios.
+            que recuerda qué hogar tienes activo. Se crea al entrar en tu primer
+            hogar y solo guarda un identificador interno, que sin sesión no da
+            acceso a nada.
           </li>
           <li>
             Una cookie propia, <strong>«sidebar_state»</strong> (dura una
@@ -333,15 +366,22 @@ export default function PrivacidadPage() {
             cuando eliges no volver a verla esa semana. Solo se crean si pulsas
             esos botones, y solo afectan a ese dispositivo.
           </li>
+          <li>
+            Una cookie propia, <strong>«fg_share_error»</strong> (dura un
+            minuto), que solo aparece si falla un ticket que compartes con la
+            app desde otra aplicación, para poder enseñarte el error.
+          </li>
         </ul>
         <p>
           También usamos el almacenamiento local del dispositivo para
           preferencias (como el tema claro/oscuro o qué secciones tienes
-          plegadas), para recordar por dónde vas (la lista de la compra y la
-          tienda en la que compras, o el paso de la receta que estás cocinando)
-          y para que la app funcione sin conexión (caché de la PWA). Al cerrar
-          sesión borramos esa caché y todo lo que guardaba de tu hogar; solo se
-          quedan algunas preferencias del dispositivo, como el tema. No hay
+          plegadas), para recordar por dónde vas (cómo agrupas la lista de la
+          compra y la tienda en la que compras, o el paso de la receta que estás
+          cocinando) y para que la app funcione sin conexión (caché de la PWA).
+          Al cerrar sesión desde la app borramos esa caché y lo que guardaba de
+          tu hogar; se quedan algunas preferencias del dispositivo, como el
+          tema, y el registro técnico de la caché (qué direcciones se guardaron,
+          sin su contenido). No hay
           cookies de
           publicidad, de analítica ni de seguimiento: la medición de uso de la
           sección 2 no guarda nada en tu dispositivo, se anota en nuestro
