@@ -143,8 +143,8 @@ export default function PrivacidadPage() {
             <strong>Medir el uso para mejorar la app</strong> (qué días se abre
             y si funciones como el repaso de despensa o la invitación se usan):
             interés legítimo — art. 6.1.f del RGPD. Es una medición propia y
-            mínima, sin publicidad ni perfiles. Puedes oponerte escribiendo a{" "}
-            {LEGAL_OWNER.email}: dejaremos de anotar tu uso y borraremos lo que
+            mínima, sin publicidad ni perfiles. Puedes oponerte en Ajustes (Medición de uso) o escribiendo
+            a {LEGAL_OWNER.email}: dejaremos de anotar tu uso y borraremos lo que
             ya esté anotado.
           </li>
         </ul>

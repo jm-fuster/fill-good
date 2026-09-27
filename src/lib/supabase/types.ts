@@ -1223,6 +1223,14 @@ export type Database = {
         Args: { p_household_id: string };
         Returns: undefined;
       };
+      get_usage_opt_out: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+      set_usage_opt_out: {
+        Args: { p_opt_out: boolean };
+        Returns: boolean;
+      };
       record_usage_event: {
         Args: {
           p_household_id: string;

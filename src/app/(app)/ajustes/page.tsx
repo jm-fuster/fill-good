@@ -17,6 +17,8 @@ import { BudgetRow } from "@/features/household/components/budget-row";
 import { PantryReviewSettingRow } from "@/features/inventory/components/pantry-review-setting-row";
 import { getPantryReviewPrefs } from "@/features/inventory/queries";
 import { PushStatusRow } from "@/features/push/components/push-status-row";
+import { UsageOptOutRow } from "@/features/usage/components/usage-opt-out-row";
+import { getUsageOptOut } from "@/features/usage/queries";
 import {
   SettingsControlRow,
   SettingsGroup,
@@ -57,12 +59,14 @@ function alexaValue(count: number): string {
  * que se resuelve de un toque (tema) o en un modal corto (objetivo de gasto).
  */
 export default async function AjustesPage() {
-  const [user, household, aiConsent, pantryReview] = await Promise.all([
-    currentUser(),
-    getCurrentHousehold(),
-    getAiConsent(),
-    getPantryReviewPrefs(),
-  ]);
+  const [user, household, aiConsent, pantryReview, usageOptOut] =
+    await Promise.all([
+      currentUser(),
+      getCurrentHousehold(),
+      getAiConsent(),
+      getPantryReviewPrefs(),
+      getUsageOptOut(),
+    ]);
   const email = user?.primaryEmailAddress?.emailAddress;
   const [members, storeChains, alexaLinks] = household
     ? await Promise.all([
@@ -161,6 +165,7 @@ export default async function AjustesPage() {
             />
           ) : null}
           <AiConsentSettingRow consented={aiConsent.consented} />
+          <UsageOptOutRow optedOut={usageOptOut} />
           {household ? (
             <PantryReviewSettingRow enabled={pantryReview.enabled} />
           ) : null}
