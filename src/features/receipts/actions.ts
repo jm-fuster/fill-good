@@ -209,11 +209,12 @@ async function scanReceipt(
     extraction = object;
   } catch (err) {
     console.error("Error de extracción del ticket:", err);
-    // La cuota se apuntó antes de llamar; esta lectura no ha dado nada, así que
-    // se devuelve. Si no, obedecer al mensaje de «espera un minuto» veinte veces
-    // acababa acusando al usuario de escanear demasiados tickets.
-    await refundAiUsage("receipt", household.id);
+    // La cuota se apuntó antes de llamar; si Google rechazó la lectura sin
+    // hacerla, se devuelve. Si no, obedecer al mensaje de «espera un minuto»
+    // veinte veces acababa acusando al usuario de escanear demasiados tickets.
+    // Un timeout NO se devuelve: el modelo ya trabajó (ver `refundAiUsage`).
     const kind = classifyAiError(err);
+    await refundAiUsage("receipt", household.id, kind);
     return {
       error:
         kind === "rate_limit"

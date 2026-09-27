@@ -222,6 +222,15 @@ export async function GET(
         </div>
       </div>
     ),
-    { width: 1080, height: 1600 },
+    {
+      width: 1080,
+      height: 1600,
+      // `next/og` sirve por defecto `public, max-age=0, must-revalidate`: no
+      // caduca tarde, pero `public` autoriza a cualquier caché intermedia a
+      // guardar el menú de un hogar, y el navegador lo deja en disco después
+      // de cerrar sesión (`clearLocalAppData` limpia Cache Storage, no la caché
+      // HTTP). Es una imagen privada que se pinta al pulsar: nada que guardar.
+      headers: { "Cache-Control": "private, no-store" },
+    },
   );
 }

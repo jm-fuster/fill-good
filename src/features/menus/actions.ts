@@ -655,9 +655,9 @@ async function generateMenu(
     generated = object;
   } catch (err) {
     console.error("Error al generar el menú:", err);
-    // Cuota devuelta: esta generación no ha dejado ningún menú.
-    await refundAiUsage("menu", household.id);
+    // Cuota devuelta si Google no llegó a generar (ver `refundAiUsage`).
     const kind = classifyAiError(err);
+    await refundAiUsage("menu", household.id, kind);
     return {
       error:
         kind === "rate_limit"
@@ -1395,10 +1395,11 @@ async function generateDishForSlot({
     dish = object;
   } catch (err) {
     console.error("Error al generar el plato:", err);
-    // Cuota devuelta: no hay plato. Las dos puertas que llegan aquí (el «+» de
-    // un hueco y «otra idea») ya la habían apuntado antes de llamar.
-    await refundAiUsage("menu", householdId);
+    // Cuota devuelta si Google no llegó a generar (ver `refundAiUsage`). Las
+    // dos puertas que llegan aquí (el «+» de un hueco y «otra idea») ya la
+    // habían apuntado antes de llamar.
     const kind = classifyAiError(err);
+    await refundAiUsage("menu", householdId, kind);
     return {
       error:
         kind === "rate_limit"
