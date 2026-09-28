@@ -41,7 +41,8 @@ export type UsageEvent =
   | { name: "pantry_review_postponed"; props: { until: "tomorrow" | "week" } }
   | { name: "pantry_review_disabled" }
   | { name: "pantry_review_enabled" }
-  | { name: "invite_shared"; props: { via: "share" | "copy" } };
+  | { name: "invite_shared"; props: { via: "share" | "copy" } }
+  | { name: "onboarding_shares"; props: { answer: "yes" | "solo" | "skip" } };
 
 /**
  * Los que solo ve el navegador —abrir el repaso, aplazarlo (es una cookie),
@@ -56,7 +57,8 @@ export type ClientUsageEvent = Extract<
       | "pantry_review_opened"
       | "pantry_review_to_list"
       | "pantry_review_postponed"
-      | "invite_shared";
+      | "invite_shared"
+      | "onboarding_shares";
   }
 >;
 

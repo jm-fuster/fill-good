@@ -228,3 +228,13 @@ console.log(
   `  enlace compartido: ${shared.length} (${shared.filter((e) => e.props?.via === "share").length} con compartir · ${shared.filter((e) => e.props?.via === "copy").length} copiado)`,
 );
 console.log(`  aceptadas:         ${accepted}`);
+
+// «¿Compartes la compra con alguien?» al crear un hogar (/bienvenida). Dice si
+// la invitación es la palanca de todos o solo de quien no vive solo.
+const welcome = byName("onboarding_shares");
+const answer = (a) => welcome.filter((e) => e.props?.answer === a).length;
+console.log(`
+Al crear un hogar, ¿compartes la compra?`);
+console.log(
+  `  respuestas:        ${welcome.length} · sí ${answer("yes")} · solo yo ${answer("solo")} · ahora no ${answer("skip")}`,
+);

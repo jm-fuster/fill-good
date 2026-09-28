@@ -47,6 +47,12 @@ const clientEvent = z.discriminatedUnion("name", [
     name: z.literal("invite_shared"),
     props: z.object({ via: z.enum(["share", "copy"]) }),
   }),
+  // Solo el «sí» llega por aquí: los otros dos navegan, y los anota
+  // `finishWelcomeAction` en la misma petición que redirige.
+  z.object({
+    name: z.literal("onboarding_shares"),
+    props: z.object({ answer: z.literal("yes") }),
+  }),
 ]);
 
 /**
