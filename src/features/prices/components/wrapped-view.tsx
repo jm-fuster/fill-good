@@ -153,7 +153,7 @@ export function WrappedView({ data }: { data: MonthlyWrapped }) {
                 label="Producto estrella"
                 value={topProduct.label}
                 hint={`${formatEuro(topProduct.value)} en total`}
-                accent="chart-3"
+                accent="price"
               />
             ) : null}
 

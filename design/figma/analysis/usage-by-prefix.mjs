@@ -4,7 +4,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join, extname } from "node:path";
 const ROOT = fileURLToPath(new URL("../../../src/", import.meta.url));
-const tokens = ["background","foreground","card","card-foreground","popover","popover-foreground","primary","primary-foreground","secondary","secondary-foreground","muted","muted-foreground","accent","accent-foreground","destructive","destructive-foreground","success","success-foreground","warning","warning-foreground","border","input","ring","chart-1","chart-2","chart-3","chart-4","chart-5","price","sidebar","sidebar-foreground","sidebar-primary","sidebar-primary-foreground","sidebar-accent","sidebar-accent-foreground","sidebar-border","sidebar-ring"];
+const tokens = ["background","foreground","card","card-foreground","popover","popover-foreground","primary","primary-foreground","secondary","secondary-foreground","muted","muted-foreground","accent","accent-foreground","destructive","destructive-foreground","success","success-foreground","warning","warning-foreground","border","input","ring","chart-1","chart-2","chart-3","chart-4","chart-5","price","sidebar","sidebar-foreground","sidebar-accent","sidebar-accent-foreground","sidebar-border","sidebar-ring"];
 const prefixes = ["bg","text","border","border-t","border-b","border-l","border-r","ring","ring-offset","outline","fill","stroke","from","to","via","divide","placeholder","decoration","caret","accent","shadow"];
 const walk = (d, a = []) => {
   for (const e of readdirSync(d)) {

@@ -52,7 +52,6 @@ const scopes = {
   foreground: ["TEXT_FILL", "SHAPE_FILL", "STROKE_COLOR", "FRAME_FILL", "EFFECT_COLOR"],
   "muted-foreground": ["TEXT_FILL", "SHAPE_FILL", "STROKE_COLOR", "FRAME_FILL"],
   primary: S.status, destructive: S.status, success: S.status, warning: S.status,
-  "sidebar-primary": S.status,
   border: S.line, input: S.line, "sidebar-border": ["STROKE_COLOR", "FRAME_FILL", "SHAPE_FILL", "EFFECT_COLOR"],
   ring: S.ring, "sidebar-ring": S.ring,
   "chart-1": S.graphic, "chart-2": S.graphic, "chart-3": S.graphic, "chart-4": S.graphic, "chart-5": S.graphic,
@@ -64,8 +63,6 @@ const notes = {
   success: "ok / en stock. Va más oscuro que sus hermanos a propósito (contraste del badge success/15).",
   warning: "caduca pronto",
   destructive: "caducado / eliminar",
-  "sidebar-primary": "Sin uso en ningún componente (herencia de shadcn). Candidato a retirar.",
-  "sidebar-primary-foreground": "Sin uso en ningún componente (herencia de shadcn). Candidato a retirar.",
   input: "Borde de los campos y, en oscuro, su fondo (bg-input/30).",
   border: "Bordes y separadores (también como relleno).",
 };

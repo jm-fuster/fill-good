@@ -1,7 +1,7 @@
 // ¿Cuánto se nota el recorte a sRGB de los valores fuera de gama? ΔE en OKLab
 // (umbral de CSS Color 4 para el mapeo de gama: 0,02) y comprobación en Display P3.
 const toks = {
-  "primary / ring / sidebar-primary / sidebar-ring": [0.5, 0.13, 155],
+  "primary / ring / sidebar-ring": [0.5, 0.13, 155],
   "warning": [0.5, 0.11, 70],
   "chart-1": [0.52, 0.13, 155],
   "chart-3": [0.6, 0.15, 55],
