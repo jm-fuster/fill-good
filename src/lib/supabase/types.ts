@@ -955,6 +955,29 @@ export type Database = {
           },
         ];
       };
+      // desde 20260928164502: lo cocinado en los menús que borra la retención.
+      // Solo lectura para la app (la escribe `cleanup_retention`), así que
+      // Insert y Update no admiten nada: un intento no compila.
+      archived_recipe_counts: {
+        Row: {
+          household_id: string;
+          recipe_id: string;
+          times_planned: number;
+          times_cooked: number;
+          last_cooked_at: string | null;
+          updated_at: string;
+        };
+        Insert: Record<string, never>;
+        Update: Record<string, never>;
+        Relationships: [
+          {
+            foreignKeyName: "archived_recipe_counts_household_id_recipe_id_fkey";
+            columns: ["household_id", "recipe_id"];
+            referencedRelation: "recipes";
+            referencedColumns: ["household_id", "id"];
+          },
+        ];
+      };
       user_pinned_products: {
         Row: {
           user_id: string;
