@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useUser } from "@clerk/nextjs";
-import { Camera, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Camera, LoaderCircle, Pencil, Trash } from "lucide-react";
 import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -193,7 +193,7 @@ export function ProfileEditor({
               className="absolute -right-0.5 -bottom-0.5 inline-flex size-7 items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-background"
             >
               {uploading ? (
-                <Loader2 className="size-3.5 animate-spin" />
+                <LoaderCircle className="size-3.5 animate-spin" />
               ) : (
                 <Camera className="size-3.5" />
               )}
@@ -226,7 +226,7 @@ export function ProfileEditor({
                 onClick={() => void removePhoto()}
                 className="justify-start text-muted-foreground"
               >
-                <Trash2 aria-hidden />
+                <Trash aria-hidden />
                 Quitar foto
               </Button>
             ) : null}

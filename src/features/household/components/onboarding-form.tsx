@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Home, LogIn } from "lucide-react";
+import { House, LogIn } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,7 +65,7 @@ export function OnboardingForm({ initialCode }: { initialCode?: string }) {
             </p>
           ) : null}
           <Button type="submit" size="lg" disabled={creating}>
-            <Home aria-hidden />
+            <House aria-hidden />
             {creating ? "Creando…" : "Crear mi hogar"}
           </Button>
         </form>

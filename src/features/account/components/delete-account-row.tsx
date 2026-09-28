@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useClerk } from "@clerk/nextjs";
-import { Trash2, TriangleAlert } from "lucide-react";
+import { Trash, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { safeAction } from "@/lib/action-error";
@@ -61,7 +61,7 @@ export function DeleteAccountRow() {
   return (
     <ResponsiveModal open={open} onOpenChange={setOpen}>
       <SettingsButtonRow
-        icon={Trash2}
+        icon={Trash}
         label="Borrar cuenta"
         destructive
         onClick={() => setOpen(true)}
@@ -102,7 +102,7 @@ export function DeleteAccountRow() {
             disabled={!matches}
             loading={pending}
           >
-            <Trash2 aria-hidden />
+            <Trash aria-hidden />
             {pending ? "Borrando…" : "Borrar mi cuenta definitivamente"}
           </Button>
           <ResponsiveModalClose asChild>

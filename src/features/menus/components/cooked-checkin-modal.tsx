@@ -12,7 +12,7 @@ import {
   MoveRight,
   PartyPopper,
   ShoppingCart,
-  Trash2,
+  Trash,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -640,7 +640,7 @@ export function CookedCheckinModal({
                                   onClick={() => setMoving(e)}
                                 />
                                 <EntryActionTile
-                                  icon={Trash2}
+                                  icon={Trash}
                                   label="Quitar del menú"
                                   onClick={() => remove(e)}
                                   loading={isBusy(e.id, "remove")}

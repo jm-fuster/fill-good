@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import {
   BookOpen,
   CalendarDays,
+  ChartLine,
   CircleUser,
-  History,
-  LineChart,
   Package,
   Plus,
+  RotateCcwClock,
   ScanLine,
   Search,
   Settings,
@@ -38,9 +38,9 @@ const NAV: readonly PaletteItem[] = [
   { label: "Menús", href: "/menus", icon: CalendarDays },
   { label: "Mis recetas", href: "/recetas", icon: BookOpen },
   { label: "Perfil", href: "/perfil", icon: CircleUser },
-  { label: "Precios", href: "/precios", icon: LineChart },
+  { label: "Precios", href: "/precios", icon: ChartLine },
   { label: "Resumen del mes", href: "/resumen", icon: Sparkles },
-  { label: "Historial de inventario", href: "/inventario/historial", icon: History },
+  { label: "Historial de inventario", href: "/inventario/historial", icon: RotateCcwClock },
   { label: "Ajustes", href: "/ajustes", icon: Settings },
 ];
 

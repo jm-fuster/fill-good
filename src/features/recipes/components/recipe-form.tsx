@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -676,7 +676,7 @@ export function RecipeForm({
                   aria-label="Quitar ingrediente"
                   onClick={() => removeRow(row.key)}
                 >
-                  <Trash2 aria-hidden />
+                  <Trash aria-hidden />
                 </Button>
               </div>
               {info ? (
@@ -833,7 +833,7 @@ export function RecipeForm({
                   onClick={() => removeStep(step.key)}
                   className="ml-auto"
                 >
-                  <Trash2 aria-hidden />
+                  <Trash aria-hidden />
                 </Button>
               </div>
             </li>
@@ -906,7 +906,7 @@ export function RecipeForm({
             onClick={() => setDeleteOpen(true)}
             disabled={pending || generating}
           >
-            <Trash2 aria-hidden /> Eliminar receta
+            <Trash aria-hidden /> Eliminar receta
           </Button>
         ) : null}
         <Button

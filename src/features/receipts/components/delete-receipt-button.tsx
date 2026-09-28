@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, TriangleAlert } from "lucide-react";
+import { Trash, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -72,7 +72,7 @@ export function DeleteReceiptButton({
           className={className}
           onClick={() => setOpen(true)}
         >
-          <Trash2 aria-hidden />
+          <Trash aria-hidden />
         </Button>
       ) : (
         <Button
@@ -80,7 +80,7 @@ export function DeleteReceiptButton({
           className={className}
           onClick={() => setOpen(true)}
         >
-          <Trash2 aria-hidden />
+          <Trash aria-hidden />
           {label}
         </Button>
       )}
@@ -96,7 +96,7 @@ export function DeleteReceiptButton({
         </ResponsiveModalHeader>
         <ResponsiveModalFooter className="gap-2">
           <Button variant="destructive" onClick={confirm} loading={pending}>
-            <Trash2 aria-hidden />
+            <Trash aria-hidden />
             {pending ? "Descartando…" : "Descartar"}
           </Button>
           <ResponsiveModalClose asChild>

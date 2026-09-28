@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3 } from "lucide-react";
+import { ChartColumn } from "lucide-react";
 import { toast } from "sonner";
 
 import { safeAction } from "@/lib/action-error";
@@ -40,7 +40,7 @@ export function UsageOptOutRow({ optedOut }: { optedOut: boolean }) {
 
   return (
     <SettingsControlRow
-      icon={BarChart3}
+      icon={ChartColumn}
       label="Medición de uso"
       hint="Qué días abres la app y si usas el repaso de despensa"
       value={optedOut ? "Desactivada" : "Activada"}

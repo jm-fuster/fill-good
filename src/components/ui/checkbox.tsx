@@ -4,7 +4,7 @@ import * as React from "react"
 import { Checkbox as CheckboxPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
-import { CheckIcon } from "lucide-react"
+import { Check } from "lucide-react"
 
 function Checkbox({
   className,
@@ -25,7 +25,7 @@ function Checkbox({
         // corto. Desmarcar desmonta sin animación (salida exigiría forceMount).
         className="grid place-content-center text-current transition-none animate-in zoom-in-50 duration-150 [&>svg]:size-3.5"
       >
-        <CheckIcon
+        <Check
         />
       </CheckboxPrimitive.Indicator>
     </CheckboxPrimitive.Root>

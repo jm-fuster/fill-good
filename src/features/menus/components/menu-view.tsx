@@ -23,7 +23,7 @@ import {
   RefreshCw,
   ShoppingCart,
   Sparkles,
-  Trash2,
+  Trash,
   TriangleAlert,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
@@ -2013,7 +2013,7 @@ function EditEntryDrawer({
                 onClick={remove}
                 loading={pending}
               >
-                <Trash2 aria-hidden />
+                <Trash aria-hidden />
                 {pending ? "Quitando…" : "Quitar del menú"}
               </Button>
               <Button
@@ -2290,7 +2290,7 @@ function EditEntryDrawer({
               ) : null}
               <EntryActionTile
                 ref={removeTileRef}
-                icon={Trash2}
+                icon={Trash}
                 label="Quitar del menú"
                 onClick={askRemove}
                 disabled={pending}
