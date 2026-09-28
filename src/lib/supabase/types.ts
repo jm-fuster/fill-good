@@ -736,6 +736,8 @@ export type Database = {
           seasons: string[];
           instructions: string | null;
           steps: string[];
+          // desde 20260928193745: 'ai' si la IA guardó los pasos sin revisión.
+          steps_source: "manual" | "ai";
           source: string;
           is_saved: boolean;
           normalized_name: string | null;
@@ -753,6 +755,7 @@ export type Database = {
           seasons?: string[];
           instructions?: string | null;
           steps?: string[];
+          steps_source?: "manual" | "ai";
           source?: string;
           is_saved?: boolean;
           normalized_name?: string | null;
@@ -770,6 +773,7 @@ export type Database = {
           seasons?: string[];
           instructions?: string | null;
           steps?: string[];
+          steps_source?: "manual" | "ai";
           source?: string;
           is_saved?: boolean;
           normalized_name?: string | null;

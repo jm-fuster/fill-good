@@ -141,6 +141,7 @@ export async function exportMyDataAction(): Promise<ExportDataState> {
         "menuEntries[].source": "'ai' = plato propuesto por la IA",
         "weeklyMenus[].generated_by": "'ai' = semana generada con IA",
         "recipes[].source": "'ai' = receta inventada por la IA al generar el menú",
+        "recipes[].steps_source": "'ai' = pasos escritos por la IA desde el menú, sin revisión",
       },
     },
     account: {

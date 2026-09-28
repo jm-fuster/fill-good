@@ -1,3 +1,4 @@
+import { aiProvenanceAttrs } from "@/lib/ai/provenance";
 import { formatQuantity, formatQuantityValue } from "@/lib/units";
 import type { RecipeCooking } from "../queries";
 
@@ -84,7 +85,10 @@ export function RecipeCookingDetails({ recipe }: { recipe: RecipeCooking }) {
       <section className="flex flex-col gap-2">
         <h3 className="text-sm font-medium">Pasos</h3>
         {recipe.steps.length > 0 ? (
-          <ol className="flex flex-col gap-2 text-sm">
+          <ol
+            className="flex flex-col gap-2 text-sm"
+            {...aiProvenanceAttrs(recipe.stepsFromAi)}
+          >
             {recipe.steps.map((step, i) => (
               // El número va `aria-hidden`: la posición dentro de una lista
               // ordenada ya la anuncia el lector de pantalla, y leerla dos veces

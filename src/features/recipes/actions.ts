@@ -257,6 +257,9 @@ export async function updateRecipeAction(
       meal_types: d.mealTypes,
       seasons: d.seasons,
       steps: d.steps,
+      // Guardar el formulario es la revisión de una persona: desde aquí los
+      // pasos son del hogar aunque los hubiera escrito la IA desde el menú.
+      steps_source: "manual",
     })
     .eq("household_id", household.id)
     .eq("id", id)
@@ -857,6 +860,8 @@ async function fillRecipeDetails(
     .from("recipes")
     .update({
       steps: details.steps,
+      // Sin revisión de nadie: la marca del art. 50.2 (`lib/ai/provenance.ts`).
+      steps_source: "ai",
       // Los minutos solo si la receta no los declaraba: los del hogar manda.
       ...(recipe.prep_minutes === null && details.prepMinutes !== null
         ? { prep_minutes: details.prepMinutes }
