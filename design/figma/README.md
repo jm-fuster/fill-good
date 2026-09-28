@@ -13,7 +13,7 @@ Archivo: «Fill Good · Design System», key `KIBYRhH4Fq2gWhklVfYn6g`.
 | Ruta | Qué es |
 |---|---|
 | `gen-tokens.mjs` | Lee `globals.css` y convierte oklch a sRGB (con aviso de fuera de gama), con scopes y code syntax. Escribe `data/tokens.json`. |
-| `gen-icons.mjs` | Resuelve los iconos de Lucide **importados de verdad** contra `lucide-react` instalado y funde los alias. También lee `src/lib/product-icons/registry.ts`. Escribe `data/icons-*.json`. |
+| `gen-icons.mjs` | Resuelve los iconos de Lucide **importados de verdad** contra `lucide-react` instalado. Si dos nombres dan el mismo dibujo, los funde y los lista en `aliasesMerged`: tiene que salir vacío, porque el lint rechaza los alias (`fillgood/lucide-nombres-canonicos`). También lee `src/lib/product-icons/registry.ts`. Escribe `data/icons-*.json`. |
 | `serve.mjs` | Sirve `plugin/*.js` y `data/*.json` en `localhost:9232` para que el plugin los lea. |
 | `plugin/ds-lib.js` | Ayudas compartidas que corren **dentro de Figma**: colores enlazados, variables `alpha/*`, capa de foco, rejillas y documentación. |
 | `plugin/build-*.js`, `doc-acciones.js` | Constructores de cada página de componentes. Son idempotentes: se pueden volver a lanzar. |
