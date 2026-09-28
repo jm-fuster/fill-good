@@ -125,17 +125,17 @@ if (ARGS.part === 'content') {
   e.description = 'EmptyState (src/components/layout/empty-state.tsx): rounded-xl con borde discontinuo, px-6 py-16, centrado. Icono de 24 px en un círculo de 48 bg-accent (entra con zoom-in-75), título text-base font-semibold, descripción text-sm muted-foreground (max-w-sm) y acción opcional con mt-6.';
   // StatTile
   const add = stager(page, 'staging · StatTile');
-  for (const accent of ['none', 'success', 'warning', 'chart-3']) {
+  for (const accent of ['none', 'success', 'warning', 'price']) {
     const c = comp('accent=' + accent, 'VERTICAL'); c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; c.counterAxisSizingMode = 'FIXED'; c.resize(170, 10); c.primaryAxisSizingMode = 'AUTO';
     bind(c, 'itemSpacing', 'spacing/1'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); setPaints(c, 'strokes', [['border']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE';
     add(c);
     const lr = stack('label', c, 6, 'HORIZONTAL'); lr.counterAxisAlignItems = 'CENTER';
     lr.appendChild(icon('piggy-bank', 14, 'muted-foreground', 'icon'));
     await text('Ahorro del mes', 'Caption/Default', 'muted-foreground', lr, { name: 'label-text' });
-    const v = await text('12,40 €', 'Title/Section', { none: 'foreground', success: 'success', warning: 'warning', 'chart-3': 'price' }[accent], c, { name: 'value' });
+    const v = await text('12,40 €', 'Title/Section', { none: 'foreground', success: 'success', warning: 'warning', price: 'price' }[accent], c, { name: 'value' });
     const hnt = await text('Frente al precio habitual', 'Caption/Default', 'muted-foreground', c, { fill: true, name: 'hint' });
   }
-  const r = await combine(page, 'staging · StatTile', 'StatTile', { accent: ['none', 'success', 'warning', 'chart-3'] }, 'accent', [], 'StatTile (src/components/stat-tile.tsx): rounded-xl, border, p-3, gap-1. Label en text-xs muted-foreground con icono de 14 px; valor en text-lg font-semibold tabular-nums; pista opcional en text-xs. accent pinta el valor: success, warning o chart-3. OJO: accent="chart-3" pinta text-price (el acento de precios como TEXTO), no text-chart-3: el nombre de la prop no dice lo que hace.');
+  const r = await combine(page, 'staging · StatTile', 'StatTile', { accent: ['none', 'success', 'warning', 'price'] }, 'accent', [], 'StatTile (src/components/stat-tile.tsx): rounded-xl, border, p-3, gap-1. Label en text-xs muted-foreground con icono de 14 px; valor en text-lg font-semibold tabular-nums; pista opcional en text-xs. accent pinta el valor y se llama como el token que usa: success, warning o price (el acento de precios como TEXTO; chart-3 no llega a AA como texto en claro).');
   const KS = { l: r.cs.addComponentProperty('label', 'TEXT', 'Ahorro del mes'), v: r.cs.addComponentProperty('value', 'TEXT', '12,40 €'), h: r.cs.addComponentProperty('hint', 'BOOLEAN', true), ht: r.cs.addComponentProperty('hint text', 'TEXT', 'Frente al precio habitual'), i: r.cs.addComponentProperty('icon', 'INSTANCE_SWAP', iconComp('piggy-bank').id) };
   for (const c of r.cs.children) { c.findOne((n) => n.name === 'label-text').componentPropertyReferences = { characters: KS.l }; c.findOne((n) => n.name === 'value').componentPropertyReferences = { characters: KS.v }; c.findOne((n) => n.name === 'hint').componentPropertyReferences = { visible: KS.h, characters: KS.ht }; c.findOne((n) => n.name === 'icon').componentPropertyReferences = { mainComponent: KS.i }; }
   return { empty: e.id, stat: r.cs.id, unbound: unboundPaints(e).length + unboundPaints(r.cs).length };
@@ -212,4 +212,4 @@ async function docTo(pageName, entries) {
 }
 if (ARGS.part === 'doc-nav') return await docTo('03 · Navegación', [['AppShell', { viewport: ['mobile', 'desktop'] }, null, ['viewport']], ['BottomNav'], ['BottomNav · Item', { state: ['default', 'hover', 'active'] }, 'state', []], ['BottomNav · Primary'], ['NavCountBadge', { variant: ['inline', 'floating'] }, 'variant', []], ['AppHeader'], ['PageHeader']]);
 if (ARGS.part === 'doc-acciones') return await docTo('01 · Acciones', [['FAB']]);
-if (ARGS.part === 'doc-contenido') return await docTo('05 · Contenido', [['EmptyState'], ['StatTile', { accent: ['none', 'success', 'warning', 'chart-3'] }, 'accent', []]]);
+if (ARGS.part === 'doc-contenido') return await docTo('05 · Contenido', [['EmptyState'], ['StatTile', { accent: ['none', 'success', 'warning', 'price'] }, 'accent', []]]);

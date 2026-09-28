@@ -10,6 +10,9 @@ import { cn } from "@/lib/utils";
  *
  * `value` es texto ya formateado, no un número: quien la pinta decide si es un
  * importe, un recuento o una palabra ("Cumplido", "Nada").
+ *
+ * `accent` se llama como el token que pinta la cifra. El acento de precios es
+ * `price` y no `chart-3`: sobre fondo claro, chart-3 como texto no llega a AA.
  */
 export function StatTile({
   icon: Icon,
@@ -22,7 +25,7 @@ export function StatTile({
   label: string;
   value: string;
   hint?: string;
-  accent?: "success" | "warning" | "chart-3";
+  accent?: "success" | "warning" | "price";
 }) {
   return (
     <div className="flex flex-col gap-1 rounded-xl border p-3">
@@ -35,7 +38,7 @@ export function StatTile({
           "text-lg font-semibold tabular-nums",
           accent === "success" && "text-success",
           accent === "warning" && "text-warning",
-          accent === "chart-3" && "text-price",
+          accent === "price" && "text-price",
         )}
       >
         {value}
