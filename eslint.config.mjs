@@ -24,6 +24,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Service worker generado por Serwist (artefacto de build)
     "public/sw*",
+    // Código que ejecuta el plugin de Figma como CUERPO de función (await y
+    // return de primer nivel, `figma` y `ARGS` como parámetros): no es un módulo
+    // y el parser lo rechazaría. Los scripts de Node de design/figma sí se lintan.
+    "design/figma/plugin/**",
   ]),
 ]);
 
