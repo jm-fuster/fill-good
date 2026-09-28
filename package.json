@@ -24,6 +24,8 @@
     "check:acciones": "node scripts/check-server-actions.mjs",
     "compare:menu": "node scripts/compare-menu-models.mjs",
     "informe:uso": "node scripts/usage-report.mjs",
+    "figma:datos": "node design/figma/gen-tokens.mjs && node design/figma/gen-icons.mjs",
+    "figma:serve": "node design/figma/serve.mjs",
     "build:check": "node scripts/check-legal-config.mjs && node scripts/check-server-actions.mjs && next build && node scripts/check-bundle-budget.mjs",
     "typecheck": "tsc --noEmit"
   },

@@ -46,3 +46,6 @@ public/sw*
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+# Datos que genera `npm run figma:datos` desde el código (design/figma/README.md)
+/design/figma/data/
