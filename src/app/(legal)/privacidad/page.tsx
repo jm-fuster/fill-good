@@ -95,8 +95,10 @@ export default function PrivacidadPage() {
           concretos: cuándo abres, contestas, aplazas, desactivas o reactivas
           el repaso de despensa (qué respondes, no sobre qué producto; cuántos
           productos te ofrece y hasta cuándo lo aplazas), cuántos productos
-          apuntas desde él en la lista y cuándo compartes o copias el enlace de
-          invitación a tu hogar. Cada anotación va asociada a tu cuenta y a tu
+          apuntas desde él en la lista, cuándo compartes o copias el enlace de
+          invitación a tu hogar y, al crear un hogar, si nos dices que compartes
+          la compra con alguien, que no o que ahora no (solo esa respuesta: ni
+          con quién ni cuántos). Cada anotación va asociada a tu cuenta y a tu
           hogar. No registramos qué páginas visitas ni lo que escribes, y no se
           usa para publicidad ni se cede a terceros.
         </p>

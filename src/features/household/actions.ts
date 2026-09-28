@@ -6,6 +6,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { trackUsage } from "@/lib/usage";
 import { canonicalizeChains, CHAINS_MAX } from "@/features/prices/chains";
 import {
   ACTIVE_HOUSEHOLD_COOKIE,
@@ -126,7 +127,29 @@ export async function createHouseholdAction(
   if (data) await setActiveHouseholdCookie(data);
 
   revalidatePath("/", "layout");
-  redirect("/inventario");
+  // A la pregunta de si compartes la compra, no al inventario: el inventario
+  // recién sembrado era la «despensa llena» de la que se fue la mitad de los
+  // hogares el primer día (ver `src/app/bienvenida/page.tsx`).
+  redirect("/bienvenida");
+}
+
+/**
+ * Salida de `/bienvenida` por «No, solo yo» o «Ahora no»: anota la respuesta y
+ * lleva a la lista en la MISMA petición. Si la anotara el navegador antes de
+ * navegar, o se perdía con el cambio de página o había que esperarla, y medir
+ * no puede retrasar nada (`lib/usage.ts`). El «sí» no navega y va por
+ * `trackFromClient`.
+ */
+export async function finishWelcomeAction(
+  answer: "solo" | "skip",
+): Promise<ActionState> {
+  if (answer === "solo" || answer === "skip") {
+    const household = await getCurrentHousehold().catch(() => null);
+    if (household) {
+      trackUsage(household.id, { name: "onboarding_shares", props: { answer } });
+    }
+  }
+  redirect("/lista");
 }
 
 export async function joinHouseholdAction(
