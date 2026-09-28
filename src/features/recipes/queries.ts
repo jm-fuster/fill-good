@@ -419,7 +419,9 @@ export async function getRecipeForCooking(
  * marcadas. Es la MISMA cuenta de la que sale `timesCooked` en
  * `getRecipeSignals` —lo que evita que el generador repita lo de la semana
  * pasada—, no un contador aparte: el número que se celebra al terminar de
- * cocinar tiene que ser el número del que se fía la app.
+ * cocinar tiene que ser el número del que se fía la app. Por eso suma también
+ * lo archivado: los menús de hace más de 26 semanas se borran, y lo que se
+ * cocinó en ellos solo queda en `archived_recipe_counts`.
  *
  * `head: true`: solo interesa el total, así que no viajan las filas.
  */
@@ -427,13 +429,21 @@ export async function getRecipeCookedCount(recipeId: string): Promise<number> {
   const householdId = await getActiveHouseholdId();
   if (!householdId) return 0;
   const supabase = createServerSupabaseClient();
-  const { count } = await supabase
-    .from("menu_entries")
-    .select("id", { count: "exact", head: true })
-    .eq("household_id", householdId)
-    .eq("recipe_id", recipeId)
-    .not("cooked_at", "is", null);
-  return count ?? 0;
+  const [{ count }, { data: archived }] = await Promise.all([
+    supabase
+      .from("menu_entries")
+      .select("id", { count: "exact", head: true })
+      .eq("household_id", householdId)
+      .eq("recipe_id", recipeId)
+      .not("cooked_at", "is", null),
+    supabase
+      .from("archived_recipe_counts")
+      .select("times_cooked")
+      .eq("household_id", householdId)
+      .eq("recipe_id", recipeId)
+      .maybeSingle(),
+  ]);
+  return (count ?? 0) + (archived?.times_cooked ?? 0);
 }
 
 /** Resumen de valoración de una receta para su página de detalle. */
@@ -522,7 +532,7 @@ export async function getRecipeSignals(
   const ids = (recipes ?? []).map((r) => r.id);
   if (ids.length === 0) return [];
 
-  const [{ data: ratings }, { data: entries }] = await Promise.all([
+  const [{ data: ratings }, { data: entries }, { data: archived }] = await Promise.all([
     supabase
       .from("recipe_ratings")
       .select("recipe_id, rating")
@@ -541,6 +551,13 @@ export async function getRecipeSignals(
         .order("id", { ascending: true })
         .range(from, to),
     ),
+    // Lo de los menús ya borrados por la retención (26 semanas), sumado por
+    // la propia limpieza: sin esto las cuentas se truncan solas con el tiempo.
+    supabase
+      .from("archived_recipe_counts")
+      .select("recipe_id, times_planned, times_cooked, last_cooked_at")
+      .eq("household_id", householdId)
+      .in("recipe_id", ids),
   ]);
 
   // Media y nº de votos por receta.
@@ -553,11 +570,20 @@ export async function getRecipeSignals(
     ratingAgg.set(r.recipe_id, acc);
   }
 
-  // Veces planificada / cocinada y última fecha de cocinado por receta.
+  // Veces planificada / cocinada y última fecha de cocinado por receta. Arranca
+  // de lo archivado y suma encima lo vivo: las dos partes no se solapan, porque
+  // la limpieza archiva y borra en la misma transacción.
   const useAgg = new Map<
     string,
     { planned: number; cooked: number; last: string | null }
   >();
+  for (const a of archived ?? []) {
+    useAgg.set(a.recipe_id, {
+      planned: a.times_planned,
+      cooked: a.times_cooked,
+      last: a.last_cooked_at,
+    });
+  }
   for (const e of entries ?? []) {
     if (!e.recipe_id) continue;
     const acc = useAgg.get(e.recipe_id) ?? {

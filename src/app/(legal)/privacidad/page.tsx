@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 
 export default function PrivacidadPage() {
   return (
-    <LegalPage title="Política de privacidad" updated="27 de septiembre de 2026">
+    <LegalPage title="Política de privacidad" updated="28 de septiembre de 2026">
       <p>
         Esta política explica qué datos personales tratamos cuando usas{" "}
         <strong>Fill Good</strong>, con qué finalidad, con qué base legal y qué
@@ -290,7 +290,10 @@ export default function PrivacidadPage() {
           nada: los tickets escaneados que no confirmas se eliminan a los 30
           días, el historial de consumo y reposición a los 90 días, lo que
           marcas como tirado a los 24 meses, los menús semanales pasadas 26 semanas y las
-          anotaciones de uso de la sección 2 a los 12 meses. Los registros
+          anotaciones de uso de la sección 2 a los 12 meses. De los menús
+          borrados solo se guarda, por receta, cuántas veces la planificasteis
+          y la cocinasteis y cuándo fue la última, para no proponeros lo que
+          acabáis de comer; desaparece con la receta. Los registros
           técnicos se conservan durante periodos breves.
         </p>
         <p>
