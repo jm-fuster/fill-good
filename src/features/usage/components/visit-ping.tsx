@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 
 import { todayLocalISO } from "@/lib/dates";
-import { recordVisitAction } from "../actions";
+import { trackVisitFromClient } from "../track";
 
 /**
  * Anota la visita del día al montarse el shell. No pinta nada.
@@ -24,14 +24,14 @@ import { recordVisitAction } from "../actions";
 export function VisitPing() {
   useEffect(() => {
     let lastDay = todayLocalISO();
-    void recordVisitAction().catch(() => {});
+    trackVisitFromClient();
 
     function onVisible() {
       if (document.visibilityState !== "visible") return;
       const today = todayLocalISO();
       if (today === lastDay) return;
       lastDay = today;
-      void recordVisitAction().catch(() => {});
+      trackVisitFromClient();
     }
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
