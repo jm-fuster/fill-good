@@ -47,7 +47,7 @@ export type UsageEvent =
 /**
  * Los que solo ve el navegador —abrir el repaso, aplazarlo (es una cookie),
  * lo que se apunta desde él y compartir el enlace de invitación— y llegan por
- * `recordUsageAction`. Se importa con `import type` desde el cliente: se borra
+ * `/api/usage` (`features/usage/track.ts`). Se importa con `import type` desde el cliente: se borra
  * al compilar, así que no arrastra este módulo `server-only`.
  */
 export type ClientUsageEvent = Extract<
