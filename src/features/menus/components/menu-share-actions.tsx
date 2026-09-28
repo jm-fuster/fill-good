@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal, Printer, Share2 } from "lucide-react";
+import { Ellipsis, Printer, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -67,7 +67,7 @@ export function MenuShareActions({ menuId }: { menuId: string }) {
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button variant="outline" size="icon" aria-label="Acciones del menú">
-          <MoreHorizontal aria-hidden />
+          <Ellipsis aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       {/* `print:hidden` porque el contenido va en un portal, fuera del envoltorio

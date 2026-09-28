@@ -12,7 +12,7 @@ import {
   Plus,
   ShoppingCart,
   Store,
-  Trash2,
+  Trash,
   TrendingDown,
   X,
 } from "lucide-react";
@@ -849,7 +849,7 @@ function ListRow({
         aria-label={`Quitar ${item.name}`}
         className="absolute inset-y-0 right-0 flex items-center justify-center gap-1.5 bg-destructive text-sm font-medium text-destructive-foreground"
       >
-        <Trash2 className="size-4" aria-hidden />
+        <Trash className="size-4" aria-hidden />
         Quitar
       </button>
       <div
@@ -953,7 +953,7 @@ function ListRow({
           onClick={() => onRemove(item)}
           className="opacity-100 transition-opacity md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100 md:focus-visible:pointer-events-auto md:focus-visible:opacity-100"
         >
-          <Trash2 aria-hidden className="text-muted-foreground" />
+          <Trash aria-hidden className="text-muted-foreground" />
         </Button>
       </div>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { AlertTriangle, RotateCw } from "lucide-react";
+import { RotateCw, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -73,7 +73,7 @@ export function ErrorScreen({
       }
     >
       <div className="flex size-14 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <AlertTriangle className="size-7" aria-hidden />
+        <TriangleAlert className="size-7" aria-hidden />
       </div>
       <div>
         <h1 className="font-heading text-xl font-semibold tracking-tight">

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ListChecks, Plus, Trash2 } from "lucide-react";
+import { ListChecks, Plus, Trash } from "lucide-react";
 import { toast } from "sonner";
 
 import { safeAction } from "@/lib/action-error";
@@ -184,7 +184,7 @@ function RuleRow({ rule }: { rule: MenuRule }) {
         loading={deleting}
         aria-label={`Borrar regla: ${label}`}
       >
-        <Trash2 aria-hidden />
+        <Trash aria-hidden />
       </Button>
     </li>
   );

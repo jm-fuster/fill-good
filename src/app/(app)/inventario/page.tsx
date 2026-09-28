@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { History, Package, ScanLine } from "lucide-react";
+import { Package, RotateCcwClock, ScanLine } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/layout/empty-state";
@@ -63,7 +63,7 @@ export default async function InventarioPage({
               aria-label="Historial de movimientos"
             >
               <Link href="/inventario/historial">
-                <History aria-hidden />
+                <RotateCcwClock aria-hidden />
               </Link>
             </Button>
             {/* FAB en móvil, botón en el header en escritorio (mismo modal). */}

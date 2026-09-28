@@ -10,7 +10,7 @@ import {
   Star,
   Store,
   TrendingDown,
-  Trash2,
+  Trash,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -1048,7 +1048,7 @@ export function EditItemDrawer({
               loading={deleting}
               aria-live="polite"
             >
-              <Trash2 aria-hidden />
+              <Trash aria-hidden />
               {confirmDelete ? "¿Seguro? Eliminar" : "Eliminar del inventario"}
             </Button>
             <ResponsiveModalClose asChild>
