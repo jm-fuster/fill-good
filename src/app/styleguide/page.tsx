@@ -261,17 +261,17 @@ export default function StyleguidePage() {
 
       <Section
         title="Badges de estado"
-        description="Estados de inventario y caducidad, siempre con estos pares token/uso. El tinte está reservado a la caducidad: los tres colores son la MISMA escala (frescura), así que lo que no es una fecha no se tiñe. «Agotado» va neutro (outline) y se distingue por forma —borde, sin relleno—; si compartiera el ámbar de «caduca pronto», una tarjeta vacía se leería como comida a punto de echarse a perder. Y no convive con ninguno de los tres: sin existencias no hay frescura de la que hablar, así que en agotado la escala entera se calla (también «Consumir pronto»)."
+        description="Estados de inventario y caducidad, siempre con estos pares token/uso. El tinte está reservado a la caducidad: los tres colores son la MISMA escala (frescura), así que lo que no es una fecha no se tiñe. «Agotado» va neutro (outline) y se distingue por forma —borde, sin relleno—; si compartiera el ámbar de «caduca pronto», una tarjeta vacía se leería como comida a punto de echarse a perder. Y no convive con ninguno de los tres: sin existencias no hay frescura de la que hablar, así que en agotado la escala entera se calla (también «Consumir pronto»). Los tres tintes van SIN borde (border-transparent), igual que en la tarjeta del inventario: el borde es justo la forma que distingue a «Agotado», y si los tintes lo llevaran dejaría de distinguirse."
       >
         <div className="flex flex-wrap items-center gap-2">
-          <Badge className="border-success/30 bg-success/15 text-success">
-            En stock
+          <Badge className="border-transparent bg-success/15 text-success">
+            Caduca en 6 días
           </Badge>
-          <Badge className="border-warning/40 bg-warning/15 text-warning">
+          <Badge className="border-transparent bg-warning/15 text-warning">
             Caduca en 2 días
           </Badge>
-          <Badge className="border-destructive/30 bg-destructive/15 text-destructive">
-            Caducado
+          <Badge className="border-transparent bg-destructive/15 text-destructive">
+            Caducó ayer
           </Badge>
           <Badge variant="secondary">Congelador</Badge>
           <Badge variant="outline">Agotado</Badge>
@@ -311,7 +311,7 @@ export default function StyleguidePage() {
             <CardDescription>Nevera · 4 ud</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between">
-            <Badge className="border-warning/40 bg-warning/15 text-warning">
+            <Badge className="border-transparent bg-warning/15 text-warning">
               Caduca en 2 días
             </Badge>
             <div className="flex items-center gap-2">
