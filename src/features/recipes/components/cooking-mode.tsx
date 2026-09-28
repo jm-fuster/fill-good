@@ -52,6 +52,7 @@ import {
   restockToastMessage,
 } from "@/features/menus/components/cooked-restock-fields";
 import { safeAction } from "@/lib/action-error";
+import { aiProvenanceAttrs } from "@/lib/ai/provenance";
 import type { RecipeCooking, RecipeRatingSummary } from "../queries";
 import {
   finishOffer,
@@ -865,6 +866,7 @@ function CookingSteps({
             </p>
             <p
               key={`t-${step}`}
+              {...aiProvenanceAttrs(recipe.stepsFromAi)}
               className={cn(
                 "text-xl leading-relaxed font-medium text-balance duration-200 animate-in fade-in md:text-2xl",
                 forward ? "slide-in-from-right-4" : "slide-in-from-left-4",

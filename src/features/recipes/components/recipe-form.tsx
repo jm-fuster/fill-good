@@ -36,6 +36,7 @@ import {
   unitFamily,
 } from "@/lib/units";
 import { actionErrorMessage, safeAction } from "@/lib/action-error";
+import { aiProvenanceAttrs } from "@/lib/ai/provenance";
 import { normalizeName } from "@/lib/normalize";
 import { cn } from "@/lib/utils";
 import type { UnitType } from "@/lib/supabase/types";
@@ -202,6 +203,12 @@ export function RecipeForm({
       : [emptyStep(0)];
   const [steps, setSteps] = useState<StepRow[]>(initialSteps);
   const nextStepKey = useRef(initialSteps.length);
+  // La marca de IA acompaña al texto guardado, no al campo: en cuanto se toca
+  // un paso ya es el borrador de una persona (y guardarlo la quita en la base).
+  const stepsFromAi =
+    !!recipe?.stepsFromAi &&
+    steps.length === recipe.steps.length &&
+    steps.every((s, i) => s.text === recipe.steps[i]);
 
   // Índice del catálogo por nombre normalizado, para resolver el vínculo en vivo
   // mientras se escribe (además del id explícito elegido en el autocompletado).
@@ -764,7 +771,10 @@ export function RecipeForm({
           Uno por paso, en orden, con las cantidades para {servingsLabel}. Si
           pegas una receta entera, cada línea se convierte en un paso.
         </p>
-        <ol className="flex flex-col gap-3">
+        <ol
+          className="flex flex-col gap-3"
+          {...aiProvenanceAttrs(stepsFromAi)}
+        >
           {steps.map((step, index) => (
             <li
               key={step.key}

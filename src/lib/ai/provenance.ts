@@ -4,8 +4,9 @@
  * la salida «en un formato legible por máquina»; a los sistemas en el mercado
  * antes del 2-ago-2026 se les aplica desde el 2-dic-2026).
  *
- * La procedencia ya vive en la base —`menu_entries.source`, `recipes.source` y
- * `weekly_menus.generated_by` valen `'ai'`— y viaja así en la exportación. Esto
+ * La procedencia ya vive en la base —`menu_entries.source`, `recipes.source`,
+ * `recipes.steps_source` y `weekly_menus.generated_by` valen `'ai'`— y viaja
+ * así en la exportación. Esto
  * la lleva también al HTML con dos atributos estables, en la línea del
  * `digitalSourceType` de IPTC que usa C2PA para medios.
  *
@@ -13,9 +14,12 @@
  *  - La lectura de tickets: transcribe lo que ya pone el papel, no genera
  *    contenido (la excepción de «no alterar sustancialmente los datos de
  *    entrada» del mismo artículo).
- *  - Los pasos que la IA escribe en una receta del hogar: en el formulario
- *    llegan como BORRADOR que una persona revisa y guarda (ver la migración
+ *  - Los pasos que la IA propone en el FORMULARIO de una receta: llegan como
+ *    BORRADOR que una persona revisa y guarda (ver la migración
  *    `20260805120000_recetas_pasos.sql`), y la receta sigue siendo del hogar.
+ *    Los que escribe desde el MENÚ («Escribir los pasos con IA») sí se marcan
+ *    (`recipes.steps_source`), porque se guardan sin que nadie los revise; y
+ *    guardar después el formulario los devuelve a 'manual'.
  */
 export const AI_DIGITAL_SOURCE_TYPE =
   "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia";

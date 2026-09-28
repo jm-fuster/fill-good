@@ -43,6 +43,8 @@ export type RecipeForEdit = {
   seasons: string[];
   /** Pasos en orden. Vacío = la receta aún no dice cómo se hace. */
   steps: string[];
+  /** Los pasos los guardó la IA sin revisión (ver `lib/ai/provenance.ts`). */
+  stepsFromAi: boolean;
   ingredients: RecipeIngredient[];
 };
 
@@ -282,6 +284,7 @@ type RecipeRow = {
   meal_types: string[] | null;
   seasons: string[] | null;
   steps: string[] | null;
+  steps_source: "manual" | "ai";
   is_saved: boolean;
 };
 
@@ -299,7 +302,7 @@ export async function getRecipeForEdit(
   const { data: recipe, error } = await supabase
     .from("recipes")
     .select(
-      "id, name, description, servings, prep_minutes, meal_types, seasons, steps, is_saved",
+      "id, name, description, servings, prep_minutes, meal_types, seasons, steps, steps_source, is_saved",
     )
     .eq("household_id", householdId)
     .eq("id", id)
@@ -330,6 +333,7 @@ export async function getRecipeForEdit(
     mealTypes: row.meal_types ?? [],
     seasons: row.seasons ?? ["all"],
     steps: row.steps ?? [],
+    stepsFromAi: row.steps_source === "ai",
     ingredients: (ingredients ?? []).map((i) => ({
       name: i.name,
       quantity: i.quantity === null ? null : Number(i.quantity),
@@ -355,6 +359,8 @@ export type RecipeCooking = {
   servings: number;
   prepMinutes: number | null;
   steps: string[];
+  /** Los pasos los guardó la IA sin revisión (ver `lib/ai/provenance.ts`). */
+  stepsFromAi: boolean;
   /**
    * Está en el recetario del hogar. Las efímeras (las que inventó la IA al
    * planificar la semana) no lo están, y eso decide si se puede enlazar a su
@@ -385,7 +391,7 @@ export async function getRecipeForCooking(
 
   const { data: recipe } = await supabase
     .from("recipes")
-    .select("id, name, servings, prep_minutes, steps, is_saved")
+    .select("id, name, servings, prep_minutes, steps, steps_source, is_saved")
     .eq("household_id", householdId)
     .eq("id", recipeId)
     .maybeSingle();
@@ -404,6 +410,7 @@ export async function getRecipeForCooking(
     servings: recipe.servings ?? 1,
     prepMinutes: recipe.prep_minutes,
     steps: recipe.steps ?? [],
+    stepsFromAi: recipe.steps_source === "ai",
     isSaved: recipe.is_saved,
     ingredients: (ings ?? []).map((i) => ({
       name: i.name,
