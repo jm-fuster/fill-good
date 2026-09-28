@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -209,7 +209,7 @@ export function EditListItemDrawer({
               {pending ? "Guardando…" : "Guardar cambios"}
             </Button>
             <Button type="button" variant="destructive" onClick={handleDelete}>
-              <Trash2 aria-hidden />
+              <Trash aria-hidden />
               Quitar de la lista
             </Button>
             <ResponsiveModalClose asChild>

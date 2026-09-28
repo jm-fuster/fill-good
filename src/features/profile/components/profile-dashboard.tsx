@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  LineChart,
+  ChartLine,
   ListChecks,
   PiggyBank,
   Receipt,
@@ -154,7 +154,7 @@ export function ProfileDashboard({ data }: { data: ProfileOverview }) {
         />
         <SettingsLinkRow
           href="/precios"
-          icon={LineChart}
+          icon={ChartLine}
           label="Precios y alertas"
           hint="Evolución de lo que compras y dónde sale más barato"
         />

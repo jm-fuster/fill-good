@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
-import { Home, Info, ListOrdered, Palette, Store } from "lucide-react";
+import { House, Info, ListOrdered, Palette, Store } from "lucide-react";
 
 import { AlexaIcon } from "@/components/icons/alexa-icon";
 import { PageContainer } from "@/components/layout/page-container";
@@ -126,7 +126,7 @@ export default async function AjustesPage() {
           <SettingsGroup title="Hogar">
             <SettingsLinkRow
               href="/ajustes/hogar"
-              icon={Home}
+              icon={House}
               label={household.name}
               hint="Invitaciones, miembros y cambio de hogar"
               value={

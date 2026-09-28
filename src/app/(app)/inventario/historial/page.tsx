@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { History } from "lucide-react";
+import { RotateCcwClock } from "lucide-react";
 
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageContainer } from "@/components/layout/page-container";
@@ -29,7 +29,7 @@ export default async function HistorialPage({
 
       {events.length === 0 ? (
         <EmptyState
-          icon={History}
+          icon={RotateCcwClock}
           title="Aún no hay movimientos"
           description="Cuando gastes, tires o repongas productos, verás aquí el registro con la fecha y quién lo hizo."
         />

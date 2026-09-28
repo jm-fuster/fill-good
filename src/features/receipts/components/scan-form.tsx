@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { Camera, Loader2, ScanLine, Upload } from "lucide-react";
+import { Camera, LoaderCircle, ScanLine, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -187,7 +187,7 @@ export function ScanForm() {
   if (pending) {
     return (
       <div className="flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-16 text-center">
-        <Loader2 className="size-8 animate-spin text-primary" aria-hidden />
+        <LoaderCircle className="size-8 animate-spin text-primary" aria-hidden />
         <p className="mt-4 font-medium">Analizando el ticket…</p>
         <p className="mt-1 text-sm text-muted-foreground">
           La IA está leyendo los productos y precios. Puede tardar unos

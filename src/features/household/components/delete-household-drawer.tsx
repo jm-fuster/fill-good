@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Trash2, TriangleAlert } from "lucide-react";
+import { Trash, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import { safeAction } from "@/lib/action-error";
@@ -57,7 +57,7 @@ export function DeleteHouseholdDrawer({
         onClick={() => setOpen(true)}
         className="justify-start"
       >
-        <Trash2 aria-hidden />
+        <Trash aria-hidden />
         Eliminar hogar
       </Button>
       <ResponsiveModalContent>
@@ -94,7 +94,7 @@ export function DeleteHouseholdDrawer({
             disabled={!matches}
             loading={pending}
           >
-            <Trash2 aria-hidden />
+            <Trash aria-hidden />
             {pending ? "Eliminando…" : "Eliminar hogar definitivamente"}
           </Button>
           <ResponsiveModalClose asChild>

@@ -10,7 +10,7 @@ import {
   ShoppingCart,
   Sparkles,
   Store,
-  Trash2,
+  Trash,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -924,7 +924,7 @@ function ShoppingModeRowItem({
         aria-label={`Quitar ${item.name}`}
         className="absolute inset-y-0 right-0 flex items-center justify-center gap-1.5 bg-destructive text-sm font-medium text-destructive-foreground"
       >
-        <Trash2 className="size-4" aria-hidden />
+        <Trash className="size-4" aria-hidden />
         Quitar
       </button>
       <div
@@ -1017,7 +1017,7 @@ function ShoppingModeRowItem({
           onClick={() => onRemove(item)}
           className="hidden transition-opacity md:inline-flex md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100 md:focus-visible:pointer-events-auto md:focus-visible:opacity-100"
         >
-          <Trash2 aria-hidden className="text-muted-foreground" />
+          <Trash aria-hidden className="text-muted-foreground" />
         </Button>
       </div>
     </li>

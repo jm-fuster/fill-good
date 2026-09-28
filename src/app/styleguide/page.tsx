@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Plus, ShoppingCart, Trash2 } from "lucide-react";
+import { ArrowLeft, Plus, ShoppingCart, Trash } from "lucide-react";
 
 import { PageContainer } from "@/components/layout/page-container";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -203,7 +203,7 @@ export default function StyleguidePage() {
           <Button variant="outline">Outline</Button>
           <Button variant="ghost">Ghost</Button>
           <Button variant="destructive">
-            <Trash2 data-icon="inline-start" aria-hidden /> Eliminar
+            <Trash data-icon="inline-start" aria-hidden /> Eliminar
           </Button>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
