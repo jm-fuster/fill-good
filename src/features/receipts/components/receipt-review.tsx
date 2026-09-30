@@ -724,9 +724,13 @@ export function ReceiptReview({
         <CardHeader>
           <CardTitle className="text-base">Datos del ticket</CardTitle>
         </CardHeader>
-        {/* En escritorio los tres campos caben en una fila; en móvil se apilan. */}
-        <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <div className="col-span-2 flex flex-col gap-1.5 sm:col-span-1">
+        {/* Son CUATRO campos: con sm:grid-cols-3 «Total» caía solo en una
+            segunda fila. En una fila van desde lg, que es cuando la columna
+            pasa de ~700 px (a 768 mide 448 y a cuatro no caben una fecha y un
+            importe); hasta entonces, Tienda y Cadena a lo ancho y Fecha y
+            Total juntos debajo. */}
+        <CardContent className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="col-span-2 flex flex-col gap-1.5 lg:col-span-1">
             <Label htmlFor="rv-store">Tienda</Label>
             <Input
               id="rv-store"
@@ -734,7 +738,7 @@ export function ReceiptReview({
               onChange={(e) => setStoreName(e.target.value)}
             />
           </div>
-          <div className="col-span-2 flex flex-col gap-1.5 sm:col-span-1">
+          <div className="col-span-2 flex flex-col gap-1.5 lg:col-span-1">
             <Label htmlFor="rv-chain">Cadena</Label>
             <Select value={storeChain} onValueChange={setStoreChain}>
               <SelectTrigger id="rv-chain" className="w-full">
@@ -800,9 +804,10 @@ export function ReceiptReview({
             <p className="text-xs font-medium text-warning">
               Necesitan decisión ({pendingRows.length})
             </p>
-            {/* 2 columnas en escritorio; items-start evita estirar la tarjeta
-                corta a la altura de la alta (las filas varían mucho). */}
-            <div className="flex flex-col gap-2 md:grid md:grid-cols-2 md:items-start md:gap-3">
+            {/* 2 columnas desde lg, no md: a 768 la columna mide 448 (hay
+                sidebar) y cada tarjeta se quedaba en ~218. items-start evita
+                estirar la tarjeta corta a la altura de la alta. */}
+            <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3">
               {pendingRows.map(renderRow)}
             </div>
           </div>
@@ -815,7 +820,7 @@ export function ReceiptReview({
                 Asociados ({matchedRows.length})
               </p>
             ) : null}
-            <div className="flex flex-col gap-2 md:grid md:grid-cols-2 md:items-start md:gap-3">
+            <div className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:items-start lg:gap-3">
               {matchedRows.map(renderRow)}
             </div>
           </div>
@@ -835,9 +840,11 @@ export function ReceiptReview({
       </div>
 
       <div className="fixed inset-x-0 bottom-16 z-40 mx-auto max-w-lg px-4 pb-safe md:sticky md:inset-x-auto md:bottom-0 md:mx-0 md:max-w-none md:border-t md:bg-background/95 md:px-0 md:pt-3 md:pb-3 md:backdrop-blur-sm">
+        {/* La sombra es de cuando flota sobre la nav (móvil); en escritorio la
+            barra es sticky con su propio borde y la sombra sobraba. */}
         <Button
           size="lg"
-          className="w-full shadow-lg"
+          className="w-full shadow-lg md:shadow-none"
           disabled={includedCount === 0}
           loading={pending}
           onClick={confirm}

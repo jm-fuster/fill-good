@@ -207,14 +207,20 @@ export function HouseholdSwitcherInline({
     return <span className="text-sm text-muted-foreground">{label}</span>;
   }
 
+  // En escritorio el cambio de hogar vive en la cabecera de la app
+  // (HouseholdSwitcherMenu, hidden md:flex): con este botón también, /perfil
+  // enseñaba DOS selectores a la vez. Desde md, el nombre como texto.
   return (
     <ResponsiveModal open={open} onOpenChange={setOpen}>
+      <span className="hidden text-sm text-muted-foreground md:inline">
+        {label}
+      </span>
       <button
         type="button"
         onClick={() => setOpen(true)}
         // -mx-2 px-2: el área táctil se ensancha hacia los lados sin desalinear
         // el texto respecto al título que tiene encima.
-        className="-mx-2 -my-1 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        className="-mx-2 -my-1 inline-flex min-h-11 md:hidden items-center gap-1 rounded-lg px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
       >
         <span className="truncate">{label}</span>
         <ChevronsUpDown className="size-3.5 shrink-0" aria-hidden />

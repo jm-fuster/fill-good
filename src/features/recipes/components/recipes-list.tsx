@@ -94,7 +94,10 @@ export function RecipesList({
           No hay recetas que coincidan con la búsqueda.
         </p>
       ) : (
-        <ul className="flex flex-col gap-2 md:grid md:grid-cols-2 md:gap-3 lg:grid-cols-3">
+        /* Columnas por el ancho de la COLUMNA, no del viewport: a 768 px la
+           columna mide 448 (hay sidebar) y dos tarjetas de ~218 no caben;
+           a 1024 son 704 y a 1280, 960. Como la lista de /precios. */
+        <ul className="flex flex-col gap-2 lg:grid lg:grid-cols-2 lg:gap-3 xl:grid-cols-3">
           {filtered.map((recipe) => {
             const seasonChoice = seasonsToChoice(recipe.seasons);
             const sig = signals?.[recipe.id];
