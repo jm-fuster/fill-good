@@ -35,6 +35,13 @@ export function ScanForm() {
   const [pending, setPending] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
+  /** El botón principal del móvil: el foco vuelve a él al cerrar el escáner. */
+  const primaryRef = useRef<HTMLButtonElement>(null);
+  // Tras el cierre: el botón puede ser otro («Hacer foto al ticket» si falló la
+  // cámara), así que se espera a que React lo pinte antes de enfocarlo.
+  const restoreFocus = useCallback(() => {
+    requestAnimationFrame(() => primaryRef.current?.focus());
+  }, []);
   // La cámara falló (permiso denegado, sin cámara…): se ofrece la foto normal.
   const [cameraBlocked, setCameraBlocked] = useState(false);
 
@@ -172,21 +179,33 @@ export function ScanForm() {
     [submit],
   );
 
-  const handleScannerUnavailable = useCallback((reason: string) => {
-    setScannerOpen(false);
-    setCameraBlocked(true);
-    toast.info(reason);
-  }, []);
+  const handleScannerUnavailable = useCallback(
+    (reason: string) => {
+      setScannerOpen(false);
+      setCameraBlocked(true);
+      toast.info(reason);
+      restoreFocus();
+    },
+    [restoreFocus],
+  );
 
   const handleScannerError = useCallback((message: string) => {
     toast.error(message);
   }, []);
 
-  const handleScannerCancel = useCallback(() => setScannerOpen(false), []);
+  const handleScannerCancel = useCallback(() => {
+    setScannerOpen(false);
+    restoreFocus();
+  }, [restoreFocus]);
 
   if (pending) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-16 text-center">
+      // role="status": el formulario desaparece y esto ocupa su sitio; sin él el
+      // lector de pantalla no se enteraba de que el ticket ya se está leyendo.
+      <div
+        role="status"
+        className="flex flex-col items-center justify-center rounded-xl border border-dashed px-6 py-16 text-center"
+      >
         <LoaderCircle className="size-8 animate-spin text-primary" aria-hidden />
         <p className="mt-4 font-medium">Analizando el ticket…</p>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -226,12 +245,16 @@ export function ScanForm() {
           la cámara no está disponible se cae a la foto del sistema. */}
       <div className="flex flex-col gap-3 md:hidden">
         {cameraBlocked ? (
-          <Button size="lg" onClick={() => cameraRef.current?.click()}>
+          <Button
+            ref={primaryRef}
+            size="lg"
+            onClick={() => cameraRef.current?.click()}
+          >
             <Camera aria-hidden />
             Hacer foto al ticket
           </Button>
         ) : (
-          <Button size="lg" onClick={() => setScannerOpen(true)}>
+          <Button ref={primaryRef} size="lg" onClick={() => setScannerOpen(true)}>
             <ScanLine aria-hidden />
             Escanear ticket
           </Button>
@@ -259,10 +282,9 @@ export function ScanForm() {
         }}
         onDragLeave={() => setDragActive(false)}
         onDrop={handleDrop}
-        aria-label="Subir imagen o PDF del ticket"
         className={cn(
           "hidden min-h-56 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors md:flex",
-          "hover:border-primary/60 hover:bg-muted/50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+          "outline-none hover:border-primary/60 hover:bg-muted/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
           dragActive ? "border-primary bg-primary/5" : "border-border",
         )}
       >

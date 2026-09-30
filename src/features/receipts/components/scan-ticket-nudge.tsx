@@ -45,7 +45,7 @@ export function ScanTicketNudge({
       <section className="flex items-center gap-2 rounded-xl border border-dashed p-2 pl-3">
         <ReceiptText className="size-4 shrink-0 text-chart-3" aria-hidden />
         <p className="min-w-0 flex-1 text-sm">¿Tienes el ticket?</p>
-        <Button asChild variant="outline" size="sm">
+        <Button asChild variant="outline">
           <Link href="/escanear">
             <ScanLine aria-hidden />
             Escanear
