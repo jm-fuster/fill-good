@@ -116,7 +116,7 @@ export default async function PrecioDetallePage({
           </div>
 
           {points.length > 1 ? (
-            <PriceChart points={points} unit={unit} />
+            <PriceChart points={points} perLabel={perLabel} />
           ) : (
             <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
               Con una sola compra aún no hay tendencia. Escanea más tickets con

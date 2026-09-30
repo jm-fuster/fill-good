@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
 import { WrappedView } from "@/features/prices/components/wrapped-view";
-import { getMonthlyWrapped } from "@/features/prices/wrapped";
+import { getMonthlyWrapped, lastClosedMonth } from "@/features/prices/wrapped";
 
 export const metadata: Metadata = { title: "Resumen del mes" };
 
@@ -17,7 +17,9 @@ export default async function ResumenPage({
   searchParams: Promise<{ mes?: string }>;
 }) {
   const { mes } = await searchParams;
-  const wrapped = await getMonthlyWrapped(mes);
+  // Sin `?mes`, el último mes cerrado: el aviso del día 1 y /perfil ya lo pasan,
+  // pero la paleta de comandos enlaza /resumen a secas.
+  const wrapped = await getMonthlyWrapped(mes ?? lastClosedMonth());
 
   return (
     <PageContainer>

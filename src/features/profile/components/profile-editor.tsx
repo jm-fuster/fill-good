@@ -220,7 +220,6 @@ export function ProfileEditor({
               <Button
                 type="button"
                 variant="ghost"
-                size="sm"
                 loading={removing}
                 disabled={busy}
                 onClick={() => void removePhoto()}

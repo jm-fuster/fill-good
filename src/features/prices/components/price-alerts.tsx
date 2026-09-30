@@ -5,8 +5,11 @@ import { cn } from "@/lib/utils";
 import type { PriceAlert } from "../alerts";
 
 function alertText(a: PriceAlert): string {
+  // «Sobre tu precio habitual» y no «desde tu última compra»: la subida se mide
+  // contra la mediana de las compras anteriores (alerts.ts), igual que el aviso
+  // de precio bajo, y los dos tienen que decir contra qué comparan.
   if (a.kind === "up") {
-    return `${a.productName} ha subido un ${a.pct}% desde tu última compra`;
+    return `${a.productName} ha subido un ${a.pct}% sobre tu precio habitual`;
   }
   return a.pct > 0
     ? `${a.productName} está un ${a.pct}% por debajo de tu precio habitual`
