@@ -1377,7 +1377,7 @@ function EditEntryDrawer({
   /*
     Vistas del panel, nunca modales encadenados: un ResponsiveModal que abre otro
     se cierra solo (cierre por historial de E11). «remove» es la confirmación de
-    quitar, y solo se usa cuando el plato está resuelto —ver `askRemove`—.
+    quitar, para cualquier plato —ver `askRemove`—.
 
     «deduct» es el descuento de la despensa tras «Lo cocinamos». Antes era el
     caso de libro de lo que este comentario prohíbe: el panel se cerraba y en el
@@ -1624,25 +1624,27 @@ function EditEntryDrawer({
   }
 
   /*
-    Quitar un plato que sigue siendo un PLAN no se pregunta: no se pierde nada,
-    era una intención. Quitar uno COCINADO sí, porque borra la fila y con ella la
-    vez cocinada de esa receta, de la que viven `timesCooked`/`lastCookedAt` (lo
-    que evita que el generador te la repita pronto), y porque el descuento de
-    inventario que se propuso al marcarlo no se revierte.
+    Quitar un plato siempre se pregunta, y lo que se dice depende de si está
+    cocinado.
 
-    Solo cocinado, no «no se hizo»: ahí no hubo descuento ni vez cocinada que
-    perder, así que preguntar sería estorbar por simetría.
+    Hasta sep-2026 un plato que seguía siendo un PLAN se quitaba de un toque, sin
+    toast y sin deshacer, y el panel se cerraba en silencio, con la idea de que
+    «era una intención y no se pierde nada». Sí se pierde: un plato fijado, o el
+    que eligió la IA para ese hueco, no se recupera con ningún botón, y «Quitar
+    del menú» está en la misma rejilla que «Mover a…» y «Duplicar en…», a un dedo
+    de distancia.
+
+    Quitar uno COCINADO avisa además de lo que borra: la fila y con ella la vez
+    cocinada de esa receta, de la que viven `timesCooked`/`lastCookedAt` (lo que
+    evita que el generador te la repita pronto); y el descuento de inventario
+    que se propuso al marcarlo no se revierte.
 
     Se pregunta en vez de bloquearse (la otra opción, y más barata) porque
     bloquear añade un paso sin contar qué se pierde: deshaces la marca, quitas el
     plato igual y sigues sin saberlo.
   */
   function askRemove() {
-    if (cooked) {
-      setMode("remove");
-      return;
-    }
-    remove();
+    setMode("remove");
   }
 
   function remove() {
@@ -1652,8 +1654,12 @@ function EditEntryDrawer({
         removeMenuEntryAction(editing.entryId!),
         "No se pudo quitar el plato.",
       );
-      if (r.error) toast.error(r.error);
-      else onSaved();
+      if (r.error) {
+        toast.error(r.error);
+        return;
+      }
+      toast.success("Plato quitado del menú");
+      onSaved();
     });
   }
 
@@ -1927,7 +1933,9 @@ function EditEntryDrawer({
                 : mode === "duplicate"
                   ? "Elige dónde añadir una copia de este plato."
                   : mode === "remove"
-                    ? "Ya lo marcaste como cocinado."
+                    ? cooked
+                      ? "Ya lo marcaste como cocinado."
+                      : "Esta acción no se puede deshacer."
                     : mode === "recipe"
                       ? (detail?.name ?? editing?.current)
                       : isNew
@@ -2008,20 +2016,34 @@ function EditEntryDrawer({
             aria-label="Quitar este plato"
             className="flex flex-col gap-3 px-4 outline-none"
           >
-            <p className="text-sm">
-              <span className="font-medium">{editing?.current}</span> dejará de
-              contar como cocinado: el menú olvida esa vez, y con ella lo que
-              evita que el generador te lo repita pronto.
-            </p>
-            {/*
-              «Si descontaste» y no «se descontó»: el descuento al cocinar se
-              PROPONE y se confirma, así que la app no sabe aquí si llegó a
-              hacerse. Afirmarlo sería mentir la mitad de las veces.
-            */}
-            <p className="text-sm text-muted-foreground">
-              Si descontaste sus ingredientes del inventario, ese descuento no se
-              deshace.
-            </p>
+            {cooked ? (
+              <>
+                <p className="text-sm">
+                  <span className="font-medium">{editing?.current}</span>{" "}
+                  dejará de contar como cocinado: el menú olvida esa vez, y con
+                  ella lo que evita que el generador te lo repita pronto.
+                </p>
+                {/*
+                  «Si descontaste» y no «se descontó»: el descuento al cocinar
+                  se PROPONE y se confirma, así que la app no sabe aquí si llegó
+                  a hacerse. Afirmarlo sería mentir la mitad de las veces.
+                */}
+                <p className="text-sm text-muted-foreground">
+                  Si descontaste sus ingredientes del inventario, ese descuento
+                  no se deshace.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm">
+                  <span className="font-medium">{editing?.current}</span> sale
+                  de este menú y el hueco queda libre.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Si es una receta, sigue en tu recetario.
+                </p>
+              </>
+            )}
             <ResponsiveModalFooter className="gap-2 px-0">
               <Button
                 type="button"
