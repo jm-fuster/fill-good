@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { LegalPage, LegalSection } from "../_components/legal-page";
+import { LegalEmail, LegalPage, LegalSection } from "../_components/legal-page";
 import { LEGAL_OWNER } from "../legal-config";
 
 export const metadata: Metadata = {
@@ -37,7 +37,7 @@ export default function PrivacidadPage() {
             </li>
           ) : null}
           <li>
-            <strong>Contacto:</strong> {LEGAL_OWNER.email}
+            <strong>Contacto:</strong> <LegalEmail />
           </li>
         </ul>
       </LegalSection>
@@ -146,7 +146,7 @@ export default function PrivacidadPage() {
             y si funciones como el repaso de despensa o la invitación se usan):
             interés legítimo — art. 6.1.f del RGPD. Es una medición propia y
             mínima, sin publicidad ni perfiles. Puedes oponerte en Ajustes (Medición de uso) o escribiendo
-            a {LEGAL_OWNER.email}: dejaremos de anotar tu uso y borraremos lo que
+            a <LegalEmail />: dejaremos de anotar tu uso y borraremos lo que
             ya esté anotado.
           </li>
         </ul>
@@ -274,7 +274,7 @@ export default function PrivacidadPage() {
           proveedor está adherido y, en su defecto, en las cláusulas
           contractuales tipo aprobadas por la Comisión Europea. Puedes
           solicitarnos más detalle sobre la garantía aplicable a cada proveedor
-          escribiendo a {LEGAL_OWNER.email}.
+          escribiendo a <LegalEmail />.
         </p>
       </LegalSection>
 
@@ -316,7 +316,7 @@ export default function PrivacidadPage() {
         <p>
           Puedes ejercer tus derechos de acceso, rectificación, supresión,
           oposición, limitación del tratamiento y portabilidad, así como
-          retirar tu consentimiento, escribiendo a {LEGAL_OWNER.email}. El
+          retirar tu consentimiento, escribiendo a <LegalEmail />. El
           borrado completo de la cuenta está disponible directamente en la
           app, en Ajustes.
         </p>

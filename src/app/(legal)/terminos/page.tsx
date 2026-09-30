@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
-import { LegalPage, LegalSection } from "../_components/legal-page";
+import { LegalEmail, LegalPage, LegalSection } from "../_components/legal-page";
 import { LEGAL_OWNER } from "../legal-config";
 
 export const metadata: Metadata = {
@@ -38,7 +38,7 @@ export default function TerminosPage() {
             </li>
           ) : null}
           <li>
-            <strong>Contacto:</strong> {LEGAL_OWNER.email}
+            <strong>Contacto:</strong> <LegalEmail />
           </li>
         </ul>
       </LegalSection>
@@ -233,7 +233,7 @@ export default function TerminosPage() {
       <LegalSection title="15. Contacto">
         <p>
           Para cualquier duda sobre estos términos puedes escribir a{" "}
-          {LEGAL_OWNER.email}.
+          <LegalEmail />.
         </p>
       </LegalSection>
     </LegalPage>
