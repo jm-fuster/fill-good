@@ -389,22 +389,17 @@ export function PantryReviewModal({
               le pregunten va a buscar el interruptor. En una fila y en `ghost`,
               para no comerle sitio a la lista en una hoja de móvil. Solo mientras
               no se ha contestado nada — después de repasar, lo que toca es
-              despedirse, no ofrecer apagarlo.
+              despedirse, no ofrecer apagarlo. Tamaño por defecto y no `sm`: esto
+              se toca con el pulgar, y los dos caben igual en la fila.
             */}
             {answered === 0 ? (
               <div className="mr-auto flex flex-wrap gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={onSilenceWeek}
-                >
+                <Button type="button" variant="ghost" onClick={onSilenceWeek}>
                   No esta semana
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
-                  size="sm"
                   onClick={onDisable}
                 >
                   No volver a preguntar
