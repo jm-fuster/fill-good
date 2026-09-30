@@ -142,11 +142,9 @@ export function CookedCheckinCard({
               {summary}
             </p>
           </div>
-          <Button
-            size="sm"
-            onClick={() => setOpen(true)}
-            className="self-start"
-          >
+          {/* Tamaño por defecto (h-11), igual que en la tarjeta de despensa:
+              `sm` (36 px) no llega al touch target de 44 px. */}
+          <Button onClick={() => setOpen(true)} className="self-start">
             Repasar
           </Button>
         </div>
