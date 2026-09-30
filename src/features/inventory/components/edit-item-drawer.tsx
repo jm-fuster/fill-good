@@ -232,6 +232,20 @@ export function EditItemDrawer({
   const [mergeCandidates, setMergeCandidates] = useState<ComboboxProduct[]>([]);
   const [mergeTarget, setMergeTarget] = useState<string | null>(null);
   const [merging, startMerge] = useTransition();
+  /*
+    Fusionar pide un segundo toque: es la única acción de la ficha que no se
+    puede deshacer (junta historial y stock en el otro producto y borra este), y
+    antes bastaba uno, con el aviso solo en el párrafo de encima. Mismo doble
+    toque que «Eliminar del inventario», con 5 s para el segundo.
+  */
+  const [confirmMergeArmed, setConfirmMergeArmed] = useState(false);
+  const mergeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (mergeTimerRef.current) clearTimeout(mergeTimerRef.current);
+    },
+    [],
+  );
   useEffect(() => {
     if (!open) return;
     let active = true;
@@ -239,6 +253,7 @@ export function EditItemDrawer({
       if (active) {
         setMergeCandidates(rows);
         setMergeTarget(null);
+        setConfirmMergeArmed(false);
       }
     });
     return () => {
@@ -246,8 +261,22 @@ export function EditItemDrawer({
     };
   }, [open, entry.productId]);
 
+  function chooseMergeTarget(id: string | null) {
+    // Otro destino desarma: el «¿Seguro?» era para el de antes.
+    setMergeTarget(id);
+    setConfirmMergeArmed(false);
+  }
+
   function confirmMerge() {
     if (!mergeTarget) return;
+    if (!confirmMergeArmed) {
+      setConfirmMergeArmed(true);
+      if (mergeTimerRef.current) clearTimeout(mergeTimerRef.current);
+      mergeTimerRef.current = setTimeout(() => setConfirmMergeArmed(false), 5000);
+      return;
+    }
+    if (mergeTimerRef.current) clearTimeout(mergeTimerRef.current);
+    setConfirmMergeArmed(false);
     startMerge(async () => {
       const res = await safeAction(
         mergeProductsAction(entry.productId, mergeTarget),
@@ -1003,7 +1032,7 @@ export function EditItemDrawer({
                     <ProductCombobox
                       products={mergeCandidates}
                       value={mergeTarget}
-                      onChange={setMergeTarget}
+                      onChange={chooseMergeTarget}
                       ariaLabel="Producto con el que fusionar"
                       placeholder="Buscar producto…"
                       triggerLabel="Elegir producto…"
@@ -1013,14 +1042,17 @@ export function EditItemDrawer({
                         type="button"
                         variant="destructive"
                         onClick={confirmMerge}
-                        disabled={merging}
+                        loading={merging}
+                        aria-live="polite"
                       >
                         {merging
                           ? "Fusionando…"
-                          : `Fusionar «${entry.productName}» en «${
-                              mergeCandidates.find((p) => p.id === mergeTarget)
-                                ?.name ?? "…"
-                            }»`}
+                          : confirmMergeArmed
+                            ? "¿Seguro? No se puede deshacer"
+                            : `Fusionar «${entry.productName}» en «${
+                                mergeCandidates.find((p) => p.id === mergeTarget)
+                                  ?.name ?? "…"
+                              }»`}
                       </Button>
                     ) : null}
                   </div>
