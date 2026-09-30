@@ -68,6 +68,7 @@ import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import { QuantityStepper } from "./quantity-stepper";
 import { suggestionReasonLabel } from "../suggestion-reason";
 import { useCheckout } from "./use-checkout";
+import { CheckoutLabel } from "./checkout-label";
 
 /** Clave del único bloque cuando la lista va sin agrupar (no lleva cabecera). */
 const FLAT_GROUP = "__lista__";
@@ -256,7 +257,9 @@ export function ShoppingMode({
         return;
       }
       const snapshot = r?.deleted;
-      toast(`${item.name} quitado`, {
+      // Sin concordar con el producto: «Leche entera quitado» salía en
+      // masculino para todo, y el género del nombre no lo sabe la app.
+      toast(`Has quitado «${item.name}»`, {
         duration: 5000,
         action: snapshot
           ? {
@@ -499,9 +502,16 @@ export function ShoppingMode({
           <div className="min-w-0">
             <h1 className="text-lg font-semibold">Modo compra</h1>
             <p className="text-xs text-muted-foreground">
-              {totalPending > 0
-                ? `Quedan ${totalPending} por coger`
-                : "Todo en el carro"}
+              {/* Con la lista vacía no hay nada «en el carro»: antes lo decía
+                  igual, porque solo miraba si quedaban pendientes, y el cuerpo
+                  contestaba «La lista está vacía.» justo debajo. */}
+              {visible.length === 0
+                ? "La lista está vacía"
+                : totalPending === 1
+                  ? "Queda 1 por coger"
+                  : totalPending > 0
+                    ? `Quedan ${totalPending} por coger`
+                    : "Todo en el carro"}
               {visible.length > 0 ? (
                 <span className="tabular-nums">
                   {" · "}
@@ -560,7 +570,8 @@ export function ShoppingMode({
                 {formatEuro(total)}
               </p>
               <p className="text-xs text-muted-foreground">
-                estimado sobre {costs.size} de {visible.length} ítems
+                estimado sobre {costs.size} de {visible.length}{" "}
+                {visible.length === 1 ? "producto" : "productos"}
               </p>
             </div>
             {remaining > 0 && remaining !== total ? (
@@ -672,6 +683,7 @@ export function ShoppingMode({
                                 onRemove={removeItem}
                                 onQuantityChange={setQuantity}
                                 onQuantityBusy={setQuantityBusy}
+                                activeChain={effectiveChain}
                                 showCost={showCost}
                               />
                             ))}
@@ -768,16 +780,20 @@ export function ShoppingMode({
       {checkedCount > 0 ? (
         <footer className="border-t bg-background px-4 pt-3 pb-safe-3">
           <div className="mx-auto w-full max-w-2xl">
+            {/* `loading` y no solo `disabled`, como la barra de /lista: sin
+                spinner, «Guardando…» en un botón apagado parecía un fallo. */}
             <Button
               size="lg"
               className="w-full shadow-lg"
-              disabled={checkingOut}
+              loading={checkingOut}
               onClick={checkout}
             >
               <ShoppingCart aria-hidden />
-              {checkingOut
-                ? "Guardando…"
-                : `Finalizar compra (${checkedCount}) → inventario`}
+              {checkingOut ? (
+                "Guardando…"
+              ) : (
+                <CheckoutLabel count={checkedCount} />
+              )}
             </Button>
           </div>
         </footer>
@@ -1008,14 +1024,16 @@ function ShoppingModeRowItem({
             fila no puede crecer más: checkbox, nombre, pack, precio y stepper ya
             se reparten 360 px). En escritorio no hay deslizamiento, así que esta
             papelera aparece al pasar por encima o al recibir el foco —que es
-            además el camino de teclado—. Con lector de pantalla en móvil el
-            borrado sigue estando en `/lista`, con su papelera siempre visible. */}
+            además el camino de teclado—. En móvil va `sr-only` y no `hidden`:
+            el lector de pantalla no puede deslizar, y con `hidden` (y el botón
+            del gesto `inert`) no tenía ninguna forma de quitar; si le llega el
+            foco del teclado, se deja ver. */}
         <Button
           variant="ghost"
           size="icon"
           aria-label={`Quitar ${item.name}`}
           onClick={() => onRemove(item)}
-          className="hidden transition-opacity md:inline-flex md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100 md:focus-visible:pointer-events-auto md:focus-visible:opacity-100"
+          className="sr-only transition-opacity focus-visible:not-sr-only md:not-sr-only md:inline-flex md:pointer-events-none md:opacity-0 md:group-hover:pointer-events-auto md:group-hover:opacity-100 md:group-focus-within:pointer-events-auto md:group-focus-within:opacity-100 md:focus-visible:pointer-events-auto md:focus-visible:opacity-100"
         >
           <Trash aria-hidden className="text-muted-foreground" />
         </Button>
@@ -1048,7 +1066,7 @@ function RecommendedSection({
   return (
     <section
       className="rounded-xl border border-dashed p-3"
-      aria-label="Recomendados"
+      aria-label="Te puede faltar"
     >
       <h2>
         <button
@@ -1058,7 +1076,9 @@ function RecommendedSection({
           className="flex min-h-11 w-full items-center gap-1.5 rounded-lg text-left text-sm font-medium transition-colors hover:bg-muted"
         >
           <Sparkles className="size-4 text-chart-3" aria-hidden />
-          Recomendados
+          {/* Mismo nombre que en /lista y en el selector de «Añadir»: es la
+              misma lista de sugerencias, y aquí se llamaba «Recomendados». */}
+          Te puede faltar
           <span className="tabular-nums text-muted-foreground">
             ({suggestions.length})
           </span>
