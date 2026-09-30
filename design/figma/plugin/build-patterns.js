@@ -1,6 +1,7 @@
 // build-patterns.js — Fase 6: patrones de las features, montados con instancias de
 // la librería (nunca copias). Página «◆ PATRONES». ARGS.part:
-//   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | seleccion | fila-ajustes | selector-producto | linea-ticket | celebracion | tarjeta-repaso | pregunta-despensa | pregunta-plato | doc
+//   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | seleccion | fila-ajustes | selector-producto | linea-ticket | celebracion | tarjeta-repaso | pregunta-despensa | pregunta-plato | coste | tarjeta-receta
+//   receta-pack | valoracion | ingrediente-cocina | temporizador | plato-apilado | doc
 const ES = async (n) => (await figma.getLocalEffectStylesAsync()).find((s) => s.name === n).id;
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
@@ -437,9 +438,134 @@ if (ARGS.part === 'pregunta-plato') {
   return { set: cs.id, fixedIcons: await fixIconColors(cs), unbound: unboundPaints(cs).length };
 }
 
+if (ARGS.part === 'coste') {
+  const add = stager(page, 'staging · Coste');
+  for (const st of ['completo', 'parcial']) {
+    const c = comp('estado=' + st); bind(c, 'itemSpacing', 'spacing/1'); padX(c, 'spacing/2'); padY(c, 'spacing/0_5'); rad(c, 'radius/lg'); setPaints(c, 'fills', [['chart-3', 0.1]]); add(c);
+    c.appendChild(icon('coins', 14, 'price', 'icon'));
+    await text(st === 'parcial' ? '≥ 2,10 €' : '≈ 3,45 €', 'Caption/Medium', 'price', c, { name: 'importe' });
+    if (st === 'parcial') await text(' (5 de 8)', 'Caption/Default', 'muted-foreground', c, { name: 'cobertura' });
+  }
+  const { cs } = await combine(page, 'staging · Coste', 'Coste de receta', { estado: ['completo', 'parcial'] }, 'estado', [], 'CostBadge (recipes/components/cost-badge.tsx): inline-flex gap-1, rounded-lg, bg-chart-3/10, px-2 py-0.5, text-xs font-medium text-price, con Coins de 14 px. Es el coste de la receta ENTERA para sus raciones, no por ración: «≈ 3,45 €» si todos los ingredientes tienen precio; «≥ 2,10 €» y «(5 de 8)» en muted si falta alguno (es un suelo). No se pinta si ningún ingrediente tiene precio, que es lo normal en un hogar nuevo. aria-label «Coste estimado 3,45 €» / «Coste estimado desde 2,10 €, 5 de 8 ingredientes con precio». text-price y no text-chart-3: el acento cálido como texto no llega a AA sobre su propio tinte.');
+  const k = cs.addComponentProperty('importe', 'TEXT', '≈ 3,45 €');
+  for (const c of cs.children) c.findOne((n) => n.name === 'importe').componentPropertyReferences = { characters: k };
+  return { set: cs.id, unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'tarjeta-receta') {
+  const badge = await setOf('05 · Contenido', 'Badge'), coste = await setOf('◆ PATRONES', 'Coste de receta');
+  const add = stager(page, 'staging · Tarjeta de receta');
+  for (const h of ['false', 'true']) {
+    const c = comp('historial=' + h, 'VERTICAL'); c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; c.counterAxisSizingMode = 'FIXED'; c.resize(358, 10); c.primaryAxisSizingMode = 'AUTO'; bind(c, 'itemSpacing', 'spacing/2'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); setPaints(c, 'fills', [['card']]); setPaints(c, 'strokes', [['border']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    const r1 = stack('fila 1', c, 8, 'HORIZONTAL'); r1.counterAxisAlignItems = 'MIN';
+    await text('Tortilla de patatas', 'Body/Base Medium', 'foreground', r1, { fill: true, name: 'name' });
+    await text('5 ingredientes', 'Caption/Default', 'muted-foreground', r1, { name: 'ingredientes' });
+    const r2 = stack('etiquetas', c, 6, 'HORIZONTAL'); r2.layoutWrap = 'WRAP'; r2.counterAxisSpacing = 6; r2.counterAxisAlignItems = 'CENTER';
+    for (const [v, l] of [['secondary', 'Comida'], ['secondary', 'Cena'], ['outline', '🗓️ Todo el año']]) { const b = variant(badge, 'variant=' + v).createInstance(); r2.appendChild(b); b.setProperties({ [P(badge, 'label')]: l }); }
+    r2.appendChild(variant(coste, 'estado=completo').createInstance());
+    if (h === 'true') { const r3 = stack('historial', c, 12, 'HORIZONTAL'); r3.layoutWrap = 'WRAP'; r3.counterAxisSpacing = 4; await text('★ 4,5 · 3 votos', 'Caption/Default', 'muted-foreground', r3, { name: 'votos' }); await text('Hecha 2 veces · última vez hace 5 días', 'Caption/Default', 'muted-foreground', r3, { name: 'veces' }); }
+  }
+  const { cs } = await combine(page, 'staging · Tarjeta de receta', 'Tarjeta de receta', { historial: ['false', 'true'] }, 'historial', [], 'Receta en /recetas (recipes/components/recipes-list.tsx): un Link rounded-xl border bg-card p-3 gap-2, hover:bg-muted. SIN imagen ni icono. Nombre en font-medium y «{n} ingredientes» a la derecha en text-xs muted; debajo un Badge secondary por tipo de comida (Desayuno, Comida, Cena), la temporada en outline con su emoji («🗓️ Todo el año», «❄️ Invierno», «☀️ Verano») y el coste si algún ingrediente tiene precio. Con valoraciones o veces cocinada, una tercera línea: «★ 4,5 · 3 votos» y «Hecha 2 veces · última vez hace 5 días» (hoy / ayer; sin fecha se calla la segunda mitad). Lista a una columna en móvil, 2 en md y 3 en lg.');
+  const K = { n: cs.addComponentProperty('name', 'TEXT', 'Tortilla de patatas'), i: cs.addComponentProperty('ingredientes', 'TEXT', '5 ingredientes') };
+  for (const c of cs.children) { c.findOne((n) => n.name === 'name').componentPropertyReferences = { characters: K.n }; c.findOne((n) => n.name === 'ingredientes').componentPropertyReferences = { characters: K.i }; for (const b of c.findAll((n) => n.type === 'INSTANCE' && n.parent.name === 'etiquetas')) b.isExposedInstance = true; }
+  return { set: cs.id, unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'receta-pack') {
+  const badge = await setOf('05 · Contenido', 'Badge'), btn = await setOf('01 · Acciones', 'Button');
+  const add = stager(page, 'staging · Receta del pack');
+  for (const st of ['añadir', 'guardada']) {
+    const c = comp('estado=' + st, 'VERTICAL'); c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; c.counterAxisSizingMode = 'FIXED'; c.resize(334, 10); c.primaryAxisSizingMode = 'AUTO'; bind(c, 'itemSpacing', 'spacing/2'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); setPaints(c, 'strokes', [['border']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    await text('Lentejas estofadas', 'Body/Base Medium', 'foreground', c, { fill: true, name: 'name' });
+    const d = await text('Guiso de cuchara con lentejas y verduras, de toda la vida.', 'Body/Small', 'muted-foreground', c, { fill: true, name: 'description' }); d.maxLines = 2; d.textTruncation = 'ENDING';
+    const r = stack('etiquetas', c, 6, 'HORIZONTAL'); r.layoutWrap = 'WRAP'; r.counterAxisSpacing = 6;
+    for (const [v, l] of [['outline', 'Invierno'], ['secondary', 'Vegano'], ['secondary', 'Sin gluten']]) { const b = variant(badge, 'variant=' + v).createInstance(); r.appendChild(b); b.setProperties({ [P(badge, 'label')]: l }); b.isExposedInstance = true; }
+    const b = variant(btn, `variant=outline, size=default, state=${st === 'guardada' ? 'disabled' : 'default'}`).createInstance(); c.appendChild(b); b.layoutSizingHorizontal = 'FILL';
+    b.setProperties({ [P(btn, 'label')]: st === 'guardada' ? 'Ya en tu recetario' : 'Añadir a mi recetario', [P(btn, 'icon inline-start#')]: true, [P(btn, 'icon inline-start ↳')]: iconComp(st === 'guardada' ? 'check' : 'plus').id });
+  }
+  const { cs } = await combine(page, 'staging · Receta del pack', 'Receta del pack', { estado: ['añadir', 'guardada'] }, 'estado', [], 'Receta de «Explorar recetas» (recipes/components/explore-recipes.tsx): li rounded-xl border p-3 gap-2, SIN bg-card (va dentro de la sección, que ya es la tarjeta). Nombre en font-medium, descripción en text-sm muted a dos líneas y las etiquetas: temporada en outline solo si no es «todo el año», dieta en secondary (Vegano o Vegetariano) y «Sin gluten». El tipo de comida NO sale aquí (sí en Mis recetas). Botón outline a todo el ancho, «Añadir a mi recetario» («Añadiendo…» mientras guarda) o, ya importada, deshabilitado con Check «Ya en tu recetario». Las 43 del pack vienen para 2 raciones y SIN pasos.');
+  const K = { n: cs.addComponentProperty('name', 'TEXT', 'Lentejas estofadas'), d: cs.addComponentProperty('description', 'TEXT', 'Guiso de cuchara con lentejas y verduras, de toda la vida.') };
+  for (const c of cs.children) { c.findOne((n) => n.name === 'name').componentPropertyReferences = { characters: K.n }; c.findOne((n) => n.name === 'description').componentPropertyReferences = { characters: K.d }; }
+  return { set: cs.id, fixedIcons: await fixIconColors(cs), unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'valoracion') {
+  const add = stager(page, 'staging · Valoración');
+  for (const v of ['sin', 'con']) {
+    const c = comp('votos=' + v, 'VERTICAL'); c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; c.counterAxisSizingMode = 'FIXED'; c.resize(358, 10); c.primaryAxisSizingMode = 'AUTO'; bind(c, 'itemSpacing', 'spacing/2'); padX(c, 'spacing/4'); padY(c, 'spacing/4'); rad(c, 'radius/xl'); setPaints(c, 'fills', [['card']]); setPaints(c, 'strokes', [['border']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    await text('Tu valoración', 'Body/Small Medium', 'foreground', c, { fill: true });
+    const r = stack('estrellas (radiogroup)', c, 2, 'HORIZONTAL'); r.layoutSizingHorizontal = 'HUG';
+    for (let i = 1; i <= 5; i++) {
+      const on = v === 'con' && i <= 4;
+      const s = stack(i === 1 ? '1 estrella' : `${i} estrellas`, r, 0, 'HORIZONTAL'); s.layoutSizingHorizontal = 'FIXED'; s.resize(44, 44); s.layoutSizingVertical = 'FIXED'; s.primaryAxisAlignItems = 'CENTER'; s.counterAxisAlignItems = 'CENTER'; rad(s, 'radius/lg');
+      const st = icon('star', 24, on ? 'chart-3' : 'muted-foreground', 'icon'); s.appendChild(st);
+      if (on) for (const vec of st.findAll((n) => n.type === 'VECTOR')) vec.fills = [solidFor('chart-3', vec)]; // fill-chart-3
+    }
+    await text(v === 'con' ? '★ 4,0 · 1 voto' : 'Aún sin valoraciones', 'Body/Small', 'muted-foreground', c, { fill: true, name: 'resumen' });
+  }
+  const { cs } = await combine(page, 'staging · Valoración', 'Valoración', { votos: ['sin', 'con'] }, 'votos', [], 'RecipeRating (recipes/components/recipe-rating.tsx): rounded-xl border bg-card p-4 gap-2, «Tu valoración» y un radiogroup de cinco botones de 44 px (rounded-lg, hover:bg-muted) con Star de 24: llena = fill-chart-3 text-chart-3, vacía = text-muted-foreground; aria-label «1 estrella» / «N estrellas». Debajo, la media del hogar en text-sm muted: «★ 4,0 · 1 voto» o «Aún sin valoraciones». Sale en la ficha de la receta y al terminar el modo cocinado. Las estrellas usan chart-3 como ICONO (3:1 basta); el texto de la media va en muted.');
+  return { set: cs.id, unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'ingrediente-cocina') {
+  const cb = await setOf('02 · Formularios', 'Checkbox');
+  const add = stager(page, 'staging · Ingrediente al cocinar');
+  for (const st of ['pendiente', 'marcado', 'falta']) {
+    const done = st === 'marcado';
+    const c = comp('estado=' + st); c.primaryAxisAlignItems = 'MIN'; c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 44); bind(c, 'minHeight', 'spacing/11'); bind(c, 'itemSpacing', 'spacing/3'); padX(c, 'spacing/1'); rad(c, 'radius/lg'); add(c);
+    const box = variant(cb, `state=default, checked=${done}`).createInstance(); c.appendChild(box); box.rescale(20 / 16);
+    const q = await text('160 g', 'Body/Small', 'muted-foreground', c, { name: 'cantidad' }); q.textAutoResize = 'HEIGHT'; q.resize(64, q.height); // min-w-16
+    const n = await text('Lentejas', 'Body/Small', done ? 'muted-foreground' : 'foreground', c, { fill: true, name: 'name' });
+    if (done) { q.textDecoration = 'STRIKETHROUGH'; n.textDecoration = 'STRIKETHROUGH'; }
+    if (st === 'falta') { const t = stack('no lo tienes', c, 0, 'HORIZONTAL'); t.layoutSizingHorizontal = 'HUG'; padX(t, 'spacing/1_5'); padY(t, 'spacing/0_5'); rad(t, 'radius/md'); setPaints(t, 'fills', [['warning', 0.15]]); setPaints(t, 'strokes', [['warning', 0.4]]); t.strokeWeight = 1; t.strokeAlign = 'INSIDE'; await text('no lo tienes', 'Caption/Default', 'warning', t); }
+  }
+  const { cs } = await combine(page, 'staging · Ingrediente al cocinar', 'Ingrediente al cocinar', { estado: ['pendiente', 'marcado', 'falta'] }, 'estado', [], 'Fila del repaso de ingredientes con el que arranca el modo cocinado (recipes/components/cooking-mode.tsx, CookingPrep): un Label que envuelve la fila entera, min-h-11, gap-3, rounded-lg px-1. Checkbox de 20 px, cantidad en text-sm tabular-nums muted (min-w-16) y el nombre. Marcar es el ritual del USUARIO («ya lo he sacado»): tacha la cantidad y apaga el nombre. «no lo tienes» es de la APP (computeMissingForRecipes, la misma cuenta que «añadir a la lista lo que falte»): rounded-md, border-warning/40 bg-warning/15, text-xs warning, y solo sale en lo que falta de verdad, nunca en lo que está sin marcar. OJO: aquí la cantidad se escribe en crudo («0.5 kg», con punto) y en los pasos con formatQuantity («0,5 kg»).');
+  const K = { q: cs.addComponentProperty('cantidad', 'TEXT', '160 g'), n: cs.addComponentProperty('name', 'TEXT', 'Lentejas') };
+  // MEDIDO (2026-09-30): los textos enlazados a una MISMA propiedad comparten el estilo
+  // entre variantes: tachar el de «marcado» los tachaba en las tres. Por eso «marcado»
+  // no se enlaza (cada pantalla escribe su texto directamente) y lleva su tachado.
+  for (const c of cs.children) { if (c.name === 'estado=marcado') continue; c.findOne((x) => x.name === 'cantidad').componentPropertyReferences = { characters: K.q }; c.findOne((x) => x.name === 'name').componentPropertyReferences = { characters: K.n }; }
+  for (const c of cs.children) for (const t of c.findAll((x) => x.type === 'TEXT' && x.name !== 'no lo tienes' && x.parent.name !== 'no lo tienes')) t.textDecoration = c.name === 'estado=marcado' ? 'STRIKETHROUGH' : 'NONE';
+  return { set: cs.id, unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'temporizador') {
+  const ib = await setOf('01 · Acciones', 'Button · Icon');
+  const add = stager(page, 'staging · Temporizador');
+  for (const st of ['en-marcha', 'sonado']) {
+    const rang = st === 'sonado';
+    const c = comp('estado=' + st); bind(c, 'itemSpacing', 'spacing/2'); padX(c, 'spacing/2'); padY(c, 'spacing/1'); rad(c, 'radius/lg'); setPaints(c, 'strokes', [[rang ? 'warning' : 'border', rang ? 0.4 : 1]]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; if (rang) setPaints(c, 'fills', [['warning', 0.15]]); add(c);
+    c.appendChild(icon(rang ? 'bell-ring' : 'timer', 16, rang ? 'warning' : 'muted-foreground', 'icon'));
+    await text(rang ? '¡Tiempo! 8 min' : '34:12', 'Body/Small Medium', rang ? 'warning' : 'foreground', c, { name: 'tiempo' });
+    const x = variant(ib, 'variant=ghost, size=icon, state=default').createInstance(); c.appendChild(x); x.setProperties({ [P(ib, 'icon')]: iconComp('x').id }); if (rang) recolor(x.findAll((q) => q.type === 'INSTANCE')[0], 'warning');
+  }
+  const { cs } = await combine(page, 'staging · Temporizador', 'Temporizador', { estado: ['en-marcha', 'sonado'] }, 'estado', [], 'Un temporizador de la barra del modo cocinado (cooking-mode.tsx, TimerBar): rounded-lg border px-2 py-1 gap-2, Timer de 16 px en muted y la cuenta atrás en text-sm font-medium tabular-nums («34:12», «1:29:59» desde una hora). Al sonar: border-warning/40 bg-warning/15 text-warning, BellRing y «¡Tiempo! 8 min» con aria-live assertive; además vibra, suena y sale un toast. La X (ghost icon, 44 px) cancela («Cancelar el tiempo de 35 min») o descarta el aviso. Como mucho tres a la vez; la barra va bajo la cabecera, con el botón de silenciar a la derecha, y sigue visible al terminar el plato.');
+  const k = cs.addComponentProperty('tiempo', 'TEXT', '34:12');
+  for (const c of cs.children) c.findOne((n) => n.name === 'tiempo').componentPropertyReferences = { characters: k };
+  return { set: cs.id, fixedIcons: await fixIconColors(cs), unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'plato-apilado') {
+  // Variante nueva del set existente (sin reconstruirlo: las instancias de Menús · móvil siguen vivas).
+  const cs = await setOf('◆ PATRONES', 'Plato del menú');
+  for (const o of cs.children.filter((c) => c.name === 'estado=marcar-apilado')) o.remove();
+  const v = cs.children.find((c) => c.name === 'estado=marcar').clone(); cs.appendChild(v); v.name = 'estado=marcar-apilado';
+  v.layoutMode = 'VERTICAL'; v.primaryAxisSizingMode = 'AUTO'; v.counterAxisSizingMode = 'FIXED'; v.resize(136, v.height); v.primaryAxisSizingMode = 'AUTO';
+  const z = v.findOne((n) => n.name === 'marcar'); z.layoutSizingHorizontal = 'FILL'; z.layoutSizingVertical = 'FIXED'; z.resize(z.width, 44);
+  z.strokeLeftWeight = 0; z.strokeTopWeight = 1;
+  const nb = v.findOne((n) => n.name === 'nombre'); nb.layoutSizingHorizontal = 'FILL'; nb.layoutSizingVertical = 'HUG'; // en fila llenaba el alto; apilado tiene que sumarlo
+  // MEDIDO: el clon pierde el enlace del texto con la propiedad del set
+  v.findOne((n) => n.name === 'name').componentPropertyReferences = { characters: Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith('name')) };
+  cs.description = cs.description + ' marcar-apilado: la misma zona de marcado DEBAJO del nombre y a todo el ancho (border-t), cuando la columna del hueco mide menos de 9rem. Pasa en escritorio a 1280 px, con la semana en tres columnas.';
+  // colocar la variante nueva en la rejilla del tablero
+  const others = cs.children.filter((c) => c !== v); v.x = Math.max(...others.map((c) => c.x + c.width)) + 72; v.y = others[0].y;
+  cs.resizeWithoutConstraints(v.x + v.width + 32, cs.height);
+  return { id: v.id, w: v.width, h: v.height };
+}
+
 if (ARGS.part === 'doc') {
   const doc = await pageDoc(page, 'PATRONES', 'Patrones', 'Lo que se repite en las features, montado SOLO con instancias de la librería: si cambia un componente, cambian los patrones. Los nombres de variante describen estados de producto (no props de React), porque un patrón no es un componente del código: es una composición que el código repite. Cada descripción dice de qué archivo sale.');
-  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket'], ['Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', []], ['Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', []], ['Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', []]];
+  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'marcar-apilado', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket'], ['Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', []], ['Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', []], ['Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', []], ['Coste de receta', { estado: ['completo', 'parcial'] }, 'estado', []], ['Tarjeta de receta', { historial: ['false', 'true'] }, 'historial', []], ['Receta del pack', { estado: ['añadir', 'guardada'] }, 'estado', []], ['Valoración', { votos: ['sin', 'con'] }, 'votos', []], ['Ingrediente al cocinar', { estado: ['pendiente', 'marcado', 'falta'] }, 'estado', []], ['Temporizador', { estado: ['en-marcha', 'sonado'] }, 'estado', []]];
   const out = [];
   for (const [name, axes, colAxis, rowAxes] of ENTRIES) {
     const node = page.findOne((n) => (n.type === 'COMPONENT_SET' || (n.type === 'COMPONENT' && n.parent.type !== 'COMPONENT_SET')) && n.name === name);
