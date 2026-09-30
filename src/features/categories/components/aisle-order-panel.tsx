@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { RotateCcw } from "lucide-react";
 import { toast } from "sonner";
@@ -49,6 +49,21 @@ export function AisleOrderPanel({
   const labelId = useId();
   const [target, setTarget] = useState<string | null>(chain);
   const [resetting, setResetting] = useState(false);
+  /*
+    «Volver al orden general» pide un segundo toque. Borra el orden propio de la
+    tienda, que es trabajo de arrastrar pasillo a pasillo, y no hay «Deshacer».
+    No puede ser un modal de confirmación: el panel ya vive dentro de uno en
+    /lista y en el modo compra, y encadenar modales los cierra solos. Es el
+    doble toque de «Eliminar del inventario» y «Quitar de la lista».
+  */
+  const [confirmReset, setConfirmReset] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    },
+    [],
+  );
 
   // El objetivo fijo puede cambiar mientras el panel sigue montado (en el modo
   // compra, al cambiar de tienda con el sheet cerrado): si cambia, el estado
@@ -57,12 +72,31 @@ export function AisleOrderPanel({
   if (seenChain !== chain) {
     setSeenChain(chain);
     setTarget(chain);
+    setConfirmReset(false);
   }
 
   const showSwitcher = stores.length >= 2;
   const ownOrder = target ? orders[target] : undefined;
   const ordered = categoriesInChainOrder(categories, ownOrder);
   const hasOwn = hasOwnAisleOrder(orders, target);
+
+  // Cambiar de tienda desarma la confirmación: el «¿Seguro?» era de la otra.
+  function selectTarget(next: string | null) {
+    setTarget(next);
+    setConfirmReset(false);
+  }
+
+  function requestReset() {
+    if (!confirmReset) {
+      setConfirmReset(true);
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = setTimeout(() => setConfirmReset(false), 5000);
+      return;
+    }
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    setConfirmReset(false);
+    void resetToGeneral();
+  }
 
   async function resetToGeneral() {
     if (!target) return;
@@ -95,14 +129,14 @@ export function AisleOrderPanel({
             <ChainChip
               label="General"
               active={target === null}
-              onClick={() => setTarget(null)}
+              onClick={() => selectTarget(null)}
             />
             {orderChains(stores).map((store) => (
               <ChainChip
                 key={store}
                 label={chainLabel(store)}
                 active={target === store}
-                onClick={() => setTarget(store)}
+                onClick={() => selectTarget(store)}
               />
             ))}
           </div>
@@ -139,10 +173,13 @@ export function AisleOrderPanel({
           variant="outline"
           className="self-start"
           loading={resetting}
-          onClick={resetToGeneral}
+          onClick={requestReset}
+          aria-live="polite"
         >
           <RotateCcw aria-hidden />
-          Volver al orden general
+          {confirmReset
+            ? `¿Seguro? ${chainLabel(target)} pierde su orden`
+            : "Volver al orden general"}
         </Button>
       ) : null}
     </div>
