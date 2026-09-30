@@ -1,6 +1,6 @@
 // build-patterns.js — Fase 6: patrones de las features, montados con instancias de
 // la librería (nunca copias). Página «◆ PATRONES». ARGS.part:
-//   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | seleccion | fila-ajustes | selector-producto | linea-ticket | celebracion | doc
+//   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | seleccion | fila-ajustes | selector-producto | linea-ticket | celebracion | tarjeta-repaso | pregunta-despensa | pregunta-plato | doc
 const ES = async (n) => (await figma.getLocalEffectStylesAsync()).find((s) => s.name === n).id;
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
@@ -343,9 +343,103 @@ if (ARGS.part === 'celebracion') {
   return { id: s.id, unbound: unboundPaints(s).length };
 }
 
+// Copia los tokens de una variante de Button (fondo, borde y radio) a un frame
+// que el código monta como Button con clases propias (EntryActionTile, chips…)
+async function likeButton(node, variantName) {
+  const bs = await setOf('01 · Acciones', 'Button'); const v = variant(bs, variantName);
+  node.fills = v.fills; node.strokes = v.strokes; node.strokeWeight = v.strokeWeight; node.strokeAlign = v.strokeAlign; node.strokesIncludedInLayout = true; rad(node, 'radius/lg');
+  const lab = v.findOne((n) => n.type === 'TEXT'); return lab.fills[0].boundVariables.color.id;
+}
+const varName = async (id) => (await figma.variables.getVariableByIdAsync(id)).name;
+
+if (ARGS.part === 'tarjeta-repaso') {
+  const btn = await setOf('01 · Acciones', 'Button'), ib = await setOf('01 · Acciones', 'Button · Icon');
+  const add = stager(page, 'staging · Tarjeta de repaso');
+  const T = { despensa: ['package-search', '¿Repasamos la despensa?', '8 productos que llevan tiempo sin mirarse. Un toque cada uno.'], platos: ['chef-hat', '¿Qué tal estos días?', 'Tenías 3 platos planificados.'] };
+  for (const [k, [ic, title, desc]] of Object.entries(T)) {
+    const c = comp('tipo=' + k); c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 80); bind(c, 'itemSpacing', 'spacing/3'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); setPaints(c, 'fills', [['card']]); setPaints(c, 'strokes', [['border']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    const b = stack('icono', c, 0, 'HORIZONTAL'); b.layoutSizingHorizontal = 'FIXED'; b.resize(36, 36); b.layoutSizingVertical = 'FIXED'; b.primaryAxisAlignItems = 'CENTER'; b.counterAxisAlignItems = 'CENTER'; rad(b, 'radius/lg'); setPaints(b, 'fills', [['accent']]); b.appendChild(icon(ic, 20, 'accent-foreground', 'icon'));
+    const col = stack('texto', c, 8); col.layoutSizingHorizontal = 'FILL'; col.counterAxisAlignItems = 'MIN';
+    const tx = stack('titulos', col, 2); await text(title, 'Body/Small Medium', 'foreground', tx, { fill: true, name: 'title' }); await text(desc, 'Caption/Default', 'muted-foreground', tx, { fill: true, name: 'description' });
+    const r = variant(btn, 'variant=default, size=sm, state=default').createInstance(); col.appendChild(r); r.setProperties({ [P(btn, 'label')]: 'Repasar' }); r.name = 'Repasar';
+    const x = variant(ib, 'variant=ghost, size=icon, state=default').createInstance(); c.appendChild(x); x.setProperties({ [P(ib, 'icon')]: iconComp('x').id }); recolor(x.findAll((q) => q.type === 'INSTANCE')[0], 'muted-foreground'); x.name = 'Recordármelo mañana';
+    c.primaryAxisSizingMode = 'FIXED'; c.counterAxisSizingMode = 'AUTO';
+  }
+  const { cs } = await combine(page, 'staging · Tarjeta de repaso', 'Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', [], 'Tarjeta del shell que abre un repaso semanal (inventory/components/pantry-review-card.tsx y menus/components/cooked-checkin-card.tsx, la misma pieza dos veces): rounded-xl border bg-card p-3 gap-3, mb-4 encima del <h1> de CUALQUIER página de la app (el repaso de platos no sale en /menus, que tiene su propia puerta). Icono de 20 px en un cuadro de 36 bg-accent (PackageSearch o ChefHat), título en text-sm font-medium, una línea de coste en text-xs muted («8 productos… Un toque cada uno»; en platos «¿Qué tal ayer?» si todo es de ayer, y el nombre del plato si solo hay uno), «Repasar» y la X ghost que aparta la pregunta HASTA MAÑANA (cookie por dispositivo, no niega nada). Nunca salen las dos a la vez: cede la de despensa, y solo hasta YIELD_MAX_DAYS. OJO: «Repasar» va en size="sm" (h-9, 36 px), por debajo de los 44 px táctiles que pide el sistema.');
+  const K = { t: cs.addComponentProperty('title', 'TEXT', '¿Repasamos la despensa?'), d: cs.addComponentProperty('description', 'TEXT', '8 productos que llevan tiempo sin mirarse. Un toque cada uno.') };
+  for (const c of cs.children) { c.findOne((n) => n.name === 'title').componentPropertyReferences = { characters: K.t }; c.findOne((n) => n.name === 'description').componentPropertyReferences = { characters: K.d }; }
+  return { set: cs.id, fixedIcons: await fixIconColors(cs), unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'pregunta-despensa') {
+  const btn = await setOf('01 · Acciones', 'Button');
+  const add = stager(page, 'staging · Pregunta de despensa');
+  for (const st of ['pendiente', 'contestada']) {
+    const done = st === 'contestada';
+    const c = comp('estado=' + st, 'VERTICAL'); c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; c.counterAxisSizingMode = 'FIXED'; c.resize(358, 10); c.primaryAxisSizingMode = 'AUTO'; bind(c, 'itemSpacing', 'spacing/2'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); setPaints(c, 'strokes', [['border']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    const top = stack('producto', c, 8, 'HORIZONTAL'); top.counterAxisAlignItems = 'CENTER';
+    const pi = product('yogur', 20); top.appendChild(pi); if (done) pi.opacity = 0.5;
+    await text('Yogures', 'Body/Small Medium', 'foreground', top, { fill: true, name: 'name' });
+    await text('4 ud', 'Caption/Default', 'muted-foreground', top, { name: 'qty' });
+    if (done) { const r = stack('respuesta', c, 6, 'HORIZONTAL'); r.counterAxisAlignItems = 'CENTER'; r.appendChild(icon('check', 16, 'success', 'icon')); await text('Te queda poco', 'Caption/Default', 'muted-foreground', r, { name: 'recap' }); }
+    else { const g = stack('respuestas (grid-cols-3)', c, 8, 'HORIZONTAL'); for (const l of ['Queda', 'Poco', 'Se acabó']) { const b = variant(btn, 'variant=outline, size=default, state=default').createInstance(); g.appendChild(b); b.setProperties({ [P(btn, 'label')]: l }); b.layoutSizingHorizontal = 'FILL'; } }
+  }
+  const { cs } = await combine(page, 'staging · Pregunta de despensa', 'Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', [], 'Una pregunta del repaso de despensa (inventory/components/pantry-review-modal.tsx): rounded-xl border p-3. Icono de producto de 20 px, nombre en text-sm font-medium y la cantidad que la app cree que hay, en text-xs muted. Tres respuestas outline a partes iguales (grid-cols-3): «Queda», «Poco», «Se acabó», con aria-label «Yogures: poco» para que un lector de pantalla no anuncie ocho veces los mismos tres botones. Cada respuesta se guarda en el momento (quien lo deja a la cuarta no pierde las tres anteriores) y la fila pasa a contestada: icono al 50 % y Check success con el resumen («Queda», «Te queda poco», «Se ha agotado»). Las filas van agrupadas por ubicación (Nevera, Congelador, Despensa, Otros): un paseo por la casa, no un formulario.');
+  const K = { n: cs.addComponentProperty('name', 'TEXT', 'Yogures'), q: cs.addComponentProperty('qty', 'TEXT', '4 ud'), i: cs.addComponentProperty('producto', 'INSTANCE_SWAP', iconsPage.findOne((n) => n.type === 'COMPONENT' && n.name === 'product/yogur').id) };
+  for (const c of cs.children) { c.findOne((n) => n.name === 'name').componentPropertyReferences = { characters: K.n }; c.findOne((n) => n.name === 'qty').componentPropertyReferences = { characters: K.q }; c.findOne((n) => n.name === 'product-icon').componentPropertyReferences = { mainComponent: K.i }; }
+  return { set: cs.id, fixedIcons: await fixIconColors(cs), unbound: unboundPaints(cs).filter((x) => !x.startsWith('product')).length };
+}
+
+if (ARGS.part === 'pregunta-plato') {
+  const btn = await setOf('01 · Acciones', 'Button'), input = await setOf('02 · Formularios', 'Input');
+  const add = stager(page, 'staging · Pregunta de plato');
+  const B = (v, size, label, ic) => { const b = variant(btn, `variant=${v}, size=${size}, state=default`).createInstance(); const pr = { [P(btn, 'label')]: label }; if (ic) { pr[P(btn, 'icon inline-start#')] = true; pr[P(btn, 'icon inline-start ↳')] = iconComp(ic).id; } b.setProperties(pr); return b; };
+  for (const st of ['pendiente', 'no-abierto', 'descontar', 'por-que']) {
+    const c = comp('estado=' + st, 'VERTICAL'); c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; c.counterAxisSizingMode = 'FIXED'; c.resize(358, 10); c.primaryAxisSizingMode = 'AUTO'; bind(c, 'itemSpacing', 'spacing/2'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); setPaints(c, 'strokes', [['border']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    const hd = stack('plato', c, 2); await text('Cena', 'Caption/Default', 'muted-foreground', hd, { fill: true, name: 'slot' }); await text('Crema de calabacín', 'Body/Base Medium', 'foreground', hd, { fill: true, name: 'name' });
+    if (st === 'pendiente' || st === 'no-abierto') {
+      const r = stack('respuestas', c, 8, 'HORIZONTAL');
+      const y = B('default', 'default', 'Lo cocinamos', 'chef-hat'); r.appendChild(y); y.layoutSizingHorizontal = 'FILL';
+      const n = B('outline', 'default', 'No'); r.appendChild(n); n.layoutSizingHorizontal = 'FILL';
+      if (st === 'no-abierto') {
+        const g = stack('salidas del no (grid-cols-3)', c, 8, 'HORIZONTAL');
+        for (const [ic, l, bad] of [['calendar-off', 'No se hizo'], ['move-right', 'Mover a…'], ['trash', 'Quitar del menú', true]]) {
+          const t = stack(l, g, 4); t.layoutSizingHorizontal = 'FILL'; t.counterAxisAlignItems = 'CENTER'; t.primaryAxisAlignItems = 'CENTER'; bind(t, 'minHeight', 'spacing/16'); padX(t, 'spacing/1'); padY(t, 'spacing/2');
+          const fg = await varName(await likeButton(t, `variant=${bad ? 'destructive' : 'outline'}, size=default, state=default`));
+          t.appendChild(icon(ic, 16, fg, 'icon'));
+          const lt = await text(l, 'Caption/Medium', fg, t, { fill: true }); lt.textAlignHorizontal = 'CENTER'; bind(lt, 'fontSize', 'font-size/arbitrary-0_7rem');
+        }
+      }
+    } else if (st === 'descontar') {
+      await text('Ajusta lo que has gastado. Se descuenta del lote que caduca antes.', 'Caption/Default', 'muted-foreground', c, { fill: true });
+      const ul = stack('descontables', c, 8);
+      for (const [n, have, q, u] of [['Calabacines', 'Tienes 3 ud', '2', 'ud'], ['Cebollas', 'Tienes 1 kg', '0,15', 'kg'], ['Nata para cocinar', 'Tienes 200 ml', '100', 'ml']]) {
+        const li = stack(n, ul, 12, 'HORIZONTAL'); li.primaryAxisAlignItems = 'SPACE_BETWEEN'; li.counterAxisAlignItems = 'CENTER'; padX(li, 'spacing/3'); padY(li, 'spacing/3'); rad(li, 'radius/xl'); setPaints(li, 'strokes', [['border']]); li.strokeWeight = 1; li.strokeAlign = 'INSIDE';
+        const tx = stack('texto', li, 0); tx.layoutSizingHorizontal = 'FILL'; await text(n, 'Body/Small Medium', 'foreground', tx, { fill: true }); await text(have, 'Caption/Default', 'muted-foreground', tx, { fill: true });
+        const qb = stack('cantidad', li, 6, 'HORIZONTAL'); qb.layoutSizingHorizontal = 'HUG'; qb.counterAxisAlignItems = 'CENTER';
+        const i = variant(input, 'state=default, filled=true').createInstance(); qb.appendChild(i); i.layoutSizingHorizontal = 'FIXED'; i.resize(80, i.height); i.setProperties({ [P(input, 'value')]: q }); const it = i.findOne((x) => x.type === 'TEXT' && x.visible); it.textAlignHorizontal = 'RIGHT'; it.layoutSizingHorizontal = 'FILL'; // w-20 text-right
+        const ut = await text(u, 'Body/Small', 'muted-foreground', qb); ut.textAutoResize = 'HEIGHT'; ut.resize(28, ut.height); // w-7
+      }
+      const inf = stack('no se descuenta', c, 6); await text('No se descuenta', 'Caption/Medium', 'muted-foreground', inf, { fill: true });
+      const r = stack('Aceite de oliva', inf, 8, 'HORIZONTAL'); r.primaryAxisAlignItems = 'SPACE_BETWEEN'; r.counterAxisAlignItems = 'CENTER'; padX(r, 'spacing/2'); padY(r, 'spacing/2'); rad(r, 'radius/lg'); setPaints(r, 'strokes', [['border']]); r.strokeWeight = 1; r.strokeAlign = 'INSIDE'; r.dashPattern = [4, 4];
+      await text('Aceite de oliva', 'Body/Small', 'foreground', r); await text('La receta no indica cantidad', 'Caption/Default', 'muted-foreground', r);
+      const a = stack('acciones', c, 8); for (const b of [B('default', 'default', 'Descontar 3 ingredientes', 'check'), B('ghost', 'default', 'No descontar')]) { a.appendChild(b); b.layoutSizingHorizontal = 'FILL'; }
+    } else {
+      const fs = stack('¿Por qué no?', c, 6); await text('¿Por qué no?', 'Caption/Default', 'muted-foreground', fs, { fill: true, name: 'legend' });
+      const w = stack('motivos', fs, 6, 'HORIZONTAL'); w.layoutWrap = 'WRAP'; w.counterAxisSpacing = 6;
+      for (const l of ['Comimos fuera', 'Pedimos algo', 'No nos apetecía', 'Faltaban ingredientes']) w.appendChild(B('outline', 'default', l));
+      const n = B('ghost', 'default', 'Ahora no'); c.appendChild(n); n.layoutSizingHorizontal = 'FILL';
+    }
+  }
+  const { cs } = await combine(page, 'staging · Pregunta de plato', 'Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', [], 'Un plato del repaso de platos (menus/components/cooked-checkin-modal.tsx): rounded-xl border p-3, el hueco en text-xs muted y el plato en font-medium. Pendiente: «Lo cocinamos» (ChefHat) y «No», a partes iguales. «No» despliega tres celdas (EntryActionTile: Button outline con min-h-16, flex-col, texto de 0,7rem): «No se hizo», «Mover a…» (una vista con el selector de día, de hoy en adelante) y «Quitar del menú» en destructive. Las dos respuestas largas NO retiran la fila, la convierten en su siguiente pregunta, para no perder de vista de qué plato se habla. «Lo cocinamos» con receta y stock → el descuento: lo propuesto por ingrediente en la unidad de la receta (Input w-20 a la derecha), lo que no se puede descontar aparte con su motivo, y «No descontar» (si algo se queda a cero, un paso más: «¿Lo apuntamos?»). «No se hizo» → «¿Por qué no?» con cuatro motivos (Comimos fuera, Pedimos algo, No nos apetecía, Faltaban ingredientes) y «Ahora no». Solo «No nos apetecía» tiene consecuencia: ese plato no se vuelve a proponer la semana siguiente (check:menu).');
+  const K = { s: cs.addComponentProperty('slot', 'TEXT', 'Cena'), n: cs.addComponentProperty('name', 'TEXT', 'Crema de calabacín') };
+  for (const c of cs.children) { c.findOne((n) => n.name === 'slot').componentPropertyReferences = { characters: K.s }; c.findOne((n) => n.name === 'name').componentPropertyReferences = { characters: K.n }; }
+  return { set: cs.id, fixedIcons: await fixIconColors(cs), unbound: unboundPaints(cs).length };
+}
+
 if (ARGS.part === 'doc') {
   const doc = await pageDoc(page, 'PATRONES', 'Patrones', 'Lo que se repite en las features, montado SOLO con instancias de la librería: si cambia un componente, cambian los patrones. Los nombres de variante describen estados de producto (no props de React), porque un patrón no es un componente del código: es una composición que el código repite. Cada descripción dice de qué archivo sale.');
-  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket']];
+  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket'], ['Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', []], ['Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', []], ['Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', []]];
   const out = [];
   for (const [name, axes, colAxis, rowAxes] of ENTRIES) {
     const node = page.findOne((n) => (n.type === 'COMPONENT_SET' || (n.type === 'COMPONENT' && n.parent.type !== 'COMPONENT_SET')) && n.name === name);

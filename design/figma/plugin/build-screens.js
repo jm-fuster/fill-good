@@ -3,7 +3,9 @@
 // pantalla no se reutiliza, se revisa. ARGS.screen:
 //   inventario-movil | inventario-escritorio | lista-movil | lista-escritorio | menus-movil | inventario-movil-oscuro
 //   pu-crear | pu-pregunta | pu-invitar | pu-lista | pu-inventario | pu-unirse (primer uso)
-//   pt-aviso | pt-escanear | pt-analizando | pt-revisar | pt-celebracion | pt-caducidades (primer ticket) | indice
+//   pt-aviso | pt-escanear | pt-analizando | pt-revisar | pt-celebracion | pt-caducidades (primer ticket)
+//   rp-despensa-tarjeta | rp-despensa-preguntas | rp-despensa-lista | rp-platos-tarjeta | rp-platos-preguntas
+//   rp-platos-descontar | rp-platos-porque (repasos semanales) | indice
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
 const variant = (cs, name) => { const v = cs.children.find((c) => c.name === name); if (!v) throw new Error('Variante ' + name + ' en ' + cs.name); return v; };
@@ -493,9 +495,134 @@ if (ARGS.screen === 'pt-caducidades') {
   return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
 }
 
+// ── Repasos semanales ───────────────────────────────────────────────────────
+// Las dos tarjetas del shell (mb-4 encima del <h1> de cualquier página) y sus
+// modales. Nunca salen las dos a la vez: cede la despensa (hasta YIELD_MAX_DAYS).
+const RP = {
+  dTarjeta: 'Repasos · 1 · Despensa: la tarjeta', dPreguntas: 'Repasos · 2 · Despensa: preguntas', dLista: 'Repasos · 3 · Despensa: ¿lo apuntamos?',
+  pTarjeta: 'Repasos · 4 · Platos: la tarjeta', pPreguntas: 'Repasos · 5 · Platos: preguntas', pDescontar: 'Repasos · 6 · Platos: descontar', pPorQue: 'Repasos · 7 · Platos: ¿por qué no?',
+};
+const L4 = {
+  tarjeta: await setOf('◆ PATRONES', 'Tarjeta de repaso'), pd: await setOf('◆ PATRONES', 'Pregunta de despensa'), pp: await setOf('◆ PATRONES', 'Pregunta de plato'),
+  cb: await setOf('02 · Formularios', 'Checkbox'),
+};
+function reviewCard(parent, tipo, title, description) { const t = inst(L4.tarjeta, 'tipo=' + tipo); parent.appendChild(t); t.layoutSizingHorizontal = 'FILL'; t.setProperties({ [P(L4.tarjeta, 'title')]: title, [P(L4.tarjeta, 'description')]: description }); return t; }
+async function pageListaConRepaso(name) {
+  const s = screen(name, 390, 'mobile'); const c = mobileContent(s); c.paddingBottom = 112 + 34 + 88;
+  reviewCard(c, 'despensa', '¿Repasamos la despensa?', '8 productos que llevan tiempo sin mirarse. Un toque cada uno.');
+  withActions(c, 'Lista de la compra', []); await listaContenido(c, false);
+  finishMobile(s, c, { checkout: 'Finalizar compra (1) → inventario' }); await activate(s, 1);
+  return s;
+}
+async function pageInventarioConRepaso(name) {
+  const s = screen(name, 390, 'mobile'); const c = mobileContent(s);
+  reviewCard(c, 'platos', '¿Qué tal estos días?', 'Tenías 3 platos planificados.');
+  withActions(c, 'Inventario', [IB('outline', 'icon', 'rotate-ccw-clock')]);
+  const se = inst(L.search, 'filled=false'); c.appendChild(se); se.layoutSizingHorizontal = 'FILL';
+  await chips(c, [['Caducan pronto', 1, 'inactivo'], ['Caducados', 1, 'inactivo'], ['Agotados', 1, 'inactivo'], ['Quedan pocas', 1, 'inactivo']], false);
+  const secs = stack('secciones', c, 24); await section(secs, '🧊', 'Nevera', 4, true, NEVERA, 1); await section(secs, '🧺', 'Despensa', 3, false, DESPENSA, 1);
+  finishMobile(s, c); await activate(s, 0);
+  return s;
+}
+// Contenido del hueco de ResponsiveModal para UNA pantalla: un componente local en
+// la sección «Contenidos de modal», que el sheet recibe por instance swap. Lleva
+// también el pie, porque cada repaso pone el suyo (el del componente se oculta).
+function modalSlot(name) {
+  let holder = page.findOne((n) => n.name === 'Contenidos de modal (slots)' && n.parent === page);
+  if (!holder) { holder = stack('Contenidos de modal (slots)', null, 40, 'HORIZONTAL'); page.appendChild(holder); holder.x = -3000; holder.y = 0; holder.primaryAxisSizingMode = 'AUTO'; holder.counterAxisSizingMode = 'AUTO'; }
+  for (const o of holder.findAll((n) => n.type === 'COMPONENT' && n.name === '_Contenido · ' + name)) o.remove();
+  const k = figma.createComponent(); k.name = '_Contenido · ' + name; k.layoutMode = 'VERTICAL'; k.primaryAxisSizingMode = 'AUTO'; k.counterAxisSizingMode = 'FIXED'; k.resize(390, 10); k.primaryAxisSizingMode = 'AUTO'; k.fills = []; k.itemSpacing = 0; k.clipsContent = false;
+  holder.appendChild(k);
+  k.description = `Hueco de ResponsiveModal para «${name}» (◆ PANTALLAS). Montado con instancias; el pie va aquí porque cada repaso lleva el suyo.`;
+  return k;
+}
+function modalFooter(k) { const f = stack('pie del repaso', k, 8); padX(f, 'spacing/4'); padY(f, 'spacing/4'); return f; }
+async function sheetOver(s, slot, title, description) {
+  const m = inst(L3.modal, 'viewport=mobile, footer=default');
+  m.setProperties({ [P(L3.modal, 'title')]: title, [P(L3.modal, 'description')]: description });
+  m.findOne((n) => n.type === 'INSTANCE' && n.name === 'content').swapComponent(slot);
+  m.children.find((n) => n.name === 'footer').visible = false; // el del componente, no el del hueco
+  // El sheet mide como mucho el 80 % del alto (max-h-80dvh) y hace scroll: aquí se
+  // enseña entero, alargando la pantalla si hace falta.
+  const oldH = s.height, H = Math.max(844, Math.ceil(m.height + 169));
+  s.resize(390, H); for (const n of s.children) if (n.type === 'INSTANCE' && (n.name === 'BottomNav' || n.name === 'FAB') || n.name === 'CheckoutBar') n.y = H - (oldH - n.y);
+  const ov = figma.createFrame(); ov.name = 'overlay'; ov.resize(390, H); setPaints(ov, 'fills', [['component/modal/overlay']]); ov.effects = [{ type: 'BACKGROUND_BLUR', radius: 4, visible: true }]; s.appendChild(ov);
+  s.appendChild(m); m.x = 0; m.y = H - m.height;
+  return m;
+}
+function toastOn(s, title) { const t = inst(L3.toast, 'type=success'); s.appendChild(t); t.setProperties({ [P(L3.toast, 'title')]: title }); t.x = (390 - t.width) / 2; t.y = 16; return t; }
+const DESPENSA_REPASO = [['Nevera', [['Yogures', 'yogur', '4 ud'], ['Mantequilla', 'mantequilla', '250 g'], ['Queso rallado', 'queso', '200 g']]], ['Congelador', [['Guisantes congelados', 'guisantes', '400 g']]], ['Despensa', [['Arroz', 'arroz', '1 kg'], ['Aceite de oliva virgen extra', 'aceite', '1 l'], ['Café', 'cafe', '250 g'], ['Tomate frito', 'tomate', '2 ud']]]];
+function pd(parent, estado, [name, slug, qty]) { const i = inst(L4.pd, 'estado=' + estado); parent.appendChild(i); i.layoutSizingHorizontal = 'FILL'; i.setProperties({ [P(L4.pd, 'name')]: name, [P(L4.pd, 'qty')]: qty, [P(L4.pd, 'producto')]: prod(slug) }); return i; }
+function pp(parent, estado, slot, name) { const i = inst(L4.pp, 'estado=' + estado); parent.appendChild(i); i.layoutSizingHorizontal = 'FILL'; i.setProperties({ [P(L4.pp, 'slot')]: slot, [P(L4.pp, 'name')]: name }); return i; }
+async function silenceRow(f, kind) {
+  if (kind === 'despensa') { // mr-auto flex flex-wrap gap-1, ghost sm: solo mientras no se ha contestado nada
+    const r = stack('silencios', f, 4, 'HORIZONTAL'); r.layoutWrap = 'WRAP'; r.counterAxisSpacing = 4; for (const l of ['No esta semana', 'No volver a preguntar']) r.appendChild(BTN('ghost', 'sm', l));
+  } else { // flex gap-2, ghost por defecto con text-xs y flex-1
+    const r = stack('silencios', f, 8, 'HORIZONTAL'); for (const l of ['Silenciar esta semana', 'No volver a preguntar']) { const b = BTN('ghost', 'default', l); r.appendChild(b); b.layoutSizingHorizontal = 'FILL'; bind(b.findOne((n) => n.type === 'TEXT'), 'fontSize', 'font-size/xs'); }
+  }
+}
+// Lista de platos pendientes: max-h-[55vh] con scroll propio (464 px en 844)
+async function platosList(k, rows) {
+  const ul = stack('pendientes (max-h 55vh, scroll)', k, 16); padX(ul, 'spacing/4');
+  let day = null, g = null;
+  for (const [d, estado, slot, name] of rows) { if (d !== day) { day = d; g = stack(d, ul, 8); await text(d, 'Caption/Medium', 'muted-foreground', g, { fill: true }); } pp(g, estado, slot, name); }
+  if (ul.height > 464) { ul.layoutSizingVertical = 'FIXED'; ul.resize(390, 464); ul.clipsContent = true; }
+  return ul;
+}
+async function platosFooter(k) { const f = modalFooter(k); const cl = BTN('ghost', 'default', 'Cerrar'); f.appendChild(cl); cl.layoutSizingHorizontal = 'FILL'; await silenceRow(f, 'platos'); }
+const PLATOS = (state) => [['Lunes 28', state.lunes ?? 'pendiente', 'Cena', 'Crema de calabacín'], ['Ayer', state.comida ?? 'pendiente', 'Comida', 'Arroz con pollo'], ['Ayer', 'pendiente', 'Cena', 'Tortilla de patatas']];
+
+if (ARGS.screen === 'rp-despensa-tarjeta') { const s = await pageListaConRepaso(RP.dTarjeta); return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) }; }
+if (ARGS.screen === 'rp-platos-tarjeta') { const s = await pageInventarioConRepaso(RP.pTarjeta); return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) }; }
+
+if (ARGS.screen === 'rp-despensa-preguntas') {
+  const k = modalSlot('Repaso de despensa · preguntas');
+  const body = stack('grupos', k, 16); padX(body, 'spacing/4');
+  for (const [loc, items] of DESPENSA_REPASO) { const sec = stack(loc, body, 8); await text(loc, 'Caption/Medium', 'muted-foreground', sec, { fill: true }); const ul = stack('filas', sec, 8); for (const it of items) pd(ul, 'pendiente', it); }
+  const f = modalFooter(k); const cl = BTN('ghost', 'default', 'Cerrar'); f.appendChild(cl); cl.layoutSizingHorizontal = 'FILL'; await silenceRow(f, 'despensa');
+  const s = await pageListaConRepaso(RP.dPreguntas);
+  await sheetOver(s, k, 'Repaso de despensa', '¿Te queda de esto? Un toque por producto.');
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'rp-despensa-lista') {
+  const k = modalSlot('Repaso de despensa · ¿lo apuntamos?');
+  const body = stack('a la lista', k, 12); padX(body, 'spacing/4');
+  const ul = stack('filas', body, 8);
+  for (const [n, recap] of [['Mantequilla', 'Se ha agotado'], ['Guisantes congelados', 'Te queda poco'], ['Café', 'Te queda poco']]) {
+    const li = stack(n, ul, 12, 'HORIZONTAL'); li.counterAxisAlignItems = 'MIN'; padX(li, 'spacing/3'); padY(li, 'spacing/3'); rad(li, 'radius/xl'); setPaints(li, 'strokes', [['border']]); li.strokeWeight = 1; li.strokeAlign = 'INSIDE';
+    const cw = stack('check', li, 0, 'HORIZONTAL'); cw.layoutSizingHorizontal = 'HUG'; bind(cw, 'paddingTop', 'spacing/0_5'); const box = inst(L4.cb, 'state=default, checked=true'); cw.appendChild(box); box.rescale(20 / 16);
+    const lb = stack('label', li, 4); lb.layoutSizingHorizontal = 'FILL'; await text(n, 'Body/Small Medium', 'foreground', lb, { fill: true }); await text(recap, 'Caption/Default', 'muted-foreground', lb, { fill: true });
+  }
+  const f = stack('footer (px-0)', body, 8); padY(f, 'spacing/4'); // ResponsiveModalFooter className="gap-2 px-0", dentro del cuerpo
+  fullBtn(f, 'default', 'default', 'Apuntar en la lista', 'shopping-cart'); fullBtn(f, 'ghost', 'default', 'Volver', 'chevron-left');
+  const s = await pageListaConRepaso(RP.dLista);
+  await sheetOver(s, k, '¿Lo apuntamos?', 'Lo que se ha acabado o queda poco, a la lista de la compra.');
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'rp-platos-preguntas' || ARGS.screen === 'rp-platos-descontar' || ARGS.screen === 'rp-platos-porque') {
+  const kind = ARGS.screen.slice(10);
+  const k = modalSlot('Repaso de platos · ' + (kind === 'porque' ? '¿por qué no?' : kind));
+  const ul = await platosList(k, PLATOS(kind === 'preguntas' ? { comida: 'no-abierto' } : kind === 'descontar' ? { comida: 'descontar' } : { lunes: 'por-que' }));
+  if (kind === 'descontar') { // los ingredientes del arroz con pollo, no los del ejemplo del patrón
+    const row = ul.findAll((n) => n.type === 'INSTANCE' && n.name.startsWith('Pregunta de plato') || (n.type === 'INSTANCE' && n.findOne && n.findOne((q) => q.name === 'descontables'))).find((n) => n.findOne((q) => q.name === 'descontables'));
+    const lines = row.findOne((q) => q.name === 'descontables').children;
+    const DATA = [['Arroz', 'Tienes 1 kg', '0,3', 'kg'], ['Pechugas de pollo', 'Tienes 0,5 kg', '0,4', 'kg'], ['Pimientos', 'Tienes 3 ud', '1', 'ud']];
+    lines.forEach((li, i) => { const [n, have, q, u] = DATA[i]; const ts = li.findAll((x) => x.type === 'TEXT' && x.parent.name !== 'cantidad' && !x.parent.name.startsWith('Input') && x.parent.type !== 'INSTANCE'); ts[0].characters = n; ts[1].characters = have; li.findOne((x) => x.type === 'INSTANCE' && x.parent.name === 'cantidad').setProperties({ [P(L2.input, 'value')]: q }); li.findOne((x) => x.type === 'TEXT' && x.parent.name === 'cantidad').characters = u; });
+    const inf = row.findOne((q) => q.name === 'Aceite de oliva'); const it = inf.findAll((x) => x.type === 'TEXT'); it[0].characters = 'Caldo de pollo'; it[1].characters = 'No te queda en el inventario';
+  }
+  await platosFooter(k);
+  const s = await pageInventarioConRepaso(RP[kind === 'preguntas' ? 'pPreguntas' : kind === 'descontar' ? 'pDescontar' : 'pPorQue']);
+  await sheetOver(s, k, 'Repaso de platos', '¿Llegaste a cocinar lo que tenías planificado?');
+  if (kind === 'descontar') toastOn(s, 'Marcado como cocinado');
+  if (kind === 'porque') toastOn(s, 'Anotado: no se hizo');
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
 if (ARGS.screen === 'indice') {
   // Colocar las pantallas en una rejilla con títulos
-  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio'], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades]];
+  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio'], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue]];
   let y = 0; const out = [];
   const oldT = page.findAll((n) => n.name.startsWith('título · ') && n.parent === page); for (const t of oldT) t.remove();
   for (const rowNames of order) { let x = 0, h = 0; for (const n of rowNames) { const s = page.findOne((k) => k.name === n && k.parent === page); if (!s) continue; s.x = x; s.y = y + 48; const t = await text(n, 'Title/Section', 'foreground', page); t.name = 'título · ' + n; t.x = x; t.y = y; x += s.width + 120; h = Math.max(h, s.height); out.push(n); } y += h + 48 + 200; }
