@@ -1,7 +1,8 @@
 // build-patterns.js — Fase 6: patrones de las features, montados con instancias de
 // la librería (nunca copias). Página «◆ PATRONES». ARGS.part:
 //   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | seleccion | fila-ajustes | selector-producto | linea-ticket | celebracion | tarjeta-repaso | pregunta-despensa | pregunta-plato | coste | tarjeta-receta
-//   receta-pack | valoracion | ingrediente-cocina | temporizador | plato-apilado | doc
+//   receta-pack | valoracion | ingrediente-cocina | temporizador | plato-apilado
+//   aviso-precio | barra-objetivo | reparto | producto-precio | hucha | doc
 const ES = async (n) => (await figma.getLocalEffectStylesAsync()).find((s) => s.name === n).id;
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
@@ -256,7 +257,7 @@ if (ARGS.part === 'fila-ajustes') {
   const add = stager(page, 'staging · Fila de ajustes');
   for (const tipo of ['enlace', 'accion', 'accion-destructiva']) {
     const bad = tipo === 'accion-destructiva';
-    const c = comp('tipo=' + tipo); c.primaryAxisAlignItems = 'MIN'; c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 56); bind(c, 'minHeight', 'spacing/14'); padX(c, 'spacing/4'); padY(c, 'spacing/3'); bind(c, 'itemSpacing', 'spacing/3'); rad(c, 'radius/xl'); add(c);
+    const c = comp('tipo=' + tipo); c.primaryAxisAlignItems = 'MIN'; c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 56); c.counterAxisSizingMode = 'AUTO'; bind(c, 'minHeight', 'spacing/14'); padX(c, 'spacing/4'); padY(c, 'spacing/3'); bind(c, 'itemSpacing', 'spacing/3'); rad(c, 'radius/xl'); add(c);
     c.appendChild(icon(bad ? 'trash' : 'settings', 20, bad ? 'destructive' : 'muted-foreground', 'icon'));
     const tx = stack('textos', c, 0); tx.layoutSizingHorizontal = 'FILL';
     await text(bad ? 'Borrar cuenta' : 'Ajustes del hogar', 'Body/Small Medium', bad ? 'destructive' : 'foreground', tx, { fill: true, name: 'label' });
@@ -563,9 +564,97 @@ if (ARGS.part === 'plato-apilado') {
   return { id: v.id, w: v.width, h: v.height };
 }
 
+if (ARGS.part === 'aviso-precio') {
+  const add = stager(page, 'staging · Aviso de precio');
+  for (const t of ['sube', 'baja']) {
+    const up = t === 'sube', tone = up ? 'warning' : 'success';
+    const c = comp('tipo=' + t); c.primaryAxisAlignItems = 'MIN'; c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 56); c.counterAxisSizingMode = 'AUTO'; // resize() deja el alto FIXED: crece con el texto bind(c, 'minHeight', 'spacing/14'); bind(c, 'itemSpacing', 'spacing/3'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); setPaints(c, 'strokes', [['border']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    const b = stack('icono', c, 0, 'HORIZONTAL'); b.layoutSizingHorizontal = 'FIXED'; b.resize(36, 36); b.layoutSizingVertical = 'FIXED'; b.primaryAxisAlignItems = 'CENTER'; b.counterAxisAlignItems = 'CENTER'; rad(b, 'radius/lg'); setPaints(b, 'fills', [[tone, 0.15]]); b.appendChild(icon(up ? 'trending-up' : 'trending-down', 16, tone, 'icon'));
+    await text(up ? 'Aceite de oliva virgen extra ha subido un 17% desde tu última compra' : 'Plátanos está un 6% por debajo de tu precio habitual', 'Body/Small', 'foreground', c, { fill: true, name: 'texto' });
+    c.appendChild(icon('chevron-right', 16, 'muted-foreground', 'chevron'));
+  }
+  const { cs } = await combine(page, 'staging · Aviso de precio', 'Aviso de precio', { tipo: ['sube', 'baja'] }, 'tipo', [], 'Aviso de /precios (prices/components/price-alerts.tsx): un Link a la ficha del producto, min-h-14, rounded-xl border p-3 gap-3. Cuadro de 36 px en warning/15 con TrendingUp si ha subido, success/15 con TrendingDown si está barato; el texto en text-sm y ChevronRight. Primero las subidas y luego por porcentaje. Solo salen con historial: 3 compras para «barato», 4 para una subida. OJO: el texto dice «desde tu última compra», pero alerts.ts compara con la MEDIANA de las ≤5 compras anteriores.');
+  const k = cs.addComponentProperty('texto', 'TEXT', 'Aceite de oliva virgen extra ha subido un 17% desde tu última compra');
+  for (const c of cs.children) c.findOne((n) => n.name === 'texto').componentPropertyReferences = { characters: k };
+  return { set: cs.id, unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'barra-objetivo') {
+  const add = stager(page, 'staging · Barra de objetivo');
+  const V = { bien: ['success', 0.47, '142,37 €', ' / 300,00 €', 'Te quedan 157,63 € este mes', 'muted-foreground'], cerca: ['warning', 0.9, '270,10 €', ' / 300,00 €', 'Te quedan 29,90 € este mes', 'muted-foreground'], pasado: ['destructive', 1, '323,10 €', ' / 300,00 €', 'Te has pasado 23,10 € del objetivo', 'destructive'] };
+  for (const [k, [tone, pct, spent, of, cap, capTone]] of Object.entries(V)) {
+    const c = comp('estado=' + k, 'VERTICAL'); c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; c.counterAxisSizingMode = 'FIXED'; c.resize(326, 10); c.primaryAxisSizingMode = 'AUTO'; bind(c, 'itemSpacing', 'spacing/1_5'); add(c);
+    const r = stack('fila', c, 8, 'HORIZONTAL'); r.primaryAxisAlignItems = 'SPACE_BETWEEN'; r.counterAxisAlignItems = 'BASELINE';
+    await text('Objetivo mensual', 'Body/Small', 'muted-foreground', r);
+    const v = stack('importe', r, 0, 'HORIZONTAL'); v.layoutSizingHorizontal = 'HUG'; await text(spent, 'Body/Small Medium', tone, v, { name: 'gastado' }); await text(of, 'Body/Small', 'muted-foreground', v, { name: 'objetivo' });
+    const tr = figma.createFrame(); tr.name = 'pista'; c.appendChild(tr); tr.layoutSizingHorizontal = 'FILL'; tr.resize(326, 10); rad(tr, 'radius/full'); setPaints(tr, 'fills', [['muted']]); tr.clipsContent = true;
+    const f = figma.createFrame(); f.name = 'relleno'; tr.appendChild(f); f.resize(326 * pct, 10); f.x = 0; f.y = 0; rad(f, 'radius/full'); setPaints(f, 'fills', [[tone]]); f.constraints = { horizontal: 'SCALE', vertical: 'STRETCH' };
+    await text(cap, 'Caption/Default', capTone, c, { fill: true, name: 'resto' });
+  }
+  const { cs } = await combine(page, 'staging · Barra de objetivo', 'Barra de objetivo', { estado: ['bien', 'cerca', 'pasado'] }, 'estado', [], 'BudgetBar (prices/components/budget-bar.tsx), en /precios dentro del resumen del mes y en /perfil suelta: «Objetivo mensual» en muted y «142,37 € / 300,00 €» con lo gastado en font-medium del color de estado. Pista h-2.5 rounded-full bg-muted; el relleno es success hasta el 85 %, warning por encima y destructive al pasarse. Debajo, text-xs: «Te quedan X este mes» o, pasado, «Te has pasado X del objetivo» en destructive. Solo existe si el hogar ha puesto presupuesto mensual (la columna nace vacía). La pista no lleva role="progressbar": el valor lo dice la línea de texto.');
+  return { set: cs.id, unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'reparto') {
+  const add = stager(page, 'staging · Barra de reparto');
+  for (const col of ['1', '2', '3', '4', '5', 'otros']) {
+    const c = comp('color=' + col, 'VERTICAL'); c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; c.counterAxisSizingMode = 'FIXED'; c.resize(326, 10); c.primaryAxisSizingMode = 'AUTO'; bind(c, 'itemSpacing', 'spacing/1'); add(c);
+    const r = stack('fila', c, 8, 'HORIZONTAL'); r.primaryAxisAlignItems = 'SPACE_BETWEEN';
+    await text(col === 'otros' ? 'Otros' : 'Despensa', 'Body/Small', 'foreground', r, { name: 'label' }); await text('58,20 €', 'Body/Small Medium', 'foreground', r, { name: 'importe' });
+    const tr = figma.createFrame(); tr.name = 'pista'; c.appendChild(tr); tr.layoutSizingHorizontal = 'FILL'; tr.resize(326, 8); rad(tr, 'radius/full'); setPaints(tr, 'fills', [['muted']]); tr.clipsContent = true;
+    const f = figma.createFrame(); f.name = 'relleno'; tr.appendChild(f); f.resize(326, 8); rad(f, 'radius/full'); setPaints(f, 'fills', [col === 'otros' ? ['muted-foreground', 0.4] : ['chart-' + col]]); f.constraints = { horizontal: 'SCALE', vertical: 'STRETCH' };
+  }
+  const { cs } = await combine(page, 'staging · Barra de reparto', 'Barra de reparto', { color: ['1', '2', '3', '4', '5', 'otros'] }, 'color', [], 'Fila de «Por categoría» y «Por comercio» en el resumen del mes de /precios (spending-panel.tsx): etiqueta y cantidad en text-sm y debajo una barra h-2 rounded-full sobre bg-muted. Colores chart-1…chart-5 por orden, y a partir del quinto se juntan en «Otros» con muted-foreground/40. El ancho es RELATIVO AL MAYOR (la primera barra siempre llena), no al total: compara partidas entre sí, no dice qué parte del mes es cada una. En cada pantalla se ajusta el ancho del «relleno».');
+  const K = { l: cs.addComponentProperty('label', 'TEXT', 'Despensa'), i: cs.addComponentProperty('importe', 'TEXT', '58,20 €') };
+  for (const c of cs.children) { c.findOne((n) => n.name === 'label').componentPropertyReferences = { characters: K.l }; c.findOne((n) => n.name === 'importe').componentPropertyReferences = { characters: K.i }; }
+  return { set: cs.id, unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'producto-precio') {
+  const add = stager(page, 'staging · Producto con precio');
+  for (const cmp of ['false', 'true']) {
+    const c = comp('comparable=' + cmp); c.primaryAxisAlignItems = 'SPACE_BETWEEN'; c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 56); c.counterAxisSizingMode = 'AUTO'; bind(c, 'minHeight', 'spacing/14'); bind(c, 'itemSpacing', 'spacing/3'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); setPaints(c, 'strokes', [['border']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    const l = stack('producto', c, 0); l.layoutSizingHorizontal = 'FILL';
+    await text('Leche entera', 'Body/Base Medium', 'foreground', l, { fill: true, name: 'name' });
+    await text('6 compras · último 0,92 €/ud', 'Body/Small', 'muted-foreground', l, { fill: true, name: 'detalle' });
+    if (cmp === 'true') await text('0,92 €/l', 'Body/Small', 'price', l, { fill: true, name: 'comparable' });
+    const r = stack('gastado', c, 0); r.layoutSizingHorizontal = 'HUG'; r.counterAxisAlignItems = 'MAX';
+    await text('34,14 €', 'Body/Base Medium', 'foreground', r, { name: 'total' }); await text('gastado', 'Caption/Default', 'muted-foreground', r);
+    c.appendChild(icon('chevron-right', 16, 'muted-foreground', 'chevron'));
+  }
+  const { cs } = await combine(page, 'staging · Producto con precio', 'Producto con precio', { comparable: ['false', 'true'] }, 'comparable', [], 'Producto de la lista de /precios (precios/page.tsx): un Link min-h-14 rounded-xl border p-3 a su ficha. Nombre en font-medium, «{n} compras · último {precio}/{unidad}» en text-sm muted y, si el producto declara contenido, el precio comparable en text-price («0,92 €/l», «0,20 €/ud · ≈ 2,15 €/kg»). A la derecha lo gastado en total, «gastado» en text-xs y ChevronRight. Ordenados por lo gastado; en lg, dos columnas.');
+  const K = { n: cs.addComponentProperty('name', 'TEXT', 'Leche entera'), d: cs.addComponentProperty('detalle', 'TEXT', '6 compras · último 0,92 €/ud'), t: cs.addComponentProperty('total', 'TEXT', '34,14 €') };
+  for (const c of cs.children) { c.findOne((n) => n.name === 'name').componentPropertyReferences = { characters: K.n }; c.findOne((n) => n.name === 'detalle').componentPropertyReferences = { characters: K.d }; c.findOne((n) => n.name === 'total').componentPropertyReferences = { characters: K.t }; }
+  return { set: cs.id, unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'hucha') {
+  const btn = await setOf('01 · Acciones', 'Button');
+  const s = single('Hucha del mes');
+  s.layoutMode = 'VERTICAL'; s.primaryAxisSizingMode = 'AUTO'; s.counterAxisSizingMode = 'FIXED'; s.resize(358, 10); s.primaryAxisSizingMode = 'AUTO'; bind(s, 'itemSpacing', 'spacing/3'); padX(s, 'spacing/5'); padY(s, 'spacing/5'); rad(s, 'radius/xl'); setPaints(s, 'strokes', [['border']]); s.strokeWeight = 1; s.strokeAlign = 'INSIDE';
+  const top = stack('cifra', s, 2); top.counterAxisAlignItems = 'CENTER';
+  const pig = figma.createFrame(); pig.name = 'hucha'; pig.fills = []; pig.resize(56, 56); pig.clipsContent = false; top.appendChild(pig);
+  const pi = icon('piggy-bank', 56, 'success', 'icon'); pig.appendChild(pi); pi.x = 0; pi.y = 0;
+  const coin = figma.createEllipse(); coin.name = 'moneda (coin-drop)'; coin.resize(10, 10); setPaints(coin, 'fills', [['chart-3']]); pig.appendChild(coin); coin.x = 28; coin.y = 0;
+  const gap = figma.createFrame(); gap.name = 'mb-1'; gap.fills = []; gap.resize(1, 4); top.appendChild(gap);
+  (await text('A la hucha este mes', 'Body/Small', 'muted-foreground', top, { fill: true })).textAlignHorizontal = 'CENTER';
+  const a = await text('+11,55 €', 'Display/4xl', 'success', top, { fill: true, name: 'importe' }); a.textAlignHorizontal = 'CENTER';
+  const ul = stack('desglose', s, 4);
+  for (const [ic, l, v] of [['tag', 'Descuentos del ticket', '8,40 €'], ['trending-down', 'Precio frente a lo habitual', '+3,15 €']]) {
+    const li = stack(l, ul, 8, 'HORIZONTAL'); li.primaryAxisAlignItems = 'SPACE_BETWEEN';
+    const lt = stack('concepto', li, 4, 'HORIZONTAL'); lt.layoutSizingHorizontal = 'HUG'; lt.counterAxisAlignItems = 'CENTER'; lt.appendChild(icon(ic, 14, 'muted-foreground', 'icon')); await text(l, 'Caption/Default', 'muted-foreground', lt);
+    await text(v, 'Caption/Default', 'muted-foreground', li);
+  }
+  const bw = stack('movimientos', s, 0, 'HORIZONTAL'); bw.primaryAxisAlignItems = 'CENTER';
+  const b = variant(btn, 'variant=ghost, size=sm, state=default').createInstance(); bw.appendChild(b); b.setProperties({ [P(btn, 'label')]: 'Ver los 5 movimientos', [P(btn, 'icon inline-start#')]: true, [P(btn, 'icon inline-start ↳')]: iconComp('receipt-text').id });
+  for (const t of b.findAll((n) => n.type === 'TEXT')) setPaints(t, 'fills', [['muted-foreground']]);
+  s.description = 'SavingsPiggy (profile/components/savings-piggy.tsx): la hucha del mes en /perfil. rounded-xl border p-5 gap-3. PiggyBank de 56 px en success con una moneda chart-3 que cae una vez (coin-drop) y un meneo (piggy-nudge); «A la hucha este mes» y la cifra en text-4xl success, contando desde 0 en 800 ms (sin animación con movimiento reducido). Negativa: warning y sin moneda. Desglose en text-xs: «Descuentos del ticket» y «Precio frente a lo habitual» (TrendingDown o TrendingUp), cada uno solo si no es cero. «Ver los N movimientos» abre un sheet con cada compra que movió el saldo. OJO: ese botón va en size="sm" (36 px), y un total de 0,00 € exacto también se celebra (positive = total >= 0).';
+  return { id: s.id, fixedIcons: await fixIconColors(s), unbound: unboundPaints(s).length };
+}
+
 if (ARGS.part === 'doc') {
   const doc = await pageDoc(page, 'PATRONES', 'Patrones', 'Lo que se repite en las features, montado SOLO con instancias de la librería: si cambia un componente, cambian los patrones. Los nombres de variante describen estados de producto (no props de React), porque un patrón no es un componente del código: es una composición que el código repite. Cada descripción dice de qué archivo sale.');
-  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'marcar-apilado', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket'], ['Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', []], ['Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', []], ['Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', []], ['Coste de receta', { estado: ['completo', 'parcial'] }, 'estado', []], ['Tarjeta de receta', { historial: ['false', 'true'] }, 'historial', []], ['Receta del pack', { estado: ['añadir', 'guardada'] }, 'estado', []], ['Valoración', { votos: ['sin', 'con'] }, 'votos', []], ['Ingrediente al cocinar', { estado: ['pendiente', 'marcado', 'falta'] }, 'estado', []], ['Temporizador', { estado: ['en-marcha', 'sonado'] }, 'estado', []]];
+  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'marcar-apilado', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket'], ['Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', []], ['Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', []], ['Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', []], ['Coste de receta', { estado: ['completo', 'parcial'] }, 'estado', []], ['Tarjeta de receta', { historial: ['false', 'true'] }, 'historial', []], ['Receta del pack', { estado: ['añadir', 'guardada'] }, 'estado', []], ['Valoración', { votos: ['sin', 'con'] }, 'votos', []], ['Ingrediente al cocinar', { estado: ['pendiente', 'marcado', 'falta'] }, 'estado', []], ['Temporizador', { estado: ['en-marcha', 'sonado'] }, 'estado', []], ['Aviso de precio', { tipo: ['sube', 'baja'] }, 'tipo', []], ['Barra de objetivo', { estado: ['bien', 'cerca', 'pasado'] }, 'estado', []], ['Barra de reparto', { color: ['1', '2', '3', '4', '5', 'otros'] }, 'color', []], ['Producto con precio', { comparable: ['false', 'true'] }, 'comparable', []], ['Hucha del mes']];
   const out = [];
   for (const [name, axes, colAxis, rowAxes] of ENTRIES) {
     const node = page.findOne((n) => (n.type === 'COMPONENT_SET' || (n.type === 'COMPONENT' && n.parent.type !== 'COMPONENT_SET')) && n.name === name);
