@@ -8,7 +8,9 @@
 //   rp-platos-descontar | rp-platos-porque (repasos semanales)
 //   rc-vacio | rc-lista | rc-receta | ck-antes | ck-paso | ck-final | menus-escritorio
 //   pr-vacio | pr-lista | pr-producto | rs-cerrado | rs-primer-mes | pf-nuevo | pf-ahorro
-//   aj-indice | aj-hogar | lg-movil | lg-escritorio | ld-movil | ld-escritorio | indice
+//   aj-indice | aj-hogar | lg-movil | lg-escritorio | ld-movil | ld-escritorio
+//   es-abriendo | es-encuadre | es-detectado | es-ajuste | es-sin-camara (escáner de documentos)
+//   mc-comprando | mc-quitar | mc-todo | mc-vacia | mc-escritorio (modo compra) | indice
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
 const variant = (cs, name) => { const v = cs.children.find((c) => c.name === name); if (!v) throw new Error('Variante ' + name + ' en ' + cs.name); return v; };
@@ -1253,9 +1255,238 @@ async function landing(desktopMode) {
 }
 if (ARGS.screen === 'ld-movil' || ARGS.screen === 'ld-escritorio') { const s = await landing(ARGS.screen === 'ld-escritorio'); return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) }; }
 
+// ── Escáner de documentos ───────────────────────────────────────────────────
+// receipts/components/document-scanner.tsx: fixed inset-0 z-[60] con la clase `dark`
+// forzada, así que la pantalla va en modo Dark sea cual sea el tema. El visor es el vídeo
+// (object-contain) con un canvas encima: velo negro al 50 % fuera del recorte y el trazo
+// del polígono (3 px, primary buscando, success al bloquearse). La imagen de la cámara es
+// una ILUSTRACIÓN con tokens: en código es el vídeo, no hay nada que copiar.
+const ES = {
+  abriendo: 'Escáner · 1 · Abriendo la cámara', encuadre: 'Escáner · 2 · Encuadrando', detectado: 'Escáner · 3 · Ticket detectado',
+  ajuste: 'Escáner · 4 · Ajustar el recorte', sinCamara: 'Escáner · Sin cámara (vuelve al formulario)',
+};
+const L8 = {
+  ctrl: await setOf('◆ PATRONES', 'Controles del escáner'), tirador: await setOf('◆ PATRONES', 'Tirador de esquina'),
+  fila: await setOf('◆ PATRONES', 'Fila del modo compra'), chip: await setOf('◆ PATRONES', 'Chip de tienda'),
+  cogidos: await setOf('◆ PATRONES', 'Plegable de cogidos'), reco: await setOf('◆ PATRONES', 'Recomendados'),
+};
+const darkMode = (n) => n.setExplicitVariableModeForCollection(colorCol, colorCol.modes.find((m) => m.name === 'Dark').modeId);
+// Vector con coordenadas del padre: el trazado se escribe relativo a su esquina y se coloca
+function vec(parent, name, subpaths, { closed = true, winding = 'NONZERO' } = {}) {
+  const pts = subpaths.flat(); const minX = Math.min(...pts.map((p) => p[0])), minY = Math.min(...pts.map((p) => p[1]));
+  const d = subpaths.map((sp) => sp.map((p, i) => `${i ? 'L' : 'M'} ${(p[0] - minX).toFixed(2)} ${(p[1] - minY).toFixed(2)}`).join(' ') + (closed ? ' Z' : '')).join(' ');
+  const v = figma.createVector(); v.name = name; v.strokes = []; parent.appendChild(v); // un vector nace con trazo negro sin enlazar v.vectorPaths = [{ windingRule: winding, data: d }]; v.x = minX; v.y = minY; return v;
+}
+const QUAD = [[78, 118], [300, 102], [322, 556], [62, 574]]; // TL, TR, BR, BL del ticket en el vídeo
+const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+async function scannerScreen(name, fase, { scene = true, poly = null, handles = false } = {}) {
+  const s = screen(name, 390, 'mobile'); darkMode(s);
+  s.layoutMode = 'VERTICAL'; s.primaryAxisSizingMode = 'FIXED'; s.counterAxisSizingMode = 'FIXED'; s.resize(390, 844); s.itemSpacing = 0;
+  const v = figma.createFrame(); v.name = 'visor (video object-contain + canvas)'; v.fills = []; v.clipsContent = true; s.appendChild(v); v.layoutSizingHorizontal = 'FILL'; v.layoutSizingVertical = 'FILL';
+  const c = inst(L8.ctrl, 'fase=' + fase); s.appendChild(c); c.layoutSizingHorizontal = 'FILL';
+  const W = 390, H = Math.round(v.height), vh = Math.min(H, Math.round(W * 16 / 9)), oy = Math.round((H - vh) / 2); // 1080×1920 en contain
+  if (scene) {
+    const cam = figma.createFrame(); cam.name = 'imagen de la cámara (ilustración)'; v.appendChild(cam); cam.x = 0; cam.y = oy; cam.resize(W, vh); setPaints(cam, 'fills', [['secondary']]); cam.clipsContent = true;
+    const paper = vec(cam, 'ticket (papel)', [QUAD]); setPaints(paper, 'fills', [['foreground']]);
+    const L = (t) => lerp(QUAD[0], QUAD[3], t), R = (t) => lerp(QUAD[1], QUAD[2], t);
+    const seg = (t, a, b) => { const l = L(t), r = R(t); return [lerp(l, r, a), lerp(l, r, b)]; };
+    const head = vec(cam, 'cabecera del ticket', [seg(0.07, 0.3, 0.7)], { closed: false }); head.strokeWeight = 6; head.strokeCap = 'ROUND'; setPaints(head, 'strokes', [['background', 0.5]]);
+    const rowsT = [0.16, 0.2, 0.28, 0.32, 0.36, 0.4, 0.44, 0.48, 0.52, 0.56, 0.6, 0.64, 0.68];
+    const linesL = vec(cam, 'líneas (producto)', rowsT.map((t, i) => seg(t, 0.1, 0.45 + (i % 3) * 0.08)), { closed: false }); linesL.strokeWeight = 3; linesL.strokeCap = 'ROUND'; setPaints(linesL, 'strokes', [['background', 0.35]]);
+    const linesR = vec(cam, 'líneas (importe)', rowsT.map((t) => seg(t, 0.78, 0.9)), { closed: false }); linesR.strokeWeight = 3; linesR.strokeCap = 'ROUND'; setPaints(linesR, 'strokes', [['background', 0.35]]);
+    const tot = vec(cam, 'total', [seg(0.78, 0.1, 0.35), seg(0.78, 0.7, 0.9)], { closed: false }); tot.strokeWeight = 5; tot.strokeCap = 'ROUND'; setPaints(tot, 'strokes', [['background', 0.5]]);
+    if (poly) {
+      const veil = vec(cam, 'velo (fuera del recorte)', [[[0, 0], [W, 0], [W, vh], [0, vh]], QUAD], { winding: 'EVENODD' }); setPaints(veil, 'fills', [['component/scanner/velo']]);
+      const p = vec(cam, 'polígono detectado', [QUAD]); p.fills = []; setPaints(p, 'strokes', [[poly]]); p.strokeWeight = 3; p.strokeJoin = 'ROUND'; p.strokeAlign = 'CENTER';
+    }
+    if (handles) for (const q of QUAD) { const h = inst(L8.tirador, 'state=default'); cam.appendChild(h); h.x = q[0] - 22; h.y = q[1] - 22; }
+  }
+  return s;
+}
+if (ARGS.screen && ARGS.screen.startsWith('es-') && ARGS.screen !== 'es-sin-camara') {
+  const v = await compVar('component/scanner/velo', { r: 0, g: 0, b: 0, a: 0.5 }, { r: 0, g: 0, b: 0, a: 0.5 }, ['FRAME_FILL', 'SHAPE_FILL'], 'rgb(0 0 0 / 0.5)', 'x');
+  v.description = 'Velo del escáner fuera del recorte (document-scanner.tsx:339): se pinta en el canvas con fillStyle «rgb(0 0 0 / 0.5)» y relleno evenodd, a mano y a propósito (es sobre vídeo, en los dos temas). NO ES UN TOKEN: vive solo en ese canvas.';
+  const k = ARGS.screen.slice(3);
+  const cfg = {
+    abriendo: [ES.abriendo, 'abriendo', { scene: false }], encuadre: [ES.encuadre, 'encuadre', {}],
+    detectado: [ES.detectado, 'detectado', { poly: 'success' }], ajuste: [ES.ajuste, 'ajuste', { poly: 'primary', handles: true }],
+  }[k];
+  const s = await scannerScreen(...cfg);
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'es-sin-camara') {
+  // getUserMedia falló: el escáner se cierra, sale un toast.info y el botón principal
+  // pasa a «Hacer foto al ticket» (input nativo con capture="environment")
+  const { s, c } = ticketScreen(ES.sinCamara);
+  withActions(c, TICKET_HEAD[0], [], TICKET_HEAD[1]);
+  const bs = stack('ScanForm (móvil)', c, 12);
+  fullBtn(bs, 'default', 'lg', 'Hacer foto al ticket', 'camera'); fullBtn(bs, 'outline', 'lg', 'Subir imagen o PDF', 'upload');
+  await text('Si el ticket es largo o está arrugado, súbelo escaneado en PDF: se lee mejor.', 'Body/Small', 'muted-foreground', bs, { fill: true });
+  await endTicket(s, c);
+  const t = inst(L3.toast, 'type=info'); s.appendChild(t); t.setProperties({ [P(L3.toast, 'title')]: 'No hay permiso para usar la cámara. Puedes hacer una foto normal del ticket.' }); t.x = (390 - t.width) / 2; t.y = 16;
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+
+// ── Modo compra ─────────────────────────────────────────────────────────────
+// /lista/compra: fixed inset-0 z-[60] (tapa la nav y el sidebar), bandas a lo ancho con el
+// contenido en max-w-2xl. Sin resumen ni confirmación al terminar: Finalizar lleva directo
+// a /inventario/revision (ya dibujada en «Primer ticket · 6»).
+const MC = {
+  comprando: 'Modo compra · 1 · Comprando', quitar: 'Modo compra · 2 · Quitar un producto', todo: 'Modo compra · 3 · Todo en el carro',
+  vacia: 'Modo compra · 4 · Lista vacía', escritorio: 'Modo compra · escritorio',
+};
+function band(s, name, W, { border = 'bottom', bg, px = 'spacing/4', py = ['spacing/3', 'spacing/3'] } = {}) {
+  const b = stack(name, s, 0); b.layoutSizingHorizontal = 'FILL'; b.counterAxisAlignItems = 'CENTER'; padX(b, px); bind(b, 'paddingTop', py[0]); bind(b, 'paddingBottom', py[1]);
+  if (bg) setPaints(b, 'fills', [bg]);
+  if (border) { b.strokes = [solid('border')]; b.strokeTopWeight = border === 'top' ? 1 : 0; b.strokeBottomWeight = border === 'bottom' ? 1 : 0; b.strokeLeftWeight = 0; b.strokeRightWeight = 0; b.strokeAlign = 'INSIDE'; }
+  const inner = stack('max-w-2xl', b, 0); inner.layoutSizingHorizontal = W > 390 ? 'FIXED' : 'FILL'; if (W > 390) inner.resize(672, 10); inner.layoutSizingVertical = 'HUG';
+  return inner;
+}
+async function mcHeader(s, W, sub, progress, desktopMode) {
+  const inner = band(s, 'header (pt-safe-3)', W, { py: ['spacing/3', 'spacing/3'] });
+  const row = stack('fila', inner, 12, 'HORIZONTAL'); row.counterAxisAlignItems = 'CENTER';
+  const l = stack('títulos', row, 0); l.layoutSizingHorizontal = 'FILL';
+  await text('Modo compra', 'Title/Section', 'foreground', l, { fill: true });
+  await text(sub, 'Caption/Default', 'muted-foreground', l, { fill: true });
+  const acts = stack('acciones', row, 4, 'HORIZONTAL'); acts.layoutSizingHorizontal = 'HUG';
+  if (desktopMode) { const a = IB('ghost', 'icon', 'plus'); acts.appendChild(a); a.name = 'Añadir a la lista'; }
+  const x = IB('ghost', 'icon', 'x'); acts.appendChild(x); x.name = 'Salir del modo compra';
+  if (progress != null) {
+    const g = gapV(inner, 8);
+    const bar = figma.createFrame(); bar.name = 'Progreso de la compra (progressbar)'; bar.layoutMode = 'HORIZONTAL'; inner.appendChild(bar); bar.layoutSizingHorizontal = 'FILL'; bar.layoutSizingVertical = 'FIXED'; bar.resize(inner.width, 4); rad(bar, 'radius/full'); setPaints(bar, 'fills', [['muted']]); bar.clipsContent = true;
+    if (progress > 0) { const f = figma.createFrame(); f.name = 'relleno'; bar.appendChild(f); f.layoutSizingVertical = 'FILL'; f.resize(Math.round(inner.width * progress), 4); rad(f, 'radius/full'); setPaints(f, 'fills', [['success']]); }
+  }
+}
+async function mcCost(s, W, total, basis, left) {
+  const inner = band(s, 'coste estimado', W, { bg: ['muted', 0.4] });
+  const row = stack('fila', inner, 12, 'HORIZONTAL'); row.counterAxisAlignItems = 'MAX';
+  const l = stack('estimado', row, 0); l.layoutSizingHorizontal = 'FILL';
+  const t = await text(total, 'Title/Page', 'foreground', l); t.fontName = { family: 'Geist', style: 'SemiBold' };
+  await text(basis, 'Caption/Default', 'muted-foreground', l, { fill: true });
+  if (left) { const r = stack('queda', row, 0); r.layoutSizingHorizontal = 'HUG'; r.counterAxisAlignItems = 'MAX'; const a = await text('Queda por coger', 'Body/Small', 'muted-foreground', r); a.textAlignHorizontal = 'RIGHT'; await text(left, 'Body/Small Medium', 'foreground', r); }
+}
+function mcChips(s, W, labels, active) {
+  const inner = band(s, 'Tienda de esta compra (group)', W, { py: ['spacing/2', 'spacing/2'] });
+  const row = stack('chips', inner, 8, 'HORIZONTAL');
+  labels.forEach((l, i) => { const c = inst(L8.chip, 'activo=' + (i === active)); row.appendChild(c); c.setProperties({ [P(L8.chip, 'label')]: l }); });
+}
+// Medido: una segunda loadFontAsync de la MISMA fuente dentro de una ejecución no vuelve
+// nunca (la primera sí), y con el fontName tal cual (lleva variationSettings) tampoco. Se
+// carga cada familia y estilo una sola vez por ejecución.
+const __fonts = new Set();
+async function loadFont(t) { const k = t.fontName.family + '/' + t.fontName.style; if (__fonts.has(k)) return; __fonts.add(k); await figma.loadFontAsync({ family: t.fontName.family, style: t.fontName.style }); }
+async function setT(node, name, chars) { const t = node.findOne((n) => n.type === 'TEXT' && n.name === name); if (!t) return; if (chars == null) { t.visible = false; return; } await loadFont(t); t.characters = chars; }
+async function mrow(parent, estado, [name, slug, total, price, qty], store) {
+  const r = inst(L8.fila, 'estado=' + estado); parent.appendChild(r); r.layoutSizingHorizontal = 'FILL';
+  const pr = { [P(L8.fila, 'nombre')]: name, [P(L8.fila, 'total')]: total, [P(L8.fila, 'con precio')]: price != null };
+  if (price != null) pr[P(L8.fila, 'precio')] = price; if (store) pr[P(L8.fila, 'tienda')] = store;
+  r.setProperties(pr);
+  const pi = r.findOne((x) => x.type === 'INSTANCE' && x.name === 'product-icon'); if (pi) pi.swapComponent(iconsPage.findOne((q) => q.type === 'COMPONENT' && q.name === 'product/' + slug));
+  const st = r.exposedInstances.find((x) => x.name === 'QuantityStepper');
+  if (st && qty) { const cs = await st.getMainComponentAsync(); st.setProperties({ [Object.keys(cs.parent.componentPropertyDefinitions).find((k) => k.startsWith('value'))]: qty }); }
+  return r;
+}
+async function aisle(parent, title, slug, rows, cogidos, opts = {}) {
+  const sec = stack(title, parent, 0);
+  const h = stack('h2', sec, 6, 'HORIZONTAL'); h.counterAxisAlignItems = 'CENTER'; bind(h, 'paddingBottom', 'spacing/1_5'); h.appendChild(product(slug, 18));
+  const t = await text(title, 'Body/Small Medium', 'muted-foreground', h); t.fontName = { family: 'Geist', style: 'SemiBold' };
+  const ul = stack('pendientes', sec, 4);
+  for (const [estado, row, store] of rows) await mrow(ul, estado, row, store);
+  if (!rows.length) ul.remove();
+  if (cogidos) { const w = stack('mt-1', sec, 0); bind(w, 'paddingTop', 'spacing/1'); const c = inst(L8.cogidos, 'abierto=false'); w.appendChild(c); c.layoutSizingHorizontal = 'FILL'; c.setProperties({ [P(L8.cogidos, 'label')]: cogidos }); }
+  return sec;
+}
+async function orderHint(parent, label) {
+  const b = stack('ordenar pasillos (button)', parent, 6, 'HORIZONTAL'); b.layoutSizingHorizontal = 'HUG'; b.counterAxisAlignItems = 'CENTER'; bind(b, 'minHeight', 'spacing/11'); padX(b, 'spacing/2'); rad(b, 'radius/lg');
+  b.appendChild(icon('list-ordered', 16, 'muted-foreground', 'icon')); await text(label, 'Body/Small', 'muted-foreground', b);
+}
+function mcBody(s, W) {
+  const b = stack('cuerpo (scroll, pb-fab-flush)', s, 0); b.layoutSizingHorizontal = 'FILL'; b.layoutSizingVertical = 'FILL'; b.clipsContent = true; b.counterAxisAlignItems = 'CENTER'; padX(b, 'spacing/4'); bind(b, 'paddingTop', 'spacing/3');
+  const inner = stack('max-w-2xl', b, 16); inner.layoutSizingHorizontal = W > 390 ? 'FIXED' : 'FILL'; if (W > 390) inner.resize(672, 10); inner.layoutSizingVertical = 'HUG';
+  return inner;
+}
+function mcFooter(s, W, label) {
+  const inner = band(s, 'footer (pb-safe-3)', W, { border: 'top' }); inner.parent.paddingBottom = W > 390 ? 12 : 34 + 12; setPaints(inner.parent, 'fills', [['background']]);
+  const b = BTN('default', 'lg', label, 'shopping-cart'); inner.appendChild(b); b.layoutSizingHorizontal = 'FILL'; // shadow-lg: el Button ya trae su sombra
+  return inner.parent;
+}
+function mcFab(s, footer) { const f = L.fab.createInstance(); s.appendChild(f); f.layoutPositioning = 'ABSOLUTE'; f.x = 390 - 16 - 56; f.y = 844 - (footer ? footer.height : 34) - 16 - 56; }
+async function recos(parent, open) { const r = inst(L8.reco, 'abierto=' + open); parent.appendChild(r); r.layoutSizingHorizontal = 'FILL'; return r; }
+async function mcScreen(name, W) {
+  const s = screen(name, W, W > 390 ? 'desktop' : 'mobile'); s.layoutMode = 'VERTICAL'; s.primaryAxisSizingMode = 'FIXED'; s.counterAxisSizingMode = 'FIXED'; s.resize(W, W > 390 ? 900 : 844); s.itemSpacing = 0;
+  return s;
+}
+const MC_ROWS = {
+  leche: ['Leche entera', 'leche', '= 6 ud', '5,34 €', '6'], huevos: ['Huevos', 'huevo', '= 12 ud', '2,15 €', '1'], yogur: ['Yogures naturales', 'yogur', '= 8 ud', '1,98 €', '2'],
+  tomate: ['Tomates', 'tomate', '= 1 kg', '2,49 €', '1'], platano: ['Plátanos', 'platano', '= 6 ud', null, '6'], pan: ['Pan de molde', 'pan', '= 1 ud', '1,45 €', '1'],
+};
+if (ARGS.screen === 'mc-comprando' || ARGS.screen === 'mc-quitar') {
+  const quitar = ARGS.screen === 'mc-quitar';
+  const s = await mcScreen(quitar ? MC.quitar : MC.comprando, 390);
+  await mcHeader(s, 390, quitar ? 'Quedan 3 por coger · 2 de 5' : 'Quedan 4 por coger · 2 de 6', quitar ? 2 / 5 : 2 / 6);
+  await mcCost(s, 390, quitar ? '6,08 €' : '11,42 €', quitar ? 'estimado sobre 4 de 5 ítems' : 'estimado sobre 5 de 6 ítems', quitar ? '≈ 4,64 €' : '≈ 9,98 €');
+  mcChips(s, 390, ['Todas', 'Mercadona', 'Lidl'], 0);
+  const b = mcBody(s, 390);
+  await aisle(b, 'Lácteos y huevos', 'leche', quitar ? [['deslizada', MC_ROWS.huevos]] : [['pendiente', MC_ROWS.leche], ['pendiente', MC_ROWS.huevos]], '1 cogido');
+  await aisle(b, 'Fruta y verdura', 'tomate', [['pendiente', MC_ROWS.tomate], ['otra-tienda', MC_ROWS.platano, 'Lidl']], '1 cogido');
+  await orderHint(b, '¿No es el orden de tu tienda? Ordena los pasillos');
+  await recos(b, false);
+  const f = mcFooter(s, 390, 'Finalizar compra (2) → inventario'); mcFab(s, f);
+  if (quitar) {
+    const t = inst(L3.toast, 'type=success'); s.appendChild(t); t.layoutPositioning = 'ABSOLUTE'; t.setProperties({ [P(L3.toast, 'title')]: 'Leche entera quitado' }); t.x = (390 - t.width) / 2; t.y = 16;
+    // La acción de Sonner: botón de 24 px (data-button), fondo normal-text y texto normal-bg
+    const a = stack('Deshacer (acción del toast)', null, 0, 'HORIZONTAL'); s.appendChild(a); a.layoutPositioning = 'ABSOLUTE'; a.counterAxisSizingMode = 'FIXED'; a.resize(10, 24); a.primaryAxisSizingMode = 'AUTO'; a.counterAxisAlignItems = 'CENTER'; padX(a, 'spacing/2'); rad(a, 'radius/sm'); setPaints(a, 'fills', [['popover-foreground']]);
+    await text('Deshacer', 'Caption/Medium', 'popover', a); a.x = t.x + t.width - a.width - 16; a.y = t.y + (t.height - 24) / 2;
+  }
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'mc-todo') {
+  const s = await mcScreen(MC.todo, 390);
+  await mcHeader(s, 390, 'Todo en el carro · 6 de 6', 1);
+  await mcCost(s, 390, '14,62 €', 'estimado sobre 5 de 6 ítems', null);
+  mcChips(s, 390, ['Todas', 'Mercadona', 'Lidl'], 0);
+  const b = mcBody(s, 390);
+  await aisle(b, 'Lácteos y huevos', 'leche', [], '3 cogidos');
+  await aisle(b, 'Fruta y verdura', 'tomate', [], '2 cogidos');
+  await aisle(b, 'Panadería', 'pan', [], '1 cogido');
+  await orderHint(b, '¿No es el orden de tu tienda? Ordena los pasillos');
+  await recos(b, false);
+  const f = mcFooter(s, 390, 'Finalizar compra (6) → inventario'); mcFab(s, f);
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'mc-vacia') {
+  // Con la lista vacía: sin progreso, sin coste y sin pie; la cabecera dice «Todo en el
+  // carro» porque solo mira si quedan pendientes (shopping-mode.tsx:502-504)
+  const s = await mcScreen(MC.vacia, 390);
+  await mcHeader(s, 390, 'Todo en el carro', null);
+  const b = mcBody(s, 390);
+  const e = stack('vacío', b, 0); e.counterAxisAlignItems = 'CENTER'; padX(e, 'spacing/6'); padY(e, 'spacing/6'); rad(e, 'radius/xl'); setPaints(e, 'strokes', [['border']]); e.strokeWeight = 1; e.strokeAlign = 'INSIDE'; e.dashPattern = [4, 4];
+  const t = await text('La lista está vacía.', 'Body/Small', 'muted-foreground', e, { fill: true }); t.textAlignHorizontal = 'CENTER';
+  await recos(b, true);
+  mcFab(s, null);
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'mc-escritorio') {
+  // ≥ md: el «+» sube a la cabecera, no hay FAB y la columna es max-w-2xl centrada;
+  // con una tienda elegida, lo de las demás va en «Para otras tiendas (N)»
+  const s = await mcScreen(MC.escritorio, 1280);
+  await mcHeader(s, 1280, 'Quedan 4 por coger · 2 de 7', 2 / 7, true);
+  await mcCost(s, 1280, '12,89 €', 'estimado sobre 6 de 7 ítems', '≈ 11,45 €');
+  mcChips(s, 1280, ['Todas', 'Mercadona', 'Lidl'], 1);
+  const b = mcBody(s, 1280);
+  await aisle(b, 'Lácteos y huevos', 'leche', [['pendiente', MC_ROWS.leche], ['pendiente', MC_ROWS.yogur], ['pendiente', MC_ROWS.huevos]], '1 cogido');
+  await aisle(b, 'Fruta y verdura', 'tomate', [['pendiente', MC_ROWS.tomate]], '1 cogido');
+  await orderHint(b, '¿No es el orden de Mercadona? Ordena sus pasillos');
+  const o = stack('Para otras tiendas (button)', b, 6, 'HORIZONTAL'); o.counterAxisAlignItems = 'CENTER'; bind(o, 'minHeight', 'spacing/11'); padX(o, 'spacing/2'); rad(o, 'radius/lg');
+  o.appendChild(icon('store', 16, 'muted-foreground', 'icon')); const ot = await text('Para otras tiendas', 'Body/Small', 'muted-foreground', o); await text('(1)', 'Body/Small', 'muted-foreground', o).then((x) => { x.layoutGrow = 1; }); o.appendChild(icon('chevron-down', 16, 'muted-foreground', 'chevron'));
+  await recos(b, true);
+  mcFooter(s, 1280, 'Finalizar compra (2) → inventario');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+
 if (ARGS.screen === 'indice') {
   // Colocar las pantallas en una rejilla con títulos
-  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio', RC.escritorio], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue], [RC.vacio, RC.lista, RC.receta, RC.antes, RC.paso, RC.final], [PP.prVacio, PP.prLista, PP.prProducto, PP.rsCerrado, PP.rsPrimer, PP.pfNuevo, PP.pfAhorro], [AL.ajIndice, AL.ajHogar, AL.lgMovil, AL.ldMovil], [AL.lgEscritorio, AL.ldEscritorio]];
+  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio', RC.escritorio], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue], [RC.vacio, RC.lista, RC.receta, RC.antes, RC.paso, RC.final], [PP.prVacio, PP.prLista, PP.prProducto, PP.rsCerrado, PP.rsPrimer, PP.pfNuevo, PP.pfAhorro], [AL.ajIndice, AL.ajHogar, AL.lgMovil, AL.ldMovil], [AL.lgEscritorio, AL.ldEscritorio], [ES.abriendo, ES.encuadre, ES.detectado, ES.ajuste, ES.sinCamara], [MC.comprando, MC.quitar, MC.todo, MC.vacia, MC.escritorio]];
   let y = 0; const out = [];
   const oldT = page.findAll((n) => n.name.startsWith('título · ') && n.parent === page); for (const t of oldT) t.remove();
   for (const rowNames of order) { let x = 0, h = 0; for (const n of rowNames) { const s = page.findOne((k) => k.name === n && k.parent === page); if (!s) continue; s.x = x; s.y = y + 48; const t = await text(n, 'Title/Section', 'foreground', page); t.name = 'título · ' + n; t.x = x; t.y = y; x += s.width + 120; h = Math.max(h, s.height); out.push(n); } y += h + 48 + 200; }

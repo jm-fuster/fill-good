@@ -3,7 +3,7 @@
 //   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | seleccion | fila-ajustes | selector-producto | linea-ticket | celebracion | tarjeta-repaso | pregunta-despensa | pregunta-plato | coste | tarjeta-receta
 //   receta-pack | valoracion | ingrediente-cocina | temporizador | plato-apilado
 //   aviso-precio | barra-objetivo | reparto | producto-precio | hucha
-//   fila-ajustes-control | cabecera-publica | pie-publico | doc
+//   fila-ajustes-control | cabecera-publica | pie-publico | escaner | compra | doc
 const ES = async (n) => (await figma.getLocalEffectStylesAsync()).find((s) => s.name === n).id;
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
@@ -715,9 +715,148 @@ if (ARGS.part === 'pie-publico') {
   return { set: cs.id };
 }
 
+// Escáner de documentos (receipts/components/document-scanner.tsx): pantalla completa
+// con la clase `dark` forzada, así que los dos sets van en modo Dark (sus instancias lo
+// heredan). Sin ResponsiveModal a propósito: es fixed inset-0 z-[60], encima de la nav.
+if (ARGS.part === 'escaner') {
+  const colorCol = (await figma.variables.getLocalVariableCollectionsAsync()).find((c) => c.name === 'Color');
+  const dark = (n) => n.setExplicitVariableModeForCollection(colorCol, colorCol.modes.find((m) => m.name === 'Dark').modeId);
+  const btn = await setOf('01 · Acciones', 'Button'), ib = await setOf('01 · Acciones', 'Button · Icon');
+  // Tirador: button size-11 transparente (el blanco táctil) con el punto visible de 20 px
+  let add = stager(page, 'staging · Tirador');
+  for (const st of ['default', 'focus']) {
+    const c = comp('state=' + st); c.primaryAxisSizingMode = 'FIXED'; c.counterAxisSizingMode = 'FIXED'; c.resize(44, 44); c.primaryAxisAlignItems = 'CENTER'; c.counterAxisAlignItems = 'CENTER'; rad(c, 'radius/full'); add(c);
+    const d = figma.createEllipse(); d.name = 'punto'; d.resize(20, 20); setPaints(d, 'fills', [['primary']]); setPaints(d, 'strokes', [['background']]); d.strokeWeight = 2; d.strokeAlign = 'OUTSIDE'; c.appendChild(d); // bg-primary ring-2 ring-background
+    if (st === 'focus') focusRing(c, 'effect/ring-50', 'radius/full');
+  }
+  let r = await combine(page, 'staging · Tirador', 'Tirador de esquina', { state: ['default', 'focus'] }, 'state', [], 'Una esquina del recorte en el escáner (document-scanner.tsx:626-645). El blanco táctil es el button entero, size-11 y transparente, centrado en la esquina con -translate-x/y-1/2; lo que se ve es el punto de 20 px en bg-primary con ring-2 ring-background. Se arrastra con el dedo o se mueve con las flechas (Mayús: pasos de 5 %), y su aria-label lo dice: «Esquina superior izquierda. Usa las flechas para ajustarla.». OJO: el dedo tapa el punto al arrastrar y no hay lupa.');
+  dark(r.cs);
+  const tirador = r.cs;
+  // Barra de controles: shrink-0 px-4 pt-3 pb-safe, con la pista (role=status) encima
+  const FASES = {
+    abriendo: 'Abriendo la cámara…', encuadre: 'Encuadra el ticket completo sobre una superficie lisa.', detectado: 'Ticket detectado. Mantén el pulso para capturar.',
+    'linterna-encendida': 'Ticket detectado. Mantén el pulso para capturar.', ajuste: 'Arrastra las esquinas si el recorte no es exacto.', recortando: 'Recortando y enderezando…',
+  };
+  add = stager(page, 'staging · Controles del escáner');
+  for (const [fase, pista] of Object.entries(FASES)) {
+    const c = comp('fase=' + fase, 'VERTICAL'); c.counterAxisSizingMode = 'FIXED'; c.resize(390, 10); c.primaryAxisSizingMode = 'AUTO'; padX(c, 'spacing/4'); bind(c, 'paddingTop', 'spacing/3'); c.paddingBottom = 34; setPaints(c, 'fills', [['background']]); add(c);
+    const hw = stack('pista', c, 0); hw.layoutSizingHorizontal = 'FILL'; bind(hw, 'paddingBottom', 'spacing/3');
+    const t = await text(pista, 'Body/Small', 'foreground', hw, { fill: true, name: 'pista' }); t.textAlignHorizontal = 'CENTER';
+    if (fase === 'ajuste' || fase === 'recortando') {
+      const row = stack('fila (ajuste)', c, 12, 'HORIZONTAL'); row.layoutSizingHorizontal = 'FILL'; row.primaryAxisAlignItems = 'CENTER'; row.counterAxisAlignItems = 'CENTER';
+      const busy = fase === 'recortando';
+      const re = variant(btn, `variant=outline, size=lg, state=${busy ? 'disabled' : 'default'}`).createInstance(); row.appendChild(re); re.setProperties({ [P(btn, 'label')]: 'Repetir', [P(btn, 'icon inline-start#')]: true, [P(btn, 'icon inline-start ↳')]: iconComp('rotate-ccw').id });
+      const ok = variant(btn, `variant=default, size=lg, state=${busy ? 'loading' : 'default'}`).createInstance(); row.appendChild(ok); const pr = { [P(btn, 'label')]: 'Usar este recorte' }; if (!busy) { pr[P(btn, 'icon inline-start#')] = true; pr[P(btn, 'icon inline-start ↳')] = iconComp('check').id; } ok.setProperties(pr);
+    } else {
+      const row = stack('fila (captura)', c, 16, 'HORIZONTAL'); row.layoutSizingHorizontal = 'FILL'; row.primaryAxisAlignItems = 'SPACE_BETWEEN'; row.counterAxisAlignItems = 'CENTER';
+      const x = variant(ib, 'variant=ghost, size=icon, state=default').createInstance(); row.appendChild(x); x.setProperties({ [P(ib, 'icon')]: iconComp('x').id }); x.name = 'Cerrar el escáner';
+      // Obturador: Button size=icon con className «size-16 rounded-full»; dentro, un disco
+      // de 24 px en primary-foreground (no es un icono). Desactivado mientras no hay vídeo.
+      const sh = stack('Capturar el ticket', row, 0, 'HORIZONTAL'); sh.layoutSizingHorizontal = 'FIXED'; sh.resize(64, 64); sh.layoutSizingVertical = 'FIXED'; sh.primaryAxisAlignItems = 'CENTER'; sh.counterAxisAlignItems = 'CENTER'; rad(sh, 'radius/full'); setPaints(sh, 'fills', [['primary']]);
+      const disc = figma.createEllipse(); disc.name = 'disco'; disc.resize(24, 24); setPaints(disc, 'fills', [['primary-foreground']]); sh.appendChild(disc);
+      if (fase === 'abriendo') sh.opacity = 0.5;
+      if (fase === 'detectado' || fase === 'linterna-encendida') {
+        const on = fase === 'linterna-encendida';
+        const l = variant(ib, `variant=${on ? 'secondary' : 'ghost'}, size=icon, state=default`).createInstance(); row.appendChild(l); l.setProperties({ [P(ib, 'icon')]: iconComp(on ? 'flashlight' : 'flashlight-off').id }); l.name = 'Linterna';
+      } else { const sp = figma.createFrame(); sp.name = 'hueco (sin linterna)'; sp.fills = []; sp.resize(44, 44); row.appendChild(sp); }
+    }
+  }
+  r = await combine(page, 'staging · Controles del escáner', 'Controles del escáner', { fase: Object.keys(FASES) }, 'fase', [], 'La barra inferior del escáner (document-scanner.tsx:650-712): shrink-0 px-4 pt-3 pb-safe sobre bg-background, en oscuro forzado. Encima, la pista en text-sm centrada con role="status". Encuadrando: X (ghost icon, «Cerrar el escáner»), el obturador (Button size=icon con size-16 rounded-full y un disco de 24 px en primary-foreground; desactivado, al 50 %, mientras abre la cámara) y a la derecha la linterna solo si el dispositivo la tiene (ghost con FlashlightOff; encendida, secondary con Flashlight y aria-pressed) o un hueco de 44 px para que el obturador siga centrado. Dispara solo tras ~0,75 s de detección estable. Ajustando: «Repetir» (outline lg, RotateCcw) y «Usar este recorte» (lg, Check; al recortar, con loading). OJO: ajustando no hay X; para salir hay que Repetir y cerrar.');
+  dark(r.cs);
+  return { tirador: tirador.id, controles: r.cs.id, fixedIcons: (await fixIconColors(tirador)) + (await fixIconColors(r.cs)), unbound: unboundPaints(r.cs).length + unboundPaints(tirador).length };
+}
+
+// Modo compra (shopping-list/components/shopping-mode.tsx): la fila, el chip de tienda,
+// el plegable «N cogidos» y «Recomendados». La fila NO es la de /lista: toda la fila es
+// el label que marca, checkbox de 24, icono de 22, nombre en text-base, columna de precio.
+if (ARGS.part === 'compra') {
+  const cb = await setOf('02 · Formularios', 'Checkbox'), stepper = await setOf('◆ PATRONES', 'QuantityStepper'), ib = await setOf('01 · Acciones', 'Button · Icon');
+  const out = {};
+  // ── Fila ──
+  const rowBody = async (parent, { checked, badge, price = '1,78 €' }) => {
+    const r = stack('fila', parent, 4, 'HORIZONTAL'); r.counterAxisAlignItems = 'CENTER'; rad(r, 'radius/lg'); setPaints(r, 'fills', [['background']]);
+    const lab = stack('label (marca)', r, 12, 'HORIZONTAL'); lab.layoutSizingHorizontal = 'FILL'; lab.counterAxisAlignItems = 'CENTER'; bind(lab, 'minHeight', 'spacing/12'); bind(lab, 'paddingLeft', 'spacing/2');
+    const box = variant(cb, `state=default, checked=${checked}`).createInstance(); lab.appendChild(box); box.rescale(24 / 16);
+    const pi = product('leche', 22); lab.appendChild(pi); if (checked) pi.opacity = 0.5;
+    const nm = stack('nombre', lab, 8, 'HORIZONTAL'); nm.layoutSizingHorizontal = 'FILL'; nm.counterAxisAlignItems = 'CENTER'; nm.layoutWrap = 'WRAP'; nm.counterAxisSpacing = 2;
+    const n = await text('Leche entera', 'Body/Base', checked ? 'muted-foreground' : 'foreground', nm, { name: 'name' }); n.textDecoration = checked ? 'STRIKETHROUGH' : 'NONE';
+    await text('= 6 ud', 'Body/Small', 'muted-foreground', nm, { name: 'total' });
+    if (badge) {
+      const ch = stack('tienda', nm, 2, 'HORIZONTAL'); ch.layoutSizingHorizontal = 'HUG'; ch.counterAxisAlignItems = 'CENTER'; padX(ch, 'spacing/1_5'); padY(ch, 'spacing/0_5'); rad(ch, 'radius/md'); setPaints(ch, 'fills', [['muted']]);
+      ch.appendChild(icon('store', 12, 'muted-foreground', 'icon'));
+      const t = await text('Mercadona', 'Caption/Medium', 'muted-foreground', ch, { name: 'tienda' }); bind(t, 'fontSize', 'font-size/arbitrary-11px');
+    }
+    await text(price, 'Body/Small', 'muted-foreground', r, { name: 'precio' });
+    const st = variant(stepper, 'uso=lista').createInstance(); r.appendChild(st); st.setProperties({ [P(stepper, 'value')]: '2' });
+    return r;
+  };
+  let add = stager(page, 'staging · Fila del modo compra');
+  for (const estado of ['pendiente', 'otra-tienda', 'cogido', 'deslizada']) {
+    // resize() deja el alto en FIXED: se vuelve a AUTO para que crezca con dos líneas o el badge
+    const c = comp('estado=' + estado); c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 48); c.counterAxisSizingMode = 'AUTO'; c.primaryAxisAlignItems = 'MIN'; rad(c, 'radius/lg'); c.clipsContent = true; add(c);
+    if (estado !== 'deslizada') { const r = await rowBody(c, { checked: estado === 'cogido', badge: estado === 'otra-tienda' }); r.layoutSizingHorizontal = 'FILL'; continue; }
+    // Deslizada: detrás, el botón «Quitar» de 96 px en destructive; delante, la fila movida 96 px
+    c.layoutMode = 'NONE'; c.resize(358, 48);
+    const back = stack('Quitar (detrás)', c, 6, 'HORIZONTAL'); back.primaryAxisSizingMode = 'FIXED'; back.counterAxisSizingMode = 'FIXED'; back.resize(96, 48); back.x = 262; back.y = 0; back.primaryAxisAlignItems = 'CENTER'; back.counterAxisAlignItems = 'CENTER'; setPaints(back, 'fills', [['destructive']]);
+    back.appendChild(icon('trash', 16, 'destructive-foreground', 'icon')); await text('Quitar', 'Body/Small Medium', 'destructive-foreground', back);
+    const r = await rowBody(c, { checked: false }); r.primaryAxisSizingMode = 'FIXED'; r.resize(358, 48); r.x = -96; r.y = 0;
+  }
+  let res = await combine(page, 'staging · Fila del modo compra', 'Fila del modo compra', { estado: ['pendiente', 'otra-tienda', 'cogido', 'deslizada'] }, 'estado', [], 'ShoppingModeRowItem (shopping-mode.tsx:877-1025). A diferencia de la fila de /lista, TODA la fila es el label que marca (min-h-12 pl-2 gap-3) y no se edita: Checkbox de 24 px (size-6), icono de 22 (al 50 % si está cogido), nombre en text-base que parte línea, el total «= 6 ud» en text-sm muted, el precio de la línea en text-sm tabular-nums muted (si la compra no tiene ningún precio, no hay columna) y el QuantityStepper, que recalcula el coste al momento. Badge de tienda (bg-muted, Store, text-[11px]) solo si la tienda del producto no es la elegida; sin badge de ahorro. Quitar: en móvil se desliza a la izquierda y queda «Quitar» (96 px, bg-destructive); en escritorio, papelera ghost con hover o foco. OJO: los cogidos de los pasillos no reciben la tienda activa y enseñan su badge aunque coincida; y en móvil, con lector de pantalla, no hay forma de quitar (el botón está inert hasta deslizar).');
+  // Propiedades de texto: las pantallas las rellenan con setProperties, que no necesita
+  // cargar fuentes (editar el texto de una instancia pide loadFontAsync, que se cuelga)
+  const fk = { nombre: res.cs.addComponentProperty('nombre', 'TEXT', 'Leche entera'), total: res.cs.addComponentProperty('total', 'TEXT', '= 6 ud'), precio: res.cs.addComponentProperty('precio', 'TEXT', '1,78 €'), conPrecio: res.cs.addComponentProperty('con precio', 'BOOLEAN', true), tienda: res.cs.addComponentProperty('tienda', 'TEXT', 'Mercadona') };
+  for (const v of res.cs.children) {
+    const f = (n) => v.findOne((x) => x.type === 'TEXT' && x.name === n);
+    f('name').componentPropertyReferences = { characters: fk.nombre }; f('total').componentPropertyReferences = { characters: fk.total }; f('precio').componentPropertyReferences = { characters: fk.precio, visible: fk.conPrecio };
+    if (f('tienda')) f('tienda').componentPropertyReferences = { characters: fk.tienda };
+    const st = v.findOne((x) => x.type === 'INSTANCE' && x.name === 'QuantityStepper'); if (st) st.isExposedInstance = true;
+  }
+  out.fila = res.cs.id;
+  // ── Chip de tienda (ChainChip, components/chain-chip.tsx) ──
+  add = stager(page, 'staging · Chip de tienda');
+  for (const on of ['false', 'true']) {
+    const c = comp('activo=' + on); bind(c, 'minHeight', 'spacing/11'); bind(c, 'paddingLeft', 'spacing/3_5'); bind(c, 'paddingRight', 'spacing/3_5'); rad(c, 'radius/full'); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    setPaints(c, 'fills', [[on === 'true' ? 'primary' : 'background']]); setPaints(c, 'strokes', [[on === 'true' ? 'primary' : 'border']]);
+    await text('Mercadona', 'Body/Small Medium', on === 'true' ? 'primary-foreground' : 'muted-foreground', c, { name: 'label' });
+  }
+  res = await combine(page, 'staging · Chip de tienda', 'Chip de tienda', { activo: ['false', 'true'] }, 'activo', [], 'ChainChip (components/chain-chip.tsx): button min-h-11 rounded-full border px-3.5 text-sm font-medium con aria-pressed. Activo: border-primary bg-primary text-primary-foreground; inactivo: bg-background text-muted-foreground (hover bg-muted). En el modo compra, «Todas» y una por tienda, solo con dos tiendas o más, y filtran y reordenan; en /lista la misma preferencia se llama «General» y solo reordena.');
+  const k = res.cs.addComponentProperty('label', 'TEXT', 'Mercadona'); for (const c of res.cs.children) c.findOne((n) => n.name === 'label').componentPropertyReferences = { characters: k };
+  out.chip = res.cs.id;
+  // ── Plegable «N cogidos» ──
+  add = stager(page, 'staging · Cogidos');
+  for (const open of ['false', 'true']) {
+    const c = comp('abierto=' + open); c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 44); c.primaryAxisAlignItems = 'MIN'; bind(c, 'minHeight', 'spacing/11'); bind(c, 'itemSpacing', 'spacing/1_5'); padX(c, 'spacing/2'); rad(c, 'radius/lg'); add(c);
+    c.appendChild(icon('check', 16, 'success', 'icon'));
+    const t = await text('2 cogidos', 'Body/Small', 'muted-foreground', c, { name: 'label' }); t.layoutGrow = 1;
+    const ch = icon('chevron-down', 16, 'muted-foreground', 'chevron'); c.appendChild(ch); if (open === 'true') ch.rotation = 180;
+  }
+  res = await combine(page, 'staging · Cogidos', 'Plegable de cogidos', { abierto: ['false', 'true'] }, 'abierto', [], 'Lo ya cogido de cada pasillo (shopping-mode.tsx:645-681): button min-h-11 w-full gap-1.5 rounded-lg px-2 text-sm muted con Check en success, «1 cogido» / «2 cogidos» y ChevronDown a la derecha (rotate-180 abierto), con aria-expanded. Empieza CERRADO: desmarcar cuesta dos toques. En «Para otras tiendas» los cogidos no se pliegan.');
+  const kl = res.cs.addComponentProperty('label', 'TEXT', '2 cogidos'); for (const c of res.cs.children) c.findOne((n) => n.name === 'label').componentPropertyReferences = { characters: kl };
+  out.cogidos = res.cs.id;
+  // ── Recomendados ──
+  add = stager(page, 'staging · Recomendados');
+  for (const open of ['true', 'false']) {
+    const c = comp('abierto=' + open, 'VERTICAL'); c.counterAxisSizingMode = 'FIXED'; c.resize(358, 10); c.primaryAxisSizingMode = 'AUTO'; c.primaryAxisAlignItems = 'MIN'; padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); setPaints(c, 'strokes', [['border']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; c.dashPattern = [4, 4]; add(c);
+    const h = stack('cabecera (button)', c, 6, 'HORIZONTAL'); h.counterAxisAlignItems = 'CENTER'; bind(h, 'minHeight', 'spacing/11'); rad(h, 'radius/lg');
+    h.appendChild(icon('sparkles', 16, 'chart-3', 'icon')); await text('Recomendados', 'Body/Small Medium', 'foreground', h); const cnt = await text('(3)', 'Body/Small Medium', 'muted-foreground', h); cnt.layoutGrow = 1;
+    const chv = icon('chevron-down', 16, 'muted-foreground', 'chevron'); h.appendChild(chv); if (open === 'true') chv.rotation = 180;
+    if (open === 'true') for (const [n, reason, qty] of [['Huevos', 'Se ha agotado', '1 pack = 12 ud'], ['Tomate triturado', 'Sueles comprarlo cada ~9 días', '1 ud'], ['Café molido', 'Bajo tu mínimo', '250 g']]) {
+      const b = stack(n, c, 12, 'HORIZONTAL'); b.counterAxisAlignItems = 'CENTER'; bind(b, 'minHeight', 'spacing/12'); padX(b, 'spacing/2'); rad(b, 'radius/lg');
+      const cc = figma.createFrame(); cc.name = 'plus'; cc.layoutMode = 'HORIZONTAL'; cc.primaryAxisAlignItems = 'CENTER'; cc.counterAxisAlignItems = 'CENTER'; cc.resize(32, 32); rad(cc, 'radius/full'); setPaints(cc, 'fills', [['primary', 0.1]]); cc.appendChild(icon('plus', 16, 'primary', 'icon')); b.appendChild(cc);
+      const tx = stack('textos', b, 0); tx.layoutSizingHorizontal = 'FILL';
+      await text(n, 'Body/Base', 'foreground', tx, { fill: true, name: 'name' }); await text(reason, 'Caption/Default', 'muted-foreground', tx, { fill: true, name: 'reason' });
+      await text(qty, 'Body/Small Medium', 'muted-foreground', b, { name: 'qty' });
+    }
+  }
+  res = await combine(page, 'staging · Recomendados', 'Recomendados', { abierto: ['true', 'false'] }, 'abierto', [], '«Recomendados» del modo compra (shopping-mode.tsx:1032-1121): section rounded-xl border-dashed p-3; la cabecera es un button min-h-11 con Sparkles en chart-3, «Recomendados (N)» y ChevronDown, y se recuerda plegada. Cada fila es un button min-h-12 que AÑADE con la cantidad sugerida (aria-label «Añadir 1 pack de Huevos = 12 ud»): círculo de 32 px bg-primary/10 con Plus, nombre en text-base, motivo en text-xs muted (suggestion-reason.ts) y cantidad en text-sm font-medium tabular-nums. OJO: es la misma lista que en /lista se llama «Te puede faltar», aquí sin tope y sin X para descartar.');
+  out.recomendados = res.cs.id;
+  let fixed = 0; for (const id of Object.values(out)) fixed += await fixIconColors(await figma.getNodeByIdAsync(id));
+  return { ...out, fixed };
+}
+
 if (ARGS.part === 'doc') {
   const doc = await pageDoc(page, 'PATRONES', 'Patrones', 'Lo que se repite en las features, montado SOLO con instancias de la librería: si cambia un componente, cambian los patrones. Los nombres de variante describen estados de producto (no props de React), porque un patrón no es un componente del código: es una composición que el código repite. Cada descripción dice de qué archivo sale.');
-  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'marcar-apilado', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva', 'control'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket'], ['Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', []], ['Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', []], ['Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', []], ['Coste de receta', { estado: ['completo', 'parcial'] }, 'estado', []], ['Tarjeta de receta', { historial: ['false', 'true'] }, 'historial', []], ['Receta del pack', { estado: ['añadir', 'guardada'] }, 'estado', []], ['Valoración', { votos: ['sin', 'con'] }, 'votos', []], ['Ingrediente al cocinar', { estado: ['pendiente', 'marcado', 'falta'] }, 'estado', []], ['Temporizador', { estado: ['en-marcha', 'sonado'] }, 'estado', []], ['Aviso de precio', { tipo: ['sube', 'baja'] }, 'tipo', []], ['Barra de objetivo', { estado: ['bien', 'cerca', 'pasado'] }, 'estado', []], ['Barra de reparto', { color: ['1', '2', '3', '4', '5', 'otros'] }, 'color', []], ['Producto con precio', { comparable: ['false', 'true'] }, 'comparable', []], ['Hucha del mes'], ['Cabecera pública', { viewport: ['mobile', 'desktop'] }, 'viewport', []], ['Pie público', { viewport: ['mobile', 'desktop'] }, 'viewport', []]];
+  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'marcar-apilado', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva', 'control'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket'], ['Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', []], ['Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', []], ['Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', []], ['Coste de receta', { estado: ['completo', 'parcial'] }, 'estado', []], ['Tarjeta de receta', { historial: ['false', 'true'] }, 'historial', []], ['Receta del pack', { estado: ['añadir', 'guardada'] }, 'estado', []], ['Valoración', { votos: ['sin', 'con'] }, 'votos', []], ['Ingrediente al cocinar', { estado: ['pendiente', 'marcado', 'falta'] }, 'estado', []], ['Temporizador', { estado: ['en-marcha', 'sonado'] }, 'estado', []], ['Aviso de precio', { tipo: ['sube', 'baja'] }, 'tipo', []], ['Barra de objetivo', { estado: ['bien', 'cerca', 'pasado'] }, 'estado', []], ['Barra de reparto', { color: ['1', '2', '3', '4', '5', 'otros'] }, 'color', []], ['Producto con precio', { comparable: ['false', 'true'] }, 'comparable', []], ['Hucha del mes'], ['Cabecera pública', { viewport: ['mobile', 'desktop'] }, 'viewport', []], ['Pie público', { viewport: ['mobile', 'desktop'] }, 'viewport', []], ['Controles del escáner', { fase: ['abriendo', 'encuadre', 'detectado', 'linterna-encendida', 'ajuste', 'recortando'] }, 'fase', []], ['Tirador de esquina', { state: ['default', 'focus'] }, 'state', []], ['Fila del modo compra', { estado: ['pendiente', 'otra-tienda', 'cogido', 'deslizada'] }, 'estado', []], ['Chip de tienda', { activo: ['false', 'true'] }, 'activo', []], ['Plegable de cogidos', { abierto: ['false', 'true'] }, 'abierto', []], ['Recomendados', { abierto: ['true', 'false'] }, 'abierto', []]];
   const out = [];
   for (const [name, axes, colAxis, rowAxes] of ENTRIES) {
     const node = page.findOne((n) => (n.type === 'COMPONENT_SET' || (n.type === 'COMPONENT' && n.parent.type !== 'COMPONENT_SET')) && n.name === name);
