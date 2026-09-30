@@ -3,7 +3,7 @@
 //   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | seleccion | fila-ajustes | selector-producto | linea-ticket | celebracion | tarjeta-repaso | pregunta-despensa | pregunta-plato | coste | tarjeta-receta
 //   receta-pack | valoracion | ingrediente-cocina | temporizador | plato-apilado
 //   aviso-precio | barra-objetivo | reparto | producto-precio | hucha
-//   fila-ajustes-control | cabecera-publica | pie-publico | escaner | compra | doc
+//   fila-ajustes-control | cabecera-publica | pie-publico | escaner | compra | modales | modales-menu | doc
 const ES = async (n) => (await figma.getLocalEffectStylesAsync()).find((s) => s.name === n).id;
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
@@ -854,9 +854,199 @@ if (ARGS.part === 'compra') {
   return { ...out, fixed };
 }
 
+// Piezas de los modales del día a día (inventario y lista). Los textos que cambian de
+// pantalla a pantalla van como PROPIEDADES: las pantallas los rellenan con
+// setProperties, que no carga fuentes (ver «Fuentes al editar una instancia»).
+if (ARGS.part === 'modales') {
+  const ib = await setOf('01 · Acciones', 'Button · Icon'), sw = await setOf('02 · Formularios', 'Switch');
+  const prodComp = (slug) => iconsPage.findOne((n) => n.type === 'COMPONENT' && n.name === 'product/' + slug);
+  const shadowLg = (await figma.getLocalEffectStylesAsync()).find((s) => s.name === 'Shadow/lg');
+  const bindText = (cs, key, name) => { for (const v of cs.children) for (const t of v.findAll((n) => n.type === 'TEXT' && n.name === name)) t.componentPropertyReferences = { ...(t.componentPropertyReferences || {}), characters: key }; };
+  const out = {};
+
+  // ── Ficha del selector (add-items-picker.tsx:459-500) ──
+  let add = stager(page, 'staging · Ficha del selector');
+  for (const estado of ['normal', 'en-lista', 'marcado', 'nuevo']) {
+    const on = estado === 'marcado' || estado === 'nuevo';
+    const c = comp('estado=' + estado); bind(c, 'minHeight', 'spacing/11'); bind(c, 'itemSpacing', 'spacing/1_5'); padX(c, 'spacing/3'); padY(c, 'spacing/2'); rad(c, 'radius/lg'); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    setPaints(c, 'fills', [[on ? 'primary' : 'background']]); setPaints(c, 'strokes', [[estado === 'normal' ? 'border' : 'primary', estado === 'en-lista' ? 0.4 : 1]]); if (estado === 'en-lista') c.dashPattern = [4, 3];
+    if (estado === 'marcado') c.appendChild(icon('check', 16, 'primary-foreground', 'icon'));
+    else if (estado === 'nuevo') c.appendChild(icon('plus', 16, 'primary-foreground', 'icon'));
+    else c.appendChild(product('leche', 16));
+    await text('Leche entera', 'Body/Small Medium', on ? 'primary-foreground' : 'foreground', c, { name: 'nombre' });
+    await text(estado === 'nuevo' ? '2 ud' : 'pack 6', 'Caption/Default', on ? 'primary-foreground' : 'muted-foreground', c, { name: 'sufijo', opacity: on ? 0.8 : undefined });
+    if (estado === 'en-lista') c.appendChild(icon('shopping-cart', 14, 'primary', 'en la lista'));
+    if (estado === 'nuevo') { c.paddingRight = 0; c.paddingTop = 0; c.paddingBottom = 0; const x = stack('Quitar (size-11)', c, 0, 'HORIZONTAL'); x.layoutSizingHorizontal = 'FIXED'; x.resize(44, 44); x.layoutSizingVertical = 'FIXED'; x.primaryAxisAlignItems = 'CENTER'; x.counterAxisAlignItems = 'CENTER'; rad(x, 'radius/lg'); x.appendChild(icon('x', 16, 'primary-foreground', 'icon')); }
+  }
+  let res = await combine(page, 'staging · Ficha del selector', 'Ficha del selector', { estado: ['normal', 'en-lista', 'marcado', 'nuevo'] }, 'estado', [], 'ProductChip del selector «Añadir a la lista» (add-items-picker.tsx:459-500): button min-h-11 rounded-lg border px-3 py-2 text-sm font-medium con el icono de producto de 16 px, el nombre y un sufijo en text-xs tabular-nums (la cantidad sugerida si pasa de 1, «2 packs», o el pack, «pack 6»). Ya en la lista: borde discontinuo primary/40 y un carrito de 14 px en primary. Marcado: bg-primary con Check en lugar del icono (y sin carrito: OJO, deja de verse que ya estaba en la lista). «Nuevo» (lo creado en esta sesión): mismo bg-primary con Plus y una X de 44 px para quitarlo; solo el icono lo distingue del marcado. El motivo de una sugerencia («Se ha agotado») solo va en el aria-label.');
+  const kN = res.cs.addComponentProperty('nombre', 'TEXT', 'Leche entera'), kS = res.cs.addComponentProperty('sufijo', 'TEXT', 'pack 6'), kSv = res.cs.addComponentProperty('con sufijo', 'BOOLEAN', true);
+  bindText(res.cs, kN, 'nombre'); for (const v of res.cs.children) { const t = v.findOne((n) => n.name === 'sufijo'); t.componentPropertyReferences = { characters: kS, visible: kSv }; }
+  const kI = res.cs.addComponentProperty('icono', 'INSTANCE_SWAP', prodComp('leche').id);
+  for (const v of res.cs.children) { const pi = v.findOne((n) => n.type === 'INSTANCE' && n.name === 'product-icon'); if (pi) pi.componentPropertyReferences = { mainComponent: kI }; }
+  out.ficha = res.cs.id;
+
+  // ── Fila de orden de pasillos (store-order-editor.tsx:75-123) ──
+  add = stager(page, 'staging · Fila de pasillo');
+  for (const estado of ['default', 'arrastrando']) {
+    const c = comp('estado=' + estado); c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 52); c.counterAxisSizingMode = 'AUTO'; c.primaryAxisAlignItems = 'MIN'; bind(c, 'itemSpacing', 'spacing/1'); padX(c, 'spacing/1_5'); padY(c, 'spacing/1'); rad(c, 'radius/xl'); setPaints(c, 'fills', [['card']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; setPaints(c, 'strokes', [[estado === 'arrastrando' ? 'primary' : 'border']]); add(c);
+    if (estado === 'arrastrando') await c.setEffectStyleIdAsync(shadowLg.id);
+    const g = stack('asa (size-11)', c, 0, 'HORIZONTAL'); g.layoutSizingHorizontal = 'FIXED'; g.resize(44, 44); g.layoutSizingVertical = 'FIXED'; g.primaryAxisAlignItems = 'CENTER'; g.counterAxisAlignItems = 'CENTER'; g.appendChild(icon('grip-vertical', 20, 'muted-foreground', 'icon'));
+    const iw = stack('icono (w-6)', c, 0, 'HORIZONTAL'); iw.layoutSizingHorizontal = 'FIXED'; iw.resize(24, 20); iw.primaryAxisAlignItems = 'CENTER'; iw.appendChild(product('leche', 20));
+    const n = await text('Lácteos y huevos', 'Body/Small Medium', 'foreground', c, { name: 'nombre' }); n.layoutGrow = 1; n.textTruncation = 'ENDING';
+    for (const [ic, nm] of [['chevron-up', 'Subir'], ['chevron-down', 'Bajar']]) { const b = variant(ib, 'variant=ghost, size=icon, state=default').createInstance(); c.appendChild(b); b.setProperties({ [P(ib, 'icon')]: iconComp(ic).id }); b.name = nm; }
+  }
+  res = await combine(page, 'staging · Fila de pasillo', 'Fila de orden de pasillos', { estado: ['default', 'arrastrando'] }, 'estado', [], 'Un pasillo en «Orden de los pasillos» (categories/components/store-order-editor.tsx:75-123): li rounded-xl border bg-card px-1.5 py-1 gap-1 (unos 52 px). Asa de 44 px con GripVertical de 20 en muted (se arrastra con el dedo), ProductIcon de 20, nombre en text-sm font-medium truncado y dos Button ghost icon con ChevronUp y ChevronDown («Subir X» / «Bajar X»), deshabilitados en los extremos. Arrastrando: border-primary shadow-lg; la lista se reordena en vivo, sin placeholder ni autoscroll. Se guarda solo, sin aviso de «guardado».');
+  const kP = res.cs.addComponentProperty('nombre', 'TEXT', 'Lácteos y huevos'); bindText(res.cs, kP, 'nombre');
+  const kPi = res.cs.addComponentProperty('icono', 'INSTANCE_SWAP', prodComp('leche').id);
+  for (const v of res.cs.children) v.findOne((n) => n.type === 'INSTANCE' && n.name === 'product-icon').componentPropertyReferences = { mainComponent: kPi };
+  out.pasillo = res.cs.id;
+
+  // ── Chip de ubicación (edit-item-drawer.tsx:620-651): radio nativo sr-only con aspecto de chip ──
+  add = stager(page, 'staging · Chip de ubicación');
+  for (const on of ['false', 'true']) {
+    const c = comp('marcado=' + on); bind(c, 'minHeight', 'spacing/11'); bind(c, 'itemSpacing', 'spacing/1_5'); padX(c, 'spacing/3'); rad(c, 'radius/lg'); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    setPaints(c, 'strokes', [[on === 'true' ? 'transparent' : 'border']]); setPaints(c, 'fills', on === 'true' ? [['primary']] : []);
+    await text('🧊', 'Body/Small Medium', on === 'true' ? 'primary-foreground' : 'foreground', c, { name: 'emoji' });
+    await text('Nevera', 'Body/Small Medium', on === 'true' ? 'primary-foreground' : 'foreground', c, { name: 'ubicación' });
+  }
+  res = await combine(page, 'staging · Chip de ubicación', 'Chip de ubicación', { marcado: ['false', 'true'] }, 'marcado', [], 'Ubicación en la ficha de un producto del inventario (edit-item-drawer.tsx:620-651): un radio nativo (sr-only) con aspecto de chip, en una rejilla grid-cols-2 gap-2 bajo el legend «Ubicación». min-h-11 rounded-lg border px-3 text-sm font-medium con el emoji de la ubicación (🧊 Nevera, ❄️ Congelador, 🧺 Despensa, 📦 Otros; no es Lucide). Marcado: border-transparent bg-primary text-primary-foreground. OJO: en «Añadir producto» la misma elección es un Select dentro del plegable, y en otro orden (Despensa primero).');
+  const kE = res.cs.addComponentProperty('emoji', 'TEXT', '🧊'), kU = res.cs.addComponentProperty('ubicación', 'TEXT', 'Nevera'); bindText(res.cs, kE, 'emoji'); bindText(res.cs, kU, 'ubicación');
+  out.ubicacion = res.cs.id;
+
+  // ── Fila con interruptor (edit-item-drawer.tsx:823-901) ──
+  add = stager(page, 'staging · Fila con interruptor');
+  for (const on of ['false', 'true']) {
+    const c = comp('activo=' + on); c.primaryAxisSizingMode = 'FIXED'; c.resize(326, 60); c.counterAxisSizingMode = 'AUTO'; c.primaryAxisAlignItems = 'SPACE_BETWEEN'; bind(c, 'itemSpacing', 'spacing/3'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/lg'); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; setPaints(c, 'strokes', [['border']]); add(c);
+    const l = stack('label (toca la fila entera)', c, 2); l.layoutSizingHorizontal = 'FILL';
+    const tr = stack('título', l, 6, 'HORIZONTAL'); tr.counterAxisAlignItems = 'CENTER'; tr.appendChild(icon('chef-hat', 16, on === 'true' ? 'warning' : 'muted-foreground', 'icon'));
+    await text('Consumir pronto', 'Body/Small Medium', 'foreground', tr, { name: 'título' });
+    await text('Priorízalo en los menús aunque no caduque', 'Body/Small', 'muted-foreground', l, { fill: true, name: 'descripción' });
+    const s = variant(sw, `size=default, state=default, checked=${on}`).createInstance(); c.appendChild(s);
+  }
+  res = await combine(page, 'staging · Fila con interruptor', 'Fila con interruptor', { activo: ['false', 'true'] }, 'activo', [], 'Una opción con Switch dentro de «Ajustes adicionales» de la ficha (edit-item-drawer.tsx:823-901): flex justify-between gap-3 rounded-lg border p-3; a la izquierda un Label (título con icono de 16 px y descripción en text-sm muted) y a la derecha el Switch. Toda la fila es el Label, así que el blanco táctil es la fila y no el Switch de 32 × 18. Tres en la ficha: ChefHat «Consumir pronto» (warning si está activo), Star «Mis habituales» (chart-3) y ShoppingCart «En la lista de la compra» (primary). OJO: la primera espera a «Guardar cambios» y las otras dos se aplican al instante, con el mismo aspecto.');
+  const kT = res.cs.addComponentProperty('título', 'TEXT', 'Consumir pronto'), kD = res.cs.addComponentProperty('descripción', 'TEXT', 'Priorízalo en los menús aunque no caduque'); bindText(res.cs, kT, 'título'); bindText(res.cs, kD, 'descripción');
+  const kIc = res.cs.addComponentProperty('icono', 'INSTANCE_SWAP', iconComp('chef-hat').id);
+  for (const v of res.cs.children) v.findOne((n) => n.type === 'INSTANCE' && n.name === 'icon').componentPropertyReferences = { mainComponent: kIc };
+  out.interruptor = res.cs.id;
+
+  // ── Cabecera del plegable (components/collapsible-fields.tsx) ──
+  add = stager(page, 'staging · Cabecera del plegable');
+  for (const open of ['false', 'true']) {
+    const c = comp('abierto=' + open); c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 60); c.counterAxisSizingMode = 'AUTO'; c.primaryAxisAlignItems = 'SPACE_BETWEEN'; bind(c, 'itemSpacing', 'spacing/3'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); add(c);
+    const l = stack('textos', c, 2); l.layoutSizingHorizontal = 'FILL';
+    await text('Ajustes adicionales', 'Body/Small Medium', 'foreground', l, { fill: true, name: 'título' });
+    await text('Todo opcional: caducidad, ubicación, envase y avisos', 'Body/Small', 'muted-foreground', l, { fill: true, name: 'ayuda' });
+    const ch = icon('chevron-down', 20, 'muted-foreground', 'chevron'); c.appendChild(ch); if (open === 'true') ch.rotation = 180;
+  }
+  res = await combine(page, 'staging · Cabecera del plegable', 'Cabecera del plegable', { abierto: ['false', 'true'] }, 'abierto', [], 'El botón de CollapsibleFields (components/collapsible-fields.tsx), «Ajustes adicionales» en los dos modales de inventario: flex justify-between gap-3 rounded-xl p-3 (hover bg-muted/50), título en font-medium, ayuda en text-sm muted y ChevronDown de 20 que gira al abrir. La caja que lo envuelve (rounded-xl border) y el cuerpo (border-t p-3 gap-4) los pone la pantalla. El contenido está SIEMPRE montado y cerrado se oculta con hidden: si un campo de dentro no es válido, el plegable se abre solo para que se vea el aviso.');
+  const kCt = res.cs.addComponentProperty('título', 'TEXT', 'Ajustes adicionales'), kCa = res.cs.addComponentProperty('ayuda', 'TEXT', 'Todo opcional: caducidad, ubicación, envase y avisos'); bindText(res.cs, kCt, 'título'); bindText(res.cs, kCa, 'ayuda');
+  out.plegable = res.cs.id;
+
+  let fixed = 0; for (const id of Object.values(out)) fixed += await fixIconColors(await figma.getNodeByIdAsync(id));
+  return { ...out, fixed };
+}
+
+// Piezas de los modales de /menus (menu-view.tsx y sus hijos). Textos como propiedades.
+if (ARGS.part === 'modales-menu') {
+  const cb = await setOf('02 · Formularios', 'Checkbox'), badge = await setOf('05 · Contenido', 'Badge'), btn = await setOf('01 · Acciones', 'Button'), input = await setOf('02 · Formularios', 'Input');
+  const bindText = (cs, key, name) => { for (const v of cs.children) for (const t of v.findAll((n) => n.type === 'TEXT' && n.name === name)) t.componentPropertyReferences = { ...(t.componentPropertyReferences || {}), characters: key }; };
+  const out = {};
+
+  // ── Casilla de acción (menus/components/entry-action-tile.tsx) ──
+  let add = stager(page, 'staging · Casilla de acción');
+  for (const estado of ['default', 'pulsada', 'destructiva']) {
+    const c = comp('estado=' + estado, 'VERTICAL'); c.counterAxisSizingMode = 'FIXED'; c.resize(114, 64); c.primaryAxisSizingMode = 'AUTO'; bind(c, 'minHeight', 'spacing/16'); bind(c, 'itemSpacing', 'spacing/1'); padX(c, 'spacing/1'); padY(c, 'spacing/2'); rad(c, 'radius/lg'); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    const tone = estado === 'destructiva' ? 'destructive' : estado === 'pulsada' ? 'secondary-foreground' : 'foreground';
+    setPaints(c, 'fills', [estado === 'destructiva' ? ['destructive', 0.1] : [estado === 'pulsada' ? 'secondary' : 'background']]); setPaints(c, 'strokes', [[estado === 'default' ? 'border' : 'transparent']]);
+    c.appendChild(icon('move-right', 16, tone, 'icon'));
+    const t = await text('Mover a…', 'Caption/Medium', tone, c, { name: 'etiqueta' }); bind(t, 'fontSize', 'font-size/arbitrary-0_7rem'); t.textAlignHorizontal = 'CENTER'; t.lineHeight = { value: 125, unit: 'PERCENT' };
+  }
+  let res = await combine(page, 'staging · Casilla de acción', 'Casilla de acción', { estado: ['default', 'pulsada', 'destructiva'] }, 'estado', [], 'EntryActionTile (menus/components/entry-action-tile.tsx), la rejilla grid-cols-3 gap-2 del panel de un plato: Button h-auto min-h-16 flex-col gap-1 px-1 py-2 con el icono y la etiqueta en text-[0.7rem] leading-tight (11,2 px, fuera de la escala: legibilidad justa). outline; secondary cuando está pulsada («No se hizo · deshacer», «Quitar fijado», con aria-pressed); destructive para «Quitar del menú». La comparte el repaso de platos.');
+  const kE = res.cs.addComponentProperty('etiqueta', 'TEXT', 'Mover a…'); bindText(res.cs, kE, 'etiqueta');
+  const kI = res.cs.addComponentProperty('icono', 'INSTANCE_SWAP', iconComp('move-right').id);
+  for (const v of res.cs.children) v.findOne((n) => n.type === 'INSTANCE' && n.name === 'icon').componentPropertyReferences = { mainComponent: kI };
+  out.accion = res.cs.id;
+
+  // ── Casilla de hueco (menus/components/slot-picker-grid.tsx) ──
+  add = stager(page, 'staging · Casilla de hueco');
+  for (const estado of ['libre', 'origen', 'bloqueada']) {
+    const c = comp('estado=' + estado, 'VERTICAL'); c.counterAxisSizingMode = 'FIXED'; c.resize(114, 44); c.primaryAxisSizingMode = 'AUTO'; c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; bind(c, 'minHeight', 'spacing/11'); bind(c, 'itemSpacing', 'spacing/0_5'); padX(c, 'spacing/2'); padY(c, 'spacing/2'); rad(c, 'radius/lg'); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    setPaints(c, 'strokes', [[estado === 'origen' ? 'primary' : 'border']]); setPaints(c, 'fills', [[estado === 'origen' ? 'muted' : 'background']]); if (estado === 'bloqueada') c.opacity = 0.5;
+    await text('Mié 1', 'Body/Small Medium', 'foreground', c, { name: 'día' });
+    await text(estado === 'origen' ? 'Aquí' : 'Cena', 'Caption/Default', 'muted-foreground', c, { name: 'hueco' });
+  }
+  res = await combine(page, 'staging · Casilla de hueco', 'Casilla de hueco', { estado: ['libre', 'origen', 'bloqueada'] }, 'estado', [], 'Una celda de SlotPickerGrid (menus/components/slot-picker-grid.tsx), en «Mover a…» y «Duplicar en…»: grid-cols-3 gap-2 (o 2 columnas), button min-h-11 flex-col items-start gap-0.5 rounded-lg border p-2 con el día en text-sm font-medium («Mié 1») y el hueco en text-xs muted. El origen dice «Aquí» con border-primary bg-muted. Bloqueada: opacity-50 y nada más; OJO, no dice por qué (un plato cocinado no se mueve a un día que no ha llegado).');
+  const kD = res.cs.addComponentProperty('día', 'TEXT', 'Mié 1'), kH = res.cs.addComponentProperty('hueco', 'TEXT', 'Cena'); bindText(res.cs, kD, 'día'); bindText(res.cs, kH, 'hueco');
+  out.hueco = res.cs.id;
+
+  // ── Fila con casilla («Añadir a la lista» y «¿Lo apuntamos?», MV:2443-2470) ──
+  add = stager(page, 'staging · Fila con casilla');
+  for (const tipo of ['catalogo', 'aproximada', 'texto-libre']) {
+    const c = comp('coincidencia=' + tipo); c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 60); c.counterAxisSizingMode = 'AUTO'; c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; bind(c, 'itemSpacing', 'spacing/3'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; setPaints(c, 'strokes', [['border']]); add(c);
+    const cw = stack('check (mt-0.5)', c, 0, 'HORIZONTAL'); cw.layoutSizingHorizontal = 'HUG'; bind(cw, 'paddingTop', 'spacing/0_5'); const box = variant(cb, 'state=default, checked=true').createInstance(); cw.appendChild(box); box.rescale(20 / 16);
+    const l = stack('label (toda la fila)', c, 4); l.layoutSizingHorizontal = 'FILL';
+    await text('Nata para cocinar', 'Body/Small Medium', 'foreground', l, { fill: true, name: 'nombre' });
+    const r = stack('coincidencia', l, 6, 'HORIZONTAL'); r.counterAxisAlignItems = 'CENTER'; r.layoutWrap = 'WRAP'; r.counterAxisSpacing = 4;
+    const b = variant(badge, tipo === 'texto-libre' ? 'variant=outline' : 'variant=secondary').createInstance(); r.appendChild(b); b.setProperties({ [P(badge, 'label')]: tipo === 'texto-libre' ? 'Texto libre' : 'Nata' }); b.name = 'producto';
+    if (tipo === 'aproximada') await text('coincidencia aproximada', 'Caption/Default', 'muted-foreground', r);
+  }
+  res = await combine(page, 'staging · Fila con casilla', 'Fila con casilla', { coincidencia: ['catalogo', 'aproximada', 'texto-libre'] }, 'coincidencia', [], 'Un ingrediente en «Añadir a la lista» del menú (menu-view.tsx:2443-2470), y el mismo patrón en «¿Lo apuntamos?» al cocinar: li flex items-start gap-3 rounded-xl border p-3, Checkbox de 20 px (todo marcado al abrir) y un Label que ocupa la fila con el ingrediente en text-sm font-medium y, debajo, con qué producto del catálogo casa (Badge secondary, más «coincidencia aproximada» en text-xs si no es exacta) o Badge outline «Texto libre». OJO: «Texto libre» con mayúscula aquí y «texto libre» en minúscula en el panel del plato; y la lista no tiene «marcar todo».');
+  const kN = res.cs.addComponentProperty('nombre', 'TEXT', 'Nata para cocinar'); bindText(res.cs, kN, 'nombre');
+  for (const v of res.cs.children) { const bi = v.findOne((n) => n.type === 'INSTANCE' && n.name === 'producto'); bi.isExposedInstance = true; }
+  out.casilla = res.cs.id;
+
+  // ── Opción de objetivo (menus/components/menu-prefs.tsx:96-120) ──
+  add = stager(page, 'staging · Opción de objetivo');
+  for (const on of ['false', 'true']) {
+    const c = comp('activo=' + on, 'VERTICAL'); c.counterAxisSizingMode = 'FIXED'; c.resize(175, 60); c.primaryAxisSizingMode = 'AUTO'; c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; bind(c, 'minHeight', 'spacing/11'); bind(c, 'itemSpacing', 'spacing/0_5'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/lg'); c.strokeAlign = 'INSIDE'; add(c);
+    if (on === 'true') { c.strokeWeight = 2; setPaints(c, 'strokes', [['primary']]); setPaints(c, 'fills', [['primary', 0.05]]); } else { c.strokeWeight = 1; setPaints(c, 'strokes', [['border']]); }
+    await text('Equilibrado', 'Body/Small Medium', 'foreground', c, { name: 'título' });
+    await text('Variado y sano', 'Caption/Default', 'muted-foreground', c, { name: 'descripción' });
+  }
+  res = await combine(page, 'staging · Opción de objetivo', 'Opción de objetivo', { activo: ['false', 'true'] }, 'activo', [], '«Objetivo del menú» en «Ajustes del menú» y «Configura tu menú» (menu-prefs.tsx:96-120): grid-cols-2 gap-2 de button min-h-11 flex-col items-start gap-0.5 rounded-lg border p-3, título en text-sm font-medium y descripción en text-xs muted. Activa: border-primary bg-primary/5 ring-1 ring-primary (borde y anillo de 1 px, 2 px en total). Las cuatro: Equilibrado / Variado y sano, Ligero / Platos y cenas suaves, Proteico / Más proteína en cada plato, Energético / Raciones contundentes. OJO: es una elección única con aria-pressed, no un radiogroup.');
+  const kT = res.cs.addComponentProperty('título', 'TEXT', 'Equilibrado'), kDs = res.cs.addComponentProperty('descripción', 'TEXT', 'Variado y sano'); bindText(res.cs, kT, 'título'); bindText(res.cs, kDs, 'descripción');
+  out.objetivo = res.cs.id;
+
+  // ── Idea para hoy (TonightDrawer, menu-view.tsx:2799-2838) ──
+  add = stager(page, 'staging · Idea para hoy');
+  for (const tiene of ['todo', 'falta']) {
+    const c = comp('tienes=' + tiene, 'VERTICAL'); c.counterAxisSizingMode = 'FIXED'; c.resize(358, 10); c.primaryAxisSizingMode = 'AUTO'; c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; bind(c, 'itemSpacing', 'spacing/2'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; setPaints(c, 'strokes', [['border']]); add(c);
+    await text('Tortilla de patatas', 'Body/Small Medium', 'foreground', c, { fill: true, name: 'nombre' });
+    const r = stack('motivos', c, 6, 'HORIZONTAL'); r.counterAxisAlignItems = 'CENTER'; r.layoutWrap = 'WRAP'; r.counterAxisSpacing = 4;
+    const b = variant(badge, tiene === 'todo' ? 'variant=secondary' : 'variant=outline').createInstance(); r.appendChild(b); b.setProperties({ [P(badge, 'label')]: tiene === 'todo' ? 'Tienes todo' : 'Falta 1: Cebolla' });
+    await text(tiene === 'todo' ? 'Los huevos caducan mañana' : 'Hace 3 semanas que no la haces', 'Caption/Default', 'muted-foreground', r, { name: 'motivo' });
+    const bs = stack('botones', c, 8, 'HORIZONTAL');
+    for (const [v, lab, ic] of [['outline', 'Ver receta', 'chef-hat'], ['default', 'Añadir a hoy', 'plus']]) { const x = variant(btn, `variant=${v}, size=default, state=default`).createInstance(); bs.appendChild(x); x.setProperties({ [P(btn, 'label')]: lab, [P(btn, 'icon inline-start#')]: true, [P(btn, 'icon inline-start ↳')]: iconComp(ic).id }); x.layoutSizingHorizontal = 'FILL'; }
+  }
+  res = await combine(page, 'staging · Idea para hoy', 'Idea para hoy', { tienes: ['todo', 'falta'] }, 'tienes', [], 'Una receta en «¿Qué hago hoy?» (TonightDrawer, menu-view.tsx:2799-2838): li flex-col gap-2 rounded-xl border p-3 con el nombre en font-medium, una fila con Badge secondary «Tienes todo» o outline «Falta 1: {ingrediente}» y el motivo en text-xs muted (tonight.ts: «X caduca mañana», «Hace … que no la haces», «Os gusta (4.5★)»…), y dos botones flex-1: outline «Ver receta» (ChefHat, enlace) y default «Añadir a hoy» (Plus). OJO: «Añadir a hoy» no dice a qué hueco va (comida antes de las 16 h, cena después).');
+  const kIn = res.cs.addComponentProperty('nombre', 'TEXT', 'Tortilla de patatas'), kIm = res.cs.addComponentProperty('motivo', 'TEXT', 'Los huevos caducan mañana'); bindText(res.cs, kIn, 'nombre'); bindText(res.cs, kIm, 'motivo');
+  out.idea = res.cs.id;
+
+  // ── Fila a descontar (CookedDeductionsFields, cooked-deductions-fields.tsx) ──
+  add = stager(page, 'staging · Fila a descontar');
+  {
+    const c = comp('tipo=descontable'); c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 60); c.counterAxisSizingMode = 'AUTO'; c.primaryAxisAlignItems = 'SPACE_BETWEEN'; bind(c, 'itemSpacing', 'spacing/3'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; setPaints(c, 'strokes', [['border']]); add(c);
+    const l = stack('producto', c, 2); l.layoutSizingHorizontal = 'FILL';
+    await text('Lentejas', 'Body/Small Medium', 'foreground', l, { fill: true, name: 'nombre' }); await text('Tienes 1 kg', 'Caption/Default', 'muted-foreground', l, { fill: true, name: 'tienes' });
+    const r = stack('cantidad', c, 8, 'HORIZONTAL'); r.layoutSizingHorizontal = 'HUG'; r.counterAxisAlignItems = 'CENTER';
+    const i = variant(input, 'state=default, filled=true').createInstance(); r.appendChild(i); i.setProperties({ [P(input, 'value')]: '160' }); i.layoutSizingHorizontal = 'FIXED'; i.resize(80, i.height); i.name = 'Cantidad de Lentejas (solo aria-label)';
+    const u = await text('g', 'Body/Small', 'muted-foreground', r, { name: 'unidad' }); u.textAutoResize = 'NONE'; u.resize(28, u.height);
+    const d = comp('tipo=no-se-descuenta'); d.layoutMode = 'VERTICAL'; d.counterAxisSizingMode = 'FIXED'; d.resize(358, 40); d.primaryAxisSizingMode = 'AUTO'; d.primaryAxisAlignItems = 'MIN'; // layoutMode antes de medir: cambiarlo intercambia los ejes d.counterAxisAlignItems = 'MIN'; d.itemSpacing = 0; padX(d, 'spacing/2'); padY(d, 'spacing/2'); rad(d, 'radius/lg'); d.strokeWeight = 1; d.strokeAlign = 'INSIDE'; d.dashPattern = [4, 3]; setPaints(d, 'strokes', [['border']]); add(d);
+    await text('Comino', 'Body/Small', 'foreground', d, { fill: true, name: 'nombre' }); await text('La receta no indica cantidad', 'Caption/Default', 'muted-foreground', d, { fill: true, name: 'tienes' });
+  }
+  res = await combine(page, 'staging · Fila a descontar', 'Fila a descontar', { tipo: ['descontable', 'no-se-descuenta'] }, 'tipo', [], 'Descontar del inventario al cocinar (menus/components/cooked-deductions-fields.tsx), en el panel del plato, el ✔ de la celda y el repaso de platos: li flex items-center justify-between gap-3 rounded-xl border p-3 con el producto en text-sm font-medium (line-clamp-2) y «Tienes 1 kg» en text-xs muted (con ≈ si la unidad no coincide), y a la derecha un Input number w-20 text-right más la unidad en w-7. OJO: el Input no tiene etiqueta visible, solo aria-label. Lo que no se puede descontar va aparte bajo «No se descuenta», en filas rounded-lg border-dashed p-2 con el motivo: «No está en tu catálogo», «No te queda en el inventario», «La receta no indica cantidad», «Lo tienes en {unidad}».');
+  const kFn = res.cs.addComponentProperty('nombre', 'TEXT', 'Lentejas'), kFt = res.cs.addComponentProperty('tienes', 'TEXT', 'Tienes 1 kg'); bindText(res.cs, kFn, 'nombre'); bindText(res.cs, kFt, 'tienes');
+  const dv = res.cs.children.find((v) => v.name === 'tipo=descontable'); dv.findOne((n) => n.type === 'INSTANCE' && n.name.startsWith('Cantidad')).isExposedInstance = true;
+  const kFu = res.cs.addComponentProperty('unidad', 'TEXT', 'g'); dv.findOne((n) => n.name === 'unidad').componentPropertyReferences = { characters: kFu };
+  out.descontar = res.cs.id;
+
+  let fixed = 0; for (const id of Object.values(out)) fixed += await fixIconColors(await figma.getNodeByIdAsync(id));
+  return { ...out, fixed };
+}
+
 if (ARGS.part === 'doc') {
   const doc = await pageDoc(page, 'PATRONES', 'Patrones', 'Lo que se repite en las features, montado SOLO con instancias de la librería: si cambia un componente, cambian los patrones. Los nombres de variante describen estados de producto (no props de React), porque un patrón no es un componente del código: es una composición que el código repite. Cada descripción dice de qué archivo sale.');
-  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'marcar-apilado', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva', 'control'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket'], ['Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', []], ['Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', []], ['Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', []], ['Coste de receta', { estado: ['completo', 'parcial'] }, 'estado', []], ['Tarjeta de receta', { historial: ['false', 'true'] }, 'historial', []], ['Receta del pack', { estado: ['añadir', 'guardada'] }, 'estado', []], ['Valoración', { votos: ['sin', 'con'] }, 'votos', []], ['Ingrediente al cocinar', { estado: ['pendiente', 'marcado', 'falta'] }, 'estado', []], ['Temporizador', { estado: ['en-marcha', 'sonado'] }, 'estado', []], ['Aviso de precio', { tipo: ['sube', 'baja'] }, 'tipo', []], ['Barra de objetivo', { estado: ['bien', 'cerca', 'pasado'] }, 'estado', []], ['Barra de reparto', { color: ['1', '2', '3', '4', '5', 'otros'] }, 'color', []], ['Producto con precio', { comparable: ['false', 'true'] }, 'comparable', []], ['Hucha del mes'], ['Cabecera pública', { viewport: ['mobile', 'desktop'] }, 'viewport', []], ['Pie público', { viewport: ['mobile', 'desktop'] }, 'viewport', []], ['Controles del escáner', { fase: ['abriendo', 'encuadre', 'detectado', 'linterna-encendida', 'ajuste', 'recortando'] }, 'fase', []], ['Tirador de esquina', { state: ['default', 'focus'] }, 'state', []], ['Fila del modo compra', { estado: ['pendiente', 'otra-tienda', 'cogido', 'deslizada'] }, 'estado', []], ['Chip de tienda', { activo: ['false', 'true'] }, 'activo', []], ['Plegable de cogidos', { abierto: ['false', 'true'] }, 'abierto', []], ['Recomendados', { abierto: ['true', 'false'] }, 'abierto', []]];
+  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'marcar-apilado', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva', 'control'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket'], ['Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', []], ['Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', []], ['Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', []], ['Coste de receta', { estado: ['completo', 'parcial'] }, 'estado', []], ['Tarjeta de receta', { historial: ['false', 'true'] }, 'historial', []], ['Receta del pack', { estado: ['añadir', 'guardada'] }, 'estado', []], ['Valoración', { votos: ['sin', 'con'] }, 'votos', []], ['Ingrediente al cocinar', { estado: ['pendiente', 'marcado', 'falta'] }, 'estado', []], ['Temporizador', { estado: ['en-marcha', 'sonado'] }, 'estado', []], ['Aviso de precio', { tipo: ['sube', 'baja'] }, 'tipo', []], ['Barra de objetivo', { estado: ['bien', 'cerca', 'pasado'] }, 'estado', []], ['Barra de reparto', { color: ['1', '2', '3', '4', '5', 'otros'] }, 'color', []], ['Producto con precio', { comparable: ['false', 'true'] }, 'comparable', []], ['Hucha del mes'], ['Cabecera pública', { viewport: ['mobile', 'desktop'] }, 'viewport', []], ['Pie público', { viewport: ['mobile', 'desktop'] }, 'viewport', []], ['Controles del escáner', { fase: ['abriendo', 'encuadre', 'detectado', 'linterna-encendida', 'ajuste', 'recortando'] }, 'fase', []], ['Tirador de esquina', { state: ['default', 'focus'] }, 'state', []], ['Fila del modo compra', { estado: ['pendiente', 'otra-tienda', 'cogido', 'deslizada'] }, 'estado', []], ['Chip de tienda', { activo: ['false', 'true'] }, 'activo', []], ['Plegable de cogidos', { abierto: ['false', 'true'] }, 'abierto', []], ['Recomendados', { abierto: ['true', 'false'] }, 'abierto', []], ['Ficha del selector', { estado: ['normal', 'en-lista', 'marcado', 'nuevo'] }, 'estado', []], ['Fila de orden de pasillos', { estado: ['default', 'arrastrando'] }, 'estado', []], ['Chip de ubicación', { marcado: ['false', 'true'] }, 'marcado', []], ['Fila con interruptor', { activo: ['false', 'true'] }, 'activo', []], ['Cabecera del plegable', { abierto: ['false', 'true'] }, 'abierto', []], ['Casilla de acción', { estado: ['default', 'pulsada', 'destructiva'] }, 'estado', []], ['Casilla de hueco', { estado: ['libre', 'origen', 'bloqueada'] }, 'estado', []], ['Fila con casilla', { coincidencia: ['catalogo', 'aproximada', 'texto-libre'] }, 'coincidencia', []], ['Opción de objetivo', { activo: ['false', 'true'] }, 'activo', []], ['Idea para hoy', { tienes: ['todo', 'falta'] }, 'tienes', []], ['Fila a descontar', { tipo: ['descontable', 'no-se-descuenta'] }, 'tipo', []]];
   const out = [];
   for (const [name, axes, colAxis, rowAxes] of ENTRIES) {
     const node = page.findOne((n) => (n.type === 'COMPONENT_SET' || (n.type === 'COMPONENT' && n.parent.type !== 'COMPONENT_SET')) && n.name === name);
