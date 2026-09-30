@@ -66,10 +66,20 @@ function iconComp(name) {
   if (!__icons[name]) { const c = __iconPage.findOne((n) => n.type === 'COMPONENT' && n.name === 'lucide/' + name); if (!c) throw new Error('Icono no encontrado: ' + name); __icons[name] = c; }
   return __icons[name];
 }
+// MEDIDO (2026-09-30): en un override DENTRO de una instancia, Figma pinta el
+// color literal de la pintura aunque esté enlazada, y solid() lo deja en negro:
+// el icono de un Button por defecto salía oscuro sobre el verde con la variable
+// bien puesta. Se escribe el valor ya resuelto para ese nodo; al cambiar de modo
+// Figma lo vuelve a resolver, porque sigue enlazado.
+function solidFor(token, node) {
+  const v = V(token); let color = { r: 0, g: 0, b: 0 };
+  try { const r = v.resolveForConsumer(node); if (r && r.value && 'r' in r.value) color = { r: r.value.r, g: r.value.g, b: r.value.b }; } catch (e) {}
+  return figma.variables.setBoundVariableForPaint({ type: 'SOLID', color }, 'color', v);
+}
 function recolor(node, token) {
   for (const v of node.findAll((n) => n.type === 'VECTOR' || n.type === 'ELLIPSE' || n.type === 'RECTANGLE' || n.type === 'LINE')) {
-    if (v.strokes && v.strokes.length) v.strokes = [solid(token)];
-    if (Array.isArray(v.fills) && v.fills.length) v.fills = [solid(token)];
+    if (v.strokes && v.strokes.length) v.strokes = [solidFor(token, v)];
+    if (Array.isArray(v.fills) && v.fills.length) v.fills = [solidFor(token, v)];
   }
 }
 function icon(name, size, token, nodeName) {
@@ -105,9 +115,14 @@ async function fixIconColors(root) {
     // color por defecto de lucide/*). Otro color es un override a propósito (p. ej.
     // text-muted-foreground en los iconos del stepper) y se respeta.
     const fgId = __vars.find((v) => v.name === 'foreground').id;
+    // MEDIDO (2026-09-30): cambiar a un icono con MÁS trazos que el anterior
+    // conserva el override en los primeros y deja el resto en foreground (settings
+    // → trash: 2 destructive + 3 foreground). Mirar solo el primer trazo no lo ve,
+    // así que cuenta como reseteado cualquier trazo que haya vuelto a foreground.
+    const paintIds = (n) => n.findAll((v) => v.type === 'VECTOR' || v.type === 'ELLIPSE' || v.type === 'RECTANGLE' || v.type === 'LINE').flatMap((v) => [...(v.strokes || []), ...(Array.isArray(v.fills) ? v.fills : [])].map((p) => p.boundVariables?.color?.id));
     for (let i = 0; i < Math.min(src.length, dst.length); i++) {
-      const id = colorOf(src[i]); const have = colorOf(dst[i]);
-      if (!id || have === id || have !== fgId) continue;
+      const id = colorOf(src[i]);
+      if (!id || id === fgId || !paintIds(dst[i]).includes(fgId)) continue;
       const want = __vars.find((v) => v.id === id); if (!want) continue;
       recolor(dst[i], want.name); fixed++;
     }
