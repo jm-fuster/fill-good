@@ -5,7 +5,8 @@
 //   pu-crear | pu-pregunta | pu-invitar | pu-lista | pu-inventario | pu-unirse (primer uso)
 //   pt-aviso | pt-escanear | pt-analizando | pt-revisar | pt-celebracion | pt-caducidades (primer ticket)
 //   rp-despensa-tarjeta | rp-despensa-preguntas | rp-despensa-lista | rp-platos-tarjeta | rp-platos-preguntas
-//   rp-platos-descontar | rp-platos-porque (repasos semanales) | indice
+//   rp-platos-descontar | rp-platos-porque (repasos semanales)
+//   rc-vacio | rc-lista | rc-receta | ck-antes | ck-paso | ck-final | menus-escritorio | indice
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
 const variant = (cs, name) => { const v = cs.children.find((c) => c.name === name); if (!v) throw new Error('Variante ' + name + ' en ' + cs.name); return v; };
@@ -163,7 +164,7 @@ if (ARGS.screen === 'menus-movil') {
   const today = stack('Hoy', c, 8); rad(today, 'radius/xl'); setPaints(today, 'fills', [['card']]); setPaints(today, 'strokes', [['border']]); today.strokeWeight = 1; today.strokeAlign = 'INSIDE'; padX(today, 'spacing/3'); padY(today, 'spacing/3');
   const tt = stack('titulo', today, 4, 'HORIZONTAL'); await text('Hoy', 'Body/Small Medium', 'foreground', tt); await text('· Lunes 28', 'Body/Small', 'muted-foreground', tt);
   const dr = stack('plato', today, 8, 'HORIZONTAL'); dr.counterAxisAlignItems = 'CENTER';
-  const dt = stack('texto', dr, 4, 'HORIZONTAL'); dt.layoutSizingHorizontal = 'FILL'; dt.counterAxisAlignItems = 'CENTER'; await text('comida', 'Caption/Default', 'muted-foreground', dt); await text('Lentejas con verduras', 'Body/Small', 'foreground', dt);
+  const dt = stack('texto', dr, 4, 'HORIZONTAL'); dt.layoutSizingHorizontal = 'FILL'; dt.counterAxisAlignItems = 'CENTER'; await text('Comida', 'Caption/Default', 'muted-foreground', dt); await text('Lentejas con verduras', 'Body/Small', 'foreground', dt);
   for (const ic of ['chef-hat', 'circle-check', 'circle-x']) { const b = IB('outline', 'icon', ic); dr.appendChild(b); }
   // IA
   const gen = stack('generar', c, 8, 'HORIZONTAL'); gen.counterAxisAlignItems = 'CENTER';
@@ -620,9 +621,242 @@ if (ARGS.screen === 'rp-platos-preguntas' || ARGS.screen === 'rp-platos-desconta
   return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
 }
 
+// ── Recetas, modo cocinado y Menús en escritorio ────────────────────────────
+const RC = {
+  vacio: 'Recetas · 1 · Sin recetas', lista: 'Recetas · 2 · Mis recetas', receta: 'Recetas · 3 · Receta (edición)',
+  antes: 'Cocinar · 1 · Antes de empezar', paso: 'Cocinar · 2 · Paso con tiempo', final: 'Cocinar · 3 · Plato terminado',
+  escritorio: 'Menús · escritorio',
+};
+const L5 = {
+  tarjeta: await setOf('◆ PATRONES', 'Tarjeta de receta'), pack: await setOf('◆ PATRONES', 'Receta del pack'), coste: await setOf('◆ PATRONES', 'Coste de receta'),
+  val: await setOf('◆ PATRONES', 'Valoración'), ing: await setOf('◆ PATRONES', 'Ingrediente al cocinar'), timer: await setOf('◆ PATRONES', 'Temporizador'),
+  plato: await setOf('◆ PATRONES', 'Plato del menú'), ta: await setOf('02 · Formularios', 'Textarea'), sw: await setOf('02 · Formularios', 'Switch'),
+};
+function backHeader(c, title, back) { const { h } = header(title, null, null); c.appendChild(h); h.layoutSizingHorizontal = 'FILL'; h.setProperties({ [P(L.ph, 'back#')]: true, [P(L.ph, 'back label')]: back }); return h; }
+// Badges expuestos de un patrón, UNO POR HUECO (cada hueco tiene su variante: temporada
+// en outline, tipo de comida o dieta en secondary). null = ese hueco no se pinta.
+function setBadges(inst, slots) {
+  const bs = inst.findAll((n) => n.type === 'INSTANCE' && n.parent.name === 'etiquetas' && !n.name.startsWith('Coste'));
+  bs.forEach((b, i) => { if (slots[i] == null) b.visible = false; else b.setProperties({ [P(L3.badge, 'label')]: slots[i] }); });
+}
+function exploreHeader(parent, open) {
+  const sec = stack('Explorar recetas', parent, 0); rad(sec, 'radius/xl'); setPaints(sec, 'strokes', [['border']]); sec.strokeWeight = 1; sec.strokeAlign = 'INSIDE';
+  const h = stack('cabecera (botón)', sec, 8, 'HORIZONTAL'); h.counterAxisAlignItems = 'CENTER'; bind(h, 'minHeight', 'spacing/11'); padX(h, 'spacing/3'); padY(h, 'spacing/3');
+  h.appendChild(icon('compass', 16, 'muted-foreground', 'icon'));
+  return { sec, h, done: async () => {
+    await text('Explorar recetas', 'Body/Base Medium', 'foreground', h);
+    const pill = stack('43', h, 0, 'HORIZONTAL'); pill.layoutSizingHorizontal = 'HUG'; padX(pill, 'spacing/2'); padY(pill, 'spacing/0_5'); rad(pill, 'radius/full'); setPaints(pill, 'fills', [['muted']]); await text('43', 'Caption/Default', 'muted-foreground', pill);
+    const sp = figma.createFrame(); sp.name = 'ml-auto'; sp.fills = []; sp.resize(1, 1); h.appendChild(sp); sp.layoutGrow = 1;
+    h.appendChild(icon(open ? 'chevron-up' : 'chevron-down', 16, 'foreground', 'chevron'));
+  } };
+}
+function pack(parent, estado, name, description, labels) { const p = inst(L5.pack, 'estado=' + estado); parent.appendChild(p); p.layoutSizingHorizontal = 'FILL'; p.setProperties({ [P(L5.pack, 'name')]: name, [P(L5.pack, 'description')]: description }); setBadges(p, labels); return p; }
+function recipeCard(parent, hist, name, ings, labels, cost, votos, veces) {
+  const t = inst(L5.tarjeta, 'historial=' + hist); parent.appendChild(t); t.layoutSizingHorizontal = 'FILL'; t.setProperties({ [P(L5.tarjeta, 'name')]: name, [P(L5.tarjeta, 'ingredientes')]: ings }); setBadges(t, labels);
+  const cb = t.findOne((n) => n.type === 'INSTANCE' && n.name.startsWith('Coste')); if (!cost) cb.visible = false; else { if (cost.parcial) cb.swapComponent(variant(L5.coste, 'estado=parcial')); cb.setProperties({ [P(L5.coste, 'importe')]: cost.v }); if (cost.de) cb.findOne((n) => n.name === 'cobertura').characters = cost.de; }
+  if (votos) t.findOne((n) => n.name === 'votos').characters = votos; if (veces) t.findOne((n) => n.name === 'veces').characters = veces;
+  return t;
+}
+async function smallLabel(parent, label) { const l = inst(L2.label, 'state=default'); parent.appendChild(l); l.setProperties({ [P(L2.label, 'label')]: label }); bind(l.findOne((n) => n.type === 'TEXT'), 'fontSize', 'font-size/xs'); return l; }
+
+if (ARGS.screen === 'rc-vacio') {
+  const s = screen(RC.vacio, 390, 'mobile'); const c = mobileContent(s);
+  backHeader(c, 'Mis recetas', 'Menús');
+  const body = stack('cuerpo', c, 24);
+  const e = L2.empty.createInstance(); body.appendChild(e); e.layoutSizingHorizontal = 'FILL';
+  e.setProperties({ [P(L2.empty, 'title')]: 'Aún no tienes recetas', [P(L2.empty, 'description')]: 'Explora el pack de recetas de abajo para empezar, añade las tuyas o guarda las que genere la IA.', [P(L2.empty, 'icon')]: iconComp('book-open').id, [P(L2.empty, 'action')]: true });
+  const act = e.findOne((n) => n.type === 'INSTANCE' && n.name === 'action'); act.swapComponent(variant(L.btn, 'variant=default, size=default, state=default'));
+  act.setProperties({ [P(L.btn, 'label')]: 'Añade tu primera receta', [P(L.btn, 'icon inline-start#')]: true, [P(L.btn, 'icon inline-start ↳')]: iconComp('plus').id, [P(L.btn, 'icon inline-end#')]: false });
+  const ex = exploreHeader(body, true); await ex.done();
+  const eb = stack('abierta', ex.sec, 12); padX(eb, 'spacing/3'); bind(eb, 'paddingBottom', 'spacing/3');
+  await text('Recetas españolas de diario para empezar tu recetario. Añade las que te gusten; luego puedes editarlas o borrarlas.', 'Caption/Default', 'muted-foreground', eb, { fill: true });
+  const fl = stack('filtros', eb, 8);
+  for (const [l, v] of [['Temporada', 'Cualquiera'], ['Momento', 'Comida o cena'], ['Dieta', 'Cualquiera']]) { const f = stack(l, fl, 4); await smallLabel(f, l); const sel = inst(L3.select, 'size=default, state=default, filled=true'); f.appendChild(sel); sel.setProperties({ [P(L3.select, 'value')]: v }); sel.layoutSizingHorizontal = 'HUG'; }
+  const ul = stack('recetas', eb, 8);
+  pack(ul, 'añadir', 'Lentejas estofadas', 'Guiso de cuchara con lentejas y verduras, de toda la vida.', ['Invierno', 'Vegano', 'Sin gluten']);
+  pack(ul, 'añadir', 'Potaje de garbanzos', 'Garbanzos guisados con verduras y un toque de pimentón.', ['Invierno', 'Vegano', 'Sin gluten']);
+  pack(ul, 'añadir', 'Pollo al ajillo', 'Pollo dorado con mucho ajo y un chorrito de limón.', [null, null, 'Sin gluten']);
+  pack(ul, 'añadir', 'Tortilla de patatas', 'La clásica tortilla española, jugosa por dentro.', [null, 'Vegetariano', 'Sin gluten']);
+  finishMobile(s, c); const fab = s.findOne((n) => n.type === 'INSTANCE' && n.name === 'FAB'); await activate(s, 3);
+  return { screen: s.id, h: Math.round(s.height), fab: !!fab, fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'rc-lista') {
+  const s = screen(RC.lista, 390, 'mobile'); const c = mobileContent(s);
+  backHeader(c, 'Mis recetas', 'Menús');
+  const body = stack('cuerpo', c, 24);
+  const rl = stack('RecipesList', body, 16);
+  const se = inst(L.search, 'filled=false'); rl.appendChild(se); se.layoutSizingHorizontal = 'FILL'; se.findOne((n) => n.type === 'INSTANCE' && n.name.startsWith('Input')).setProperties({ [P(L2.input, 'placeholder')]: 'Buscar receta…' });
+  const g = stack('Filtrar por tipo de comida', rl, 8, 'HORIZONTAL'); for (const [v, l] of [['default', 'Todas'], ['outline', 'Comida'], ['outline', 'Cena']]) { const b = BTN(v, 'default', l); g.appendChild(b); b.layoutSizingHorizontal = 'FILL'; }
+  const ul = stack('recetas', rl, 8);
+  recipeCard(ul, 'true', 'Tortilla de patatas', '5 ingredientes', ['Comida', 'Cena', '🗓️ Todo el año'], { v: '≈ 2,85 €' }, '★ 4,5 · 2 votos', 'Hecha 3 veces · última vez ayer');
+  recipeCard(ul, 'true', 'Lentejas estofadas', '8 ingredientes', ['Comida', null, '❄️ Invierno'], null, '★ 5,0 · 1 voto', 'Hecha 1 vez · última vez hace 5 días');
+  recipeCard(ul, 'false', 'Crema de calabacín', '6 ingredientes', [null, 'Cena', '🗓️ Todo el año'], { v: '≥ 1,90 €', parcial: true, de: ' (4 de 6)' });
+  recipeCard(ul, 'false', 'Espaguetis a la boloñesa', '9 ingredientes', ['Comida', 'Cena', '🗓️ Todo el año'], null);
+  const ex = exploreHeader(body, false); await ex.done();
+  finishMobile(s, c); await activate(s, 3);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'rc-receta') {
+  const s = screen(RC.receta, 390, 'mobile'); const c = mobileContent(s); c.paddingBottom = 112 + 32;
+  backHeader(c, 'Lentejas estofadas', 'Mis recetas'); // sin pasos no hay «Cocinar paso a paso»; sin precios no hay coste
+  const v = inst(L5.val, 'votos=sin'); c.appendChild(v); v.layoutSizingHorizontal = 'FILL';
+  const form = stack('RecipeForm', c, 24); bind(form, 'paddingTop', 'spacing/2');
+  const basic = stack('datos', form, 16);
+  await labeled(basic, 'Nombre', inputWith('Lentejas estofadas'));
+  const ta = inst(L5.ta, 'state=default, filled=true'); ta.setProperties({ [P(L5.ta, 'value')]: 'Guiso de cuchara con lentejas y verduras, de toda la vida.' });
+  const df = await labeled(basic, 'Descripción (opcional)', ta); const dl = df.findOne((n) => n.type === 'INSTANCE').findOne((n) => n.type === 'TEXT'); dl.setRangeFills(12, dl.characters.length, [solid('muted-foreground')]);
+  const g2 = stack('raciones y minutos', basic, 12, 'HORIZONTAL');
+  (await labeled(g2, 'Raciones', inputWith('2'))).layoutSizingHorizontal = 'FILL';
+  const mf = await labeled(g2, 'Minutos (opcional)', inputWith(null, 'p. ej. 45')); mf.layoutSizingHorizontal = 'FILL'; const ml = mf.findOne((n) => n.type === 'INSTANCE').findOne((n) => n.type === 'TEXT'); ml.setRangeFills(8, ml.characters.length, [solid('muted-foreground')]);
+  const fs = async (legend, hint) => { const f = stack(legend, form, 8); await text(legend, 'Body/Small Medium', 'foreground', f, { fill: true }); if (hint) await text(hint, 'Caption/Default', 'muted-foreground', f, { fill: true }); return f; };
+  const tipo = await fs('Tipo de comida', 'Puedes marcar varias.'); const tr = stack('opciones', tipo, 8, 'HORIZONTAL'); for (const [on, l] of [[false, 'Desayuno'], [true, 'Comida'], [false, 'Cena']]) { const b = BTN(on ? 'default' : 'outline', 'lg', l); tr.appendChild(b); b.layoutSizingHorizontal = 'FILL'; }
+  const temp = await fs('Temporada'); const tp = stack('opciones', temp, 8, 'HORIZONTAL'); for (const [on, l] of [[false, 'Todo el año'], [true, 'Invierno'], [false, 'Verano']]) { const b = BTN(on ? 'default' : 'outline', 'default', l); tp.appendChild(b); b.layoutSizingHorizontal = 'FILL'; }
+  const ingr = await fs('Ingredientes'); const ul = stack('lista', ingr, 12);
+  const ING = [['Lentejas', '160', 'g', 'No lo tienes'], ['Zanahorias', '1', 'ud', 'En casa'], ['Cebollas', '1', 'ud', 'En casa'], ['Patatas', '1', 'ud', 'En casa'], ['Ajos', '2', 'ud', 'En casa'], ['Tomate frito', '60', 'g', 'No lo tienes'], ['Aceite de oliva virgen extra', '20', 'ml', 'En casa'], ['Sal', null, null, 'En casa']];
+  for (const [n, q, u, stock] of ING) {
+    const li = stack(n, ul, 8); padX(li, 'spacing/3'); padY(li, 'spacing/3'); rad(li, 'radius/lg'); setPaints(li, 'strokes', [['border']]); li.strokeWeight = 1; li.strokeAlign = 'INSIDE';
+    const r1 = stack('nombre', li, 8, 'HORIZONTAL'); r1.counterAxisAlignItems = 'CENTER'; const ni = inputWith(n, 'Ingrediente'); r1.appendChild(ni); ni.layoutSizingHorizontal = 'FILL'; r1.appendChild(IB('ghost', 'icon', 'trash'));
+    const b = inst(L3.badge, 'variant=default'); li.appendChild(b); b.setProperties({ [P(L3.badge, 'label')]: stock }); const ok = stock === 'En casa'; setPaints(b, 'fills', [[ok ? 'success' : 'muted', ok ? 0.15 : 1]]); for (const t of b.findAll((x) => x.type === 'TEXT')) setPaints(t, 'fills', [[ok ? 'success' : 'muted-foreground']]);
+    const r2 = stack('cantidad', li, 8, 'HORIZONTAL'); r2.counterAxisAlignItems = 'CENTER';
+    const qi = inputWith(q, 'Cant.'); r2.appendChild(qi); qi.layoutSizingHorizontal = 'FIXED'; qi.resize(96, qi.height);
+    const us = inst(L3.select, `size=default, state=default, filled=${u ? 'true' : 'false'}`); r2.appendChild(us); us.setProperties(u ? { [P(L3.select, 'value')]: u } : { [P(L3.select, 'placeholder')]: 'Sin unidad' }); us.layoutSizingHorizontal = 'FILL'; // w-32, pero en 334 px no cabe todo: el navegador encoge los campos (flex-shrink) y aquí la unidad toma lo que queda
+    const op = stack('Opcional', r2, 8, 'HORIZONTAL'); op.layoutSizingHorizontal = 'HUG'; op.counterAxisAlignItems = 'CENTER'; await text('Opcional', 'Body/Small', 'muted-foreground', op); op.appendChild(inst(L5.sw, 'size=default, state=default, checked=false'));
+  }
+  const ai = BTN('outline', 'default', 'Añadir ingrediente', 'plus'); ingr.appendChild(ai);
+  const pasos = await fs('Pasos (opcional)', 'Uno por paso, en orden, con las cantidades para 2 raciones. Si pegas una receta entera, cada línea se convierte en un paso.');
+  const pl = pasos.findOne((n) => n.type === 'TEXT' && n.characters === 'Pasos (opcional)'); pl.setRangeFills(6, pl.characters.length, [solid('muted-foreground')]);
+  const st = stack('paso 1', pasos, 8); padX(st, 'spacing/3'); padY(st, 'spacing/3'); rad(st, 'radius/lg'); setPaints(st, 'strokes', [['border']]); st.strokeWeight = 1; st.strokeAlign = 'INSIDE';
+  const sr = stack('texto', st, 8, 'HORIZONTAL'); sr.counterAxisAlignItems = 'MIN';
+  const num = stack('número', sr, 0, 'HORIZONTAL'); num.layoutSizingHorizontal = 'FIXED'; num.resize(24, 24); num.layoutSizingVertical = 'FIXED'; num.primaryAxisAlignItems = 'CENTER'; num.counterAxisAlignItems = 'CENTER'; rad(num, 'radius/full'); setPaints(num, 'fills', [['muted']]); await text('1', 'Caption/Medium', 'muted-foreground', num);
+  const stx = inst(L5.ta, 'state=default, filled=false'); sr.appendChild(stx); stx.layoutSizingHorizontal = 'FILL'; stx.setProperties({ [P(L5.ta, 'placeholder')]: 'p. ej. Sofríe la cebolla a fuego medio 5 minutos' });
+  const ac = stack('acciones', st, 4, 'HORIZONTAL'); ac.appendChild(IB('ghost', 'icon', 'chevron-up')); ac.appendChild(IB('ghost', 'icon', 'chevron-down')); const sp2 = figma.createFrame(); sp2.name = 'ml-auto'; sp2.fills = []; sp2.resize(1, 1); ac.appendChild(sp2); sp2.layoutGrow = 1; ac.appendChild(IB('ghost', 'icon', 'trash'));
+  const pr = stack('añadir', pasos, 8, 'HORIZONTAL'); pr.layoutWrap = 'WRAP'; pr.counterAxisSpacing = 8; pr.appendChild(BTN('outline', 'default', 'Añadir paso', 'plus'));
+  const aib = inst(L.ai, 'size=default, state=default'); pr.appendChild(aib); aib.setProperties({ [P(L.ai, 'label')]: 'Escribir con IA' }); aib.layoutSizingHorizontal = 'HUG';
+  await text('La IA escribe los pasos y completa las cantidades que falten arriba, sin tocar los ingredientes que ya hayas puesto. Revísalo antes de guardar.', 'Caption/Default', 'muted-foreground', pasos, { fill: true });
+  const acts = stack('acciones', form, 8); fullBtn(acts, 'default', 'lg', 'Guardar cambios'); fullBtn(acts, 'destructive', 'default', 'Eliminar receta', 'trash'); fullBtn(acts, 'ghost', 'default', 'Cancelar');
+  finishMobile(s, c); for (const f of s.findAll((n) => n.type === 'INSTANCE' && n.name === 'FAB')) f.remove(); await activate(s, 3);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+// Modo cocinado: pantalla completa (fixed inset-0 z-[60]), sin nav ni cabecera de la app
+async function cookScreen(name, sub, progress) {
+  const s = screen(name, 390, 'mobile'); s.layoutMode = 'VERTICAL'; s.primaryAxisSizingMode = 'FIXED'; s.counterAxisSizingMode = 'FIXED'; s.resize(390, 844); s.itemSpacing = 0;
+  const h = stack('CookingHeader', s, 8); padX(h, 'spacing/4'); bind(h, 'paddingTop', 'spacing/3'); bind(h, 'paddingBottom', 'spacing/3'); h.strokes = [solid('border')]; h.strokeBottomWeight = 1; h.strokeTopWeight = 0; h.strokeLeftWeight = 0; h.strokeRightWeight = 0; h.strokeAlign = 'INSIDE';
+  const r = stack('fila', h, 12, 'HORIZONTAL'); r.primaryAxisAlignItems = 'SPACE_BETWEEN'; r.counterAxisAlignItems = 'CENTER';
+  const l = stack('títulos', r, 0); l.layoutSizingHorizontal = 'FILL'; await text('Lentejas estofadas', 'Title/Section', 'foreground', l, { fill: true }); await text(sub, 'Caption/Default', 'muted-foreground', l, { fill: true });
+  const x = IB('ghost', 'icon', 'x'); r.appendChild(x); x.name = 'Salir de cocinar';
+  const bar = figma.createFrame(); bar.name = 'Progreso de la receta'; bar.layoutMode = 'HORIZONTAL'; bar.fills = []; h.appendChild(bar); bar.layoutSizingHorizontal = 'FILL'; bar.layoutSizingVertical = 'FIXED'; bar.resize(358, 4); rad(bar, 'radius/full'); setPaints(bar, 'fills', [['muted']]); bar.clipsContent = true;
+  if (progress > 0) { const fill = figma.createFrame(); fill.name = 'relleno'; bar.appendChild(fill); fill.layoutSizingVertical = 'FILL'; fill.resize(358 * progress, 4); rad(fill, 'radius/full'); setPaints(fill, 'fills', [['success']]); }
+  return s;
+}
+async function timerBar(s, estado, label) {
+  const b = stack('TimerBar', s, 8, 'HORIZONTAL'); b.counterAxisAlignItems = 'CENTER'; padX(b, 'spacing/4'); padY(b, 'spacing/2'); setPaints(b, 'fills', [['card']]); b.strokes = [solid('border')]; b.strokeBottomWeight = 1; b.strokeTopWeight = 0; b.strokeLeftWeight = 0; b.strokeRightWeight = 0; b.strokeAlign = 'INSIDE';
+  const ul = stack('tiempos', b, 8, 'HORIZONTAL'); ul.layoutSizingHorizontal = 'FILL'; ul.layoutWrap = 'WRAP';
+  const t = inst(L5.timer, 'estado=' + estado); ul.appendChild(t); t.setProperties({ [P(L5.timer, 'tiempo')]: label });
+  const m = IB('ghost', 'icon', 'volume-2'); b.appendChild(m); recolor(m.findAll((q) => q.type === 'INSTANCE')[0], 'muted-foreground'); m.name = 'Silenciar el sonido';
+  return b;
+}
+function cookBody(s, gap) { const b = stack('cuerpo (scroll)', s, gap); padX(b, 'spacing/4'); padY(b, 'spacing/6'); b.layoutSizingVertical = 'FILL'; b.clipsContent = true; return b; }
+function cookFooter(s) { const f = stack('footer', s, 8, 'HORIZONTAL'); padX(f, 'spacing/4'); bind(f, 'paddingTop', 'spacing/3'); f.paddingBottom = 34 + 12; f.strokes = [solid('border')]; f.strokeTopWeight = 1; f.strokeBottomWeight = 0; f.strokeLeftWeight = 0; f.strokeRightWeight = 0; f.strokeAlign = 'INSIDE'; return f; }
+async function heading20(parent, chars) { const t = await text(chars, 'Title/Page', 'foreground', parent, { fill: true }); bind(t, 'fontSize', 'font-size/xl'); return t; }
+
+if (ARGS.screen === 'ck-antes') {
+  const s = await cookScreen(RC.antes, 'Ingredientes', 0);
+  const b = cookBody(s, 20);
+  const hd = stack('intro', b, 4); await heading20(hd, 'Antes de empezar'); await text('Saca lo que vas a necesitar y márcalo. Para 2 raciones.', 'Body/Small', 'muted-foreground', hd, { fill: true });
+  const w = stack('te falta', b, 8); padX(w, 'spacing/3'); padY(w, 'spacing/3'); rad(w, 'radius/xl'); setPaints(w, 'fills', [['warning', 0.15]]); setPaints(w, 'strokes', [['warning', 0.4]]); w.strokeWeight = 1; w.strokeAlign = 'INSIDE';
+  await text('Te faltan 2 ingredientes', 'Body/Small Medium', 'warning', w, { fill: true }); await text('No está en la despensa ni apuntado en la lista: Lentejas, Tomate frito.', 'Caption/Default', 'warning', w, { fill: true });
+  w.appendChild(BTN('outline', 'default', 'Apuntar en la lista', 'shopping-cart'));
+  const ul = stack('ingredientes', b, 4);
+  for (const [q, n, st] of [['160 g', 'Lentejas', 'falta'], ['1 ud', 'Zanahorias', 'marcado'], ['1 ud', 'Cebollas', 'marcado'], ['1 ud', 'Patatas', 'pendiente'], ['2 ud', 'Ajos', 'marcado'], ['60 g', 'Tomate frito', 'falta'], ['20 ml', 'Aceite de oliva virgen extra', 'pendiente'], ['al gusto', 'Sal', 'pendiente']]) { const i = inst(L5.ing, 'estado=' + st); ul.appendChild(i); i.layoutSizingHorizontal = 'FILL'; if (st === 'marcado') { i.findOne((x) => x.name === 'cantidad').characters = q; i.findOne((x) => x.name === 'name').characters = n; } else i.setProperties({ [P(L5.ing, 'cantidad')]: q, [P(L5.ing, 'name')]: n }); } // «marcado» no va enlazado (ver el patrón)
+  const f = cookFooter(s); const go = BTN('default', 'lg', 'Empezar', null); go.setProperties({ [P(L.btn, 'icon inline-end#')]: true, [P(L.btn, 'icon inline-end ↳')]: iconComp('chevron-right').id }); f.appendChild(go); go.layoutSizingHorizontal = 'FILL';
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'ck-paso') {
+  const s = await cookScreen(RC.paso, 'Paso 4 de 5', 3 / 5);
+  await timerBar(s, 'en-marcha', '06:41'); // el de 8 min del paso 2, todavía en marcha
+  const b = cookBody(s, 24);
+  const lv = stack('paso (aria-live)', b, 12);
+  await text('Paso 4 de 5', 'Caption/Medium', 'muted-foreground', lv, { fill: true });
+  const t = await text('Cuece a fuego suave 35 minutos, removiendo de vez en cuando.', 'Body/Base Medium', 'foreground', lv, { fill: true }); bind(t, 'fontSize', 'font-size/xl'); t.lineHeight = { value: 162.5, unit: 'PERCENT' };
+  const ch = stack('Tiempos de este paso', b, 8, 'HORIZONTAL'); ch.appendChild(BTN('outline', 'default', '35 min', 'timer'));
+  const ing = stack('ingredientes', b, 12); padX(ing, 'spacing/3'); padY(ing, 'spacing/3'); rad(ing, 'radius/xl'); setPaints(ing, 'strokes', [['border']]); ing.strokeWeight = 1; ing.strokeAlign = 'INSIDE';
+  const vb = BTN('ghost', 'default', 'Ver ingredientes (8)', 'list-checks'); ing.appendChild(vb); vb.layoutSizingHorizontal = 'FILL'; vb.primaryAxisAlignItems = 'MIN';
+  const f = cookFooter(s); f.appendChild(IB('outline', 'icon-lg', 'chevron-left'));
+  const nx = BTN('default', 'lg', 'Siguiente', null); nx.setProperties({ [P(L.btn, 'icon inline-end#')]: true, [P(L.btn, 'icon inline-end ↳')]: iconComp('chevron-right').id }); f.appendChild(nx); nx.layoutSizingHorizontal = 'FILL';
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'ck-final') {
+  const s = await cookScreen(RC.final, 'Plato terminado', 1);
+  await timerBar(s, 'sonado', '¡Tiempo! 35 min');
+  const b = cookBody(s, 20); b.layoutSizingVertical = 'HUG'; b.clipsContent = false; // sin pie fijo: la pantalla final se desplaza entera
+  const cel = stack('celebración', b, 8); cel.counterAxisAlignItems = 'CENTER';
+  const circ = stack('icono', cel, 0, 'HORIZONTAL'); circ.layoutSizingHorizontal = 'FIXED'; circ.resize(48, 48); circ.layoutSizingVertical = 'FIXED'; circ.primaryAxisAlignItems = 'CENTER'; circ.counterAxisAlignItems = 'CENTER'; rad(circ, 'radius/full'); setPaints(circ, 'fills', [['accent']]); circ.appendChild(icon('party-popper', 24, 'accent-foreground', 'icon'));
+  (await heading20(cel, '¡Lentejas estofadas listo!')).textAlignHorizontal = 'CENTER';
+  (await text('Primera vez que lo cocináis', 'Body/Small', 'muted-foreground', cel, { fill: true })).textAlignHorizontal = 'CENTER';
+  const mk = stack('¿Lo apuntamos como cocinado?', b, 8); padX(mk, 'spacing/4'); padY(mk, 'spacing/4'); rad(mk, 'radius/xl'); setPaints(mk, 'strokes', [['border']]); mk.strokeWeight = 1; mk.strokeAlign = 'INSIDE';
+  await text('¿Lo apuntamos como cocinado?', 'Body/Small Medium', 'foreground', mk, { fill: true });
+  await text('Con esto el menú deja de preguntarte por él y el generador sabe que no toca repetirlo pronto.', 'Caption/Default', 'muted-foreground', mk, { fill: true });
+  fullBtn(mk, 'default', 'lg', 'Lo cocinamos', 'chef-hat'); fullBtn(mk, 'ghost', 'default', 'Ahora no');
+  const v = inst(L5.val, 'votos=sin'); b.appendChild(v); v.layoutSizingHorizontal = 'FILL';
+  const ex = stack('salida', b, 8); fullBtn(ex, 'default', 'lg', 'Listo'); fullBtn(ex, 'ghost', 'default', 'Volver a los pasos', 'chevron-left');
+  s.primaryAxisSizingMode = 'AUTO'; if (s.height < 844) { s.primaryAxisSizingMode = 'FIXED'; s.resize(390, 844); } // fixed inset-0: nunca menos que la pantalla
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'menus-escritorio') {
+  const s = screen(RC.escritorio, 1280, 'desktop'); const c = desktop(s);
+  withActions(c, 'Menús', [IB('outline', 'icon', 'book-open'), IB('outline', 'icon', 'ellipsis')]);
+  const nav = stack('semana', c, 4, 'HORIZONTAL'); nav.counterAxisAlignItems = 'CENTER';
+  nav.appendChild(IB('ghost', 'icon', 'chevron-left'));
+  const lbl = stack('etiqueta', nav, 8, 'HORIZONTAL'); lbl.layoutSizingHorizontal = 'FILL'; lbl.primaryAxisAlignItems = 'CENTER'; lbl.counterAxisAlignItems = 'CENTER'; await text('Semana del 28 de septiembre', 'Body/Small Medium', 'foreground', lbl);
+  const rv = BTN('ghost', 'default', '1 por repasar', 'chef-hat'); lbl.appendChild(rv); for (const t of rv.findAll((n) => n.type === 'TEXT')) setPaints(t, 'fills', [['muted-foreground']]); recolor(rv.findAll((n) => n.type === 'INSTANCE')[0], 'muted-foreground');
+  nav.appendChild(IB('ghost', 'icon', 'chevron-right'));
+  const today = stack('Hoy', c, 8); rad(today, 'radius/xl'); setPaints(today, 'fills', [['card']]); setPaints(today, 'strokes', [['border']]); today.strokeWeight = 1; today.strokeAlign = 'INSIDE'; padX(today, 'spacing/3'); padY(today, 'spacing/3');
+  const tt = stack('titulo', today, 4, 'HORIZONTAL'); await text('Hoy', 'Body/Small Medium', 'foreground', tt); await text('· Miércoles 30', 'Body/Small', 'muted-foreground', tt);
+  for (const [slot, dish] of [['Comida', 'Pollo al ajillo'], ['Cena', 'Ensalada mixta con atún']]) { // slotLabel(), con mayúscula
+    const dr = stack(dish, today, 8, 'HORIZONTAL'); dr.counterAxisAlignItems = 'CENTER';
+    const dt = stack('texto', dr, 4, 'HORIZONTAL'); dt.layoutSizingHorizontal = 'FILL'; dt.counterAxisAlignItems = 'CENTER'; await text(slot, 'Caption/Default', 'muted-foreground', dt); await text(dish, 'Body/Small', 'foreground', dt);
+    for (const ic of ['circle-check', 'circle-x']) { const b2 = IB('outline', 'icon', ic); dr.appendChild(b2); recolor(b2.findAll((q) => q.type === 'INSTANCE')[0], 'muted-foreground'); }
+  }
+  // 3 columnas (xl:grid-cols-3, gap-3): a 960 px, tarjetas de 312. Cada hueco mide menos de 9rem: el plato se apila.
+  const grid = stack('semana (xl:grid-cols-3)', c, 12, 'HORIZONTAL'); grid.layoutWrap = 'WRAP'; grid.counterAxisSpacing = 12; grid.counterAxisAlignItems = 'MIN';
+  const K = P(L5.plato, 'name');
+  const DIAS = [
+    ['Lunes 28', ['cocinado', 'Lentejas estofadas'], ['marcar-apilado', 'Crema de calabacín']],
+    ['Martes 29', ['cocinado', 'Arroz con verduras'], ['cocinado', 'Tortilla de patatas']],
+    ['Miércoles 30', ['marcar-apilado', 'Pollo al ajillo'], ['marcar-apilado', 'Ensalada mixta con atún'], true],
+    ['Jueves 1', ['pendiente', 'Espaguetis a la boloñesa'], ['pendiente', 'Crema de zanahoria']],
+    ['Viernes 2', ['pendiente', 'Merluza al horno con patatas'], ['pendiente', 'Huevos rotos con jamón']],
+    ['Sábado 3', ['pendiente', 'Arroz con gambas'], ['pendiente', 'Sándwich mixto']],
+    ['Domingo 4', ['pendiente', 'Potaje de garbanzos'], ['pendiente', 'Pisto de verduras']],
+  ];
+  for (const [day, comida, cena, isToday] of DIAS) {
+    const d = L.dia.createInstance(); grid.appendChild(d); d.layoutSizingHorizontal = 'FIXED'; d.resize(312, d.height); d.layoutSizingVertical = 'HUG';
+    d.findOne((n) => n.name === 'day').characters = day;
+    if (!isToday) { d.findOne((n) => n.name === 'hoy').visible = false; setPaints(d, 'strokes', [['border']]); }
+    const platos = d.findAll((n) => n.type === 'INSTANCE' && n.parent && (n.parent.name === 'Comida' || n.parent.name === 'Cena') && n.name.startsWith('Plato'));
+    [comida, cena].forEach(([st, name], i) => { const p = platos[i]; p.swapComponent(variant(L5.plato, 'estado=' + st)); p.setProperties({ [K]: name }); p.layoutSizingHorizontal = 'FILL'; p.layoutSizingVertical = 'HUG'; });
+  }
+  const cost = stack('coste', c, 4); cost.counterAxisAlignItems = 'CENTER';
+  const ct = stack('linea', cost, 4, 'HORIZONTAL'); ct.layoutSizingHorizontal = 'HUG'; await text('Coste estimado de la semana:', 'Caption/Default', 'muted-foreground', ct); await text('≈ 58,40 €', 'Caption/Medium', 'price', ct);
+  const add = BTN('outline', 'lg', 'Añadir a la lista lo que falte', 'shopping-cart'); c.appendChild(add); add.layoutSizingHorizontal = 'FILL';
+  // Semana completa: el bloque de IA baja debajo de la lista y en tamaño normal (ctaOnTop solo con huecos libres de hoy en adelante)
+  const gen = stack('generar', c, 8, 'HORIZONTAL'); gen.counterAxisAlignItems = 'CENTER';
+  const ai = inst(L.ai, 'size=default, state=default'); gen.appendChild(ai); ai.layoutGrow = 1; ai.layoutSizingHorizontal = 'FILL';
+  gen.appendChild(IB('outline', 'icon-lg', 'sliders-horizontal'));
+  s.resize(1280, Math.max(800, Math.ceil(56 + c.height))); s.findOne((n) => n.type === 'INSTANCE' && n.name.startsWith('AppSidebar')).resize(256, s.height);
+  await activate(s, 3);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
 if (ARGS.screen === 'indice') {
   // Colocar las pantallas en una rejilla con títulos
-  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio'], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue]];
+  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio', RC.escritorio], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue], [RC.vacio, RC.lista, RC.receta, RC.antes, RC.paso, RC.final]];
   let y = 0; const out = [];
   const oldT = page.findAll((n) => n.name.startsWith('título · ') && n.parent === page); for (const t of oldT) t.remove();
   for (const rowNames of order) { let x = 0, h = 0; for (const n of rowNames) { const s = page.findOne((k) => k.name === n && k.parent === page); if (!s) continue; s.x = x; s.y = y + 48; const t = await text(n, 'Title/Section', 'foreground', page); t.name = 'título · ' + n; t.x = x; t.y = y; x += s.width + 120; h = Math.max(h, s.height); out.push(n); } y += h + 48 + 200; }
