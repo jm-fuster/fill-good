@@ -63,7 +63,7 @@ import {
   type CookingEntry,
 } from "../cooking-flow";
 import { findStepTimers, formatCountdown } from "../step-timers";
-import { RecipeIngredientList } from "./recipe-cooking";
+import { amountLabel, RecipeIngredientList } from "./recipe-cooking";
 import { RecipeRating } from "./recipe-rating";
 
 /** Recorrido (px) que hay que deslizar para cambiar de paso. */
@@ -535,9 +535,7 @@ function CookingPrep({
                         ready.has(i) && "line-through",
                       )}
                     >
-                      {ing.quantity === null
-                        ? "al gusto"
-                        : `${ing.quantity}${ing.unit ? ` ${ing.unit}` : ""}`}
+                      {amountLabel(ing)}
                     </span>
                     <span
                       className={cn(
@@ -840,12 +838,9 @@ function CookingSteps({
               <p className="text-xs text-muted-foreground">
                 Retomas donde lo dejaste.
               </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onRestart}
-                className="shrink-0"
-              >
+              {/* Tamaño por defecto (h-11): `sm` son 36 px, y esta pantalla se
+                  toca con las manos mojadas. */}
+              <Button variant="ghost" onClick={onRestart} className="shrink-0">
                 Empezar de cero
               </Button>
             </div>
@@ -1149,8 +1144,11 @@ function CookingFinish({
           <span className="flex size-12 items-center justify-center rounded-full bg-accent text-accent-foreground animate-in zoom-in-75 duration-300">
             <PartyPopper className="size-6" aria-hidden />
           </span>
-          <h2 className="font-heading text-xl font-semibold">
-            ¡{recipe.name} listo!
+          {/* Sin concordar con el nombre: «¡… listo!» decía «¡Lentejas
+              estofadas listo!». La app no sabe el género ni el número de cada
+              plato, así que la frase no lleva adjetivo. */}
+          <h2 className="font-heading text-xl font-semibold text-balance">
+            ¡{recipe.name}, a la mesa!
           </h2>
           {timesLabel ? (
             <p className="text-sm text-muted-foreground">{timesLabel}</p>
