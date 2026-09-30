@@ -44,7 +44,7 @@ export function EntryActionTile({
       loading={loading}
       disabled={disabled}
       aria-pressed={pressed}
-      className="h-auto min-h-16 flex-col gap-1 px-1 py-2 text-[0.7rem] leading-tight whitespace-normal"
+      className="h-auto min-h-16 flex-col gap-1 px-1 py-2 text-xs leading-tight whitespace-normal"
     >
       <Icon aria-hidden />
       {label}

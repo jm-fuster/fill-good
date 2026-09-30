@@ -123,7 +123,7 @@ export function MenuSettings({
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuItem onSelect={() => setOpen(true)}>
+        <DropdownMenuItem className="min-h-11" onSelect={() => setOpen(true)}>
           <SlidersHorizontal aria-hidden />
           Ajustes del menú
         </DropdownMenuItem>
@@ -131,7 +131,13 @@ export function MenuSettings({
         {/* El subtítulo es lo que antes decía la línea de debajo del botón
             («completar respeta tus platos fijados y manuales»), dicho en el
             único sitio donde hace falta: al elegir entre las dos. */}
-        <DropdownMenuItem variant="destructive" onSelect={onReplaceAll}>
+        {/* min-h-11: los ítems del desplegable medían unos 32 px, y en móvil
+            son la entrada a Ajustes y a Rehacer. */}
+        <DropdownMenuItem
+          variant="destructive"
+          className="min-h-11"
+          onSelect={onReplaceAll}
+        >
           <RefreshCw aria-hidden />
           <span className="min-w-0 flex-1">
             <span className="block">Rehacer todo desde cero</span>
@@ -205,18 +211,20 @@ export function MenuSettingsPanel({
             recipes={recipes}
             planBreakfast={prefs.planBreakfast}
           />
-        </div>
-
-        <ResponsiveModalFooter className="gap-2">
-          <Button type="button" size="lg" onClick={save} loading={saving}>
-            {saving ? "Guardando…" : "Guardar preferencias"}
-          </Button>
-          <ResponsiveModalClose asChild>
-            <Button type="button" variant="ghost">
-              Cerrar
+          {/* Sticky y dentro del px-4 (sticky compensa ese relleno): con
+              preferencias y reglas, «Guardar preferencias» quedaba al final del
+              scroll, lejos de lo que se acababa de tocar. */}
+          <ResponsiveModalFooter sticky>
+            <Button type="button" size="lg" onClick={save} loading={saving}>
+              {saving ? "Guardando…" : "Guardar preferencias"}
             </Button>
-          </ResponsiveModalClose>
-        </ResponsiveModalFooter>
+            <ResponsiveModalClose asChild>
+              <Button type="button" variant="ghost">
+                Cerrar
+              </Button>
+            </ResponsiveModalClose>
+          </ResponsiveModalFooter>
+        </div>
       </ResponsiveModalContent>
     </ResponsiveModal>
   );

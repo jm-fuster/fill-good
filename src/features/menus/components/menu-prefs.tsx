@@ -221,8 +221,11 @@ export function MenuPrefsOnboarding() {
   const [open, setOpen] = useState(true);
   const [state, setState] = useState<FormState>(DEFAULT_FORM);
   const [saving, startSave] = useTransition();
+  /** Cuál de los dos botones guarda: comparten la transición, no el spinner. */
+  const [savingDefaults, setSavingDefaults] = useState(false);
 
-  function save(input: MenuPrefsInput, done: string) {
+  function save(input: MenuPrefsInput, done: string, defaults = false) {
+    setSavingDefaults(defaults);
     startSave(async () => {
       const r = await safeAction(
         saveMenuPrefsAction(input),
@@ -258,14 +261,16 @@ export function MenuPrefsOnboarding() {
             type="button"
             size="lg"
             onClick={() => save(toInput(state), "Preferencias guardadas")}
-            loading={saving}
+            loading={saving && !savingDefaults}
+            disabled={saving}
           >
-            {saving ? "Guardando…" : "Guardar preferencias"}
+            {saving && !savingDefaults ? "Guardando…" : "Guardar preferencias"}
           </Button>
           <Button
             type="button"
             variant="ghost"
-            onClick={() => save(toInput(DEFAULT_FORM), "Listo")}
+            onClick={() => save(toInput(DEFAULT_FORM), "Listo", true)}
+            loading={saving && savingDefaults}
             disabled={saving}
           >
             Ahora no

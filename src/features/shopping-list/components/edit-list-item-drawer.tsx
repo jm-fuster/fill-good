@@ -11,6 +11,7 @@ import {
   ResponsiveModalContent,
   ResponsiveModalFooter,
   ResponsiveModalHeader,
+  ResponsiveModalDescription,
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
 import { Input } from "@/components/ui/input";
@@ -115,6 +116,12 @@ export function EditListItemDrawer({
       <ResponsiveModalContent>
         <ResponsiveModalHeader>
           <ResponsiveModalTitle>Editar producto</ResponsiveModalTitle>
+          {/* Sin descripción el diálogo no tenía nada que lo describiera (y
+              Radix/vaul avisan). Dice además qué se edita: la línea de esta
+              lista, que es lo que «Quitar de la lista» quita. */}
+          <ResponsiveModalDescription>
+            Nombre, cantidad y unidad de esta línea de la lista.
+          </ResponsiveModalDescription>
         </ResponsiveModalHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4">

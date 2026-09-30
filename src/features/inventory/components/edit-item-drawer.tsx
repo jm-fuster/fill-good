@@ -143,7 +143,7 @@ export function EditItemDrawer({
       toast.success(
         res.pinned
           ? `${entry.productName} en Mis habituales`
-          : `${entry.productName} quitado de Mis habituales`,
+          : `Has quitado «${entry.productName}» de Mis habituales`, // sin concordar: el género del nombre no lo sabe la app
       );
       router.refresh();
     });
@@ -386,6 +386,7 @@ export function EditItemDrawer({
       // `false` (inocuo); `requestDelete` limpia el temporizador viejo al re-armar.
       setConfirmDelete(false);
       setView("form");
+      setError(null);
     }
   }
 
@@ -695,8 +696,8 @@ export function EditItemDrawer({
             title="Ajustes adicionales"
             hint={
               hasCatalogMaintenance
-                ? "Todo opcional: caducidad, tienda, envase, avisos y nombres en tickets"
-                : "Todo opcional: caducidad, tienda, envase y avisos"
+                ? `Todo opcional: caducidad, tienda, ${unit === "ud" ? "envase, " : ""}avisos y nombres en tickets`
+                : `Todo opcional: caducidad, tienda${unit === "ud" ? ", envase" : ""} y avisos`
             }
             badge={
               hasSuspiciousAliases ? (
@@ -796,6 +797,7 @@ export function EditItemDrawer({
                 min={0}
                 step="any"
                 defaultValue={entry.minQuantity ?? ""}
+                placeholder="p. ej. 2"
               />
             </div>
 
