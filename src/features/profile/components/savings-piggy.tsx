@@ -129,7 +129,6 @@ export function SavingsPiggy({
         <ResponsiveModal open={open} onOpenChange={setOpen}>
           <Button
             variant="ghost"
-            size="sm"
             onClick={() => setOpen(true)}
             className="-mb-1 self-center text-muted-foreground"
           >
