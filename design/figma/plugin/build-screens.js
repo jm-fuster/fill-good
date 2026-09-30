@@ -14,6 +14,8 @@
 //   inv-anadir | inv-anadir-ajustes | inv-ficha | inv-ficha-ajustes | inv-icono (modales de inventario)
 //   ls-anadir | ls-buscar | ls-editar | ls-orden | ls-escritorio (modales de la lista)
 //   mn-nuevo | mn-plato | mn-mover | mn-faltan | mn-descontar | mn-hoy | mn-ajustes | mn-rehacer (modales de menús) | indice
+//   Con ARGS.desk = true, pt-escanear, pt-revisar, rc-lista, pr-lista, pr-producto, rs-cerrado, pf-ahorro y aj-indice
+//   salen en escritorio («… · escritorio»)
 // Un índice por página, hecho una vez por ejecución: con un findOne por componente,
 // «◆ PANTALLAS» (miles de nodos) y «◆ PATRONES» se recorrían enteras en cada una de las
 // decenas de búsquedas del principio, y cada pantalla pasaba de 30 s antes de empezar.
@@ -62,7 +64,15 @@ async function activate(root, idx) {
   const side = root.findOne((n) => n.type === 'INSTANCE' && n.name.startsWith('AppSidebar'));
   if (side) { const kids = side.findOne((n) => n.name === 'menu').children; kids.forEach((k, i) => k.swapComponent(variant(mb, `collapsed=false, state=${i === idx ? 'active' : 'default'}`))); }
 }
+// ARGS.desk: el mismo bloque de una pantalla móvil la monta en escritorio (1280 px, sidebar
+// de 256 y columna de 960, que es lo que queda del PageContainer «app» a ese ancho: su
+// max-w-5xl/6xl no llega a actuar). El nombre gana « · escritorio». Solo toca las piezas
+// comunes (screen, mobileContent, finishMobile, confirmBar); lo que cambia de verdad en
+// cada pantalla va en su bloque, detrás de `if (DESK)`.
+const DESK = !!ARGS.desk;
+const DESK_W = 960;
 function screen(name, w, mode) {
+  if (DESK && w === 390) { name = name + ' · escritorio'; w = 1280; mode = 'desktop'; }
   const old = page.children.find((n) => n.name === name); if (old) old.remove(); // hijos directos: el árbol entero son decenas de miles de nodos
   const s = figma.createFrame(); s.name = name; s.resize(w, 844); s.clipsContent = true; setPaints(s, 'fills', [['background']]);
   page.appendChild(s);
@@ -70,12 +80,31 @@ function screen(name, w, mode) {
   return s;
 }
 function col(parent, name, gap) { const f = stack(name, parent, gap); return f; }
-function mobileContent(s) { const c = stack('contenido', null, 16); s.appendChild(c); c.x = 0; c.y = 0; c.resize(390, 10); c.layoutSizingVertical = 'HUG'; padX(c, 'spacing/4'); bind(c, 'paddingTop', 'spacing/4'); c.paddingBottom = 112 + 82; return c; } // pb-28 del shell + pb-fab de la lista (safe 34 + 48): el FAB nunca tapa la última tarjeta
+function mobileContent(s) { if (DESK) return desktop(s); const c = stack('contenido', null, 16); s.appendChild(c); c.x = 0; c.y = 0; c.resize(390, 10); c.layoutSizingVertical = 'HUG'; padX(c, 'spacing/4'); bind(c, 'paddingTop', 'spacing/4'); c.paddingBottom = 112 + 82; return c; } // pb-28 del shell + pb-fab de la lista (safe 34 + 48): el FAB nunca tapa la última tarjeta
 function finishMobile(s, content, { checkout } = {}) {
+  if (DESK) { deskFinish(s, content); return; }
   const H = Math.max(844, Math.ceil(content.height)); s.resize(390, H);
   const b = L.bar.createInstance(); s.appendChild(b); b.x = 0; b.y = H - b.height;
   if (checkout) { const wrap = stack('CheckoutBar', null, 0); s.appendChild(wrap); wrap.resize(390, 10); wrap.layoutSizingVertical = 'HUG'; padX(wrap, 'spacing/4'); const bt = BTN('default', 'lg', checkout, 'shopping-cart'); wrap.appendChild(bt); bt.layoutSizingHorizontal = 'FILL'; bt.effects = []; wrap.x = 0; wrap.y = H - 64 - 34 - wrap.height; }
   const f = L.fab.createInstance(); s.appendChild(f); f.x = 390 - 16 - 56; f.y = H - 34 - (checkout ? 112 : 64) - 16 - 56;
+}
+// En escritorio la pantalla mide lo que su contenido (con 900 de mínimo) y el sidebar la acompaña
+function deskFinish(s, content) {
+  const H = Math.max(900, Math.ceil(56 + content.height)); s.resize(1280, H);
+  const side = s.children.find((n) => n.type === 'INSTANCE' && n.name.startsWith('AppSidebar')); if (side) side.resize(256, H);
+}
+// Una acción a la derecha del PageHeader que ya está en la columna (el primer hijo)
+function deskHeaderAction(c, btn) {
+  const h = c.children[0]; const wrap = stack('cabecera', null, 16, 'HORIZONTAL'); c.insertChild(0, wrap); wrap.layoutSizingHorizontal = 'FILL'; wrap.layoutSizingVertical = 'HUG'; wrap.counterAxisAlignItems = 'MIN';
+  wrap.appendChild(h); h.layoutSizingHorizontal = 'FILL'; wrap.appendChild(btn);
+}
+// Rejilla de n columnas (md:grid-cols-n) a partir de un stack vertical: sus hijos pasan a
+// ancho fijo y el stack a fila con salto de línea
+function deskGrid(stackNode, cols, gap = 12, from = 0) {
+  const kids = stackNode.children.slice(from); const w = Math.floor((DESK_W - gap * (cols - 1)) / cols);
+  const g = stack('md:grid-cols-' + cols, null, gap, 'HORIZONTAL'); stackNode.insertChild(from, g); g.layoutSizingHorizontal = 'FILL'; g.layoutSizingVertical = 'HUG'; g.layoutWrap = 'WRAP'; g.counterAxisSpacing = gap;
+  for (const k of kids) { g.appendChild(k); k.layoutSizingHorizontal = 'FIXED'; k.resize(w, k.height); if ('layoutSizingVertical' in k && k.layoutMode && k.layoutMode !== 'NONE') k.layoutSizingVertical = 'HUG'; }
+  return g;
 }
 function desktop(s, H = 900) {
   s.resize(1280, H);
@@ -403,12 +432,22 @@ async function reviewContent(c) {
   h.setProperties({ [P(L.ph, 'back#')]: true, [P(L.ph, 'back label')]: 'Añadir ticket' });
   const card = cardFrame(c, 'Datos del ticket'); padY(card, 'spacing/4');
   const ch = stack('header', card, 4); padX(ch, 'spacing/4'); await text('Datos del ticket', 'Title/Card', 'card-foreground', ch, { fill: true });
-  const grid = stack('campos (grid-cols-2)', card, 12); padX(grid, 'spacing/4');
+  const grid = stack(DESK ? 'campos (sm:grid-cols-3)' : 'campos (grid-cols-2)', card, 12); padX(grid, 'spacing/4');
+  if (DESK) {
+    // Tienda | Cadena | Fecha en la primera fila y Total SOLO en la segunda: el comentario de
+    // receipt-review.tsx:727 cuenta tres campos, y son cuatro
+    const r1 = stack('fila 1', grid, 12, 'HORIZONTAL'), r2 = stack('fila 2', grid, 12, 'HORIZONTAL');
+    (await labeled(r1, 'Tienda', inputWith('Lidl'))).layoutSizingHorizontal = 'FILL';
+    const sel = inst(L3.select, 'size=default, state=default, filled=true'); sel.setProperties({ [P(L3.select, 'value')]: 'Lidl' }); (await labeled(r1, 'Cadena', sel)).layoutSizingHorizontal = 'FILL';
+    (await labeled(r1, 'Fecha', inputWith('30/09/2026'))).layoutSizingHorizontal = 'FILL';
+    const tf = await labeled(r2, 'Total (€)', inputWith('8,41')); tf.layoutSizingHorizontal = 'FIXED'; tf.resize(Math.floor((DESK_W - 32 - 24) / 3), tf.height);
+  } else {
   await labeled(grid, 'Tienda', inputWith('Lidl'));
   const sel = inst(L3.select, 'size=default, state=default, filled=true'); sel.setProperties({ [P(L3.select, 'value')]: 'Lidl' }); await labeled(grid, 'Cadena', sel);
   const r = stack('fecha y total', grid, 12, 'HORIZONTAL');
   const f1 = await labeled(r, 'Fecha', inputWith('30/09/2026')); f1.layoutSizingHorizontal = 'FILL';
   const f2 = await labeled(r, 'Total (€)', inputWith('8,41')); f2.layoutSizingHorizontal = 'FILL';
+  }
   const prod = stack('productos', c, 8);
   await text('Productos (6 de 6)', 'Body/Small Medium', 'foreground', prod, { fill: true });
   const dec = stack('necesitan decisión', prod, 8); await text('Necesitan decisión (4)', 'Caption/Medium', 'warning', dec, { fill: true });
@@ -419,12 +458,19 @@ async function reviewContent(c) {
   const ok = stack('asociados', prod, 8); await text('Asociados (2)', 'Caption/Medium', 'muted-foreground', ok, { fill: true });
   line(ok, 'asociada', 'false', { where: '🧊' });
   line(ok, 'asociada', 'false', { name: 'Aceite de girasol', raw: 'ACEITE GIRASOL 1L · 1,89 €', product: 'Aceite de girasol', where: '🧺' });
+  if (DESK) { deskGrid(dec, 2, 12, 1); deskGrid(ok, 2, 12, 1); } // md:grid md:grid-cols-2 md:items-start: sin igualar alturas
   const d = stack('descartar', c, 0, 'HORIZONTAL'); d.primaryAxisAlignItems = 'CENTER';
   const del = BTN('ghost', 'default', 'Descartar ticket', 'trash'); d.appendChild(del); for (const t of del.findAll((n) => n.type === 'TEXT')) setPaints(t, 'fills', [['muted-foreground']]); recolor(del.findAll((n) => n.type === 'INSTANCE')[0], 'muted-foreground');
 }
 // La nav va en z-50 y las barras fijas en z-40: el botón central (absolute -top-5) les pisa 20 px.
 const underNav = (s, node) => { const i = s.children.findIndex((n) => n.type === 'INSTANCE' && n.name === 'BottomNav'); if (i >= 0) s.insertChild(i, node); };
 function confirmBar(s) { // fixed bottom-16 px-4 pb-safe, encima de la nav
+  if (DESK) { // md:sticky md:bottom-0 md:border-t md:bg-background/95 md:pt-3 md:pb-3, al final del flujo
+    const c = s.children.find((n) => n.name === 'contenido');
+    const bar = stack('barra de confirmar (md:sticky bottom-0)', c, 0); bind(bar, 'paddingTop', 'spacing/3'); bind(bar, 'paddingBottom', 'spacing/3'); setPaints(bar, 'fills', [['background', 0.95]]); bar.strokes = [solid('border')]; bar.strokeTopWeight = 1; bar.strokeBottomWeight = 0; bar.strokeLeftWeight = 0; bar.strokeRightWeight = 0; bar.strokeAlign = 'INSIDE';
+    const b = BTN('default', 'lg', 'Confirmar y añadir al inventario', 'check'); bar.appendChild(b); b.layoutSizingHorizontal = 'FILL';
+    deskFinish(s, c); return b;
+  }
   const b = BTN('default', 'lg', 'Confirmar y añadir al inventario', 'check'); s.appendChild(b); b.resize(358, b.height); b.x = 16; b.y = s.height - 64 - 34 - b.height;
   underNav(s, b);
   return b;
@@ -445,6 +491,14 @@ if (ARGS.screen === 'pt-aviso' || ARGS.screen === 'pt-escanear' || ARGS.screen =
     const i = p1.characters.indexOf(BOLD); p1.setRangeFontName(i, i + BOLD.length, { family: 'Geist', style: 'SemiBold' }); p1.setRangeFills(i, i + BOLD.length, [solid('foreground')]);
     await text('Según sus términos, Google no usa lo enviado para mejorar sus productos. Aun así, tapa la zona de la tarjeta del ticket antes de escanearlo. Puedes retirar este permiso cuando quieras en Ajustes.', 'Body/Small', 'muted-foreground', ps, { fill: true });
     const bs = stack('acciones', card, 8); fullBtn(bs, 'default', 'lg', 'Acepto y continúo'); fullBtn(bs, 'ghost', 'default', 'Ver la política de privacidad');
+  } else if (k === 'escanear' && DESK) {
+    // hidden md:flex min-h-56 rounded-xl border-2 border-dashed px-6 py-10: el escáner no se ofrece
+    const bs = stack('ScanForm (escritorio)', c, 12);
+    const dz = stack('zona de arrastrar (button)', bs, 12); dz.counterAxisAlignItems = 'CENTER'; dz.primaryAxisAlignItems = 'CENTER'; dz.minHeight = 224; /* min-h-56: la escala de Figma no llega a spacing/56 */ padX(dz, 'spacing/6'); padY(dz, 'spacing/10'); rad(dz, 'radius/xl'); dz.strokeWeight = 2; dz.strokeAlign = 'INSIDE'; dz.dashPattern = [6, 4]; setPaints(dz, 'strokes', [['border']]);
+    dz.appendChild(icon('upload', 32, 'muted-foreground', 'icon'));
+    const t1 = await text('Arrastra aquí una imagen o PDF, o haz clic para elegir', 'Body/Base Medium', 'foreground', dz); t1.textAlignHorizontal = 'CENTER';
+    const t2 = await text('También puedes pegar una captura con Ctrl/Cmd + V', 'Body/Small', 'muted-foreground', dz); t2.textAlignHorizontal = 'CENTER';
+    await text('Si el ticket es largo o está arrugado, súbelo escaneado en PDF: se lee mejor.', 'Body/Small', 'muted-foreground', bs, { fill: true });
   } else if (k === 'escanear') {
     const bs = stack('ScanForm (móvil)', c, 12);
     fullBtn(bs, 'default', 'lg', 'Escanear ticket', 'scan-line'); fullBtn(bs, 'outline', 'lg', 'Subir imagen o PDF', 'upload');
@@ -717,6 +771,12 @@ if (ARGS.screen === 'rc-lista') {
   recipeCard(ul, 'true', 'Lentejas estofadas', '8 ingredientes', ['Comida', null, '❄️ Invierno'], null, '★ 5,0 · 1 voto', 'Hecha 1 vez · última vez hace 5 días');
   recipeCard(ul, 'false', 'Crema de calabacín', '6 ingredientes', [null, 'Cena', '🗓️ Todo el año'], { v: '≥ 1,90 €', parcial: true, de: ' (4 de 6)' });
   recipeCard(ul, 'false', 'Espaguetis a la boloñesa', '9 ingredientes', ['Comida', 'Cena', '🗓️ Todo el año'], null);
+  if (DESK) {
+    recipeCard(ul, 'false', 'Pollo al horno con patatas', '6 ingredientes', ['Comida', null, '🗓️ Todo el año'], { v: '≈ 5,10 €' });
+    recipeCard(ul, 'true', 'Gazpacho', '7 ingredientes', ['Comida', 'Cena', '☀️ Verano'], { v: '≈ 3,40 €' }, '★ 4,0 · 1 voto', 'Hecha 2 veces · última vez hace 3 semanas');
+    deskGrid(ul, 3, 12); // md:grid-cols-2 lg:grid-cols-3
+    deskHeaderAction(c, BTN('default', 'default', 'Nueva receta', 'plus')); // hidden md:inline-flex; el FAB es md:hidden
+  }
   const ex = exploreHeader(body, false); await ex.done();
   finishMobile(s, c); await activate(s, 3);
   return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
@@ -943,8 +1003,9 @@ if (ARGS.screen === 'pr-lista') {
   // Cinco barras como mucho: del quinto en adelante se juntan en «Otros» (muted-foreground/40)
   await reparto('Por categoría', [['Despensa', 58.2, '1'], ['Lácteos y huevos', 34.1, '2'], ['Verdura', 22.85, '3'], ['Limpieza', 15.4, '4'], ['Otros', 11.82, 'otros']]);
   await reparto('Por comercio', [['Mercadona', 96.12, '1'], ['Lidl', 46.25, '2']]);
-  const ul = stack('productos', c, 8);
+  const ul = stack(DESK ? 'productos (lg:grid-cols-2)' : 'productos', c, 8);
   for (const [cmp, n, d, t, v] of [['true', 'Aceite de oliva virgen extra', '4 compras · último 10,45 €/ud', '37,50 €', '10,45 €/l'], ['true', 'Leche entera', '6 compras · último 0,92 €/ud', '34,14 €', '0,92 €/l'], ['false', 'Plátanos', '3 compras · último 1,59 €/kg', '5,97 €']]) { const p = inst(L6.producto, 'comparable=' + cmp); ul.appendChild(p); p.layoutSizingHorizontal = 'FILL'; p.setProperties({ [P(L6.producto, 'name')]: n, [P(L6.producto, 'detalle')]: d, [P(L6.producto, 'total')]: t }); if (v) p.findOne((x) => x.name === 'comparable').characters = v; }
+  if (DESK) deskGrid(ul, 2, 8);
   await endPerfil(s, c);
   return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
 }
@@ -957,7 +1018,7 @@ if (ARGS.screen === 'pr-producto') {
   for (const [l, v, tone, cmp] of [['Mínimo', '0,89 €', 'success', '0,89 €/l'], ['Último', '0,92 €', 'foreground', '0,92 €/l'], ['Máximo', '1,05 €', 'warning', '1,05 €/l']]) { const b = stack(l, st, 2); b.layoutSizingHorizontal = 'FILL'; padX(b, 'spacing/3'); padY(b, 'spacing/3'); rad(b, 'radius/xl'); setPaints(b, 'strokes', [['border']]); b.strokeWeight = 1; b.strokeAlign = 'INSIDE'; await text(l, 'Caption/Default', 'muted-foreground', b, { fill: true }); await text(v, 'Title/Base', tone, b, { fill: true }); await text(cmp, 'Caption/Default', 'price', b, { fill: true }); }
   // PriceChart (Recharts LineChart, aspect-[4/3]): eje X de CATEGORÍAS (fechas equiespaciadas),
   // eje Y desde 0, una línea por cadena (chart-1, chart-2…), rejilla horizontal discontinua.
-  const W = 358, H = Math.round(358 * 3 / 4), mL = 4 + 48, mR = 12, mT = 8, mB = 28;
+  const W = DESK ? DESK_W : 358, H = DESK ? Math.round(DESK_W / 2) : Math.round(358 * 3 / 4), mL = 4 + 48, mR = 12, mT = 8, mB = 28; // aspect-[4/3] md:aspect-[2/1]
   const chart = figma.createFrame(); chart.name = 'PriceChart (aspect 4/3)'; chart.fills = []; chart.resize(W, H); chart.clipsContent = false; body.appendChild(chart); chart.layoutSizingHorizontal = 'FIXED';
   const pw = W - mL - mR, ph = H - mT - mB, yMax = 1.2, ticks = [0, 0.3, 0.6, 0.9, 1.2];
   const yOf = (v) => mT + ph - (v / yMax) * ph, xOf = (i) => mL + (pw * i) / 5;
@@ -1861,7 +1922,7 @@ if (ARGS.screen === 'mn-rehacer') {
 
 if (ARGS.screen === 'indice') {
   // Colocar las pantallas en una rejilla con títulos
-  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio', RC.escritorio], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue], [RC.vacio, RC.lista, RC.receta, RC.antes, RC.paso, RC.final], [PP.prVacio, PP.prLista, PP.prProducto, PP.rsCerrado, PP.rsPrimer, PP.pfNuevo, PP.pfAhorro], [AL.ajIndice, AL.ajHogar, AL.lgMovil, AL.ldMovil], [AL.lgEscritorio, AL.ldEscritorio], [ES.abriendo, ES.encuadre, ES.detectado, ES.ajuste, ES.sinCamara], [MC.comprando, MC.quitar, MC.todo, MC.vacia, MC.escritorio], [MO.invAnadir, MO.invAnadirAjustes, MO.invFicha, MO.invFichaAjustes, MO.invIcono], [MO.lsAnadir, MO.lsBuscar, MO.lsEditar, MO.lsOrden, MO.lsEscritorio], [MO.mnNuevo, MO.mnPlato, MO.mnMover, MO.mnFaltan, MO.mnDescontar, MO.mnHoy, MO.mnAjustes, MO.mnRehacer]];
+  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio', RC.escritorio], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue], [RC.vacio, RC.lista, RC.receta, RC.antes, RC.paso, RC.final], [PP.prVacio, PP.prLista, PP.prProducto, PP.rsCerrado, PP.rsPrimer, PP.pfNuevo, PP.pfAhorro], [AL.ajIndice, AL.ajHogar, AL.lgMovil, AL.ldMovil], [AL.lgEscritorio, AL.ldEscritorio], [ES.abriendo, ES.encuadre, ES.detectado, ES.ajuste, ES.sinCamara], [MC.comprando, MC.quitar, MC.todo, MC.vacia, MC.escritorio], [MO.invAnadir, MO.invAnadirAjustes, MO.invFicha, MO.invFichaAjustes, MO.invIcono], [MO.lsAnadir, MO.lsBuscar, MO.lsEditar, MO.lsOrden, MO.lsEscritorio], [MO.mnNuevo, MO.mnPlato, MO.mnMover, MO.mnFaltan, MO.mnDescontar, MO.mnHoy, MO.mnAjustes, MO.mnRehacer], [PT.escanear, PT.revisar, RC.lista, PP.prLista].map((n) => n + ' · escritorio'), [PP.prProducto, PP.rsCerrado, PP.pfAhorro, AL.ajIndice].map((n) => n + ' · escritorio')];
   let y = 0; const out = [];
   // Solo los hijos directos: con findOne/findAll sobre el árbol entero (decenas de miles de
   // nodos), cada búsqueda de las ~90 del bucle recorría la página y el plugin se bloqueaba minutos.
