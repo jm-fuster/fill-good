@@ -10,8 +10,23 @@
 //   pr-vacio | pr-lista | pr-producto | rs-cerrado | rs-primer-mes | pf-nuevo | pf-ahorro
 //   aj-indice | aj-hogar | lg-movil | lg-escritorio | ld-movil | ld-escritorio
 //   es-abriendo | es-encuadre | es-detectado | es-ajuste | es-sin-camara (escáner de documentos)
-//   mc-comprando | mc-quitar | mc-todo | mc-vacia | mc-escritorio (modo compra) | indice
-async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
+//   mc-comprando | mc-quitar | mc-todo | mc-vacia | mc-escritorio (modo compra)
+//   inv-anadir | inv-anadir-ajustes | inv-ficha | inv-ficha-ajustes | inv-icono (modales de inventario)
+//   ls-anadir | ls-buscar | ls-editar | ls-orden | ls-escritorio (modales de la lista)
+//   mn-nuevo | mn-plato | mn-mover | mn-faltan | mn-descontar | mn-hoy | mn-ajustes | mn-rehacer (modales de menús) | indice
+// Un índice por página, hecho una vez por ejecución: con un findOne por componente,
+// «◆ PANTALLAS» (miles de nodos) y «◆ PATRONES» se recorrían enteras en cada una de las
+// decenas de búsquedas del principio, y cada pantalla pasaba de 30 s antes de empezar.
+const __sets = {};
+async function setOf(pageName, name) {
+  let m = __sets[pageName];
+  if (!m) {
+    const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); m = new Map();
+    for (const k of p.findAllWithCriteria({ types: ['COMPONENT_SET', 'COMPONENT'] })) if (!(k.type === 'COMPONENT' && k.parent.type === 'COMPONENT_SET') && !m.has(k.name)) m.set(k.name, k);
+    __sets[pageName] = m;
+  }
+  const n = m.get(name); if (!n || n.removed) throw new Error('Falta ' + name); return n;
+}
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
 const variant = (cs, name) => { const v = cs.children.find((c) => c.name === name); if (!v) throw new Error('Variante ' + name + ' en ' + cs.name); return v; };
 const inst = (node, v) => (node.type === 'COMPONENT_SET' ? variant(node, v) : node).createInstance();
@@ -48,7 +63,7 @@ async function activate(root, idx) {
   if (side) { const kids = side.findOne((n) => n.name === 'menu').children; kids.forEach((k, i) => k.swapComponent(variant(mb, `collapsed=false, state=${i === idx ? 'active' : 'default'}`))); }
 }
 function screen(name, w, mode) {
-  const old = page.findOne((n) => n.name === name && n.parent === page); if (old) old.remove();
+  const old = page.children.find((n) => n.name === name); if (old) old.remove(); // hijos directos: el árbol entero son decenas de miles de nodos
   const s = figma.createFrame(); s.name = name; s.resize(w, 844); s.clipsContent = true; setPaints(s, 'fills', [['background']]);
   page.appendChild(s);
   s.setExplicitVariableModeForCollection(bpCol, bpCol.modes[mode === 'desktop' ? 1 : 0].modeId);
@@ -156,8 +171,9 @@ if (ARGS.screen === 'lista-escritorio') {
   return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
 }
 
-if (ARGS.screen === 'menus-movil') {
-  const s = screen('Menús · móvil', 390, 'mobile');
+// La pantalla de /menus en móvil, también de fondo para sus modales
+async function pageMenus(name) {
+  const s = screen(name, 390, 'mobile');
   const c = mobileContent(s);
   withActions(c, 'Menús', [IB('outline', 'icon', 'book-open'), IB('outline', 'icon', 'ellipsis')]);
   const nav = stack('semana', c, 4, 'HORIZONTAL'); nav.counterAxisAlignItems = 'CENTER';
@@ -191,6 +207,10 @@ if (ARGS.screen === 'menus-movil') {
   const add = BTN('outline', 'lg', 'Añadir a la lista lo que falte', 'shopping-cart'); c.appendChild(add); add.layoutSizingHorizontal = 'FILL';
   finishMobile(s, c); const f = s.findAll((n) => n.type === 'INSTANCE' && n.name === 'FAB'); for (const x of f) x.remove(); // /menus no tiene FAB
   await activate(s, 3);
+  return s;
+}
+if (ARGS.screen === 'menus-movil') {
+  const s = await pageMenus('Menús · móvil');
   return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
 }
 
@@ -532,11 +552,11 @@ async function pageInventarioConRepaso(name) {
 // Contenido del hueco de ResponsiveModal para UNA pantalla: un componente local en
 // la sección «Contenidos de modal», que el sheet recibe por instance swap. Lleva
 // también el pie, porque cada repaso pone el suyo (el del componente se oculta).
-function modalSlot(name) {
-  let holder = page.findOne((n) => n.name === 'Contenidos de modal (slots)' && n.parent === page);
+function modalSlot(name, w = 390) {
+  let holder = page.children.find((n) => n.name === 'Contenidos de modal (slots)');
   if (!holder) { holder = stack('Contenidos de modal (slots)', null, 40, 'HORIZONTAL'); page.appendChild(holder); holder.x = -3000; holder.y = 0; holder.primaryAxisSizingMode = 'AUTO'; holder.counterAxisSizingMode = 'AUTO'; }
   for (const o of holder.findAll((n) => n.type === 'COMPONENT' && n.name === '_Contenido · ' + name)) o.remove();
-  const k = figma.createComponent(); k.name = '_Contenido · ' + name; k.layoutMode = 'VERTICAL'; k.primaryAxisSizingMode = 'AUTO'; k.counterAxisSizingMode = 'FIXED'; k.resize(390, 10); k.primaryAxisSizingMode = 'AUTO'; k.fills = []; k.itemSpacing = 0; k.clipsContent = false;
+  const k = figma.createComponent(); k.name = '_Contenido · ' + name; k.layoutMode = 'VERTICAL'; k.primaryAxisSizingMode = 'AUTO'; k.counterAxisSizingMode = 'FIXED'; k.resize(w, 10); k.primaryAxisSizingMode = 'AUTO'; k.fills = []; k.itemSpacing = 0; k.clipsContent = false;
   holder.appendChild(k);
   k.description = `Hueco de ResponsiveModal para «${name}» (◆ PANTALLAS). Montado con instancias; el pie va aquí porque cada repaso lleva el suyo.`;
   return k;
@@ -1484,11 +1504,368 @@ if (ARGS.screen === 'mc-escritorio') {
   return { screen: s.id, fixedIcons: await fixIconColors(s) };
 }
 
+// ── Modales del día a día: inventario, lista y menús ────────────────────────
+// Cada uno es un hueco «_Contenido · …» (modalSlot) que el ResponsiveModal recibe por
+// instance swap, encima de la pantalla de la que sale. El hueco lleva su pie: en los
+// que tienen `sticky`, con borde arriba y bg-popover, como ResponsiveModalFooter.
+// Los textos de las instancias van SIEMPRE por propiedades (setProperties): cargar
+// fuentes para editar un texto dentro de una instancia se cuelga.
+const MO = {
+  invAnadir: 'Inventario · Añadir producto', invAnadirAjustes: 'Inventario · Añadir producto · ajustes adicionales', invFicha: 'Inventario · Ficha del producto',
+  invFichaAjustes: 'Inventario · Ficha · ajustes adicionales', invIcono: 'Inventario · Ficha · elegir icono',
+  lsAnadir: 'Lista · Añadir a la lista', lsBuscar: 'Lista · Añadir · buscando y creando', lsEditar: 'Lista · Editar producto', lsOrden: 'Lista · Orden de los pasillos', lsEscritorio: 'Lista · Añadir a la lista · escritorio',
+  mnNuevo: 'Menús · Plato nuevo', mnPlato: 'Menús · Editar un plato', mnMover: 'Menús · Mover a…', mnFaltan: 'Menús · Añadir a la lista lo que falte',
+  mnDescontar: 'Menús · Descontar del inventario', mnHoy: 'Menús · ¿Qué hago hoy?', mnAjustes: 'Menús · Ajustes del menú', mnRehacer: 'Menús · Rehacer todo el menú',
+};
+const L9 = {
+  ficha: await setOf('◆ PATRONES', 'Ficha del selector'), pasillo: await setOf('◆ PATRONES', 'Fila de orden de pasillos'), ubic: await setOf('◆ PATRONES', 'Chip de ubicación'),
+  sw: await setOf('◆ PATRONES', 'Fila con interruptor'), pleg: await setOf('◆ PATRONES', 'Cabecera del plegable'), accion: await setOf('◆ PATRONES', 'Casilla de acción'),
+  hueco: await setOf('◆ PATRONES', 'Casilla de hueco'), casilla: await setOf('◆ PATRONES', 'Fila con casilla'), objetivo: await setOf('◆ PATRONES', 'Opción de objetivo'),
+  idea: await setOf('◆ PATRONES', 'Idea para hoy'), desc: await setOf('◆ PATRONES', 'Fila a descontar'), chip: await setOf('◆ PATRONES', 'Chip de tienda'),
+  cb: await setOf('02 · Formularios', 'Checkbox'), switchC: await setOf('02 · Formularios', 'Switch'), ta: await setOf('02 · Formularios', 'Textarea'),
+};
+const prodC = (slug) => iconsPage.findOne((q) => q.type === 'COMPONENT' && q.name === 'product/' + slug);
+const selectWith = (value, placeholder) => { const i = inst(L3.select, `size=default, state=default, filled=${value ? 'true' : 'false'}`); const pr = {}; if (value) pr[P(L3.select, 'value')] = value; if (placeholder) pr[P(L3.select, 'placeholder')] = placeholder; i.setProperties(pr); return i; };
+function body(k, gap = 16) { const b = stack('cuerpo (px-4)', k, gap); padX(b, 'spacing/4'); return b; }
+// Pie del hueco: sticky = border-t bg-popover de lado a lado; si no, px-4 y nada más
+function slotFooter(k, sticky) {
+  const f = stack(sticky ? 'ResponsiveModalFooter (sticky)' : 'ResponsiveModalFooter', k, 8); padX(f, 'spacing/4'); padY(f, 'spacing/4');
+  if (sticky) { setPaints(f, 'fills', [['popover']]); f.strokes = [solid('border')]; f.strokeTopWeight = 1; f.strokeBottomWeight = 0; f.strokeLeftWeight = 0; f.strokeRightWeight = 0; f.strokeAlign = 'INSIDE'; }
+  return f;
+}
+function grid2(parent, name, gap = 12) { const g = stack(name, parent, gap, 'HORIZONTAL'); return g; }
+function half(node) { node.layoutSizingHorizontal = 'FILL'; return node; }
+async function note(parent, chars, tone = 'muted-foreground', style = 'Caption/Default') { return text(chars, style, tone, parent, { fill: true }); }
+function fichaChip(parent, estado, nombre, slug, sufijo) {
+  const c = inst(L9.ficha, 'estado=' + estado); parent.appendChild(c);
+  const pr = { [P(L9.ficha, 'nombre')]: nombre, [P(L9.ficha, 'con sufijo')]: !!sufijo }; if (sufijo) pr[P(L9.ficha, 'sufijo')] = sufijo; if (slug && prodC(slug)) pr[P(L9.ficha, 'icono')] = prodC(slug).id;
+  c.setProperties(pr); return c;
+}
+async function chipGroup(parent, title, iconNode, chips) {
+  const s = stack(title, parent, 8);
+  const h = stack('h3', s, 6, 'HORIZONTAL'); h.counterAxisAlignItems = 'CENTER'; if (iconNode) h.appendChild(iconNode); await text(title, 'Body/Small Medium', 'muted-foreground', h);
+  const w = stack('fichas (flex-wrap gap-2)', s, 8, 'HORIZONTAL'); w.layoutWrap = 'WRAP'; w.counterAxisSpacing = 8;
+  for (const c of chips) fichaChip(w, ...c);
+  return s;
+}
+function searchBox(parent, placeholder) { const b = inst(L.search, 'filled=false'); parent.appendChild(b); b.layoutSizingHorizontal = 'FILL'; const i = b.findOne((n) => n.type === 'INSTANCE' && n.name.startsWith('Input')) || b.findAll((n) => n.type === 'INSTANCE').find((n) => n.componentProperties && Object.keys(n.componentProperties).some((k) => k.startsWith('placeholder'))); if (i) i.setProperties({ [Object.keys(i.componentProperties).find((k) => k.startsWith('placeholder'))]: placeholder }); return b; }
+async function collapsible(parent, open, ayuda) {
+  const box = stack('CollapsibleFields', parent, 0); rad(box, 'radius/xl'); box.strokeWeight = 1; box.strokeAlign = 'INSIDE'; setPaints(box, 'strokes', [['border']]); box.clipsContent = true;
+  const h = inst(L9.pleg, 'abierto=' + open); box.appendChild(h); h.layoutSizingHorizontal = 'FILL'; h.setProperties({ [P(L9.pleg, 'ayuda')]: ayuda });
+  if (!open) return null;
+  const b = stack('cuerpo (border-t p-3 gap-4)', box, 16); padX(b, 'spacing/3'); padY(b, 'spacing/3'); b.strokes = [solid('border')]; b.strokeTopWeight = 1; b.strokeBottomWeight = 0; b.strokeLeftWeight = 0; b.strokeRightWeight = 0; b.strokeAlign = 'INSIDE';
+  return b;
+}
+async function expiryPicker(parent, fecha) {
+  const f = stack('ExpiryQuickPicker', parent, 8); const l = inst(L2.label, 'state=default'); f.appendChild(l); l.setProperties({ [P(L2.label, 'label')]: 'Caducidad' });
+  const r = stack('rápidos (flex-wrap gap-2)', f, 8, 'HORIZONTAL'); r.layoutWrap = 'WRAP'; r.counterAxisSpacing = 8;
+  for (const t of ['+3 días', '+1 semana', '+1 mes']) r.appendChild(BTN('outline', 'default', t));
+  if (fecha) r.appendChild(BTN('ghost', 'default', 'Borrar', 'x'));
+  const i = inputWith(fecha, 'dd/mm/aaaa'); f.appendChild(i); i.layoutSizingHorizontal = 'FILL';
+  if (fecha) await note(f, 'Si tienes varios, pon la fecha del que caduque antes.', 'muted-foreground', 'Body/Small');
+  return f;
+}
+function actionsFooter(k, sticky, items) { const f = slotFooter(k, sticky); for (const [v, size, label, ic] of items) { const b = BTN(v, size, label, ic); f.appendChild(b); b.layoutSizingHorizontal = 'FILL'; } return f; }
+async function modalPage(kind, name) {
+  if (kind === 'inventario') {
+    const s = screen(name, 390, 'mobile'); const c = mobileContent(s);
+    withActions(c, 'Inventario', [IB('outline', 'icon', 'rotate-ccw-clock')]);
+    const se = inst(L.search, 'filled=false'); c.appendChild(se); se.layoutSizingHorizontal = 'FILL';
+    await chips(c, [['Caducan pronto', 1, 'inactivo'], ['Caducados', 1, 'inactivo'], ['Agotados', 1, 'inactivo'], ['Quedan pocas', 1, 'inactivo']], false);
+    const secs = stack('secciones', c, 24); await section(secs, '🧊', 'Nevera', 4, true, NEVERA, 1); await section(secs, '🧺', 'Despensa', 3, false, DESPENSA, 1);
+    finishMobile(s, c); await activate(s, 0); return s;
+  }
+  if (kind === 'lista') {
+    const s = screen(name, 390, 'mobile'); const c = mobileContent(s); c.paddingBottom = 112 + 34 + 88;
+    withActions(c, 'Lista de la compra', []); await listaContenido(c, false);
+    finishMobile(s, c, { checkout: 'Finalizar compra (1) → inventario' }); await activate(s, 1); return s;
+  }
+  return pageMenus(name);
+}
+// En móvil el sheet se ve entero (sheetOver alarga la pantalla): en la app mide como
+// mucho el 80 % del alto y hace scroll, con el pie sticky pegado abajo.
+async function sheetModal(kind, name, k, title, description) {
+  const s = await modalPage(kind, name);
+  const m = await sheetOver(s, k, title, description || ' ');
+  // Sin descripción el sheet encoge: se vuelve a apoyar abajo (si no, queda un hueco de overlay debajo)
+  if (!description) { const d = m.findOne((n) => n.type === 'TEXT' && n.name === 'description'); if (d) d.visible = false; m.y = s.height - m.height; }
+  return s;
+}
+
+// ── Inventario ──
+async function invBase(b, { nombre, categoria, cantidad = '1', unidad = 'Unidades' }) {
+  await labeled(b, 'Producto', inputWith(nombre, 'p. ej. Leche entera'));
+  await labeled(b, 'Categoría', selectWith(categoria, 'Sin categoría'));
+  const g = grid2(b, 'cantidad y unidad (grid-cols-2 gap-3)'); half(await labeled(g, 'Cantidad', inputWith(cantidad))); half(await labeled(g, 'Unidad', selectWith(unidad)));
+}
+if (ARGS.screen === 'inv-anadir' || ARGS.screen === 'inv-anadir-ajustes') {
+  const open = ARGS.screen === 'inv-anadir-ajustes';
+  const k = modalSlot(open ? 'Añadir producto · ajustes adicionales' : 'Añadir producto'); const b = body(k);
+  await invBase(b, open ? { nombre: 'Yogur griego', categoria: 'Lácteos y huevos', cantidad: '4' } : {});
+  const cb = await collapsible(b, open, 'Todo opcional: caducidad, ubicación, envase y avisos');
+  if (cb) {
+    await expiryPicker(cb, '07/10/2026');
+    await labeled(cb, 'Ubicación', selectWith('Nevera'));
+    await labeled(cb, 'Avísame cuando queden menos de', inputWith(null, 'p. ej. 2'));
+    const env = stack('Envase (role=group)', cb, 16); padX(env, 'spacing/3'); padY(env, 'spacing/3'); rad(env, 'radius/lg'); env.strokeWeight = 1; env.strokeAlign = 'INSIDE'; setPaints(env, 'strokes', [['border']]);
+    await text('Envase', 'Body/Small Medium', 'foreground', env, { fill: true });
+    const cu = stack('Contenido de cada unidad', env, 8); const cl = inst(L2.label, 'state=default'); cu.appendChild(cl); cl.setProperties({ [P(L2.label, 'label')]: 'Contenido de cada unidad' });
+    const g = grid2(cu, 'número y unidad'); g.appendChild(inputWith('125', 'p. ej. 500')); g.children[0].layoutSizingHorizontal = 'FILL'; const us = selectWith('g', 'Unidad'); g.appendChild(us); us.layoutSizingHorizontal = 'FILL'; us.name = 'Unidad del contenido (solo aria-label)';
+    await note(cu, 'Cada unidad trae 125 g.', 'muted-foreground', 'Body/Small');
+    const pm = stack('peso medio (min-h-11)', cu, 8, 'HORIZONTAL'); pm.counterAxisAlignItems = 'CENTER'; bind(pm, 'minHeight', 'spacing/11'); const ck = inst(L9.cb, 'state=default, checked=false'); pm.appendChild(ck); ck.rescale(20 / 16); await text('Es un peso medio (fruta, carne, pescado)', 'Body/Small', 'foreground', pm);
+    const ps = await labeled(env, 'Unidades por compra', inputWith('4', 'p. ej. 30')); await note(ps, 'Cada compra repondrá 4 ud en el inventario.', 'muted-foreground', 'Body/Small');
+  }
+  actionsFooter(k, true, [['default', 'lg', 'Añadir al inventario'], ['ghost', 'default', 'Cancelar']]);
+  const s = await sheetModal('inventario', open ? MO.invAnadirAjustes : MO.invAnadir, k, 'Añadir producto', 'Se añadirá a tu inventario. Si el producto ya existe, se suma a la cantidad.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+async function fichaTop(b) {
+  const pf = stack('Producto', b, 8); const pl = inst(L2.label, 'state=default'); pf.appendChild(pl); pl.setProperties({ [P(L2.label, 'label')]: 'Producto' });
+  const row = stack('icono y nombre (items-end gap-2)', pf, 8, 'HORIZONTAL'); row.counterAxisAlignItems = 'MAX';
+  const ib = stack('Cambiar icono del producto', row, 0, 'HORIZONTAL'); ib.layoutSizingHorizontal = 'FIXED'; ib.resize(44, 44); ib.layoutSizingVertical = 'FIXED'; ib.primaryAxisAlignItems = 'CENTER'; ib.counterAxisAlignItems = 'CENTER'; rad(ib, 'radius/lg'); setPaints(ib, 'fills', [['muted']]); ib.strokeWeight = 1; ib.strokeAlign = 'INSIDE'; setPaints(ib, 'strokes', [['border']]); ib.clipsContent = false;
+  ib.appendChild(product('leche', 26));
+  const pen = stack('lápiz', ib, 0, 'HORIZONTAL'); pen.layoutPositioning = 'ABSOLUTE'; pen.resize(16, 16); pen.primaryAxisAlignItems = 'CENTER'; pen.counterAxisAlignItems = 'CENTER'; pen.x = 32; pen.y = 32; rad(pen, 'radius/full'); setPaints(pen, 'fills', [['background']]); pen.strokeWeight = 1; pen.strokeAlign = 'INSIDE'; setPaints(pen, 'strokes', [['border']]); pen.appendChild(icon('pencil', 10, 'muted-foreground', 'icon'));
+  const ni = inputWith('Leche entera'); row.appendChild(ni); ni.layoutSizingHorizontal = 'FILL';
+  await labeled(b, 'Categoría', selectWith('Lácteos y huevos'));
+  const g = grid2(b, 'cantidad y unidad (grid-cols-2 gap-3)'); half(await labeled(g, 'Cantidad', inputWith('6'))); half(await labeled(g, 'Unidad', selectWith('Unidades')));
+  const fs = stack('Ubicación (fieldset)', b, 8); await text('Ubicación', 'Body/Small Medium', 'foreground', fs);
+  const gr = stack('rejilla grid-cols-2 gap-2', fs, 8);
+  for (const pair of [[['🧊', 'Nevera', true], ['❄️', 'Congelador', false]], [['🧺', 'Despensa', false], ['📦', 'Otros', false]]]) { const r = stack('fila', gr, 8, 'HORIZONTAL'); for (const [e, u, on] of pair) { const c = inst(L9.ubic, 'marcado=' + on); r.appendChild(c); c.layoutSizingHorizontal = 'FILL'; c.setProperties({ [P(L9.ubic, 'emoji')]: e, [P(L9.ubic, 'ubicación')]: u }); } }
+}
+if (ARGS.screen === 'inv-ficha' || ARGS.screen === 'inv-ficha-ajustes') {
+  const open = ARGS.screen === 'inv-ficha-ajustes';
+  const k = modalSlot(open ? 'Ficha del producto · ajustes adicionales' : 'Ficha del producto'); const b = body(k);
+  await fichaTop(b);
+  if (!open) {
+    const w = stack('Este producto está en más de un sitio', b, 8); padX(w, 'spacing/3'); padY(w, 'spacing/3'); rad(w, 'radius/xl'); setPaints(w, 'fills', [['muted', 0.5]]); w.strokeWeight = 1; w.strokeAlign = 'INSIDE'; setPaints(w, 'strokes', [['border']]);
+    const t = stack('título', w, 6, 'HORIZONTAL'); t.counterAxisAlignItems = 'CENTER'; t.appendChild(icon('merge', 16, 'muted-foreground', 'icon')); await text('Este producto está en más de un sitio', 'Body/Small Medium', 'foreground', t);
+    await note(w, 'Hay otra línea en Despensa (2 ud). Es el mismo producto repartido, no productos distintos: por eso no sale en «Fusionar con otro producto».', 'muted-foreground', 'Body/Small');
+    const jb = BTN('outline', 'default', 'Juntarlo todo en nevera'); w.appendChild(jb); jb.layoutSizingHorizontal = 'FILL';
+  }
+  const cb = await collapsible(b, open, 'Todo opcional: caducidad, tienda, envase y avisos');
+  if (cb) {
+    await expiryPicker(cb, null);
+    const tp = stack('Tienda preferida', cb, 8); const tl = stack('label', tp, 6, 'HORIZONTAL'); tl.counterAxisAlignItems = 'CENTER'; tl.appendChild(icon('store', 16, 'muted-foreground', 'icon')); await text('Tienda preferida', 'Body/Small Medium', 'foreground', tl);
+    const ts = selectWith('Mercadona'); tp.appendChild(ts); ts.layoutSizingHorizontal = 'FILL';
+    const sav = stack('ahorro (bg-chart-3/10 text-price)', tp, 6, 'HORIZONTAL'); sav.counterAxisAlignItems = 'MIN'; padX(sav, 'spacing/2'); padY(sav, 'spacing/2'); rad(sav, 'radius/lg'); setPaints(sav, 'fills', [['chart-3', 0.1]]); sav.appendChild(icon('trending-down', 16, 'price', 'icon'));
+    const st = await text('En Lidl ahorras ~12% frente a Mercadona, según tus tickets.', 'Body/Small', 'price', sav, { fill: true }); st.setRangeFontName(3, 7, { family: 'Geist', style: 'SemiBold' });
+    await labeled(cb, 'Avísame cuando queden menos de', inputWith('2'));
+    for (const [on, ic, t, d, tone] of [[false, 'chef-hat', 'Consumir pronto', 'Priorízalo en los menús aunque no caduque', null], [true, 'star', 'Mis habituales', 'Ánclalo arriba en tu inventario', 'chart-3'], [false, 'shopping-cart', 'En la lista de la compra', 'Apúntalo aunque no se haya agotado', null]]) {
+      const r = inst(L9.sw, 'activo=' + on); cb.appendChild(r); r.layoutSizingHorizontal = 'FILL'; r.setProperties({ [P(L9.sw, 'título')]: t, [P(L9.sw, 'descripción')]: d, [P(L9.sw, 'icono')]: iconComp(ic).id });
+      if (tone) recolor(r.findOne((n) => n.type === 'INSTANCE' && n.name === 'icon'), tone);
+    }
+    const mt = stack('Mantenimiento del catálogo (border-t pt-4)', cb, 16); bind(mt, 'paddingTop', 'spacing/4'); mt.strokes = [solid('border')]; mt.strokeTopWeight = 1; mt.strokeBottomWeight = 0; mt.strokeLeftWeight = 0; mt.strokeRightWeight = 0; mt.strokeAlign = 'INSIDE';
+    const nt = stack('Nombres en tickets', mt, 8); await text('Nombres en tickets', 'Body/Small Medium', 'foreground', nt, { fill: true });
+    await note(nt, 'Cómo aparece en tus tickets, por tienda. Un nombre distinto en cada tienda es normal; dos en la misma suelen ser una etiqueta antigua. Bórralo si se asoció por error: no afecta a tu historial de precios.', 'muted-foreground', 'Body/Small');
+    const gh = stack('Mercadona', nt, 6, 'HORIZONTAL'); gh.counterAxisAlignItems = 'CENTER'; await text('Mercadona', 'Caption/Medium', 'muted-foreground', gh);
+    const wb = inst(L3.badge, 'variant=default'); gh.appendChild(wb); wb.setProperties({ [P(L3.badge, 'label')]: '2 nombres' }); setPaints(wb, 'fills', [['warning', 0.15]]); for (const tx of wb.findAll((n) => n.type === 'TEXT')) setPaints(tx, 'fills', [['warning']]);
+    for (const [al, when] of [['LECHE ENTERA HACENDADO', 'hace 3 días'], ['LECHE ENT. 1L', 'hace 4 meses']]) {
+      const r = stack(al, nt, 8, 'HORIZONTAL'); r.counterAxisAlignItems = 'CENTER'; bind(r, 'paddingLeft', 'spacing/3'); bind(r, 'paddingRight', 'spacing/1'); padY(r, 'spacing/1'); rad(r, 'radius/lg'); r.strokeWeight = 1; r.strokeAlign = 'INSIDE'; setPaints(r, 'strokes', [['border']]);
+      const tt = stack('texto', r, 6, 'HORIZONTAL'); tt.layoutSizingHorizontal = 'FILL'; tt.counterAxisAlignItems = 'CENTER'; await text(al, 'Body/Small', 'foreground', tt); await text(when, 'Caption/Default', 'muted-foreground', tt);
+      const x = IB('ghost', 'icon', 'x'); r.appendChild(x); x.name = 'Borrar el nombre «' + al + '»';
+    }
+    const fu = stack('Fusionar con otro producto', mt, 8); await text('Fusionar con otro producto', 'Body/Small Medium', 'foreground', fu, { fill: true });
+    await note(fu, 'Une este producto con otro: el historial de precios de ambos se juntará en el que elijas, y su stock se sumará donde las unidades coincidan. Esta acción no se puede deshacer.', 'muted-foreground', 'Body/Small');
+    const cbx = BTN('outline', 'default', 'Elegir producto…'); fu.appendChild(cbx); cbx.layoutSizingHorizontal = 'FILL'; cbx.primaryAxisAlignItems = 'SPACE_BETWEEN'; cbx.setProperties({ [P(L.btn, 'icon inline-end#')]: true, [P(L.btn, 'icon inline-end ↳')]: iconComp('chevrons-up-down').id }); cbx.name = 'ProductCombobox';
+  }
+  actionsFooter(k, true, [['default', 'lg', 'Guardar cambios'], ['destructive', 'default', 'Eliminar del inventario', 'trash'], ['ghost', 'default', 'Cancelar']]);
+  const s = await sheetModal('inventario', open ? MO.invFichaAjustes : MO.invFicha, k, 'Leche entera', '6 ud en existencias');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'inv-icono') {
+  const k = modalSlot('Ficha · elegir icono'); const b = body(k);
+  searchBox(b, 'Buscar icono…');
+  const au = stack('Automático (seleccionado)', b, 12, 'HORIZONTAL'); au.counterAxisAlignItems = 'CENTER'; padX(au, 'spacing/3'); padY(au, 'spacing/3'); rad(au, 'radius/lg'); setPaints(au, 'fills', [['primary', 0.1]]); au.strokeWeight = 1; au.strokeAlign = 'INSIDE'; setPaints(au, 'strokes', [['primary']]);
+  const ab = stack('icono', au, 0, 'HORIZONTAL'); ab.layoutSizingHorizontal = 'FIXED'; ab.resize(40, 40); ab.layoutSizingVertical = 'FIXED'; ab.primaryAxisAlignItems = 'CENTER'; ab.counterAxisAlignItems = 'CENTER'; rad(ab, 'radius/lg'); setPaints(ab, 'fills', [['muted']]); ab.appendChild(product('leche', 24));
+  const at = stack('textos', au, 2); at.layoutSizingHorizontal = 'FILL'; const t1 = stack('título', at, 6, 'HORIZONTAL'); t1.counterAxisAlignItems = 'CENTER'; await text('Automático', 'Body/Small Medium', 'foreground', t1); t1.appendChild(icon('sparkles', 16, 'muted-foreground', 'icon'));
+  await note(at, 'Se elige solo según el nombre del producto', 'muted-foreground', 'Body/Small'); au.appendChild(icon('check', 20, 'primary', 'check'));
+  const SECS = [['Fruta', ['manzana', 'manzana-verde', 'platano', 'naranja', 'limon', 'fresa', 'uvas', 'sandia', 'pina', 'pera', 'melocoton', 'cerezas']], ['Verdura', ['zanahoria', 'tomate', 'patata', 'cebolla', 'ajo', 'pimiento', 'brocoli', 'maiz', 'pepino', 'lechuga', 'berenjena', 'champinon']], ['Lácteos y huevos', ['leche', 'queso', 'huevo', 'mantequilla', 'helado']]];
+  for (const [title, slugs] of SECS) {
+    const s = stack(title, b, 6); const h = await text(title, 'Caption/Medium', 'muted-foreground', s); h.fontName = { family: 'Geist', style: 'SemiBold' };
+    const w = stack('iconos (flex-wrap gap-1.5)', s, 6, 'HORIZONTAL'); w.layoutWrap = 'WRAP'; w.counterAxisSpacing = 6;
+    for (const sl of slugs) { if (!prodC(sl)) continue; const cell = stack(sl, w, 0, 'HORIZONTAL'); cell.layoutSizingHorizontal = 'FIXED'; cell.resize(44, 44); cell.layoutSizingVertical = 'FIXED'; cell.primaryAxisAlignItems = 'CENTER'; cell.counterAxisAlignItems = 'CENTER'; rad(cell, 'radius/lg'); cell.strokeWeight = 1; cell.strokeAlign = 'INSIDE'; setPaints(cell, 'strokes', [['transparent']]); cell.appendChild(product(sl, 26)); }
+  }
+  const f = slotFooter(k, false); const back = BTN('ghost', 'default', 'Volver', 'chevron-left'); f.appendChild(back); back.layoutSizingHorizontal = 'FILL';
+  const s = await sheetModal('inventario', MO.invIcono, k, 'Elegir icono', 'Busca por nombre o elige de la lista. El automático se ajusta al nombre del producto.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+
+// ── Lista ──
+async function pickerSearch(k, placeholder) {
+  const f = stack('buscador (sticky top-0 border-b bg-popover)', k, 6); padX(f, 'spacing/4'); bind(f, 'paddingBottom', 'spacing/3'); setPaints(f, 'fills', [['popover']]); f.strokes = [solid('border')]; f.strokeBottomWeight = 1; f.strokeTopWeight = 0; f.strokeLeftWeight = 0; f.strokeRightWeight = 0; f.strokeAlign = 'INSIDE';
+  const l = inst(L2.label, 'state=default'); f.appendChild(l); l.setProperties({ [P(L2.label, 'label')]: 'Buscar o crear producto' });
+  searchBox(f, placeholder);
+}
+async function pickerBody(k) { const b = stack('cuerpo (gap-5 py-4)', k, 20); padX(b, 'spacing/4'); padY(b, 'spacing/4'); return b; }
+async function listaAnadir(k) {
+  await pickerSearch(k, 'Leche, 2 yogures, tomates 1 kg…');
+  const b = await pickerBody(k);
+  await chipGroup(b, 'Te puede faltar', icon('sparkles', 16, 'chart-3', 'icon'), [['marcado', 'Huevos', 'huevo', '2 packs'], ['normal', 'Café molido', 'cafe'], ['normal', 'Tomate triturado', 'tomate']]);
+  await chipGroup(b, 'Lácteos y huevos', product('leche', 16), [['en-lista', 'Leche entera', 'leche', 'pack 6'], ['normal', 'Yogures naturales', 'yogur', 'pack 8'], ['normal', 'Mantequilla', 'mantequilla'], ['normal', 'Queso rallado', 'queso']]);
+  await chipGroup(b, 'Fruta y verdura', product('tomate', 16), [['en-lista', 'Tomates', 'tomate'], ['marcado', 'Plátanos', 'platano'], ['normal', 'Manzanas', 'manzana'], ['normal', 'Cebollas', 'cebolla'], ['normal', 'Patatas', 'patata']]);
+  actionsFooter(k, true, [['default', 'lg', 'Añadir 2 a la lista', 'shopping-cart']]);
+}
+if (ARGS.screen === 'ls-anadir') {
+  const k = modalSlot('Añadir a la lista'); await listaAnadir(k);
+  const s = await sheetModal('lista', MO.lsAnadir, k, 'Añadir a la lista', 'Marca todo lo que necesites y entra de una vez.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'ls-buscar') {
+  const k = modalSlot('Añadir a la lista · buscando');
+  await pickerSearch(k, 'Leche, 2 yogures, tomates 1 kg…');
+  const sb = k.findOne((n) => n.type === 'INSTANCE' && n.name === 'Buscador'); sb.swapComponent(variant(L.search, 'filled=true'));
+  const si = sb.findAll((n) => n.type === 'INSTANCE').find((n) => n.componentProperties && Object.keys(n.componentProperties).some((x) => x.startsWith('value'))); if (si) si.setProperties({ [Object.keys(si.componentProperties).find((x) => x.startsWith('value'))]: 'tomate triturado 2' });
+  const b = await pickerBody(k);
+  await chipGroup(b, 'Nuevos (1)', null, [['nuevo', 'Yogur griego', null, '2 ud']]);
+  const cr = stack('crear', b, 6); const cbt = BTN('outline', 'default', 'Crear «Tomate triturado»', 'plus'); cr.appendChild(cbt); cbt.layoutSizingHorizontal = 'FILL'; cbt.primaryAxisAlignItems = 'MIN';
+  const hint = stack('px-1', cr, 0); padX(hint, 'spacing/1'); await note(hint, 'Se añadirá 2 ud');
+  await chipGroup(b, 'Resultados', null, [['en-lista', 'Tomates', 'tomate'], ['normal', 'Tomate frito', 'tomate']]);
+  actionsFooter(k, true, [['default', 'lg', 'Añadir 1 a la lista', 'shopping-cart']]);
+  const s = await sheetModal('lista', MO.lsBuscar, k, 'Añadir a la lista', 'Marca todo lo que necesites y entra de una vez.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'ls-editar') {
+  const k = modalSlot('Editar producto de la lista'); const b = body(k);
+  const pf = await labeled(b, 'Producto', inputWith('Leche entera')); await note(pf, 'Cambiarlo renombra el producto también en el inventario.');
+  const g = grid2(b, 'cantidad y unidad (grid-cols-2 gap-3)');
+  const cf = await field(g, 'Cantidad', { value: '2', optional: true }); half(cf); half(await labeled(g, 'Unidad', selectWith('Unidades')));
+  const eq = stack('equivalencia (-mt-2)', b, 0); eq.layoutPositioning = 'AUTO'; await note(eq, '2 packs = 12 ud');
+  actionsFooter(k, false, [['default', 'lg', 'Guardar cambios'], ['destructive', 'default', 'Quitar de la lista', 'trash'], ['ghost', 'default', 'Cancelar']]);
+  const s = await sheetModal('lista', MO.lsEditar, k, 'Editar producto', null);
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'ls-orden') {
+  const k = modalSlot('Orden de los pasillos'); const b = body(k);
+  const sw = stack('Orden que editas', b, 8); const sl = stack('px-1', sw, 0); padX(sl, 'spacing/1'); await text('Orden que editas', 'Body/Small Medium', 'foreground', sl);
+  const cr = stack('chips (role=group)', sw, 8, 'HORIZONTAL'); ['General', 'Mercadona', 'Lidl'].forEach((l, i) => { const c = inst(L9.chip, 'activo=' + (i === 0)); cr.appendChild(c); c.setProperties({ [P(L9.chip, 'label')]: l }); });
+  const ex = stack('px-1', b, 0); padX(ex, 'spacing/1'); await note(ex, 'Es tu orden general: manda en la lista agrupada y en las tiendas que no tengan uno propio.', 'muted-foreground', 'Body/Small');
+  const ul = stack('pasillos (gap-1.5)', b, 6);
+  for (const [n, sl, st] of [['Fruta y verdura', 'tomate', 'default'], ['Panadería', 'pan', 'arrastrando'], ['Lácteos y huevos', 'leche', 'default'], ['Carne', 'carne', 'default'], ['Pescado y marisco', 'pescado', 'default'], ['Despensa', 'arroz', 'default']]) { const r = inst(L9.pasillo, 'estado=' + st); ul.appendChild(r); r.layoutSizingHorizontal = 'FILL'; r.setProperties({ [P(L9.pasillo, 'nombre')]: n, [P(L9.pasillo, 'icono')]: prodC(sl).id }); }
+  actionsFooter(k, false, [['outline', 'default', 'Listo']]);
+  const s = await sheetModal('lista', MO.lsOrden, k, 'Orden de los pasillos', 'Colócalos como los recorres en la tienda. Se guarda al mover y manda en la lista agrupada y en el modo compra.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'ls-escritorio') {
+  // ≥ md: Dialog centrado de 512 px (sm:max-w-lg), cabecera a la izquierda y la X de 36 px
+  const k = modalSlot('Añadir a la lista · escritorio', 510); await listaAnadir(k);
+  const s = screen(MO.lsEscritorio, 1280, 'desktop'); const c = desktop(s); withActions(c, 'Lista de la compra', []); await listaContenido(c, true);
+  s.resize(1280, 900); s.findOne((n) => n.type === 'INSTANCE' && n.name.startsWith('AppSidebar')).resize(256, 900); await activate(s, 1);
+  const ov = figma.createFrame(); ov.name = 'overlay'; ov.resize(1280, 900); setPaints(ov, 'fills', [['component/modal/overlay']]); ov.effects = [{ type: 'BACKGROUND_BLUR', radius: 4, visible: true }]; s.appendChild(ov);
+  const m = inst(L3.modal, 'viewport=desktop, footer=default'); s.appendChild(m);
+  m.setProperties({ [P(L3.modal, 'title')]: 'Añadir a la lista', [P(L3.modal, 'description')]: 'Marca todo lo que necesites y entra de una vez.' });
+  m.findOne((n) => n.type === 'INSTANCE' && n.name === 'content').swapComponent(k); m.children.find((n) => n.name === 'footer').visible = false;
+  m.x = (1280 - m.width) / 2; m.y = Math.max(24, (900 - m.height) / 2);
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+
+// ── Menús ──
+function tileGrid3(parent, tiles) {
+  const g = stack('acciones (grid-cols-3 gap-2)', parent, 8);
+  for (let i = 0; i < tiles.length; i += 3) { const r = stack('fila', g, 8, 'HORIZONTAL'); for (const [estado, et, ic] of tiles.slice(i, i + 3)) { const t = inst(L9.accion, 'estado=' + estado); r.appendChild(t); t.layoutSizingHorizontal = 'FILL'; t.setProperties({ [P(L9.accion, 'etiqueta')]: et, [P(L9.accion, 'icono')]: iconComp(ic).id }); } }
+  return g;
+}
+if (ARGS.screen === 'mn-nuevo') {
+  const k = modalSlot('Plato nuevo'); const b = body(k);
+  const ai = inst(L.ai, 'size=lg, state=default'); b.appendChild(ai); ai.layoutSizingHorizontal = 'FILL'; ai.setProperties({ [P(L.ai, 'label')]: 'Generar este hueco con IA' });
+  await labeled(b, 'Plato', inputWith('Crema', 'p. ej. Lentejas con verduras'));
+  const ul = stack('sugerencias del recetario (max-h-56)', b, 6);
+  for (const n of ['Crema de calabacín', 'Crema de verduras']) { const r = BTN('outline', 'default', n, 'chef-hat'); ul.appendChild(r); r.layoutSizingHorizontal = 'FILL'; r.primaryAxisAlignItems = 'MIN'; r.name = n + ' · receta'; }
+  const lib = BTN('outline', 'default', 'Añadir «Crema» · texto libre', 'plus'); b.appendChild(lib); lib.layoutSizingHorizontal = 'FILL'; lib.primaryAxisAlignItems = 'MIN';
+  actionsFooter(k, false, [['ghost', 'default', 'Cancelar']]);
+  const s = await sheetModal('menus', MO.mnNuevo, k, 'Cena · Martes', 'Genéralo con IA, elige una receta de tu recetario o escríbelo.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'mn-plato') {
+  const k = modalSlot('Editar un plato'); const b = body(k);
+  await labeled(b, 'Plato', inputWith('Crema de calabacín'));
+  tileGrid3(b, [['default', 'Cómo se cocina', 'chef-hat'], ['default', 'Otra idea', 'refresh-cw'], ['default', 'Fijar', 'pin'], ['default', 'Mover a…', 'move-right'], ['default', 'Duplicar en…', 'copy'], ['destructiva', 'Quitar del menú', 'trash']]);
+  actionsFooter(k, false, [['default', 'lg', 'Guardar'], ['ghost', 'default', 'Cancelar']]);
+  const s = await sheetModal('menus', MO.mnPlato, k, 'Cena · Martes', 'Edita o quita este plato.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'mn-mover') {
+  const k = modalSlot('Mover a…'); const b = body(k, 12);
+  const g = stack('SlotPickerGrid (grid-cols-3 gap-2)', b, 8);
+  const cells = []; for (const d of ['Lun 28', 'Mar 29', 'Mié 30', 'Jue 1', 'Vie 2', 'Sáb 3', 'Dom 4']) for (const h of ['Comida', 'Cena']) cells.push([d, h]);
+  for (let i = 0; i < cells.length; i += 3) { const r = stack('fila', g, 8, 'HORIZONTAL'); for (const [d, h] of cells.slice(i, i + 3)) { const origen = d === 'Mar 29' && h === 'Cena'; const st = origen ? 'origen' : d === 'Lun 28' && h === 'Comida' ? 'bloqueada' : 'libre'; const c = inst(L9.hueco, 'estado=' + st); r.appendChild(c); c.layoutSizingHorizontal = 'FILL'; c.setProperties({ [P(L9.hueco, 'día')]: d, [P(L9.hueco, 'hueco')]: origen ? 'Aquí' : h }); } const row = r; for (let f = row.children.length; f < 3; f++) { const e = figma.createFrame(); e.name = '(hueco de la rejilla)'; e.fills = []; e.resize(10, 10); row.appendChild(e); e.layoutSizingHorizontal = 'FILL'; } }
+  const f = slotFooter(k, false); const back = BTN('ghost', 'default', 'Volver', 'chevron-left'); f.appendChild(back); back.layoutSizingHorizontal = 'FILL';
+  const s = await sheetModal('menus', MO.mnMover, k, 'Mover a…', 'Elige el día y el hueco de destino.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'mn-faltan') {
+  const k = modalSlot('Añadir a la lista lo que falte'); const b = body(k, 8);
+  for (const [n, tipo, prod] of [['Calabacín', 'catalogo', 'Calabacín'], ['Nata para cocinar', 'aproximada', 'Nata'], ['Garbanzos cocidos', 'catalogo', 'Garbanzos'], ['Puerros', 'texto-libre', null]]) {
+    const r = inst(L9.casilla, 'coincidencia=' + tipo); b.appendChild(r); r.layoutSizingHorizontal = 'FILL'; r.setProperties({ [P(L9.casilla, 'nombre')]: n });
+    if (prod) { const bi = r.exposedInstances.find((x) => x.name === 'producto'); if (bi) bi.setProperties({ [P(L3.badge, 'label')]: prod }); }
+  }
+  actionsFooter(k, false, [['default', 'lg', 'Añadir 4 a la lista', 'shopping-cart'], ['ghost', 'default', 'Cancelar']]);
+  const s = await sheetModal('menus', MO.mnFaltan, k, 'Añadir a la lista', 'Revisa lo que falta para el menú. Desmarca lo que no quieras.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'mn-descontar') {
+  const k = modalSlot('Descontar del inventario'); const b = body(k, 12);
+  const ul = stack('descontables (gap-3)', b, 12);
+  for (const [n, t, q, u] of [['Lentejas', 'Tienes 1 kg', '160', 'g'], ['Zanahorias', 'Tienes 5 ud', '1', 'ud'], ['Cebollas', 'Tienes 3 ud', '1', 'ud']]) {
+    const r = inst(L9.desc, 'tipo=descontable'); ul.appendChild(r); r.layoutSizingHorizontal = 'FILL'; r.setProperties({ [P(L9.desc, 'nombre')]: n, [P(L9.desc, 'tienes')]: t, [P(L9.desc, 'unidad')]: u });
+    const i = r.exposedInstances[0]; if (i) i.setProperties({ [P(L2.input, 'value')]: q });
+  }
+  const nd = stack('No se descuenta', b, 6); await text('No se descuenta', 'Caption/Medium', 'muted-foreground', nd);
+  for (const [n, why] of [['Comino', 'La receta no indica cantidad'], ['Pimentón de la Vera', 'No está en tu catálogo']]) { const r = inst(L9.desc, 'tipo=no-se-descuenta'); nd.appendChild(r); r.layoutSizingHorizontal = 'FILL'; r.setProperties({ [P(L9.desc, 'nombre')]: n, [P(L9.desc, 'tienes')]: why }); }
+  actionsFooter(k, false, [['default', 'lg', 'Descontar 3 ingredientes', 'check'], ['ghost', 'default', 'No descontar']]);
+  const s = await sheetModal('menus', MO.mnDescontar, k, 'Descontar del inventario', 'Ajusta lo que has gastado de «Lentejas estofadas». Se descuenta del lote que caduca antes. Desmarcar «cocinado» no repone el stock.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'mn-hoy') {
+  const k = modalSlot('¿Qué hago hoy?'); const b = body(k, 8);
+  for (const [t, n, m] of [['todo', 'Tortilla de patatas', 'Los huevos caducan mañana'], ['todo', 'Crema de calabacín', 'Conviene gastar Calabacín pronto'], ['falta', 'Arroz con pollo', 'Hace 3 semanas que no la haces']]) { const c = inst(L9.idea, 'tienes=' + t); b.appendChild(c); c.layoutSizingHorizontal = 'FILL'; c.setProperties({ [P(L9.idea, 'nombre')]: n, [P(L9.idea, 'motivo')]: m }); }
+  actionsFooter(k, false, [['ghost', 'default', 'Cerrar']]);
+  const s = await sheetModal('menus', MO.mnHoy, k, '¿Qué hago hoy?', 'Ideas cocinables ahora mismo con lo que tienes.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'mn-ajustes') {
+  const k = modalSlot('Ajustes del menú'); const b = body(k);
+  const ob = stack('Objetivo del menú (fieldset)', b, 8); await text('Objetivo del menú', 'Body/Small Medium', 'foreground', ob);
+  const og = stack('grid-cols-2 gap-2', ob, 8);
+  for (const pair of [[['Equilibrado', 'Variado y sano', true], ['Ligero', 'Platos y cenas suaves', false]], [['Proteico', 'Más proteína en cada plato', false], ['Energético', 'Raciones contundentes', false]]]) { const r = stack('fila', og, 8, 'HORIZONTAL'); for (const [t, d, on] of pair) { const c = inst(L9.objetivo, 'activo=' + on); r.appendChild(c); c.layoutSizingHorizontal = 'FILL'; c.setProperties({ [P(L9.objetivo, 'título')]: t, [P(L9.objetivo, 'descripción')]: d }); } }
+  const di = stack('Estilo de dieta (fieldset)', b, 8); await text('Estilo de dieta', 'Body/Small Medium', 'foreground', di);
+  const dg = stack('grid-cols-2 gap-2', di, 8);
+  for (const pair of [[['De todo', true], ['Vegetariano', false]], [['Vegano', false], ['Sin gluten', false]]]) { const r = stack('fila', dg, 8, 'HORIZONTAL'); for (const [t, on] of pair) { const x = BTN(on ? 'default' : 'outline', 'default', t); r.appendChild(x); x.layoutSizingHorizontal = 'FILL'; } }
+  const ra = await labeled(b, 'Raciones por plato', inputWith('2')); ra.children[1].layoutSizingHorizontal = 'FIXED'; ra.children[1].resize(96, ra.children[1].height);
+  const swRow = async (label, on, help) => { const w = stack(label, b, 4); const r = stack('fila', w, 12, 'HORIZONTAL'); r.counterAxisAlignItems = 'CENTER'; const t = await text(label, 'Body/Small Medium', 'foreground', r); t.layoutGrow = 1; r.appendChild(inst(L9.switchC, `size=default, state=default, checked=${on}`)); if (help) await note(w, help); };
+  await swRow('Planificar también el desayuno', false);
+  await swRow('Repaso de platos pasados', true, 'Te preguntamos si llegaste a cocinar lo planificado cuando vuelvas a la app. Marcar un plato como cocinado descuenta sus ingredientes del inventario.');
+  const ev = await labeled(b, 'Evitar ingredientes', (() => { const t = inst(L9.ta, 'state=default, filled=false'); t.setProperties({ [P(L9.ta, 'placeholder')]: 'p. ej. cilantro, marisco, hígado' }); return t; })());
+  await note(ev, 'Es una preferencia para los menús generados, no una garantía frente a alergias o intolerancias.');
+  const sep = figma.createFrame(); sep.name = 'Separator'; sep.resize(358, 1); setPaints(sep, 'fills', [['border']]); b.appendChild(sep); sep.layoutSizingHorizontal = 'FILL';
+  const rl = stack('Reglas del menú', b, 12);
+  const rh = stack('cabecera', rl, 4); const rt = stack('h3', rh, 6, 'HORIZONTAL'); rt.counterAxisAlignItems = 'CENTER'; rt.appendChild(icon('list-checks', 16, 'foreground', 'icon')); await text('Reglas del menú', 'Body/Small Medium', 'foreground', rt);
+  await note(rh, 'Cada cuánto quieres una receta, huecos que no se planifican o instrucciones libres.');
+  const ul = stack('reglas', rl, 8);
+  for (const [t, on] of [['Lentejas estofadas · al menos 1 vez/semana', true], ['Viernes · no planificar la cena', true], ['Los domingos, algo especial', false]]) {
+    const r = stack(t, ul, 8, 'HORIZONTAL'); r.counterAxisAlignItems = 'CENTER'; padX(r, 'spacing/2'); padY(r, 'spacing/2'); rad(r, 'radius/lg'); r.strokeWeight = 1; r.strokeAlign = 'INSIDE'; setPaints(r, 'strokes', [['border']]);
+    r.appendChild(inst(L9.switchC, `size=default, state=default, checked=${on}`));
+    const tx = await text(t, 'Body/Small', on ? 'foreground' : 'muted-foreground', r); tx.layoutGrow = 1; if (!on) tx.textDecoration = 'STRIKETHROUGH';
+    const del = IB('ghost', 'icon', 'trash'); r.appendChild(del); recolor(del.findAll((q) => q.type === 'INSTANCE')[0], 'muted-foreground');
+  }
+  rl.appendChild(BTN('outline', 'default', 'Añadir regla', 'plus'));
+  actionsFooter(k, false, [['default', 'lg', 'Guardar preferencias'], ['ghost', 'default', 'Cerrar']]);
+  const s = await sheetModal('menus', MO.mnAjustes, k, 'Ajustes del menú', 'Lo que la IA tiene en cuenta al generar tus menús.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+if (ARGS.screen === 'mn-rehacer') {
+  const k = modalSlot('Rehacer todo el menú');
+  actionsFooter(k, false, [['destructive', 'lg', 'Rehacer todo', 'sparkles'], ['ghost', 'default', 'Cancelar']]);
+  const s = await sheetModal('menus', MO.mnRehacer, k, 'Rehacer todo el menú', 'Se borrará lo que queda de semana —incluidos tus platos fijados y los que has editado o añadido a mano— y se generará un menú nuevo. Los días que ya han pasado se quedan como están. Esta acción no se puede deshacer.');
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+
 if (ARGS.screen === 'indice') {
   // Colocar las pantallas en una rejilla con títulos
-  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio', RC.escritorio], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue], [RC.vacio, RC.lista, RC.receta, RC.antes, RC.paso, RC.final], [PP.prVacio, PP.prLista, PP.prProducto, PP.rsCerrado, PP.rsPrimer, PP.pfNuevo, PP.pfAhorro], [AL.ajIndice, AL.ajHogar, AL.lgMovil, AL.ldMovil], [AL.lgEscritorio, AL.ldEscritorio], [ES.abriendo, ES.encuadre, ES.detectado, ES.ajuste, ES.sinCamara], [MC.comprando, MC.quitar, MC.todo, MC.vacia, MC.escritorio]];
+  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio', RC.escritorio], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue], [RC.vacio, RC.lista, RC.receta, RC.antes, RC.paso, RC.final], [PP.prVacio, PP.prLista, PP.prProducto, PP.rsCerrado, PP.rsPrimer, PP.pfNuevo, PP.pfAhorro], [AL.ajIndice, AL.ajHogar, AL.lgMovil, AL.ldMovil], [AL.lgEscritorio, AL.ldEscritorio], [ES.abriendo, ES.encuadre, ES.detectado, ES.ajuste, ES.sinCamara], [MC.comprando, MC.quitar, MC.todo, MC.vacia, MC.escritorio], [MO.invAnadir, MO.invAnadirAjustes, MO.invFicha, MO.invFichaAjustes, MO.invIcono], [MO.lsAnadir, MO.lsBuscar, MO.lsEditar, MO.lsOrden, MO.lsEscritorio], [MO.mnNuevo, MO.mnPlato, MO.mnMover, MO.mnFaltan, MO.mnDescontar, MO.mnHoy, MO.mnAjustes, MO.mnRehacer]];
   let y = 0; const out = [];
-  const oldT = page.findAll((n) => n.name.startsWith('título · ') && n.parent === page); for (const t of oldT) t.remove();
-  for (const rowNames of order) { let x = 0, h = 0; for (const n of rowNames) { const s = page.findOne((k) => k.name === n && k.parent === page); if (!s) continue; s.x = x; s.y = y + 48; const t = await text(n, 'Title/Section', 'foreground', page); t.name = 'título · ' + n; t.x = x; t.y = y; x += s.width + 120; h = Math.max(h, s.height); out.push(n); } y += h + 48 + 200; }
+  // Solo los hijos directos: con findOne/findAll sobre el árbol entero (decenas de miles de
+  // nodos), cada búsqueda de las ~90 del bucle recorría la página y el plugin se bloqueaba minutos.
+  const oldT = page.children.filter((n) => n.name.startsWith('título · ')); for (const t of oldT) t.remove();
+  for (const rowNames of order) { let x = 0, h = 0; for (const n of rowNames) { const s = page.children.find((k) => k.name === n); if (!s) continue; s.x = x; s.y = y + 48; const t = await text(n, 'Title/Section', 'foreground', page); t.name = 'título · ' + n; t.x = x; t.y = y; x += s.width + 120; h = Math.max(h, s.height); out.push(n); } y += h + 48 + 200; }
   return out;
 }
