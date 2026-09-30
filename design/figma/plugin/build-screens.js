@@ -7,7 +7,8 @@
 //   rp-despensa-tarjeta | rp-despensa-preguntas | rp-despensa-lista | rp-platos-tarjeta | rp-platos-preguntas
 //   rp-platos-descontar | rp-platos-porque (repasos semanales)
 //   rc-vacio | rc-lista | rc-receta | ck-antes | ck-paso | ck-final | menus-escritorio
-//   pr-vacio | pr-lista | pr-producto | rs-cerrado | rs-primer-mes | pf-nuevo | pf-ahorro | indice
+//   pr-vacio | pr-lista | pr-producto | rs-cerrado | rs-primer-mes | pf-nuevo | pf-ahorro
+//   aj-indice | aj-hogar | lg-movil | lg-escritorio | ld-movil | ld-escritorio | indice
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
 const variant = (cs, name) => { const v = cs.children.find((c) => c.name === name); if (!v) throw new Error('Variante ' + name + ' en ' + cs.name); return v; };
@@ -1039,9 +1040,222 @@ if (ARGS.screen === 'pf-ahorro') {
   return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
 }
 
+// ── Ajustes, legales y landing ──────────────────────────────────────────────
+const AL = {
+  ajIndice: 'Ajustes · 1 · Índice', ajHogar: 'Ajustes · 2 · Mi hogar',
+  lgMovil: 'Legal · Privacidad · móvil', lgEscritorio: 'Legal · Privacidad · escritorio',
+  ldMovil: 'Landing · móvil', ldEscritorio: 'Landing · escritorio',
+};
+const L7 = { cab: await setOf('◆ PATRONES', 'Cabecera pública'), pie: await setOf('◆ PATRONES', 'Pie público'), cb: await setOf('02 · Formularios', 'Checkbox') };
+const FK = (k) => P(L2.fila, k);
+function settingsRow(parent, tipo, ic, label, { hint, value, control, controlVariant = 'outline', theme } = {}) {
+  const r = inst(L2.fila, 'tipo=' + tipo); parent.appendChild(r); r.layoutSizingHorizontal = 'FILL';
+  const pr = { [FK('label')]: label, [FK('hint#')]: !!hint, [FK('icon')]: iconComp(ic).id, [FK('value#')]: !!value }; if (hint) pr[FK('hint text')] = hint; if (value) pr[FK('value text')] = value; r.setProperties(pr);
+  if (tipo === 'control') { const b = r.findOne((n) => n.type === 'INSTANCE' && n.name === 'control'); if (theme) { b.swapComponent(variant(L.ib, 'variant=outline, size=icon, state=default')); b.setProperties({ [P(L.ib, 'icon')]: iconComp('sun').id }); } else { b.swapComponent(variant(L.btn, `variant=${controlVariant}, size=default, state=default`)); b.setProperties({ [P(L.btn, 'label')]: control }); } }
+  return r;
+}
+function group(parent, title) { const s = stack(title || 'grupo', parent, 8); if (title) { const h = stack('título', s, 0); padX(h, 'spacing/1'); text(title, 'Body/Small Medium', 'muted-foreground', h, { fill: true }); } const box = stack('filas (divide-y)', s, 0); rad(box, 'radius/xl'); setPaints(box, 'fills', [['card']]); setPaints(box, 'strokes', [['foreground', 0.1]]); box.strokeWeight = 1; box.strokeAlign = 'INSIDE'; return box; }
+function divider(box) { const d = figma.createFrame(); d.name = 'divide-y'; d.resize(10, 1); setPaints(d, 'fills', [['border']]); box.appendChild(d); d.layoutSizingHorizontal = 'FILL'; }
+function rows(box, list) { list.forEach((args, i) => { if (i) divider(box); settingsRow(box, ...args); }); }
+
+if (ARGS.screen === 'aj-indice') {
+  const s = screen(AL.ajIndice, 390, 'mobile'); const c = mobileContent(s);
+  descHeader(c, 'Ajustes', 'Perfil', 'Tu hogar y tus preferencias.');
+  const body = stack('cuerpo', c, 24);
+  const acc = stack('cuenta', body, 12, 'HORIZONTAL'); acc.primaryAxisAlignItems = 'SPACE_BETWEEN'; acc.counterAxisAlignItems = 'CENTER'; bind(acc, 'minHeight', 'spacing/14'); padX(acc, 'spacing/4'); padY(acc, 'spacing/3'); rad(acc, 'radius/xl'); setPaints(acc, 'fills', [['card']]); setPaints(acc, 'strokes', [['foreground', 0.1]]); acc.strokeWeight = 1; acc.strokeAlign = 'INSIDE';
+  const at = stack('quién', acc, 0); at.layoutSizingHorizontal = 'FILL'; await text('Ana Pérez', 'Body/Small Medium', 'foreground', at, { fill: true }); await text('ana@ejemplo.com', 'Body/Small', 'muted-foreground', at, { fill: true });
+  const ub = inst(L6.avatar, 'size=default'); acc.appendChild(ub); ub.rescale(28 / ub.width); ub.setProperties({ [P(L6.avatar, 'initials')]: 'AP' }); ub.name = 'UserButton de Clerk (~28 px)';
+  rows(group(body, 'Hogar'), [['enlace', 'house', 'Casa de los Molina', { hint: 'Invitaciones, miembros y cambio de hogar', value: '2 miembros' }], ['accion', 'target', 'Objetivo de gasto', { hint: 'Al mes, para el panel de precios', value: '400,00 €' }], ['enlace', 'store', 'Tus supermercados', { hint: 'Dónde soléis comprar', value: '2 tiendas' }], ['enlace', 'list-ordered', 'Orden de la tienda', { hint: 'Ordena los pasillos según tu supermercado' }]]);
+  rows(group(body, 'Preferencias'), [['enlace', 'bell', 'Notificaciones', { value: 'Activadas' }], ['enlace', 'smartphone', 'Alexa', { hint: 'Maneja el inventario y la lista por voz', value: 'Sin vincular' }], ['control', 'sparkles', 'Procesamiento con IA', { hint: 'Tickets, menús y recetas con la IA de Google', value: 'Aceptado', control: 'Retirar' }], ['control', 'chart-column', 'Medición de uso', { hint: 'Qué días abres la app y si usas el repaso de despensa', value: 'Activada', control: 'Desactivar' }], ['control', 'package-search', 'Repaso de despensa', { hint: 'Una vez por semana, qué te queda de lo que llevas tiempo sin mirar', value: 'Activado', control: 'Desactivar' }], ['control', 'palette', 'Tema', { hint: 'Claro, oscuro o automático', theme: true }]]);
+  rows(group(body, 'Información'), [['enlace', 'info', 'Acerca de Fill Good', { hint: 'Créditos y textos legales' }]]);
+  const cu = group(body, 'Cuenta'); rows(cu, [['accion', 'download', 'Exportar mis datos', { hint: 'Descarga tu cuenta y el contenido de tu hogar en JSON' }], ['accion', 'log-out', 'Cerrar sesión']]); divider(cu); const del = settingsRow(cu, 'accion-destructiva', 'trash', 'Borrar cuenta');
+  await endPerfil(s, c);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'aj-hogar') {
+  const s = screen(AL.ajHogar, 390, 'mobile'); const c = mobileContent(s);
+  descHeader(c, 'Mi hogar', 'Ajustes', 'Invitaciones, miembros y propiedad de «Casa de los Molina».');
+  const body = stack('tarjetas', c, 16);
+  const card = async (title, desc) => { const f = cardFrame(body, title); padY(f, 'spacing/4'); const h = stack('CardHeader', f, 4); padX(h, 'spacing/4'); await text(title, 'Title/Card', 'card-foreground', h, { fill: true }); if (desc) await text(desc, 'Body/Small', 'muted-foreground', h, { fill: true }); const ct = stack('CardContent', f, 8); padX(ct, 'spacing/4'); return ct; };
+  const inv = await card('Invitar al hogar', 'Comparte el enlace para que otros miembros se unan con un solo toque. También puedes dictarles el código. Cada código vale 7 días, y al regenerarlo el anterior deja de funcionar.');
+  await text('Código de invitación', 'Body/Small Medium', 'foreground', inv, { fill: true });
+  const cr = stack('código', inv, 8, 'HORIZONTAL'); cr.counterAxisAlignItems = 'CENTER';
+  const code = stack('code', cr, 0, 'HORIZONTAL'); code.layoutSizingHorizontal = 'FILL'; padX(code, 'spacing/3'); padY(code, 'spacing/2_5'); rad(code, 'radius/lg'); setPaints(code, 'fills', [['muted']]); setPaints(code, 'strokes', [['border']]); code.strokeWeight = 1; code.strokeAlign = 'INSIDE'; code.clipsContent = false;
+  const ct = await text('A1B2C3D4E5F6', 'Body/Base', 'foreground', code); ct.fontName = { family: 'Geist Mono', style: 'Regular' }; bind(ct, 'fontSize', 'font-size/lg'); ct.letterSpacing = { value: 10, unit: 'PERCENT' }; // font-mono text-lg tracking-widest
+  for (const ic of ['copy', 'share-2', 'refresh-cw']) cr.appendChild(IB('outline', 'icon', ic));
+  await text('Caduca el 7 de octubre.', 'Body/Small', 'muted-foreground', inv, { fill: true });
+  const mem = await card('Miembros (2)');
+  for (const [n, me, owner] of [['Ana Pérez', true, true], ['Jorge', false, false]]) {
+    const r = stack(n, mem, 8, 'HORIZONTAL'); r.primaryAxisAlignItems = 'SPACE_BETWEEN'; r.counterAxisAlignItems = 'CENTER';
+    const nt = await text(me ? `${n} (tú)` : n, 'Body/Small', 'foreground', r, { fill: true }); if (me) nt.setRangeFills(n.length, nt.characters.length, [solid('muted-foreground')]);
+    const rt = stack('derecha', r, 8, 'HORIZONTAL'); rt.layoutSizingHorizontal = 'HUG'; rt.counterAxisAlignItems = 'CENTER';
+    const b = inst(L3.badge, owner ? 'variant=default' : 'variant=secondary'); rt.appendChild(b); b.setProperties({ [P(L3.badge, 'label')]: owner ? 'Propietario' : 'Miembro' });
+    if (!owner) rt.appendChild(IB('ghost', 'icon', 'user-minus'));
+  }
+  const hs = await card('Tus hogares', 'Puedes tener más de un hogar: una segunda residencia, la casa de vacaciones…');
+  const hb = fullBtn(hs, 'outline', 'default', 'Crear o unirse a otro hogar', 'house-plus'); hb.primaryAxisAlignItems = 'MIN';
+  const ge = await card('Gestión del hogar', 'Puedes ceder la propiedad y seguir en el hogar, o abandonarlo transfiriéndola en el mismo paso.');
+  for (const [v, l, ic] of [['outline', 'Cambiar nombre', 'pencil'], ['outline', 'Transferir propiedad', 'crown'], ['destructive', 'Abandonar hogar', 'log-out'], ['destructive', 'Eliminar hogar', 'trash']]) { const b = fullBtn(ge, v, 'default', l, ic); b.primaryAxisAlignItems = 'MIN'; }
+  await endPerfil(s, c);
+  return { screen: s.id, h: Math.round(s.height), codeOverflow: Math.round(ct.width + 24 - code.width), fixedIcons: await fixIconColors(s) };
+}
+
+// Páginas públicas: fuera del shell, cabecera y pie de la landing
+function publicScreen(name, desktopMode) { const s = screen(name, desktopMode ? 1280 : 390, desktopMode ? 'desktop' : 'mobile'); s.layoutMode = 'VERTICAL'; s.primaryAxisSizingMode = 'AUTO'; s.counterAxisSizingMode = 'FIXED'; s.itemSpacing = 0; s.counterAxisAlignItems = 'CENTER'; const h = inst(L7.cab, 'viewport=' + (desktopMode ? 'desktop' : 'mobile')); s.appendChild(h); return s; }
+function publicFooter(s, desktopMode) { const f = inst(L7.pie, 'viewport=' + (desktopMode ? 'desktop' : 'mobile')); s.appendChild(f); }
+async function legalText(parent, chars, bolds = []) { const t = await text(chars, 'Body/Small', 'muted-foreground', parent, { fill: true }); t.lineHeight = { value: 162.5, unit: 'PERCENT' }; for (const b of bolds) { const i = chars.indexOf(b); if (i >= 0) { t.setRangeFontName(i, i + b.length, { family: 'Geist', style: 'Medium' }); t.setRangeFills(i, i + b.length, [solid('foreground')]); } } return t; }
+
+async function legalPage(desktopMode) {
+  const s = publicScreen(desktopMode ? AL.lgEscritorio : AL.lgMovil, desktopMode);
+  const main = stack('main', s, 0); main.counterAxisAlignItems = 'CENTER'; padY(main, desktopMode ? 'spacing/14' : 'spacing/10');
+  const col = stack('PageContainer prose', main, 32); col.layoutSizingHorizontal = 'FIXED'; col.resize(desktopMode ? 672 : 390, 10); col.layoutSizingVertical = 'HUG'; padX(col, desktopMode ? 'spacing/6' : 'spacing/4');
+  const hd = stack('cabecera', col, 8); const h1 = await text('Política de privacidad', 'Title/Page', 'foreground', hd, { fill: true }); if (desktopMode) bind(h1, 'fontSize', 'font-size/3xl'); await text('Última actualización: 28 de septiembre de 2026', 'Caption/Default', 'muted-foreground', hd, { fill: true });
+  await legalText(col, 'Esta política explica qué datos personales tratamos cuando usas Fill Good, con qué finalidad, con qué base legal y qué derechos tienes. La resumimos en una frase: guardamos lo mínimo para que la app funcione, no vendemos tus datos y no usamos publicidad ni analítica de terceros.', ['Fill Good']);
+  const sec = async (title) => { const x = stack(title, col, 12); await text(title, 'Title/Section', 'foreground', x, { fill: true }); return x; };
+  const s1 = await sec('1. Responsable del tratamiento');
+  const ul = await legalText(s1, 'Titular: Jorge Molina Fuster\nContacto: fillgood@jorgemolinafuster.com', ['Titular:', 'Contacto:']); ul.setRangeListOptions(0, ul.characters.length, { type: 'UNORDERED' });
+  const s2 = await sec('2. Qué datos tratamos');
+  await legalText(s2, 'Datos de tu cuenta. Al registrarte, nuestro proveedor de identidad (Clerk) gestiona tu dirección de correo, tu nombre y, si la añades, tu foto de perfil, además de los identificadores técnicos de sesión necesarios para mantenerte conectado.', ['Datos de tu cuenta.']);
+  await legalText(s2, 'Contenido de tu hogar. Lo que tú y los miembros de tu hogar introducís al usar la app: inventario y ubicaciones, fechas de caducidad, lista de la compra, recetas, menús semanales, presupuesto mensual y orden de pasillos de tu tienda.', ['Contenido de tu hogar.']);
+  await legalText(s2, 'Tickets de compra. Cuando escaneas un ticket, el archivo (imagen o PDF) se procesa para extraer sus datos y no se almacena en nuestros servidores. Lo que se guarda es el resultado de la extracción: establecimiento, fecha, importes y líneas de producto con sus precios.', ['Tickets de compra.', 'no se almacena']);
+  const rest = stack('resto (sin dibujar)', col, 12); padY(rest, 'spacing/4'); rad(rest, 'radius/lg'); padX(rest, 'spacing/4'); setPaints(rest, 'strokes', [['border']]); rest.strokeWeight = 1; rest.strokeAlign = 'INSIDE'; rest.dashPattern = [4, 4];
+  await text('Sigue igual: 3. Para qué y con qué base legal · 4. Con quién se comparten · 5. Inteligencia artificial · 6. Transferencias internacionales · 7. Cuánto tiempo conservamos los datos · 8. Tus derechos · 9. Menores de edad · 10. Cookies y almacenamiento local · 11. Seguridad · 12. Cambios en esta política', 'Caption/Default', 'muted-foreground', rest, { fill: true });
+  publicFooter(s, desktopMode);
+  return s;
+}
+if (ARGS.screen === 'lg-movil' || ARGS.screen === 'lg-escritorio') { const s = await legalPage(ARGS.screen === 'lg-escritorio'); return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) }; }
+
+async function pantryRow(parent, name, slug, badge, tone) {
+  const r = stack(name, parent, 12, 'HORIZONTAL'); r.counterAxisAlignItems = 'CENTER'; padX(r, 'spacing/3'); padY(r, 'spacing/3'); rad(r, 'radius/xl'); setPaints(r, 'fills', [['card']]); setPaints(r, 'strokes', [['border']]); r.strokeWeight = 1; r.strokeAlign = 'INSIDE';
+  r.appendChild(product(slug, 28)); await text(name, 'Body/Small Medium', 'foreground', r, { fill: true });
+  const b = inst(L3.badge, 'variant=default'); r.appendChild(b); b.setProperties({ [P(L3.badge, 'label')]: badge }); setPaints(b, 'fills', [[tone, 0.15]]); for (const t of b.findAll((x) => x.type === 'TEXT')) setPaints(t, 'fills', [[tone]]);
+}
+async function phone(parent, desktopMode) {
+  const w = figma.createFrame(); w.name = 'HeroPreview (teléfono)'; w.fills = []; w.clipsContent = false; w.resize(320, 10); parent.appendChild(w);
+  const ph = stack('marco', null, 0); w.appendChild(ph); ph.resize(320, 10); ph.layoutSizingVertical = 'HUG'; padX(ph, 'spacing/2'); padY(ph, 'spacing/2'); rad(ph, 'radius/3xl'); setPaints(ph, 'fills', [['card']]); setPaints(ph, 'strokes', [['border']]); ph.strokeWeight = 1; ph.strokeAlign = 'INSIDE';
+  const lg = (await figma.getLocalEffectStylesAsync()).find((e) => e.name === 'Shadow/lg'); if (lg) await ph.setEffectStyleIdAsync(lg.id);
+  const sc = stack('pantalla', ph, 0); rad(sc, 'radius/2xl'); setPaints(sc, 'fills', [['background']]); sc.clipsContent = true; sc.counterAxisAlignItems = 'CENTER';
+  const notch = figma.createFrame(); notch.name = 'notch'; notch.resize(64, 6); rad(notch, 'radius/full'); setPaints(notch, 'fills', [['border']]); const nw = stack('notch', sc, 0); nw.counterAxisAlignItems = 'CENTER'; bind(nw, 'paddingTop', 'spacing/3'); nw.appendChild(notch);
+  const hd = stack('cabecera', sc, 8, 'HORIZONTAL'); hd.primaryAxisAlignItems = 'SPACE_BETWEEN'; hd.counterAxisAlignItems = 'BASELINE'; padX(hd, 'spacing/4'); bind(hd, 'paddingTop', 'spacing/4'); bind(hd, 'paddingBottom', 'spacing/3');
+  await text('Despensa', 'Title/Base', 'foreground', hd); await text('12 productos', 'Caption/Default', 'muted-foreground', hd);
+  const rs = stack('filas', sc, 8); padX(rs, 'spacing/3'); bind(rs, 'paddingBottom', 'spacing/5');
+  for (const a of [['Café molido', 'cafe', 'En stock', 'success'], ['Fresas', 'fresa', 'Caduca en 2 días', 'warning'], ['Espinacas frescas', 'lechuga', 'Caducado', 'destructive'], ['Berenjenas', 'berenjena', 'En stock', 'success']]) await pantryRow(rs, ...a);
+  w.resize(320, ph.height);
+  if (desktopMode) {
+    ph.rotation = -2; ph.y = 16; // lg:translate-y-4 lg:rotate-2 (Figma gira al revés que CSS)
+    const n = stack('aviso flotante (lg)', null, 8, 'HORIZONTAL'); w.appendChild(n); n.primaryAxisSizingMode = 'AUTO'; n.counterAxisSizingMode = 'AUTO'; n.counterAxisAlignItems = 'CENTER'; padX(n, 'spacing/3'); padY(n, 'spacing/2'); rad(n, 'radius/xl'); setPaints(n, 'fills', [['card']]); setPaints(n, 'strokes', [['border']]); n.strokeWeight = 1; n.strokeAlign = 'INSIDE';
+    const sm = (await figma.getLocalEffectStylesAsync()).find((e) => e.name === 'Shadow/sm'); if (sm) await n.setEffectStyleIdAsync(sm.id);
+    const ib = stack('icono', n, 0, 'HORIZONTAL'); ib.resize(32, 32); ib.primaryAxisAlignItems = 'CENTER'; ib.counterAxisAlignItems = 'CENTER'; ib.primaryAxisSizingMode = 'FIXED'; ib.counterAxisSizingMode = 'FIXED'; rad(ib, 'radius/lg'); setPaints(ib, 'fills', [['warning', 0.15]]); ib.appendChild(icon('bell', 16, 'warning', 'icon'));
+    await text('El yogur caduca pronto', 'Body/Small Medium', 'foreground', n); n.x = -24; n.y = -16;
+    w.resize(320, ph.height + 16);
+  }
+  return w;
+}
+function landingSection(s, name, cw, { bg, top = true, py = ['spacing/16', 'spacing/24'], desktopMode }) {
+  const sec = stack(name, s, 0); sec.counterAxisAlignItems = 'CENTER'; padY(sec, desktopMode ? py[1] : py[0]); if (bg) setPaints(sec, 'fills', [bg]);
+  if (top) { sec.strokes = [solid('border')]; sec.strokeTopWeight = 1; sec.strokeBottomWeight = 0; sec.strokeLeftWeight = 0; sec.strokeRightWeight = 0; sec.strokeAlign = 'INSIDE'; }
+  const inner = stack('contenedor', sec, 0); inner.layoutSizingHorizontal = 'FIXED'; inner.resize(cw, 10); inner.layoutSizingVertical = 'HUG';
+  return inner;
+}
+async function h2(parent, chars, desktopMode, maxW) { const t = await text(chars, 'Display/3xl', 'foreground', parent, { fill: !maxW }); if (desktopMode) bind(t, 'fontSize', 'font-size/4xl'); if (maxW) { t.textAutoResize = 'HEIGHT'; t.resize(Math.min(maxW, parent.width), t.height); } return t; }
+async function bodyLg(parent, chars, tone = 'muted-foreground', maxW) { const t = await text(chars, 'Body/Base', tone, parent, { fill: !maxW }); bind(t, 'fontSize', 'font-size/lg'); t.lineHeight = { value: 155, unit: 'PERCENT' }; if (maxW) { t.textAutoResize = 'HEIGHT'; t.resize(Math.min(maxW, parent.width), t.height); } return t; }
+async function h3(parent, chars) { const t = await text(chars, 'Body/Base Medium', 'foreground', parent, { fill: true }); bind(t, 'fontSize', 'font-size/lg'); return t; }
+// MEDIDO: cambiar layoutMode intercambia qué eje es el principal, y los modos de tamaño
+// se quedan con el eje, no con la dirección: el ancho fijo pasaba a ser el ALTO fijo y la
+// sección dejaba de crecer con su contenido. Se vuelven a poner después del cambio.
+function fixAxes(f, w) { f.layoutSizingHorizontal = 'FIXED'; f.resize(w, Math.max(1, f.height)); f.layoutSizingVertical = 'HUG'; }
+function gapV(parent, px) { const g = figma.createFrame(); g.name = 'mt-' + px / 4; g.fills = []; g.resize(1, px); parent.appendChild(g); return g; }
+
+async function landing(desktopMode) {
+  const s = publicScreen(desktopMode ? AL.ldEscritorio : AL.ldMovil, desktopMode);
+  const cw = desktopMode ? 1104 : 358;
+  // Hero
+  const hero = landingSection(s, 'Hero', cw, { top: false, py: ['spacing/8', 'spacing/24'], desktopMode }); if (!desktopMode) bind(hero.parent, 'paddingBottom', 'spacing/16');
+  hero.layoutMode = desktopMode ? 'HORIZONTAL' : 'VERTICAL'; hero.itemSpacing = desktopMode ? 32 : 40; hero.counterAxisAlignItems = 'CENTER'; fixAxes(hero, cw);
+  const tb = stack('texto', hero, 0); if (desktopMode) { tb.layoutSizingHorizontal = 'FIXED'; tb.resize(631, 10); tb.layoutSizingVertical = 'HUG'; }
+  const h1 = await text('Compra lo justo, ahorra más', 'Display/4xl', 'foreground', tb, { fill: true }); if (desktopMode) bind(h1, 'fontSize', 'font-size/6xl');
+  gapV(tb, 20); await bodyLg(tb, 'La despensa, la lista de la compra y los precios de tu súper, compartidos con toda tu casa.', 'muted-foreground', desktopMode ? 470 : null);
+  gapV(tb, 32); const ctas = stack('CTAs', tb, 12, desktopMode ? 'HORIZONTAL' : 'VERTICAL'); if (desktopMode) ctas.layoutSizingHorizontal = 'HUG';
+  for (const [v, l] of [['default', 'Crear cuenta gratis'], ['outline', 'Iniciar sesión']]) { const b = BTN(v, 'lg', l); ctas.appendChild(b); if (!desktopMode) b.layoutSizingHorizontal = 'FILL'; }
+  const pv = stack('preview', hero, 0); pv.counterAxisAlignItems = 'CENTER'; if (desktopMode) { pv.layoutSizingHorizontal = 'FIXED'; pv.resize(441, 10); pv.layoutSizingVertical = 'HUG'; } await phone(pv, desktopMode);
+  // Cómo funciona
+  const how = landingSection(s, 'Cómo funciona', cw, { desktopMode });
+  await h2(how, 'Del ticket a la despensa, en un minuto', desktopMode, desktopMode ? 460 : null); gapV(how, desktopMode ? 56 : 40);
+  const ol = stack('pasos', how, desktopMode ? 24 : 32, desktopMode ? 'HORIZONTAL' : 'VERTICAL');
+  const STEPS = [['scan-line', 'Escanea el ticket', 'Haz una foto al salir del súper. La IA la convierte en productos con sus precios.'], ['refrigerator', 'Tu despensa al día con cada ticket', 'El inventario refleja lo que hay en casa y avisa de lo que caduca.'], ['shopping-cart', 'Compra solo lo que falta', 'La lista compartida te sugiere lo que se agota, sin duplicados.']];
+  for (let i = 0; i < 3; i++) {
+    const [ic, t, b] = STEPS[i]; const li = stack(t, ol, 16, desktopMode ? 'VERTICAL' : 'HORIZONTAL'); li.counterAxisAlignItems = 'MIN'; if (desktopMode) li.layoutSizingHorizontal = 'FILL'; li.clipsContent = false;
+    const tile = stack('icono', li, 0, 'HORIZONTAL'); tile.layoutSizingHorizontal = 'FIXED'; tile.resize(48, 48); tile.layoutSizingVertical = 'FIXED'; tile.primaryAxisAlignItems = 'CENTER'; tile.counterAxisAlignItems = 'CENTER'; rad(tile, 'radius/lg'); setPaints(tile, 'fills', [['secondary']]); tile.appendChild(icon(ic, 24, 'secondary-foreground', 'icon'));
+    const tx = stack('texto', li, 6); tx.layoutSizingHorizontal = 'FILL'; await h3(tx, t); await text(b, 'Body/Base', 'muted-foreground', tx, { fill: true });
+    if (desktopMode && i > 0) { const ch = icon('chevron-right', 20, 'muted-foreground', 'separador (md)'); ch.opacity = 0.4; li.appendChild(ch); ch.layoutPositioning = 'ABSOLUTE'; ch.x = -20; ch.y = 12; }
+  }
+  // Bento
+  const bento = landingSection(s, 'Bento', cw, { desktopMode });
+  await h2(bento, 'Todo lo de casa, en una sola app', desktopMode); gapV(bento, desktopMode ? 56 : 40);
+  const cell = async (parent, bg, ic, t, b) => { const x = stack(t, parent, 0); padX(x, 'spacing/6'); padY(x, 'spacing/6'); rad(x, 'radius/xl'); setPaints(x, 'fills', [[bg]]); setPaints(x, 'strokes', [['border']]); x.strokeWeight = 1; x.strokeAlign = 'INSIDE'; if (ic) { x.appendChild(icon(ic, 24, 'foreground', 'icon')); gapV(x, 12); } await h3(x, t); gapV(x, 6); await text(b, 'Body/Base', 'muted-foreground', x, { fill: true }); return x; };
+  const grid = stack('rejilla (md:grid-cols-4)', bento, 16, 'VERTICAL');
+  let c1, c2, c3, c4, c5, c6;
+  if (desktopMode) {
+    const r12 = stack('filas 1-2', grid, 16, 'HORIZONTAL'); r12.counterAxisAlignItems = 'MIN';
+    c1 = await cell(r12, 'card', null, 'Caducidades a la vista', 'El semáforo te dice qué va justo de fecha antes de que se tire.'); c1.layoutSizingHorizontal = 'FILL';
+    const right = stack('derecha', r12, 16); right.layoutSizingHorizontal = 'FILL';
+    c2 = await cell(right, 'secondary', null, 'Precios súper a súper', 'Fill Good recuerda lo que pagaste en cada súper y te enseña dónde te sale mejor.');
+    const r2 = stack('fila 2', right, 16, 'HORIZONTAL'); c3 = await cell(r2, 'card', null, 'Lista compartida en tiempo real', 'Lo que apunta uno lo ve toda la casa, al momento.'); c4 = await cell(r2, 'accent', 'receipt-text', 'Tickets leídos por IA', 'Foto o PDF: los productos, cantidades y precios se apuntan solos.'); for (const x of [c3, c4]) { x.layoutSizingHorizontal = 'FILL'; }
+    const r3 = stack('fila 3', grid, 16, 'HORIZONTAL'); c5 = await cell(r3, 'card', 'calendar-days', 'Del menú semanal a la lista', 'Planifica la semana y añade sus ingredientes a la lista en un toque.'); c6 = await cell(r3, 'card', 'smartphone', 'Instálala como app', 'En tu móvil, con avisos de caducidad. Sin pasar por ninguna tienda de apps.'); for (const x of [c5, c6]) x.layoutSizingHorizontal = 'FILL';
+  } else {
+    c1 = await cell(grid, 'card', null, 'Caducidades a la vista', 'El semáforo te dice qué va justo de fecha antes de que se tire.');
+    c2 = await cell(grid, 'secondary', null, 'Precios súper a súper', 'Fill Good recuerda lo que pagaste en cada súper y te enseña dónde te sale mejor.');
+    c3 = await cell(grid, 'card', null, 'Lista compartida en tiempo real', 'Lo que apunta uno lo ve toda la casa, al momento.');
+    c4 = await cell(grid, 'accent', 'receipt-text', 'Tickets leídos por IA', 'Foto o PDF: los productos, cantidades y precios se apuntan solos.');
+    c5 = await cell(grid, 'card', 'calendar-days', 'Del menú semanal a la lista', 'Planifica la semana y añade sus ingredientes a la lista en un toque.');
+    c6 = await cell(grid, 'card', 'smartphone', 'Instálala como app', 'En tu móvil, con avisos de caducidad. Sin pasar por ninguna tienda de apps.');
+  }
+  gapV(c1, 20); const pr = stack('filas', c1, 8); for (const a of [['Zanahorias', 'zanahoria', 'En stock', 'success'], ['Filetes de ternera', 'carne', 'Caduca en 3 días', 'warning'], ['Salmón fresco', 'pescado', 'Caducado', 'destructive']]) await pantryRow(pr, ...a);
+  gapV(c2, 16); const chipsR = stack('súpers', c2, 8, 'HORIZONTAL'); chipsR.layoutWrap = 'WRAP'; chipsR.counterAxisSpacing = 8;
+  for (const [n, p, k] of [['Súper A', '1,89 €', 'chart-1'], ['Súper B', '2,05 €', 'chart-2'], ['Súper C', '1,79 €', 'chart-3']]) { const ch = stack(n, chipsR, 8, 'HORIZONTAL'); ch.layoutSizingHorizontal = 'HUG'; ch.counterAxisAlignItems = 'CENTER'; padX(ch, 'spacing/3'); padY(ch, 'spacing/1_5'); rad(ch, 'radius/full'); setPaints(ch, 'fills', [['card']]); setPaints(ch, 'strokes', [['border']]); ch.strokeWeight = 1; ch.strokeAlign = 'INSIDE'; const d = figma.createEllipse(); d.name = 'punto'; d.resize(8, 8); setPaints(d, 'fills', [[k]]); ch.appendChild(d); await text(n, 'Body/Small Medium', 'foreground', ch); const pt = await text(p, 'Body/Small', 'muted-foreground', ch); pt.fontName = { family: 'Geist Mono', style: 'Regular' }; }
+  gapV(c3, 16); const tm = stack('Tomates', c3, 10, 'HORIZONTAL'); tm.counterAxisAlignItems = 'CENTER'; tm.appendChild(inst(L7.cb, 'state=disabled, checked=true')); const tt = await text('Tomates', 'Body/Small', 'muted-foreground', tm); tt.textDecoration = 'STRIKETHROUGH';
+  if (desktopMode) { const rh = c1.parent.findOne((n) => n.name === 'derecha'); c1.layoutSizingVertical = 'FIXED'; c1.resize(c1.width, rh.height); for (const x of [c5, c6]) x.layoutSizingVertical = 'FILL'; for (const x of [c3, c4]) x.layoutSizingVertical = 'FILL'; }
+  // Precios
+  const sp = landingSection(s, 'Precios', cw, { bg: ['muted'], desktopMode });
+  sp.layoutMode = desktopMode ? 'HORIZONTAL' : 'VERTICAL'; sp.itemSpacing = desktopMode ? 48 : 32; sp.counterAxisAlignItems = 'CENTER'; fixAxes(sp, cw);
+  const stx = stack('texto', null, 0); const fig = stack('figure', null, 0);
+  if (desktopMode) { sp.appendChild(fig); sp.appendChild(stx); for (const x of [fig, stx]) { x.layoutSizingHorizontal = 'FIXED'; x.resize(528, 10); x.layoutSizingVertical = 'HUG'; } } else { sp.appendChild(stx); sp.appendChild(fig); for (const x of [stx, fig]) { x.layoutSizingHorizontal = 'FILL'; x.layoutSizingVertical = 'HUG'; } }
+  await h2(stx, 'Tus tickets se convierten en tu historial de precios', desktopMode); gapV(stx, 16); await bodyLg(stx, 'Cada ticket guarda lo que pagaste y dónde. Fill Good compara tus súpers y te avisa cuando algo sube.', 'muted-foreground', desktopMode ? 480 : null);
+  padX(fig, 'spacing/5'); padY(fig, 'spacing/5'); rad(fig, 'radius/xl'); setPaints(fig, 'fills', [['card']]); setPaints(fig, 'strokes', [['border']]); fig.strokeWeight = 1; fig.strokeAlign = 'INSIDE';
+  const cap = stack('figcaption', fig, 8, 'HORIZONTAL'); cap.primaryAxisAlignItems = 'SPACE_BETWEEN'; cap.counterAxisAlignItems = 'BASELINE'; await text('Aceite de oliva 1 L', 'Body/Base Medium', 'foreground', cap); await text('Precio, últimos meses', 'Caption/Default', 'muted-foreground', cap);
+  gapV(fig, 12);
+  const W = fig.width - 40, H = W * 120 / 320, sx = W / 320, sy = H / 120, V = [8.1, 8.45, 8.3, 8.95, 9.25, 9.1, 9.7, 9.95], mn = Math.min(...V), mx = Math.max(...V);
+  const pts = V.map((v, i) => [12 + (i / 7) * 296, 12 + (1 - (v - mn) / (mx - mn)) * 96]);
+  const svg = figma.createFrame(); svg.name = 'sparkline (viewBox 320×120, preserveAspectRatio none)'; svg.fills = []; svg.resize(W, H); svg.clipsContent = false; fig.appendChild(svg); svg.layoutSizingHorizontal = 'FILL';
+  // Coordenadas RELATIVAS al origen de cada vector, y el vector se coloca en (ox, oy)
+  const ox = 12 * sx, oy = Math.min(...pts.map((p) => p[1])) * sy;
+  const rel = (x, y) => `${(x * sx - ox).toFixed(1)} ${(y * sy - oy).toFixed(1)}`;
+  const path = pts.map(([x, y], i) => `${i ? 'L' : 'M'} ${rel(x, y)}`).join(' ');
+  const area = figma.createVector(); area.name = 'área'; area.vectorPaths = [{ windingRule: 'NONZERO', data: `${path} L ${rel(308, 108)} L ${rel(12, 108)} Z` }]; svg.appendChild(area); area.x = ox; area.y = oy; setPaints(area, 'fills', [['chart-3', 0.1]]); area.strokes = [];
+  const line = figma.createVector(); line.name = 'línea'; line.vectorPaths = [{ windingRule: 'NONE', data: path }]; svg.appendChild(line); line.x = ox; line.y = oy; setPaints(line, 'strokes', [['chart-3']]); line.strokeWeight = 2.5; line.strokeCap = 'ROUND'; line.strokeJoin = 'ROUND';
+  const [lx, ly] = pts[7]; const dot = figma.createEllipse(); dot.name = 'último'; dot.resize(7, 7); svg.appendChild(dot); dot.x = lx * sx - 3.5; dot.y = ly * sy - 3.5; setPaints(dot, 'fills', [['chart-3']]);
+  gapV(fig, 16); const rl = stack('precios', fig, 8);
+  for (const [n, p, best] of [['Súper A', '9,85 €'], ['Súper B', '10,20 €'], ['Súper C', '9,49 €', true]]) { const r = stack(n, rl, 8, 'HORIZONTAL'); r.primaryAxisAlignItems = 'SPACE_BETWEEN'; r.counterAxisAlignItems = 'CENTER'; await text(n, 'Body/Small', 'muted-foreground', r); const pr2 = stack('precio', r, 6, 'HORIZONTAL'); pr2.layoutSizingHorizontal = 'HUG'; pr2.counterAxisAlignItems = 'CENTER'; if (best) await text('más barato', 'Caption/Default', 'success', pr2); const pt = await text(p, best ? 'Body/Small Medium' : 'Body/Small', best ? 'success' : 'foreground', pr2); pt.fontName = { family: 'Geist Mono', style: best ? 'Medium' : 'Regular' }; }
+  // FAQ (PageContainer narrow: 512 px)
+  const faq = landingSection(s, 'Preguntas frecuentes', desktopMode ? 464 : 358, { desktopMode });
+  await h2(faq, 'Preguntas frecuentes', desktopMode); gapV(faq, 32);
+  const fl = stack('lista', faq, 12);
+  const FAQ = [['¿Cuánto cuesta?', 'Nada. Fill Good es gratis.'], ['¿Funciona con mi supermercado?'], ['¿Tengo que instalar algo?'], ['¿Quién ve mis datos?'], ['¿Cuántas personas pueden usarla?']];
+  for (const [q, a] of FAQ) { const d = stack(q, fl, 0); rad(d, 'radius/lg'); setPaints(d, 'fills', [['card']]); setPaints(d, 'strokes', [['border']]); d.strokeWeight = 1; d.strokeAlign = 'INSIDE'; const sm = stack('summary', d, 12, 'HORIZONTAL'); sm.primaryAxisAlignItems = 'SPACE_BETWEEN'; sm.counterAxisAlignItems = 'CENTER'; bind(sm, 'minHeight', 'spacing/11'); padX(sm, 'spacing/4'); padY(sm, 'spacing/3'); await text(q, 'Body/Base Medium', 'foreground', sm, { fill: true }); const cv = icon(a ? 'chevron-up' : 'chevron-down', 20, 'muted-foreground', 'chevron'); sm.appendChild(cv); if (a) { const an = stack('respuesta', d, 0); padX(an, 'spacing/4'); bind(an, 'paddingBottom', 'spacing/4'); await text(a, 'Body/Base', 'muted-foreground', an, { fill: true }); } }
+  // CTA
+  const cta = landingSection(s, 'CTA', desktopMode ? 672 : 358, { bg: ['primary'], top: false, desktopMode }); cta.counterAxisAlignItems = 'CENTER';
+  const ch2 = await text('Empieza hoy con tu casa', 'Display/3xl', 'primary-foreground', cta, { fill: true }); ch2.textAlignHorizontal = 'CENTER'; if (desktopMode) bind(ch2, 'fontSize', 'font-size/4xl');
+  gapV(cta, 16); const cp = await bodyLg(cta, 'Crea tu hogar, invita a los tuyos y comprad con cabeza.', 'primary-foreground'); setPaints(cp, 'fills', [['primary-foreground', 0.9]]); cp.textAlignHorizontal = 'CENTER';
+  gapV(cta, 32); const cb = BTN('secondary', 'lg', 'Crear cuenta gratis'); cta.appendChild(cb); if (!desktopMode) cb.layoutSizingHorizontal = 'FILL';
+  publicFooter(s, desktopMode);
+  return s;
+}
+if (ARGS.screen === 'ld-movil' || ARGS.screen === 'ld-escritorio') { const s = await landing(ARGS.screen === 'ld-escritorio'); return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) }; }
+
 if (ARGS.screen === 'indice') {
   // Colocar las pantallas en una rejilla con títulos
-  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio', RC.escritorio], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue], [RC.vacio, RC.lista, RC.receta, RC.antes, RC.paso, RC.final], [PP.prVacio, PP.prLista, PP.prProducto, PP.rsCerrado, PP.rsPrimer, PP.pfNuevo, PP.pfAhorro]];
+  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio', RC.escritorio], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue], [RC.vacio, RC.lista, RC.receta, RC.antes, RC.paso, RC.final], [PP.prVacio, PP.prLista, PP.prProducto, PP.rsCerrado, PP.rsPrimer, PP.pfNuevo, PP.pfAhorro], [AL.ajIndice, AL.ajHogar, AL.lgMovil, AL.ldMovil], [AL.lgEscritorio, AL.ldEscritorio]];
   let y = 0; const out = [];
   const oldT = page.findAll((n) => n.name.startsWith('título · ') && n.parent === page); for (const t of oldT) t.remove();
   for (const rowNames of order) { let x = 0, h = 0; for (const n of rowNames) { const s = page.findOne((k) => k.name === n && k.parent === page); if (!s) continue; s.x = x; s.y = y + 48; const t = await text(n, 'Title/Section', 'foreground', page); t.name = 'título · ' + n; t.x = x; t.y = y; x += s.width + 120; h = Math.max(h, s.height); out.push(n); } y += h + 48 + 200; }

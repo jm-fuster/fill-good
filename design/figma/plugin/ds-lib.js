@@ -38,7 +38,21 @@ function alphaVar(token, opacity) {
 function setPaints(node, key, list) {
   node[key] = list.map(([n, o]) => solid(o != null && o !== 1 ? alphaVar(n, o) : n));
 }
-const bind = (node, field, name) => node.setBoundVariable(field, V(name));
+// MEDIDO (2026-09-30): en un TEXTO con estilo, setBoundVariable('fontSize') no hace
+// nada visible: el estilo conserva su variable y la nueva queda al lado, sin efecto
+// (el titular de la landing salía a 36 en vez de 60, el Input a 16 en escritorio en vez
+// del 14 de md:text-sm). Con setRangeBoundVariable sí se aplica, y el texto se desliga
+// del estilo, que es lo que hace una clase de tamaño en el código. Con un tamaño de la
+// escala se pone también su altura de línea: la del estilo solaparía las líneas.
+const bind = (node, field, name) => {
+  if (node.type === 'TEXT' && field === 'fontSize') {
+    node.setRangeBoundVariable(0, node.characters.length, 'fontSize', V(name));
+    const lh = __vars.find((x) => x.name === name.replace('font-size/', 'line-height/'));
+    if (lh && name.startsWith('font-size/')) node.setRangeBoundVariable(0, node.characters.length, 'lineHeight', lh);
+    return;
+  }
+  node.setBoundVariable(field, V(name));
+};
 const rad = (node, name) => { for (const k of ['topLeftRadius', 'topRightRadius', 'bottomLeftRadius', 'bottomRightRadius']) bind(node, k, name); };
 const padX = (node, name) => { bind(node, 'paddingLeft', name); bind(node, 'paddingRight', name); };
 const padY = (node, name) => { bind(node, 'paddingTop', name); bind(node, 'paddingBottom', name); };

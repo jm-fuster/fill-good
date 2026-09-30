@@ -2,7 +2,8 @@
 // la librería (nunca copias). Página «◆ PATRONES». ARGS.part:
 //   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | seleccion | fila-ajustes | selector-producto | linea-ticket | celebracion | tarjeta-repaso | pregunta-despensa | pregunta-plato | coste | tarjeta-receta
 //   receta-pack | valoracion | ingrediente-cocina | temporizador | plato-apilado
-//   aviso-precio | barra-objetivo | reparto | producto-precio | hucha | doc
+//   aviso-precio | barra-objetivo | reparto | producto-precio | hucha
+//   fila-ajustes-control | cabecera-publica | pie-publico | doc
 const ES = async (n) => (await figma.getLocalEffectStylesAsync()).find((s) => s.name === n).id;
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
@@ -652,9 +653,71 @@ if (ARGS.part === 'hucha') {
   return { id: s.id, fixedIcons: await fixIconColors(s), unbound: unboundPaints(s).length };
 }
 
+if (ARGS.part === 'fila-ajustes-control') {
+  // Amplía «Fila de ajustes» EN SU SITIO (sin reconstruir el set: hay instancias en
+  // pantallas): un valor opcional a la derecha en todas las variantes y una variante
+  // «control» con un Button al final (SettingsControlRow).
+  const cs = await setOf('◆ PATRONES', 'Fila de ajustes'), btn = await setOf('01 · Acciones', 'Button');
+  const defs = cs.componentPropertyDefinitions, key = (p) => Object.keys(defs).find((k) => k.startsWith(p));
+  for (const o of cs.children.filter((c) => c.name === 'tipo=control')) o.remove();
+  for (const v of cs.children) for (const o of v.findAll((n) => n.name === 'value')) o.remove();
+  let kv = key('value#'), kvt = key('value text');
+  if (!kv) kv = cs.addComponentProperty('value', 'BOOLEAN', false);
+  if (!kvt) kvt = cs.addComponentProperty('value text', 'TEXT', '2 miembros');
+  const addValue = async (v) => { const t = await text('2 miembros', 'Body/Small', 'muted-foreground', null, { name: 'value' }); const tx = v.findOne((n) => n.name === 'textos'); v.insertChild(v.children.indexOf(tx) + 1, t); t.componentPropertyReferences = { characters: kvt, visible: kv }; };
+  for (const v of cs.children) await addValue(v);
+  const base = cs.children.find((c) => c.name === 'tipo=accion'); const c = base.clone(); cs.appendChild(c); c.name = 'tipo=control';
+  // el clon pierde los enlaces (regla medida): se vuelven a poner
+  c.findOne((n) => n.name === 'label').componentPropertyReferences = { characters: key('label') };
+  c.findOne((n) => n.name === 'hint').componentPropertyReferences = { characters: key('hint text'), visible: key('hint#') };
+  c.findOne((n) => n.name === 'icon').componentPropertyReferences = { mainComponent: key('icon') };
+  c.findOne((n) => n.name === 'value').componentPropertyReferences = { characters: kvt, visible: kv };
+  const b = variant(btn, 'variant=outline, size=default, state=default').createInstance(); c.appendChild(b); b.name = 'control'; b.setProperties({ [P(btn, 'label')]: 'Retirar' }); b.isExposedInstance = true;
+  const others = cs.children.filter((x) => x !== c); c.x = Math.max(...others.map((x) => x.x + x.width)) + 72; c.y = others[0].y; cs.resizeWithoutConstraints(c.x + c.width + 32, cs.height);
+  cs.description = cs.description + ' Con «value» se pinta el estado a la derecha («2 miembros», «400,00 €», «Activadas»). «control» es SettingsControlRow: el valor y, al final, un Button (instancia expuesta: «Activar»/«Retirar»/«Desactivar», o el ThemeToggle, un Button outline icon). En Ajustes NO hay Switch: los interruptores son botones a propósito.';
+  return { id: c.id, fixedIcons: await fixIconColors(cs) };
+}
+
+if (ARGS.part === 'cabecera-publica') {
+  const btn = await setOf('01 · Acciones', 'Button'); const logo = figma.root.findOne((n) => n.type === 'COMPONENT' && n.name === 'brand/logo');
+  const add = stager(page, 'staging · Cabecera pública');
+  for (const vp of ['mobile', 'desktop']) {
+    const mob = vp === 'mobile', W = mob ? 390 : 1280, cw = mob ? 358 : 1104;
+    const c = comp('viewport=' + vp); c.primaryAxisSizingMode = 'FIXED'; c.resize(W, 64); c.counterAxisSizingMode = 'FIXED'; c.primaryAxisAlignItems = 'CENTER';
+    setPaints(c, 'fills', [['background', 0.85]]); c.strokes = [solid('border')]; c.strokeBottomWeight = 1; c.strokeTopWeight = 0; c.strokeLeftWeight = 0; c.strokeRightWeight = 0; c.strokeAlign = 'INSIDE'; c.effects = [{ type: 'BACKGROUND_BLUR', radius: 8, visible: true }]; add(c);
+    const inner = stack('contenedor', c, 8, 'HORIZONTAL'); inner.layoutSizingHorizontal = 'FIXED'; inner.resize(cw, 64); inner.primaryAxisAlignItems = 'SPACE_BETWEEN'; inner.counterAxisAlignItems = 'CENTER';
+    const brand = stack('marca', inner, 8, 'HORIZONTAL'); brand.layoutSizingHorizontal = 'HUG'; brand.counterAxisAlignItems = 'CENTER';
+    const li = logo.createInstance(); li.rescale(32 / li.width); brand.appendChild(li); await text('Fill Good', 'Title/Section', 'foreground', brand);
+    const nav = stack('Accesos de cuenta', inner, 8, 'HORIZONTAL'); nav.layoutSizingHorizontal = 'HUG';
+    const a = variant(btn, 'variant=ghost, size=default, state=default').createInstance(); nav.appendChild(a); a.setProperties({ [P(btn, 'label')]: 'Iniciar sesión' });
+    if (!mob) { const b = variant(btn, 'variant=default, size=default, state=default').createInstance(); nav.appendChild(b); b.setProperties({ [P(btn, 'label')]: 'Crear cuenta gratis' }); }
+  }
+  const { cs } = await combine(page, 'staging · Cabecera pública', 'Cabecera pública', { viewport: ['mobile', 'desktop'] }, 'viewport', [], 'LandingNav (landing/components/landing-nav.tsx): la cabecera de la landing y de las páginas legales. sticky top-0, h-16, border-b, bg-background/85 con backdrop-blur. Dentro, el ancho de la app (max-w-6xl, px-4 sm:px-6): logo de 32 px (rounded-md) y «Fill Good» en text-lg semibold, que NO es un enlace. A la derecha «Iniciar sesión» (ghost) y «Crear cuenta gratis» (primario), este último solo desde sm (640 px): en el móvil la cabecera fija no tiene el botón de alta. En las páginas legales se ve igual con sesión iniciada: no hay forma de volver a la app desde ahí.');
+  return { set: cs.id, unbound: unboundPaints(cs).filter((x) => !x.includes('Vector')).length };
+}
+
+if (ARGS.part === 'pie-publico') {
+  const logo = figma.root.findOne((n) => n.type === 'COMPONENT' && n.name === 'brand/logo');
+  const add = stager(page, 'staging · Pie público');
+  for (const vp of ['mobile', 'desktop']) {
+    const mob = vp === 'mobile', W = mob ? 390 : 1280, cw = mob ? 358 : 1104;
+    const c = comp('viewport=' + vp, 'VERTICAL'); c.counterAxisSizingMode = 'FIXED'; c.resize(W, 10); c.primaryAxisSizingMode = 'AUTO'; c.counterAxisAlignItems = 'CENTER'; padY(c, 'spacing/10'); c.strokes = [solid('border')]; c.strokeTopWeight = 1; c.strokeBottomWeight = 0; c.strokeLeftWeight = 0; c.strokeRightWeight = 0; c.strokeAlign = 'INSIDE'; add(c);
+    const inner = stack('contenedor', c, 24); inner.layoutSizingHorizontal = 'FIXED'; inner.resize(cw, 10); inner.layoutSizingVertical = 'HUG';
+    const row = stack('fila', inner, 24, mob ? 'VERTICAL' : 'HORIZONTAL'); if (!mob) { row.primaryAxisAlignItems = 'SPACE_BETWEEN'; row.counterAxisAlignItems = 'CENTER'; }
+    const brand = stack('marca', row, 10, 'HORIZONTAL'); brand.layoutSizingHorizontal = 'HUG'; brand.counterAxisAlignItems = 'CENTER';
+    const li = logo.createInstance(); li.rescale(28 / li.width); brand.appendChild(li);
+    const bt = await text('Fill Good · Compra lo justo, ahorra más.', 'Body/Small', 'muted-foreground', brand); bt.setRangeFontName(0, 9, { family: 'Geist', style: 'SemiBold' }); bt.setRangeFills(0, 9, [solid('foreground')]);
+    const nav = stack('Enlaces del pie', row, 20, 'HORIZONTAL'); nav.layoutSizingHorizontal = mob ? 'FILL' : 'HUG'; // en columna, con HUG el wrap no corta nunca (flex-wrap del código) nav.layoutWrap = 'WRAP'; nav.counterAxisSpacing = 20;
+    for (const l of ['Privacidad', 'Términos', 'Iniciar sesión', 'Crear cuenta gratis']) await text(l, 'Body/Small', 'muted-foreground', nav);
+    await text('© 2026 Jorge Molina Fuster', 'Caption/Default', 'muted-foreground', inner);
+  }
+  const { cs } = await combine(page, 'staging · Pie público', 'Pie público', { viewport: ['mobile', 'desktop'] }, 'viewport', [], 'LandingFooter (landing/components/landing-footer.tsx): border-t py-10, con el ancho de la app. Logo de 28 px y «Fill Good · Compra lo justo, ahorra más.», los enlaces en text-sm muted (Privacidad, Términos, Iniciar sesión, Crear cuenta gratis) y «© año Jorge Molina Fuster» en text-xs. En móvil va en columna; desde sm, marca y enlaces en una fila. OJO: los enlaces son texto sin relleno, unos 20 px de alto, por debajo de los 44 px táctiles.');
+  return { set: cs.id };
+}
+
 if (ARGS.part === 'doc') {
   const doc = await pageDoc(page, 'PATRONES', 'Patrones', 'Lo que se repite en las features, montado SOLO con instancias de la librería: si cambia un componente, cambian los patrones. Los nombres de variante describen estados de producto (no props de React), porque un patrón no es un componente del código: es una composición que el código repite. Cada descripción dice de qué archivo sale.');
-  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'marcar-apilado', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket'], ['Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', []], ['Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', []], ['Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', []], ['Coste de receta', { estado: ['completo', 'parcial'] }, 'estado', []], ['Tarjeta de receta', { historial: ['false', 'true'] }, 'historial', []], ['Receta del pack', { estado: ['añadir', 'guardada'] }, 'estado', []], ['Valoración', { votos: ['sin', 'con'] }, 'votos', []], ['Ingrediente al cocinar', { estado: ['pendiente', 'marcado', 'falta'] }, 'estado', []], ['Temporizador', { estado: ['en-marcha', 'sonado'] }, 'estado', []], ['Aviso de precio', { tipo: ['sube', 'baja'] }, 'tipo', []], ['Barra de objetivo', { estado: ['bien', 'cerca', 'pasado'] }, 'estado', []], ['Barra de reparto', { color: ['1', '2', '3', '4', '5', 'otros'] }, 'color', []], ['Producto con precio', { comparable: ['false', 'true'] }, 'comparable', []], ['Hucha del mes']];
+  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'marcar-apilado', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva', 'control'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket'], ['Tarjeta de repaso', { tipo: ['despensa', 'platos'] }, 'tipo', []], ['Pregunta de despensa', { estado: ['pendiente', 'contestada'] }, 'estado', []], ['Pregunta de plato', { estado: ['pendiente', 'no-abierto', 'descontar', 'por-que'] }, 'estado', []], ['Coste de receta', { estado: ['completo', 'parcial'] }, 'estado', []], ['Tarjeta de receta', { historial: ['false', 'true'] }, 'historial', []], ['Receta del pack', { estado: ['añadir', 'guardada'] }, 'estado', []], ['Valoración', { votos: ['sin', 'con'] }, 'votos', []], ['Ingrediente al cocinar', { estado: ['pendiente', 'marcado', 'falta'] }, 'estado', []], ['Temporizador', { estado: ['en-marcha', 'sonado'] }, 'estado', []], ['Aviso de precio', { tipo: ['sube', 'baja'] }, 'tipo', []], ['Barra de objetivo', { estado: ['bien', 'cerca', 'pasado'] }, 'estado', []], ['Barra de reparto', { color: ['1', '2', '3', '4', '5', 'otros'] }, 'color', []], ['Producto con precio', { comparable: ['false', 'true'] }, 'comparable', []], ['Hucha del mes'], ['Cabecera pública', { viewport: ['mobile', 'desktop'] }, 'viewport', []], ['Pie público', { viewport: ['mobile', 'desktop'] }, 'viewport', []]];
   const out = [];
   for (const [name, axes, colAxis, rowAxes] of ENTRIES) {
     const node = page.findOne((n) => (n.type === 'COMPONENT_SET' || (n.type === 'COMPONENT' && n.parent.type !== 'COMPONENT_SET')) && n.name === name);
