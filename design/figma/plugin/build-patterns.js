@@ -1,6 +1,6 @@
 // build-patterns.js — Fase 6: patrones de las features, montados con instancias de
 // la librería (nunca copias). Página «◆ PATRONES». ARGS.part:
-//   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | seleccion | fila-ajustes | doc
+//   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | seleccion | fila-ajustes | selector-producto | linea-ticket | celebracion | doc
 const ES = async (n) => (await figma.getLocalEffectStylesAsync()).find((s) => s.name === n).id;
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
@@ -268,9 +268,84 @@ if (ARGS.part === 'fila-ajustes') {
   return { set: cs.id, fixedIcons: await fixIconColors(cs), unbound: unboundPaints(cs).length };
 }
 
+if (ARGS.part === 'selector-producto') {
+  const add = stager(page, 'staging · Selector de producto');
+  for (const st of ['nuevo', 'asociado']) {
+    const on = st === 'asociado';
+    // El trigger es un Button outline (mismos tokens) con font-normal y justify-between
+    const c = comp('estado=' + st); c.primaryAxisSizingMode = 'FIXED'; c.resize(320, 44); c.primaryAxisAlignItems = 'SPACE_BETWEEN'; bind(c, 'height', 'spacing/11'); padX(c, 'spacing/4'); rad(c, 'radius/lg');
+    setPaints(c, 'fills', [['component/button/outline-bg']]); border(c, 'component/button/outline-border', 1); add(c);
+    const v = stack('valor', c, 8, 'HORIZONTAL'); v.layoutSizingHorizontal = 'HUG'; v.counterAxisAlignItems = 'CENTER';
+    if (on) await text('🧺', 'Body/Small', 'foreground', v, { name: 'ubicacion' }); else v.appendChild(icon('plus', 16, 'muted-foreground', 'icon'));
+    await text(on ? 'Plátanos' : 'Producto nuevo', 'Body/Small', on ? 'foreground' : 'muted-foreground', v, { name: 'label' });
+    const ch = icon('chevrons-up-down', 16, on ? 'foreground' : 'muted-foreground', 'chevron'); ch.opacity = 0.5; c.appendChild(ch); // opacity-50 sobre currentColor
+  }
+  const { cs } = await combine(page, 'staging · Selector de producto', 'Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', [], 'Trigger de ProductCombobox (src/components/product-combobox.tsx): un Button outline a todo el ancho con font-normal y justify-between, role="combobox". Sin producto y con allowCreateNew: Plus y «Producto nuevo» en muted-foreground (la línea se creará como producto nuevo al confirmar). Asociado: el emoji de su ubicación por defecto (🧺 Despensa, 🧊 Nevera, ❄️ Congelador, 📦 Otros) y el nombre en foreground. ChevronsUpDown al 50 %. Abre un Popover con Command: buscador, productos con su recuento de compras y, al final, «Producto nuevo».');
+  const kl = cs.addComponentProperty('label', 'TEXT', 'Producto nuevo');
+  for (const c of cs.children) c.findOne((n) => n.name === 'label').componentPropertyReferences = { characters: kl };
+  return { set: cs.id, unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'linea-ticket') {
+  const cb = await setOf('02 · Formularios', 'Checkbox'), input = await setOf('02 · Formularios', 'Input'), badge = await setOf('05 · Contenido', 'Badge'), btn = await setOf('01 · Acciones', 'Button'), sel = await setOf('◆ PATRONES', 'Selector de producto');
+  const add = stager(page, 'staging · Línea del ticket');
+  const chip = async (parent, label, active) => { const k = stack(label, parent, 0, 'HORIZONTAL'); k.layoutSizingHorizontal = 'HUG'; k.counterAxisAlignItems = 'CENTER'; bind(k, 'minHeight', 'spacing/8'); padX(k, 'spacing/3'); rad(k, 'radius/full'); setPaints(k, 'fills', [[active ? 'primary' : 'background']]); border(k, active ? 'primary' : 'border', 1); await text(label, 'Caption/Medium', active ? 'primary-foreground' : 'muted-foreground', k, { name: 'label' }); return k; };
+  for (const estado of ['elegir', 'duplicado', 'asociada']) for (const peso of ['false', 'true']) {
+    const linked = estado === 'asociada', weighed = peso === 'true';
+    const c = comp(`estado=${estado}, al-peso=${peso}`, 'VERTICAL'); c.primaryAxisAlignItems = 'MIN'; c.counterAxisAlignItems = 'MIN'; c.counterAxisSizingMode = 'FIXED'; c.resize(358, 10); c.primaryAxisSizingMode = 'AUTO';
+    bind(c, 'itemSpacing', 'spacing/2'); padX(c, 'spacing/3'); padY(c, 'spacing/3'); rad(c, 'radius/xl'); setPaints(c, 'strokes', [['border']]); c.strokeWeight = 1; c.strokeAlign = 'INSIDE'; add(c);
+    const top = stack('fila', c, 8, 'HORIZONTAL'); top.counterAxisAlignItems = 'MIN';
+    const cw = stack('incluir', top, 0, 'HORIZONTAL'); cw.layoutSizingHorizontal = 'HUG'; bind(cw, 'paddingTop', 'spacing/1'); // mt-1
+    const box = variant(cb, 'state=default, checked=true').createInstance(); cw.appendChild(box); box.rescale(20 / 16); // size-5
+    const mid = stack('texto', top, 4); mid.layoutSizingHorizontal = 'FILL';
+    const nameIn = variant(input, 'state=default, filled=true').createInstance(); mid.appendChild(nameIn); nameIn.layoutSizingHorizontal = 'FILL'; nameIn.name = 'nombre';
+    nameIn.setProperties({ [P(input, 'value')]: weighed ? 'Plátano de Canarias' : linked ? 'Huevos' : estado === 'duplicado' ? 'Leche entera Hacendado' : 'Tomate triturado' });
+    await text(weighed ? 'PLATANO CANARIAS · 2,23 €' : linked ? 'HUEVOS L 12U · 2,35 €' : estado === 'duplicado' ? 'LECHE ENT. HACEND. 1L · 0,89 €' : 'TOMATE TRITURADO 800G · 0,95 €', 'Caption/Default', 'muted-foreground', mid, { fill: true, name: 'raw' });
+    const q = variant(input, 'state=default, filled=true').createInstance(); top.appendChild(q); q.layoutSizingHorizontal = 'FIXED'; q.resize(64, q.height); q.name = 'cantidad'; q.setProperties({ [P(input, 'value')]: weighed ? '1,12' : '1' }); // w-16
+    const sec = stack('catalogo', c, 6);
+    const hd = stack('cabecera', sec, 8, 'HORIZONTAL'); hd.primaryAxisAlignItems = 'SPACE_BETWEEN'; hd.counterAxisAlignItems = 'CENTER';
+    await text('Producto del catálogo', 'Caption/Medium', 'muted-foreground', hd);
+    const b = variant(badge, 'variant=default').createInstance(); hd.appendChild(b); b.name = 'estado';
+    const tone = linked ? 'success' : 'warning';
+    const pr = { [P(badge, 'label')]: linked ? 'Asociado automáticamente' : 'Elegir producto' }; if (linked) { pr[P(badge, 'icon inline-start#')] = true; pr[P(badge, 'icon inline-start ↳')] = iconComp('check').id; }
+    b.setProperties(pr); setPaints(b, 'fills', [[tone, 0.15]]); textFill(b, tone); if (linked) recolor(b.findAll((x) => x.type === 'INSTANCE')[0], tone);
+    const s = variant(sel, 'estado=' + (linked ? 'asociado' : 'nuevo')).createInstance(); sec.appendChild(s); s.layoutSizingHorizontal = 'FILL'; s.name = 'producto';
+    if (linked) s.setProperties({ [P(sel, 'label')]: weighed ? 'Plátanos' : 'Huevos' });
+    if (estado === 'duplicado') {
+      const w = stack('posible-duplicado', sec, 8, 'HORIZONTAL'); w.counterAxisAlignItems = 'CENTER'; padX(w, 'spacing/2'); padY(w, 'spacing/2'); rad(w, 'radius/lg'); setPaints(w, 'fills', [['warning', 0.1]]);
+      await text(weighed ? 'Ya tienes «Plátanos», ¿es el mismo producto?' : 'Ya tienes «Leche», ¿es el mismo producto?', 'Caption/Default', 'warning', w, { fill: true, name: 'hint' });
+      const a = variant(btn, 'variant=outline, size=sm, state=default').createInstance(); w.appendChild(a); a.setProperties({ [P(btn, 'label')]: 'Asociar', [P(btn, 'icon inline-start#')]: true, [P(btn, 'icon inline-start ↳')]: iconComp('link-2').id });
+    }
+    if (weighed) {
+      const r = stack('al-inventario', sec, 6, 'HORIZONTAL'); r.counterAxisAlignItems = 'CENTER'; r.layoutWrap = 'WRAP'; r.counterAxisSpacing = 6;
+      await text('Al inventario:', 'Caption/Default', 'muted-foreground', r);
+      // Sin producto manda el ticket (kg); asociado a un producto que se cuenta por ud, pasa a ud solo
+      await chip(r, '1,12 kg', !linked); await chip(r, '1 ud', linked);
+    }
+  }
+  const { cs } = await combine(page, 'staging · Línea del ticket', 'Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso'], 'Línea de la revisión del ticket (receipts/components/receipt-review.tsx, renderRow): rounded-xl border p-3. Arriba, Checkbox de 20 px («Incluir este producto»), el nombre editable (Input) con el texto impreso y el importe debajo en text-xs muted, y la cantidad (Input w-16). Debajo, «Producto del catálogo» con su Badge (/15, border-transparent: warning «Elegir producto» sin asociar; success «Asociado automáticamente» si casó por nombre aprendido o por nombre exacto del catálogo, «Asociado» si lo eligió el usuario) y el selector de producto. NUNCA se asocia sola por parecido: el parecido solo se OFRECE, en la caja bg-warning/10 «Ya tienes «X», ¿es el mismo producto?» con «Asociar». Al peso (kg, l…): «Al inventario:» con dos chips aria-pressed (min-h-8, rounded-full, text-xs) para entrar como el peso del ticket o como 1 ud; si el producto asociado se cuenta por unidades, pasa a ud solo. Otros avisos de la misma caja que no están aquí: el pack («2 × pack de 6 → entran 12 ud»), el nombre renombrado en la misma cadena y «ya entró al finalizar la compra».');
+  return { set: cs.id, fixedIcons: await fixIconColors(cs), unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'celebracion') {
+  const s = single('Celebración del ticket');
+  s.layoutMode = 'VERTICAL'; s.primaryAxisSizingMode = 'AUTO'; s.counterAxisSizingMode = 'FIXED'; s.resize(390, 10); s.primaryAxisSizingMode = 'AUTO'; s.itemSpacing = 0; padX(s, 'spacing/4');
+  const h = stack('cabecera', s, 2); h.counterAxisAlignItems = 'CENTER'; padY(h, 'spacing/4');
+  const ic = stack('icono', h, 0, 'HORIZONTAL'); ic.layoutSizingHorizontal = 'FIXED'; ic.resize(48, 48); ic.layoutSizingVertical = 'FIXED'; ic.primaryAxisAlignItems = 'CENTER'; ic.counterAxisAlignItems = 'CENTER'; rad(ic, 'radius/full'); setPaints(ic, 'fills', [['accent']]); ic.appendChild(icon('piggy-bank', 24, 'accent-foreground', 'icon'));
+  const gap = figma.createFrame(); gap.name = 'mb-1'; gap.fills = []; gap.resize(1, 4); h.appendChild(gap);
+  const t = await text('A la hucha: 1,35 €', 'Body/Base Medium', 'foreground', h, { fill: true, name: 'title' }); t.textAlignHorizontal = 'CENTER';
+  const d = await text('Lo que esta compra le ha ahorrado al hogar.', 'Body/Small', 'muted-foreground', h, { fill: true, name: 'description' }); d.textAlignHorizontal = 'CENTER';
+  const body = stack('desglose', s, 12);
+  const li = stack('Descuentos del ticket', body, 12, 'HORIZONTAL'); li.primaryAxisAlignItems = 'SPACE_BETWEEN'; li.counterAxisAlignItems = 'CENTER';
+  const l = stack('concepto', li, 6, 'HORIZONTAL'); l.layoutSizingHorizontal = 'HUG'; l.counterAxisAlignItems = 'CENTER'; l.appendChild(icon('tag', 16, 'muted-foreground', 'icon')); await text('Descuentos del ticket', 'Body/Small', 'muted-foreground', l);
+  await text('+1,35 €', 'Body/Small Medium', 'foreground', li, { name: 'importe' });
+  s.description = 'Cuerpo de SavingsCelebration (receipts/components/savings-celebration.tsx) para ir en el hueco de ResponsiveModal, con la cabecera propia porque lleva el icono ENCIMA del título: círculo de 48 px bg-accent con PiggyBank (o ListChecks si la noticia es la compra perfecta) y zoom-in-75 al abrir, título «A la hucha: X» o «Compra perfecta» y el desglose SIEMPRE visible: «Mejor precio que de costumbre» (TrendingDown) o «Precio algo por encima de lo habitual» (TrendingUp), «Descuentos del ticket» (Tag), «Donde más has ganado», el recuento de la lista en success y los extras en tono neutro. Este es el caso de un PRIMER ticket: sin historial no hay precio con qué comparar, así que solo puede salir por los descuentos impresos en el ticket. Solo se abre si hay algo bueno que contar (ahorro > 0 o compra perfecta); si no, se navega sin modal. Pie: un único «Continuar».';
+  return { id: s.id, unbound: unboundPaints(s).length };
+}
+
 if (ARGS.part === 'doc') {
   const doc = await pageDoc(page, 'PATRONES', 'Patrones', 'Lo que se repite en las features, montado SOLO con instancias de la librería: si cambia un componente, cambian los patrones. Los nombres de variante describen estados de producto (no props de React), porque un patrón no es un componente del código: es una composición que el código repite. Cada descripción dice de qué archivo sale.');
-  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva'] }, 'tipo', []]];
+  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva'] }, 'tipo', []], ['Selector de producto', { estado: ['nuevo', 'asociado'] }, 'estado', []], ['Línea del ticket', { estado: ['elegir', 'duplicado', 'asociada'], 'al-peso': ['false', 'true'] }, 'estado', ['al-peso']], ['Celebración del ticket']];
   const out = [];
   for (const [name, axes, colAxis, rowAxes] of ENTRIES) {
     const node = page.findOne((n) => (n.type === 'COMPONENT_SET' || (n.type === 'COMPONENT' && n.parent.type !== 'COMPONENT_SET')) && n.name === name);
