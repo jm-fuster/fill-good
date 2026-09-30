@@ -112,8 +112,24 @@ export default async function AjustesPage() {
             instancia de Clerk permite el auto-borrado (lo hace por defecto); con
             el ajuste apagado en el dashboard, esto no cambia nada. Su «Cerrar
             sesión» lo cubre `SessionEndCleanup` en el layout raíz.
+
+            El disparador se agranda a 44 px sin tocar el avatar: por defecto el
+            botón mide lo que el avatar, unos 28 px, por debajo del mínimo
+            táctil. Va como objeto de estilo de `appearance`, igual que el
+            `display: none` de abajo, y no como clase: una clase de Tailwind
+            compite en especificidad con el CSS que Clerk inyecta.
           */}
           <UserButton
+            appearance={{
+              elements: {
+                userButtonTrigger: {
+                  width: "2.75rem",
+                  height: "2.75rem",
+                  justifyContent: "center",
+                  borderRadius: "9999px",
+                },
+              },
+            }}
             userProfileProps={{
               appearance: {
                 elements: { profileSection__danger: { display: "none" } },
@@ -172,7 +188,7 @@ export default async function AjustesPage() {
           <SettingsControlRow
             icon={Palette}
             label="Tema"
-            hint="Claro, oscuro o automático"
+            hint="Claro, oscuro o el del sistema"
             control={<ThemeToggle />}
           />
         </SettingsGroup>

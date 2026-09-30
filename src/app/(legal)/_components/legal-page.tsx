@@ -1,3 +1,5 @@
+import { LEGAL_OWNER } from "../legal-config";
+
 /**
  * Envoltorio tipográfico de los textos legales (/privacidad, /terminos).
  * No hay plugin de tipografía: el estilo de p/ul/a se aplica desde el article
@@ -41,4 +43,13 @@ export function LegalSection({
       {children}
     </section>
   );
+}
+
+/**
+ * El email de contacto como enlace `mailto:`. Estas páginas son a donde se
+ * viene a ejercer un derecho y el email es la vía que dan para hacerlo; escrito
+ * como texto plano, en el móvil había que seleccionarlo y copiarlo a mano.
+ */
+export function LegalEmail() {
+  return <a href={`mailto:${LEGAL_OWNER.email}`}>{LEGAL_OWNER.email}</a>;
 }
