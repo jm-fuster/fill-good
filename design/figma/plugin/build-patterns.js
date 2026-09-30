@@ -1,6 +1,6 @@
 // build-patterns.js — Fase 6: patrones de las features, montados con instancias de
 // la librería (nunca copias). Página «◆ PATRONES». ARGS.part:
-//   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | doc
+//   estado | buscador | chip | stepper | card | row | sugerencia | ai | seccion | dia | seleccion | fila-ajustes | doc
 const ES = async (n) => (await figma.getLocalEffectStylesAsync()).find((s) => s.name === n).id;
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
@@ -236,9 +236,41 @@ if (ARGS.part === 'dia') {
   return { plato: plato.id, dia: d.id, fixedIcons: await fixIconColors(page), unbound: unboundPaints(d).length + unboundPaints(plato).length };
 }
 
+if (ARGS.part === 'seleccion') {
+  const add = stager(page, 'staging · Selección');
+  for (const sel of ['false', 'true']) {
+    const on = sel === 'true';
+    const c = comp('selected=' + sel); bind(c, 'minHeight', 'spacing/11'); padX(c, 'spacing/3'); padY(c, 'spacing/2'); bind(c, 'itemSpacing', 'spacing/1_5'); rad(c, 'radius/lg');
+    setPaints(c, 'fills', [[on ? 'primary' : 'background']]); border(c, on ? 'primary' : 'border', 1); add(c);
+    if (on) c.appendChild(icon('check', 16, 'primary-foreground', 'icon'));
+    await text('Plátanos', 'Body/Small Medium', on ? 'primary-foreground' : 'foreground', c, { name: 'label' });
+  }
+  const { cs } = await combine(page, 'staging · Selección', 'Chip de selección', { selected: ['false', 'true'] }, 'selected', [], 'Chip conmutable del alta rápida «¿Qué tienes ya en casa?» (inventory/components/starter-picker.tsx): un <button aria-pressed>, min-h-11, rounded-lg (no full: no es un filtro), border px-3 py-2, text-sm font-medium. Sin marcar: border-border bg-background (hover:bg-muted). Marcado: border-primary bg-primary text-primary-foreground y un Check de 16 px delante. Multiselección; lo marcado se crea de golpe en el inventario con «Añadir N productos».');
+  const kl = cs.addComponentProperty('label', 'TEXT', 'Plátanos');
+  for (const c of cs.children) c.findOne((n) => n.name === 'label').componentPropertyReferences = { characters: kl };
+  return { set: cs.id, unbound: unboundPaints(cs).length };
+}
+
+if (ARGS.part === 'fila-ajustes') {
+  const add = stager(page, 'staging · Fila de ajustes');
+  for (const tipo of ['enlace', 'accion', 'accion-destructiva']) {
+    const bad = tipo === 'accion-destructiva';
+    const c = comp('tipo=' + tipo); c.primaryAxisAlignItems = 'MIN'; c.primaryAxisSizingMode = 'FIXED'; c.resize(358, 56); bind(c, 'minHeight', 'spacing/14'); padX(c, 'spacing/4'); padY(c, 'spacing/3'); bind(c, 'itemSpacing', 'spacing/3'); rad(c, 'radius/xl'); add(c);
+    c.appendChild(icon(bad ? 'trash' : 'settings', 20, bad ? 'destructive' : 'muted-foreground', 'icon'));
+    const tx = stack('textos', c, 0); tx.layoutSizingHorizontal = 'FILL';
+    await text(bad ? 'Borrar cuenta' : 'Ajustes del hogar', 'Body/Small Medium', bad ? 'destructive' : 'foreground', tx, { fill: true, name: 'label' });
+    const h = await text('Nombre, miembros e invitación', 'Caption/Default', 'muted-foreground', tx, { fill: true, name: 'hint' });
+    if (tipo === 'enlace') c.appendChild(icon('chevron-right', 16, 'muted-foreground', 'chevron'));
+  }
+  const { cs } = await combine(page, 'staging · Fila de ajustes', 'Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva'] }, 'tipo', [], 'Fila de Ajustes (settings/components/settings-list.tsx): min-h-14, px-4 py-3, gap-3, text-sm font-medium. Icono de 20 px en muted-foreground, etiqueta y, si hace falta, una segunda línea (hint) en text-xs muted-foreground; a la derecha el valor actual o, si navega, ChevronRight de 16 px. Sin fondo propio: vive dentro de SettingsGroup (rounded-xl bg-card ring-1 ring-foreground/10, divide-y) y solo la primera y la última redondean sus esquinas (first:/last:rounded-xl); aquí va redondeada entera, como sola. Hover: bg-muted. Destructiva (Borrar cuenta, Salir del hogar): icono y etiqueta en destructive; la confirmación fuerte vive en el modal, no en la fila. SettingsLinkRow = enlace, SettingsButtonRow = acción; SettingsControlRow (un Switch a la derecha) no está aquí.');
+  const K = { l: cs.addComponentProperty('label', 'TEXT', 'Ajustes del hogar'), h: cs.addComponentProperty('hint', 'BOOLEAN', true), ht: cs.addComponentProperty('hint text', 'TEXT', 'Nombre, miembros e invitación'), i: cs.addComponentProperty('icon', 'INSTANCE_SWAP', iconComp('settings').id) };
+  for (const c of cs.children) { c.findOne((n) => n.name === 'label').componentPropertyReferences = { characters: K.l }; c.findOne((n) => n.name === 'hint').componentPropertyReferences = { characters: K.ht, visible: K.h }; c.findOne((n) => n.name === 'icon').componentPropertyReferences = { mainComponent: K.i }; }
+  return { set: cs.id, fixedIcons: await fixIconColors(cs), unbound: unboundPaints(cs).length };
+}
+
 if (ARGS.part === 'doc') {
   const doc = await pageDoc(page, 'PATRONES', 'Patrones', 'Lo que se repite en las features, montado SOLO con instancias de la librería: si cambia un componente, cambian los patrones. Los nombres de variante describen estados de producto (no props de React), porque un patrón no es un componente del código: es una composición que el código repite. Cada descripción dice de qué archivo sale.');
-  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'cocinado', 'no-se-hizo'] }, 'estado', []]];
+  const ENTRIES = [['Tarjeta de inventario', { estado: ['en-stock', 'caduca-pronto', 'caducado', 'quedan-pocas', 'agotado', 'agotado-en-lista'] }, null, ['estado']], ['Estado de producto', { estado: Object.keys(ESTADOS) }, 'estado', []], ['Cabecera de sección'], ['Chip de filtro', { estado: ['inactivo', 'activo-aviso', 'activo-caducados', 'tienda'] }, 'estado', []], ['Buscador', { filled: ['false', 'true'] }, 'filled', []], ['Fila de la lista', { checked: ['false', 'true'], chip: ['ninguno', 'tienda', 'ahorro'] }, 'chip', ['checked']], ['QuantityStepper', { uso: ['lista', 'lista-peso', 'lista-minimo', 'inventario'] }, 'uso', []], ['Te puede faltar'], ['Botón de IA', { size: ['default', 'lg'], state: ['default', 'loading'] }, 'state', ['size']], ['Día del menú'], ['Plato del menú', { estado: ['pendiente', 'marcar', 'cocinado', 'no-se-hizo'] }, 'estado', []], ['Chip de selección', { selected: ['false', 'true'] }, 'selected', []], ['Fila de ajustes', { tipo: ['enlace', 'accion', 'accion-destructiva'] }, 'tipo', []]];
   const out = [];
   for (const [name, axes, colAxis, rowAxes] of ENTRIES) {
     const node = page.findOne((n) => (n.type === 'COMPONENT_SET' || (n.type === 'COMPONENT' && n.parent.type !== 'COMPONENT_SET')) && n.name === name);
