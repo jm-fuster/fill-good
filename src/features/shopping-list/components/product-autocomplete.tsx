@@ -32,6 +32,7 @@ type AutocompleteOption = { product: CatalogProduct };
  */
 export function ProductAutocomplete({
   ref,
+  id,
   products,
   value,
   filterValue,
@@ -44,6 +45,12 @@ export function ProductAutocomplete({
   ariaLabel = "Producto a añadir",
 }: {
   ref?: React.Ref<HTMLInputElement>;
+  /**
+   * Para asociarle una `<Label htmlFor>` visible. Con `id` el nombre accesible lo
+   * pone esa etiqueta y el campo NO lleva `aria-label`: si lo llevara, taparía el
+   * texto que se ve (el nombre accesible tiene que contener la etiqueta visible).
+   */
+  id?: string;
   products: CatalogProduct[];
   value: string;
   /** Texto por el que filtrar el catálogo si difiere de `value` (L8). */
@@ -149,6 +156,7 @@ export function ProductAutocomplete({
     <div ref={wrapperRef} className="relative flex-1">
       <Input
         ref={ref}
+        id={id}
         name={inputName}
         value={value}
         onChange={(e) => change(e.target.value)}
@@ -162,7 +170,7 @@ export function ProductAutocomplete({
         maxLength={120}
         autoComplete="off"
         placeholder={placeholder}
-        aria-label={ariaLabel}
+        aria-label={id ? undefined : ariaLabel}
         role="combobox"
         aria-expanded={showList}
         aria-controls={listboxId}

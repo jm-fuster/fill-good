@@ -661,21 +661,32 @@ export function RecipeForm({
               key={row.key}
               className="flex flex-col gap-2 rounded-lg border p-3"
             >
-              <div className="flex items-start gap-2">
-                <ProductAutocomplete
-                  products={catalog}
-                  value={row.name}
-                  onValueChange={(v) =>
-                    patchRow(row.key, { name: v, productId: null })
-                  }
-                  onSelect={(p) =>
-                    patchRow(row.key, { name: p.name, productId: p.id })
-                  }
-                  required={false}
-                  inputName="ingredient-name"
-                  placeholder="Ingrediente"
-                  ariaLabel="Nombre del ingrediente"
-                />
+              {/* Etiquetas visibles y no solo placeholder: al escribir, el
+                  placeholder desaparece y con él la única pista de qué era cada
+                  campo. En text-xs para no engordar una fila que se repite. */}
+              <div className="flex items-end gap-2">
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                  <Label
+                    htmlFor={`ing-${row.key}-name`}
+                    className="text-xs text-muted-foreground"
+                  >
+                    Ingrediente
+                  </Label>
+                  <ProductAutocomplete
+                    id={`ing-${row.key}-name`}
+                    products={catalog}
+                    value={row.name}
+                    onValueChange={(v) =>
+                      patchRow(row.key, { name: v, productId: null })
+                    }
+                    onSelect={(p) =>
+                      patchRow(row.key, { name: p.name, productId: p.id })
+                    }
+                    required={false}
+                    inputName="ingredient-name"
+                    placeholder="p. ej. Lentejas"
+                  />
+                </div>
                 <Button
                   type="button"
                   variant="ghost"
@@ -698,45 +709,61 @@ export function RecipeForm({
                   {info.text}
                 </Badge>
               ) : null}
-              <div className="flex items-center gap-2">
-                <Input
-                  value={row.quantity}
-                  onChange={(e) =>
-                    patchRow(row.key, { quantity: e.target.value })
-                  }
-                  type="number"
-                  inputMode="decimal"
-                  min={0}
-                  /* El tope es el de la columna (`numeric(10, 2)`): más largo
-                     que eso no es una cantidad, es un cero de más al teclear, y
-                     sin `max` el navegador lo enviaba y reventaba el guardado. */
-                  max={MAX_INGREDIENT_QUANTITY}
-                  step="any"
-                  aria-label="Cantidad"
-                  placeholder="Cant."
-                  className="w-24"
-                />
-                <Select
-                  value={row.unit}
-                  onValueChange={(v) => patchRow(row.key, { unit: v })}
-                >
-                  <SelectTrigger
-                    aria-label="Unidad"
-                    className="w-32"
+              <div className="flex items-end gap-2">
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor={`ing-${row.key}-qty`}
+                    className="text-xs text-muted-foreground"
                   >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_UNIT}>Sin unidad</SelectItem>
-                    {UNIT_OPTIONS.map((u) => (
-                      <SelectItem key={u.value} value={u.value}>
-                        {u.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                    Cantidad
+                  </Label>
+                  <Input
+                    id={`ing-${row.key}-qty`}
+                    value={row.quantity}
+                    onChange={(e) =>
+                      patchRow(row.key, { quantity: e.target.value })
+                    }
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    /* El tope es el de la columna (`numeric(10, 2)`): más largo
+                       que eso no es una cantidad, es un cero de más al teclear, y
+                       sin `max` el navegador lo enviaba y reventaba el guardado. */
+                    max={MAX_INGREDIENT_QUANTITY}
+                    step="any"
+                    placeholder="p. ej. 2"
+                    className="w-24"
+                  />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label
+                    htmlFor={`ing-${row.key}-unit`}
+                    className="text-xs text-muted-foreground"
+                  >
+                    Unidad
+                  </Label>
+                  <Select
+                    value={row.unit}
+                    onValueChange={(v) => patchRow(row.key, { unit: v })}
+                  >
+                    <SelectTrigger
+                      id={`ing-${row.key}-unit`}
+                      className="w-32"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NO_UNIT}>Sin unidad</SelectItem>
+                      {UNIT_OPTIONS.map((u) => (
+                        <SelectItem key={u.value} value={u.value}>
+                          {u.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <Label
-                  className="ml-auto flex items-center gap-2 text-sm font-normal text-muted-foreground"
+                  className="ml-auto flex h-11 items-center gap-2 text-sm font-normal text-muted-foreground"
                 >
                   Opcional
                   <Switch
