@@ -2,7 +2,8 @@
 // instancias de la librería y de los patrones. Son frames (no componentes): una
 // pantalla no se reutiliza, se revisa. ARGS.screen:
 //   inventario-movil | inventario-escritorio | lista-movil | lista-escritorio | menus-movil | inventario-movil-oscuro
-//   pu-crear | pu-pregunta | pu-invitar | pu-lista | pu-inventario | pu-unirse (primer uso) | indice
+//   pu-crear | pu-pregunta | pu-invitar | pu-lista | pu-inventario | pu-unirse (primer uso)
+//   pt-aviso | pt-escanear | pt-analizando | pt-revisar | pt-celebracion | pt-caducidades (primer ticket) | indice
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
 const variant = (cs, name) => { const v = cs.children.find((c) => c.name === name); if (!v) throw new Error('Variante ' + name + ' en ' + cs.name); return v; };
@@ -336,9 +337,165 @@ if (ARGS.screen === 'pu-inventario') {
   return { screen: s.id, h: Math.round(s.height), shadow: lg && lg.name, fixedIcons: await fixIconColors(s) };
 }
 
+// ── Primer ticket ───────────────────────────────────────────────────────────
+// /escanear (con el aviso de IA la primera vez) → analizando → /escanear/[id]/
+// revisar → (celebración, SOLO si hay algo que contar) → /inventario/revision.
+// Un hogar recién creado tiene catálogo sembrado pero NINGÚN nombre de ticket
+// aprendido, así que casi todas las líneas caen en «Necesitan decisión».
+const PT = {
+  aviso: 'Primer ticket · 1 · Antes de usar la IA', escanear: 'Primer ticket · 2 · Escanear', analizando: 'Primer ticket · 3 · Analizando',
+  revisar: 'Primer ticket · 4 · Revisar el ticket', celebracion: 'Primer ticket · 5 · Celebración (solo con descuentos)', caducidades: 'Primer ticket · 6 · Revisar caducidades',
+};
+const L3 = {
+  linea: await setOf('◆ PATRONES', 'Línea del ticket'), celebra: await setOf('◆ PATRONES', 'Celebración del ticket'),
+  select: await setOf('02 · Formularios', 'Select · Trigger'), sw: await setOf('02 · Formularios', 'Switch'), badge: await setOf('05 · Contenido', 'Badge'),
+  modal: await setOf('04 · Overlays', 'ResponsiveModal'), toast: await setOf('04 · Overlays', 'Toast'),
+};
+const TICKET_HEAD = ['Añadir ticket', 'La IA de Google lee los productos y precios; tú los revisas antes de guardar.'];
+function ticketScreen(name) { const s = screen(name, 390, 'mobile'); const c = mobileContent(s); return { s, c }; }
+async function endTicket(s, c, { fab = false } = {}) {
+  finishMobile(s, c); if (!fab) for (const f of s.findAll((n) => n.type === 'INSTANCE' && n.name === 'FAB')) f.remove(); // /escanear no tiene FAB
+  await activate(s, 2); noListCount(s); // «Añadir ticket» es el botón central: ningún destino normal activo
+}
+function cardFrame(parent, name, gapToken) { const f = stack(name, parent, 16); rad(f, 'radius/xl'); setPaints(f, 'fills', [['card']]); setPaints(f, 'strokes', [['foreground', 0.1]]); f.strokeWeight = 1; f.strokeAlign = 'INSIDE'; if (gapToken) bind(f, 'itemSpacing', gapToken); return f; } // ring-1 ring-foreground/10
+async function labeled(parent, label, node) { const f = stack(label, parent, 6); const l = inst(L2.label, 'state=default'); f.appendChild(l); l.setProperties({ [P(L2.label, 'label')]: label }); f.appendChild(node); node.layoutSizingHorizontal = 'FILL'; return f; }
+function inputWith(value, placeholder) { const i = inst(L2.input, `state=default, filled=${value ? 'true' : 'false'}`); const pr = {}; if (value) pr[P(L2.input, 'value')] = value; if (placeholder) pr[P(L2.input, 'placeholder')] = placeholder; i.setProperties(pr); return i; }
+function line(parent, estado, peso, { name, raw, qty, hint, product, where } = {}) {
+  const l = inst(L3.linea, `estado=${estado}, al-peso=${peso}`); parent.appendChild(l); l.layoutSizingHorizontal = 'FILL';
+  if (name) l.findOne((n) => n.name === 'nombre').setProperties({ [P(L2.input, 'value')]: name });
+  if (qty) l.findOne((n) => n.name === 'cantidad').setProperties({ [P(L2.input, 'value')]: qty });
+  if (raw) l.findOne((n) => n.name === 'raw').characters = raw;
+  if (hint) l.findOne((n) => n.name === 'hint').characters = hint;
+  const sel = l.findOne((n) => n.name === 'producto');
+  if (product) sel.findOne((n) => n.name === 'label').characters = product;
+  if (where) sel.findOne((n) => n.name === 'ubicacion').characters = where;
+  return l;
+}
+async function reviewContent(c) {
+  const { h } = header('Revisar ticket', null, 'Ajusta lo que haga falta y confirma.'); c.appendChild(h); h.layoutSizingHorizontal = 'FILL';
+  h.setProperties({ [P(L.ph, 'back#')]: true, [P(L.ph, 'back label')]: 'Añadir ticket' });
+  const card = cardFrame(c, 'Datos del ticket'); padY(card, 'spacing/4');
+  const ch = stack('header', card, 4); padX(ch, 'spacing/4'); await text('Datos del ticket', 'Title/Card', 'card-foreground', ch, { fill: true });
+  const grid = stack('campos (grid-cols-2)', card, 12); padX(grid, 'spacing/4');
+  await labeled(grid, 'Tienda', inputWith('Lidl'));
+  const sel = inst(L3.select, 'size=default, state=default, filled=true'); sel.setProperties({ [P(L3.select, 'value')]: 'Lidl' }); await labeled(grid, 'Cadena', sel);
+  const r = stack('fecha y total', grid, 12, 'HORIZONTAL');
+  const f1 = await labeled(r, 'Fecha', inputWith('30/09/2026')); f1.layoutSizingHorizontal = 'FILL';
+  const f2 = await labeled(r, 'Total (€)', inputWith('8,41')); f2.layoutSizingHorizontal = 'FILL';
+  const prod = stack('productos', c, 8);
+  await text('Productos (6 de 6)', 'Body/Small Medium', 'foreground', prod, { fill: true });
+  const dec = stack('necesitan decisión', prod, 8); await text('Necesitan decisión (4)', 'Caption/Medium', 'warning', dec, { fill: true });
+  line(dec, 'duplicado', 'false', { name: 'Leche entera Milbona', raw: 'LECHE ENTERA MILBONA 1L · 0,89 €' });
+  line(dec, 'elegir', 'false');
+  line(dec, 'duplicado', 'true');
+  line(dec, 'duplicado', 'false', { name: 'Pan de molde integral', raw: 'PAN MOLDE INTEGRAL 460G · 1,45 €', hint: 'Ya tienes «Pan de molde», ¿es el mismo producto?' });
+  const ok = stack('asociados', prod, 8); await text('Asociados (2)', 'Caption/Medium', 'muted-foreground', ok, { fill: true });
+  line(ok, 'asociada', 'false', { where: '🧊' });
+  line(ok, 'asociada', 'false', { name: 'Aceite de girasol', raw: 'ACEITE GIRASOL 1L · 1,89 €', product: 'Aceite de girasol', where: '🧺' });
+  const d = stack('descartar', c, 0, 'HORIZONTAL'); d.primaryAxisAlignItems = 'CENTER';
+  const del = BTN('ghost', 'default', 'Descartar ticket', 'trash'); d.appendChild(del); for (const t of del.findAll((n) => n.type === 'TEXT')) setPaints(t, 'fills', [['muted-foreground']]); recolor(del.findAll((n) => n.type === 'INSTANCE')[0], 'muted-foreground');
+}
+// La nav va en z-50 y las barras fijas en z-40: el botón central (absolute -top-5) les pisa 20 px.
+const underNav = (s, node) => { const i = s.children.findIndex((n) => n.type === 'INSTANCE' && n.name === 'BottomNav'); if (i >= 0) s.insertChild(i, node); };
+function confirmBar(s) { // fixed bottom-16 px-4 pb-safe, encima de la nav
+  const b = BTN('default', 'lg', 'Confirmar y añadir al inventario', 'check'); s.appendChild(b); b.resize(358, b.height); b.x = 16; b.y = s.height - 64 - 34 - b.height;
+  underNav(s, b);
+  return b;
+}
+
+if (ARGS.screen === 'pt-aviso' || ARGS.screen === 'pt-escanear' || ARGS.screen === 'pt-analizando') {
+  const k = ARGS.screen.slice(3);
+  const { s, c } = ticketScreen(PT[k]);
+  withActions(c, TICKET_HEAD[0], [], TICKET_HEAD[1]);
+  if (k === 'aviso') {
+    const card = stack('AiConsentCard', c, 16); padX(card, 'spacing/5'); padY(card, 'spacing/5'); rad(card, 'radius/xl'); setPaints(card, 'fills', [['card']]); setPaints(card, 'strokes', [['border']]); card.strokeWeight = 1; card.strokeAlign = 'INSIDE';
+    const hd = stack('titulo', card, 8, 'HORIZONTAL'); hd.counterAxisAlignItems = 'CENTER';
+    const ib = stack('icono', hd, 0, 'HORIZONTAL'); ib.layoutSizingHorizontal = 'FIXED'; ib.resize(36, 36); ib.layoutSizingVertical = 'FIXED'; ib.primaryAxisAlignItems = 'CENTER'; ib.counterAxisAlignItems = 'CENTER'; rad(ib, 'radius/lg'); setPaints(ib, 'fills', [['primary', 0.1]]); ib.appendChild(icon('sparkles', 20, 'primary', 'icon'));
+    await text('Antes de usar la IA', 'Title/Base', 'foreground', hd);
+    const ps = stack('texto', card, 8);
+    const BOLD = 'IA de Google (Gemini)';
+    const p1 = await text(`Para leer tickets, generar menús y escribir recetas enviamos a la ${BOLD} lo que hace falta: el ticket, tu despensa, tus recetas con sus valoraciones y costes, la lista de la compra, los platos recientes, el presupuesto y las preferencias del menú, incluida una dieta «sin gluten» si la eliges. Es contenido compartido del hogar: viaja también lo que han apuntado los demás.`, 'Body/Small', 'muted-foreground', ps, { fill: true });
+    const i = p1.characters.indexOf(BOLD); p1.setRangeFontName(i, i + BOLD.length, { family: 'Geist', style: 'SemiBold' }); p1.setRangeFills(i, i + BOLD.length, [solid('foreground')]);
+    await text('Según sus términos, Google no usa lo enviado para mejorar sus productos. Aun así, tapa la zona de la tarjeta del ticket antes de escanearlo. Puedes retirar este permiso cuando quieras en Ajustes.', 'Body/Small', 'muted-foreground', ps, { fill: true });
+    const bs = stack('acciones', card, 8); fullBtn(bs, 'default', 'lg', 'Acepto y continúo'); fullBtn(bs, 'ghost', 'default', 'Ver la política de privacidad');
+  } else if (k === 'escanear') {
+    const bs = stack('ScanForm (móvil)', c, 12);
+    fullBtn(bs, 'default', 'lg', 'Escanear ticket', 'scan-line'); fullBtn(bs, 'outline', 'lg', 'Subir imagen o PDF', 'upload');
+    await text('Si el ticket es largo o está arrugado, súbelo escaneado en PDF: se lee mejor.', 'Body/Small', 'muted-foreground', bs, { fill: true });
+  } else {
+    const box = stack('analizando', c, 0); box.counterAxisAlignItems = 'CENTER'; padX(box, 'spacing/6'); padY(box, 'spacing/16'); rad(box, 'radius/xl'); setPaints(box, 'strokes', [['border']]); box.strokeWeight = 1; box.strokeAlign = 'INSIDE'; box.dashPattern = [4, 4];
+    box.appendChild(icon('loader-circle', 32, 'primary', 'spinner'));
+    const g = figma.createFrame(); g.name = 'mt-4'; g.fills = []; g.resize(1, 16); box.appendChild(g);
+    const t = await text('Analizando el ticket…', 'Body/Base Medium', 'foreground', box, { fill: true }); t.textAlignHorizontal = 'CENTER';
+    const g2 = figma.createFrame(); g2.name = 'mt-1'; g2.fills = []; g2.resize(1, 4); box.appendChild(g2);
+    const p = await text('La IA está leyendo los productos y precios. Puede tardar unos segundos.', 'Body/Small', 'muted-foreground', box, { fill: true }); p.textAlignHorizontal = 'CENTER';
+  }
+  await endTicket(s, c);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'pt-revisar') {
+  const { s, c } = ticketScreen(PT.revisar);
+  await reviewContent(c);
+  await endTicket(s, c);
+  confirmBar(s);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'pt-celebracion') {
+  // La revisión debajo (primer viewport) y encima el bottom sheet de SavingsCelebration
+  const { s, c } = ticketScreen(PT.celebracion);
+  await reviewContent(c);
+  await endTicket(s, c); confirmBar(s);
+  s.resize(390, 844); // el overlay tapa la pantalla visible, no la página entera
+  for (const n of s.children) if (n.type === 'INSTANCE' && n.name === 'BottomNav') n.y = 844 - n.height;
+  const ov = figma.createFrame(); ov.name = 'overlay'; ov.resize(390, 844); setPaints(ov, 'fills', [['component/modal/overlay']]); ov.effects = [{ type: 'BACKGROUND_BLUR', radius: 4, visible: true }]; s.appendChild(ov);
+  const m = inst(L3.modal, 'viewport=mobile, footer=default'); s.appendChild(m);
+  m.findOne((n) => n.name === 'header').visible = false; // la cabecera va dentro del cuerpo: el icono va ENCIMA del título
+  m.findOne((n) => n.type === 'INSTANCE' && n.name === 'content').swapComponent(L3.celebra);
+  const btns = m.findOne((n) => n.name === 'footer').children.filter((n) => n.type === 'INSTANCE');
+  btns[0].setProperties({ [P(L.btn, 'label')]: 'Continuar' }); for (const b of btns.slice(1)) b.visible = false;
+  m.x = 0; m.y = 844 - m.height;
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'pt-caducidades') {
+  const { s, c } = ticketScreen(PT.caducidades);
+  withActions(c, 'Revisar caducidades', [], 'Pon fecha a lo que acabas de comprar o márcalo para consumir pronto. Todo es opcional: puedes omitir.');
+  const body = stack('ExpiryReview', c, 12); bind(body, 'paddingBottom', 'spacing/32');
+  await text('Si tienes varios de un producto, pon la fecha del que caduque antes.', 'Body/Small', 'muted-foreground', body, { fill: true });
+  const ul = stack('lista', body, 8);
+  const ITEMS = [['Leche entera Milbona', 'leche', '1 ud', '🧺 Despensa'], ['Tomate triturado', 'tomate', '1 ud', '🧺 Despensa'], ['Plátanos', 'platano', '1,12 kg', '🧺 Despensa'], ['Pan de molde integral', 'pan', '1 ud', '🧺 Despensa'], ['Huevos', 'huevo', '1 ud', '🧊 Nevera'], ['Aceite de girasol', 'aceite', '1 ud', '🧺 Despensa']];
+  for (const [name, slug, qty, where] of ITEMS) {
+    const li = stack(name, ul, 12); padX(li, 'spacing/3'); padY(li, 'spacing/3'); rad(li, 'radius/xl'); setPaints(li, 'fills', [['card']]); setPaints(li, 'strokes', [['border']]); li.strokeWeight = 1; li.strokeAlign = 'INSIDE';
+    const top = stack('producto', li, 12, 'HORIZONTAL'); top.counterAxisAlignItems = 'CENTER';
+    const ib = stack('icono', top, 0, 'HORIZONTAL'); ib.layoutSizingHorizontal = 'FIXED'; ib.resize(40, 40); ib.layoutSizingVertical = 'FIXED'; ib.primaryAxisAlignItems = 'CENTER'; ib.counterAxisAlignItems = 'CENTER'; rad(ib, 'radius/lg'); setPaints(ib, 'fills', [['muted']]); ib.appendChild(product(slug, 24));
+    const tx = stack('texto', top, 2); tx.layoutSizingHorizontal = 'FILL';
+    await text(name, 'Body/Base Medium', 'foreground', tx, { fill: true });
+    const meta = stack('meta', tx, 6, 'HORIZONTAL'); meta.counterAxisAlignItems = 'CENTER'; await text(qty, 'Body/Small', 'muted-foreground', meta);
+    const b = inst(L3.badge, 'variant=secondary'); meta.appendChild(b); b.setProperties({ [P(L3.badge, 'label')]: where });
+    const pk = stack('Caducidad', li, 8); const lb = inst(L2.label, 'state=default'); pk.appendChild(lb); lb.setProperties({ [P(L2.label, 'label')]: 'Caducidad' });
+    const pr = stack('atajos', pk, 8, 'HORIZONTAL'); pr.layoutWrap = 'WRAP'; pr.counterAxisSpacing = 8; for (const p of ['+3 días', '+1 semana', '+1 mes']) pr.appendChild(BTN('outline', 'default', p));
+    const di = inputWith(null, 'dd/mm/aaaa'); pk.appendChild(di); di.layoutSizingHorizontal = 'FILL';
+    const sw = stack('consumir pronto', li, 12, 'HORIZONTAL'); sw.primaryAxisAlignItems = 'SPACE_BETWEEN'; sw.counterAxisAlignItems = 'CENTER'; padX(sw, 'spacing/2_5'); padY(sw, 'spacing/2_5'); rad(sw, 'radius/lg'); setPaints(sw, 'strokes', [['border']]); sw.strokeWeight = 1; sw.strokeAlign = 'INSIDE';
+    const sl = inst(L2.label, 'state=default'); sw.appendChild(sl); sl.setProperties({ [P(L2.label, 'label')]: 'Consumir pronto' }); sl.findOne((n) => n.type === 'TEXT').fontName = { family: 'Geist', style: 'Regular' }; // font-normal
+    sw.appendChild(inst(L3.sw, 'size=default, state=default, checked=false'));
+  }
+  await endTicket(s, c);
+  // Barra fija bottom-16: border-t bg-background/95 px-4 pt-3 pb-safe, Omitir + Guardar (flex-1 los dos por debajo de sm)
+  const bar = stack('acciones (fixed)', null, 8, 'HORIZONTAL'); s.appendChild(bar); bar.resize(390, 10); bar.layoutSizingVertical = 'HUG'; padX(bar, 'spacing/4'); bind(bar, 'paddingTop', 'spacing/3'); bar.paddingBottom = 34;
+  setPaints(bar, 'fills', [['background', 0.95]]); bar.strokes = [solid('border')]; bar.strokeTopWeight = 1; bar.strokeBottomWeight = 0; bar.strokeLeftWeight = 0; bar.strokeRightWeight = 0; bar.strokeAlign = 'INSIDE';
+  for (const [v, l, ic] of [['outline', 'Omitir'], ['default', 'Guardar', 'check']]) { const b = BTN(v, 'lg', l, ic); bar.appendChild(b); b.layoutGrow = 1; b.layoutSizingHorizontal = 'FILL'; }
+  bar.x = 0; bar.y = s.height - 64 - bar.height;
+  underNav(s, bar);
+  // El toast de confirmar el ticket (sonner, top-center) aparece al llegar aquí
+  const t = inst(L3.toast, 'type=success'); s.appendChild(t); t.setProperties({ [P(L3.toast, 'title')]: '6 productos añadidos al inventario' }); t.x = (390 - t.width) / 2; t.y = 16;
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
 if (ARGS.screen === 'indice') {
   // Colocar las pantallas en una rejilla con títulos
-  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio'], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse]];
+  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio'], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades]];
   let y = 0; const out = [];
   const oldT = page.findAll((n) => n.name.startsWith('título · ') && n.parent === page); for (const t of oldT) t.remove();
   for (const rowNames of order) { let x = 0, h = 0; for (const n of rowNames) { const s = page.findOne((k) => k.name === n && k.parent === page); if (!s) continue; s.x = x; s.y = y + 48; const t = await text(n, 'Title/Section', 'foreground', page); t.name = 'título · ' + n; t.x = x; t.y = y; x += s.width + 120; h = Math.max(h, s.height); out.push(n); } y += h + 48 + 200; }
