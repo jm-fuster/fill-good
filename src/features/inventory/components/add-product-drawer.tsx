@@ -35,6 +35,9 @@ import { addInventoryAction } from "../actions";
 import { ExpiryQuickPicker } from "./expiry-quick-picker";
 import { PackagingFields } from "./packaging-fields";
 
+/** Valor de «Sin categoría» en el Select: Radix no admite una opción con value "". */
+const NO_CATEGORY = "__none__";
+
 export function AddProductDrawer({
   categories,
   productNames,
@@ -71,7 +74,15 @@ export function AddProductDrawer({
   }
 
   return (
-    <ResponsiveModal open={open} onOpenChange={setOpen}>
+    <ResponsiveModal
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        // Al cerrar se olvida el error: si no, al reabrir seguía el aviso de
+        // la vez anterior sobre un formulario ya vacío.
+        if (!next) setError(null);
+      }}
+    >
       {/* Escritorio: acción en el header, junto a "Ver precios". */}
       <Button className="hidden md:inline-flex" onClick={() => setOpen(true)}>
         <Plus aria-hidden />
@@ -161,15 +172,20 @@ function AddProductFields({
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="add-category">Categoría</Label>
+        {/* «Sin categoría» es también una OPCIÓN, como en la ficha: antes solo
+            era el placeholder, y elegida una categoría no había forma de
+            volver atrás. El valor viaja en un input oculto porque el del
+            Select sería el centinela, no la cadena vacía que espera la acción. */}
+        <input type="hidden" name="categoryId" value={categoryId} />
         <Select
-          value={categoryId}
-          onValueChange={setCategoryId}
-          name="categoryId"
+          value={categoryId === "" ? NO_CATEGORY : categoryId}
+          onValueChange={(v) => setCategoryId(v === NO_CATEGORY ? "" : v)}
         >
           <SelectTrigger id="add-category" className="w-full">
             <SelectValue placeholder="Sin categoría" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value={NO_CATEGORY}>Sin categoría</SelectItem>
             {categories.map((c) => (
               <SelectItem key={c.id} value={c.id} textValue={c.name}>
                 <span className="flex items-center gap-2">
@@ -224,7 +240,11 @@ function AddProductFields({
           cada etiqueta era ruido en una sección que ya es opcional por serlo. */}
       <CollapsibleFields
         title="Ajustes adicionales"
-        hint="Todo opcional: caducidad, ubicación, envase y avisos"
+        hint={
+          unit === "ud"
+            ? "Todo opcional: caducidad, ubicación, envase y avisos"
+            : "Todo opcional: caducidad, ubicación y avisos"
+        }
       >
         <ExpiryQuickPicker
           id="add-expiry"
