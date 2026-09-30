@@ -6,7 +6,8 @@
 //   pt-aviso | pt-escanear | pt-analizando | pt-revisar | pt-celebracion | pt-caducidades (primer ticket)
 //   rp-despensa-tarjeta | rp-despensa-preguntas | rp-despensa-lista | rp-platos-tarjeta | rp-platos-preguntas
 //   rp-platos-descontar | rp-platos-porque (repasos semanales)
-//   rc-vacio | rc-lista | rc-receta | ck-antes | ck-paso | ck-final | menus-escritorio | indice
+//   rc-vacio | rc-lista | rc-receta | ck-antes | ck-paso | ck-final | menus-escritorio
+//   pr-vacio | pr-lista | pr-producto | rs-cerrado | rs-primer-mes | pf-nuevo | pf-ahorro | indice
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
 const variant = (cs, name) => { const v = cs.children.find((c) => c.name === name); if (!v) throw new Error('Variante ' + name + ' en ' + cs.name); return v; };
@@ -854,9 +855,193 @@ if (ARGS.screen === 'menus-escritorio') {
   return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
 }
 
+// ── Precios, Resumen y Perfil (la pestaña Perfil queda activa en las tres) ──
+const PP = {
+  prVacio: 'Precios · 1 · Sin historial', prLista: 'Precios · 2 · Con tickets', prProducto: 'Precios · 3 · Un producto',
+  rsCerrado: 'Resumen · 1 · Mes cerrado', rsPrimer: 'Resumen · 2 · Primer mes',
+  pfNuevo: 'Perfil · 1 · Hogar nuevo', pfAhorro: 'Perfil · 2 · Con ahorro',
+};
+const L6 = {
+  aviso: await setOf('◆ PATRONES', 'Aviso de precio'), objetivo: await setOf('◆ PATRONES', 'Barra de objetivo'), reparto: await setOf('◆ PATRONES', 'Barra de reparto'),
+  producto: await setOf('◆ PATRONES', 'Producto con precio'), hucha: await setOf('◆ PATRONES', 'Hucha del mes'),
+  stat: await setOf('05 · Contenido', 'StatTile'), avatar: await setOf('05 · Contenido', 'Avatar'), legend: await setOf('06 · Datos', 'Chart · Legend'),
+};
+function descHeader(c, title, back, desc) { const { h } = header(title, null, desc); c.appendChild(h); h.layoutSizingHorizontal = 'FILL'; if (back) h.setProperties({ [P(L.ph, 'back#')]: true, [P(L.ph, 'back label')]: back }); return h; }
+function statTile(parent, accent, ic, label, value, hint) {
+  const t = inst(L6.stat, 'accent=' + accent); parent.appendChild(t); t.layoutSizingHorizontal = 'FILL';
+  const pr = { [P(L6.stat, 'label')]: label, [P(L6.stat, 'value')]: value, [P(L6.stat, 'icon')]: iconComp(ic).id, [P(L6.stat, 'hint#')]: !!hint }; if (hint) pr[P(L6.stat, 'hint text')] = hint; t.setProperties(pr); return t;
+}
+// grid-cols-2 gap-2. Con un número impar, la última va a media anchura y deja el hueco al lado
+// (Resumen); Perfil pasa a grid-cols-1 cuando solo hay una.
+function tileGrid(parent, rows) {
+  const g = stack('tarjetas (grid-cols-2 gap-2)', parent, 8);
+  for (let i = 0; i < rows.length; i += 2) {
+    const r = stack('fila', g, 8, 'HORIZONTAL'); r.counterAxisAlignItems = 'MIN';
+    const pair = rows.slice(i, i + 2); for (const t of pair) statTile(r, ...t);
+    if (pair.length === 1) { const hole = figma.createFrame(); hole.name = 'hueco (media columna vacía)'; hole.fills = []; hole.resize(10, 10); r.appendChild(hole); hole.layoutSizingHorizontal = 'FILL'; }
+  }
+  return g;
+}
+async function borderLink(parent, label, iconL, iconR) { // Link inline-flex min-h-11 rounded-lg border px-3 text-sm (no es un Button)
+  const b = stack(label, parent, 4, 'HORIZONTAL'); b.layoutSizingHorizontal = 'HUG'; b.counterAxisAlignItems = 'CENTER'; bind(b, 'minHeight', 'spacing/11'); padX(b, 'spacing/3'); rad(b, 'radius/lg'); setPaints(b, 'strokes', [['border']]); b.strokeWeight = 1; b.strokeAlign = 'INSIDE';
+  if (iconL) b.appendChild(icon(iconL, 16, 'foreground', 'icon'));
+  await text(label, 'Body/Small', 'foreground', b);
+  if (iconR) b.appendChild(icon(iconR, 16, 'foreground', 'icon'));
+  return b;
+}
+async function endPerfil(s, c) { finishMobile(s, c); for (const f of s.findAll((n) => n.type === 'INSTANCE' && n.name === 'FAB')) f.remove(); await activate(s, 4); }
+
+if (ARGS.screen === 'pr-vacio') {
+  const s = screen(PP.prVacio, 390, 'mobile'); const c = mobileContent(s);
+  descHeader(c, 'Precios', 'Perfil', 'Evolución de precios de lo que compras.');
+  const e = L2.empty.createInstance(); c.appendChild(e); e.layoutSizingHorizontal = 'FILL';
+  e.setProperties({ [P(L2.empty, 'title')]: 'Sin historial de precios', [P(L2.empty, 'description')]: 'Escanea tickets de la compra y aquí verás cómo evoluciona el precio de cada producto y dónde compras más barato.', [P(L2.empty, 'icon')]: iconComp('chart-line').id, [P(L2.empty, 'action')]: false });
+  await endPerfil(s, c);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'pr-lista') {
+  const s = screen(PP.prLista, 390, 'mobile'); const c = mobileContent(s);
+  descHeader(c, 'Precios', 'Perfil', 'Evolución de precios de lo que compras.');
+  const av = stack('Avisos de precio', c, 8); await text('Avisos', 'Body/Small Medium', 'muted-foreground', av, { fill: true });
+  for (const [t, txt] of [['sube', 'Aceite de oliva virgen extra ha subido un 17% desde tu última compra'], ['baja', 'Plátanos está un 6% por debajo de tu precio habitual']]) { const a = inst(L6.aviso, 'tipo=' + t); av.appendChild(a); a.layoutSizingHorizontal = 'FILL'; a.setProperties({ [P(L6.aviso, 'texto')]: txt }); }
+  const card = cardFrame(c, 'SpendingPanel'); padY(card, 'spacing/4');
+  const ch = stack('CardHeader', card, 8, 'HORIZONTAL'); padX(ch, 'spacing/4'); ch.counterAxisAlignItems = 'CENTER';
+  await text('Resumen de Septiembre 2026', 'Title/Card', 'card-foreground', ch, { fill: true });
+  const nav = stack('CardAction', ch, 4, 'HORIZONTAL'); nav.layoutSizingHorizontal = 'HUG';
+  for (const [ic, off] of [['chevron-left', false], ['chevron-right', true]]) { const b = stack(off ? 'Mes siguiente (no hay)' : 'Mes anterior', nav, 0, 'HORIZONTAL'); b.layoutSizingHorizontal = 'FIXED'; b.resize(36, 36); b.layoutSizingVertical = 'FIXED'; b.primaryAxisAlignItems = 'CENTER'; b.counterAxisAlignItems = 'CENTER'; rad(b, 'radius/lg'); setPaints(b, 'strokes', [['border']]); b.strokeWeight = 1; b.strokeAlign = 'INSIDE'; b.appendChild(icon(ic, 16, off ? 'muted-foreground' : 'foreground', 'icon')); if (off) b.opacity = 0.4; } // size-9: 36 px
+  const cc = stack('CardContent', card, 16); padX(cc, 'spacing/4');
+  const tr = stack('total', cc, 8, 'HORIZONTAL'); tr.primaryAxisAlignItems = 'SPACE_BETWEEN'; tr.counterAxisAlignItems = 'MAX';
+  await text('142,37 €', 'Display/3xl', 'foreground', tr);
+  const cp = stack('compras', tr, 6, 'HORIZONTAL'); cp.layoutSizingHorizontal = 'HUG'; cp.counterAxisAlignItems = 'CENTER'; cp.appendChild(icon('receipt', 16, 'muted-foreground', 'icon')); await text('3 compras', 'Body/Small', 'muted-foreground', cp);
+  const dl = stack('frente al mes anterior', cc, 4, 'HORIZONTAL'); dl.counterAxisAlignItems = 'CENTER'; dl.appendChild(icon('trending-up', 16, 'warning', 'icon')); await text('23,47 € más que el mes anterior', 'Body/Small', 'warning', dl);
+  const bb = inst(L6.objetivo, 'estado=bien'); cc.appendChild(bb); bb.layoutSizingHorizontal = 'FILL';
+  const reparto = async (title, rows) => { const sec = stack(title, cc, 8); await text(title, 'Body/Small Medium', 'muted-foreground', sec, { fill: true }); const max = rows[0][1]; rows.forEach(([l, v, col], i) => { const r = inst(L6.reparto, 'color=' + col); sec.appendChild(r); r.layoutSizingHorizontal = 'FILL'; r.setProperties({ [P(L6.reparto, 'label')]: l, [P(L6.reparto, 'importe')]: v.toFixed(2).replace('.', ',') + ' €' }); const f = r.findOne((n) => n.name === 'relleno'); f.resize(326 * (v / max), 8); }); };
+  // Cinco barras como mucho: del quinto en adelante se juntan en «Otros» (muted-foreground/40)
+  await reparto('Por categoría', [['Despensa', 58.2, '1'], ['Lácteos y huevos', 34.1, '2'], ['Verdura', 22.85, '3'], ['Limpieza', 15.4, '4'], ['Otros', 11.82, 'otros']]);
+  await reparto('Por comercio', [['Mercadona', 96.12, '1'], ['Lidl', 46.25, '2']]);
+  const ul = stack('productos', c, 8);
+  for (const [cmp, n, d, t, v] of [['true', 'Aceite de oliva virgen extra', '4 compras · último 10,45 €/ud', '37,50 €', '10,45 €/l'], ['true', 'Leche entera', '6 compras · último 0,92 €/ud', '34,14 €', '0,92 €/l'], ['false', 'Plátanos', '3 compras · último 1,59 €/kg', '5,97 €']]) { const p = inst(L6.producto, 'comparable=' + cmp); ul.appendChild(p); p.layoutSizingHorizontal = 'FILL'; p.setProperties({ [P(L6.producto, 'name')]: n, [P(L6.producto, 'detalle')]: d, [P(L6.producto, 'total')]: t }); if (v) p.findOne((x) => x.name === 'comparable').characters = v; }
+  await endPerfil(s, c);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'pr-producto') {
+  const s = screen(PP.prProducto, 390, 'mobile'); const c = mobileContent(s);
+  descHeader(c, 'Leche entera', 'Precios', 'Evolución del precio por ud. Cada ud trae 1 l.');
+  const body = stack('contenido', c, 24);
+  const st = stack('mínimo, último y máximo (grid-cols-3)', body, 8, 'HORIZONTAL');
+  for (const [l, v, tone, cmp] of [['Mínimo', '0,89 €', 'success', '0,89 €/l'], ['Último', '0,92 €', 'foreground', '0,92 €/l'], ['Máximo', '1,05 €', 'warning', '1,05 €/l']]) { const b = stack(l, st, 2); b.layoutSizingHorizontal = 'FILL'; padX(b, 'spacing/3'); padY(b, 'spacing/3'); rad(b, 'radius/xl'); setPaints(b, 'strokes', [['border']]); b.strokeWeight = 1; b.strokeAlign = 'INSIDE'; await text(l, 'Caption/Default', 'muted-foreground', b, { fill: true }); await text(v, 'Title/Base', tone, b, { fill: true }); await text(cmp, 'Caption/Default', 'price', b, { fill: true }); }
+  // PriceChart (Recharts LineChart, aspect-[4/3]): eje X de CATEGORÍAS (fechas equiespaciadas),
+  // eje Y desde 0, una línea por cadena (chart-1, chart-2…), rejilla horizontal discontinua.
+  const W = 358, H = Math.round(358 * 3 / 4), mL = 4 + 48, mR = 12, mT = 8, mB = 28;
+  const chart = figma.createFrame(); chart.name = 'PriceChart (aspect 4/3)'; chart.fills = []; chart.resize(W, H); chart.clipsContent = false; body.appendChild(chart); chart.layoutSizingHorizontal = 'FIXED';
+  const pw = W - mL - mR, ph = H - mT - mB, yMax = 1.2, ticks = [0, 0.3, 0.6, 0.9, 1.2];
+  const yOf = (v) => mT + ph - (v / yMax) * ph, xOf = (i) => mL + (pw * i) / 5;
+  for (const t of ticks) {
+    const g = figma.createVector(); g.name = 'rejilla ' + t.toFixed(2); g.vectorPaths = [{ windingRule: 'NONE', data: `M 0 0 L ${pw} 0` }]; chart.appendChild(g); g.x = mL; g.y = yOf(t); setPaints(g, 'strokes', [['border', 0.5]]); g.strokeWeight = 1; g.dashPattern = [3, 3];
+    const lab = await text(t.toFixed(2) + ' €', 'Caption/Default', 'muted-foreground', chart); lab.textAlignHorizontal = 'RIGHT'; lab.resize(44, lab.height); lab.x = 4; lab.y = yOf(t) - lab.height / 2; // «0.90 €»: toFixed, con PUNTO
+  }
+  const FECHAS = ['4 ago', '12 ago', '21 ago', '30 ago', '9 sep', '22 sep'];
+  for (let i = 0; i < 6; i++) { const lab = await text(FECHAS[i], 'Caption/Default', 'muted-foreground', chart); lab.x = xOf(i) - lab.width / 2; lab.y = mT + ph + 8; }
+  for (const [token, pts] of [['chart-1', [[0, 0.95], [2, 0.99], [4, 1.05]]], ['chart-2', [[1, 0.89], [3, 0.89], [5, 0.92]]]]) {
+    const v = figma.createVector(); v.name = token === 'chart-1' ? 'Mercadona' : 'Lidl'; const d = pts.map(([i, p], k) => `${k ? 'L' : 'M'} ${xOf(i) - xOf(pts[0][0])} ${yOf(p) - Math.min(...pts.map((q) => yOf(q[1])))}`).join(' ');
+    v.vectorPaths = [{ windingRule: 'NONE', data: d }]; chart.appendChild(v); v.x = xOf(pts[0][0]); v.y = Math.min(...pts.map((q) => yOf(q[1]))); setPaints(v, 'strokes', [[token]]); v.strokeWeight = 2; v.strokeJoin = 'ROUND'; v.strokeCap = 'ROUND';
+    for (const [i, p] of pts) { const e = figma.createEllipse(); e.name = 'punto'; e.resize(8, 8); chart.appendChild(e); e.x = xOf(i) - 4; e.y = yOf(p) - 4; setPaints(e, 'fills', [['background']]); setPaints(e, 'strokes', [[token]]); e.strokeWeight = 2; }
+  }
+  const lg = L6.legend.createInstance(); body.appendChild(lg); lg.layoutSizingHorizontal = 'FILL';
+  const items = lg.children.filter((n) => n.type === 'FRAME'); items.forEach((it, i) => { if (i === 1) it.findOne((n) => n.type === 'TEXT').characters = 'Lidl'; if (i > 1) it.visible = false; });
+  const barato = stack('Dónde te sale más barato', body, 8); await text('Dónde te sale más barato', 'Body/Small Medium', 'foreground', barato, { fill: true });
+  for (const [ch, m, best, rel] of [['Lidl', 'media 0,90 €/ud · 3 compras', true, 'más barato'], ['Mercadona', 'media 1,00 €/ud · 3 compras', false, '+11%']]) {
+    const li = stack(ch, barato, 12, 'HORIZONTAL'); li.primaryAxisAlignItems = 'SPACE_BETWEEN'; li.counterAxisAlignItems = 'CENTER'; padX(li, 'spacing/3'); padY(li, 'spacing/3'); rad(li, 'radius/xl'); setPaints(li, 'strokes', [[best ? 'success' : 'border', best ? 0.4 : 1]]); li.strokeWeight = 1; li.strokeAlign = 'INSIDE'; if (best) setPaints(li, 'fills', [['success', 0.05]]);
+    const tx = stack('texto', li, 0); tx.layoutSizingHorizontal = 'FILL'; await text(ch, 'Body/Base Medium', 'foreground', tx, { fill: true }); await text(m, 'Caption/Default', 'muted-foreground', tx, { fill: true });
+    await text(rel, 'Body/Small Medium', best ? 'success' : 'muted-foreground', li);
+  }
+  const compras = stack('Compras', body, 8); await text('Compras', 'Body/Small Medium', 'foreground', compras, { fill: true });
+  const table = stack('tabla', compras, 0);
+  const ROWS = [['Fecha', 'Tienda', 'Precio/ud', true], ['22 sep 2026', 'Lidl', '0,92 €/ud'], ['9 sep 2026', 'Mercadona', '1,05 €/ud'], ['30 ago 2026', 'Lidl', '0,89 €/ud'], ['21 ago 2026', 'Mercadona', '0,99 €/ud'], ['12 ago 2026', 'Lidl', '0,89 €/ud'], ['4 ago 2026', 'Mercadona', '0,95 €/ud']];
+  for (let i = 0; i < ROWS.length; i++) {
+    const [a, b, p, head] = ROWS[i]; const r = stack(head ? 'cabecera' : a, table, 0, 'HORIZONTAL'); padY(r, 'spacing/2'); if (i < ROWS.length - 1) { r.strokes = [solid('border')]; r.strokeBottomWeight = 1; r.strokeTopWeight = 0; r.strokeLeftWeight = 0; r.strokeRightWeight = 0; r.strokeAlign = 'INSIDE'; }
+    const style = head ? 'Body/Small Medium' : 'Body/Small', tone = head ? 'muted-foreground' : 'foreground';
+    const t1 = await text(a, style, tone, r); t1.textAutoResize = 'HEIGHT'; t1.resize(120, t1.height);
+    await text(b, style, tone, r, { fill: true });
+    const t3 = await text(p, style, tone, r); t3.textAlignHorizontal = 'RIGHT'; t3.textAutoResize = 'HEIGHT'; t3.resize(100, t3.height); if (!head) t3.fontName = { family: 'Geist Mono', style: 'Regular' };
+  }
+  await endPerfil(s, c);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+async function resumen(s, c, { next, hero, heroTone, sub, tiles }) {
+  descHeader(c, 'Resumen del mes', 'Perfil', 'Septiembre 2026');
+  const nv = stack('Cambiar de mes', c, 8, 'HORIZONTAL'); nv.primaryAxisAlignItems = 'SPACE_BETWEEN';
+  await borderLink(nv, 'Anterior', 'chevron-left'); if (next) await borderLink(nv, 'Siguiente', null, 'chevron-right');
+  const card = cardFrame(c, 'hucha del mes'); padY(card, 'spacing/4');
+  const cc = stack('CardContent', card, 4); padX(cc, 'spacing/4'); padY(cc, 'spacing/6'); cc.counterAxisAlignItems = 'CENTER';
+  const l1 = stack('etiqueta', cc, 6, 'HORIZONTAL'); l1.layoutSizingHorizontal = 'HUG'; l1.counterAxisAlignItems = 'CENTER'; l1.appendChild(icon('piggy-bank', 16, 'muted-foreground', 'icon')); await text('A la hucha en septiembre 2026', 'Body/Small', 'muted-foreground', l1);
+  await text(hero, 'Display/4xl', heroTone, cc);
+  await text(sub, 'Body/Small', 'muted-foreground', cc);
+  tileGrid(c, tiles);
+}
+
+if (ARGS.screen === 'rs-cerrado') {
+  const s = screen(PP.rsCerrado, 390, 'mobile'); const c = mobileContent(s);
+  await resumen(s, c, { next: true, hero: '+14,37 €', heroTone: 'success', sub: 'en 6 compras, 312,48 € de gasto', tiles: [
+    ['success', 'receipt', 'Frente al mes anterior', '+29,42 €', 'Has gastado menos'], ['success', 'target', 'Objetivo del mes', 'Cumplido', '37,52 € por debajo'],
+    ['price', 'star', 'Producto estrella', 'Aceite de oliva virgen extra', '23,85 € en total'], ['success', 'store', 'Dónde más ahorras', 'Mercadona', '8,90 € a la hucha'],
+    ['none', 'list-checks', 'Compras perfectas', '2 de 4', 'Ceñidas a la lista'], ['none', 'circle-plus', 'Capricho recurrente', 'Patatas fritas', 'Fuera de lista 2 veces']] });
+  await endPerfil(s, c);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'rs-primer-mes') {
+  const s = screen(PP.rsPrimer, 390, 'mobile'); const c = mobileContent(s);
+  await resumen(s, c, { next: false, hero: '0,00 €', heroTone: 'success', sub: 'en 2 compras, 58,40 € de gasto', tiles: [
+    ['warning', 'receipt', 'Frente al mes anterior', '-58,40 €', 'Has gastado más'], ['price', 'star', 'Producto estrella', 'Aceite de oliva virgen extra', '10,45 € en total'], ['none', 'list-checks', 'Compras perfectas', '1 de 2', 'Ceñidas a la lista']] });
+  await endPerfil(s, c);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+async function perfilHeader(c) {
+  const h = stack('PageHeader (con avatar)', c, 16, 'HORIZONTAL'); h.counterAxisAlignItems = 'MIN'; bind(h, 'paddingBottom', 'spacing/6'); h.primaryAxisAlignItems = 'SPACE_BETWEEN';
+  const l = stack('quién', h, 12, 'HORIZONTAL'); l.layoutSizingHorizontal = 'FILL'; l.counterAxisAlignItems = 'CENTER';
+  const aw = figma.createFrame(); aw.name = 'Editar tu foto y tu nombre'; aw.fills = []; aw.resize(56, 56); aw.clipsContent = false; l.appendChild(aw);
+  const av = inst(L6.avatar, 'size=lg'); aw.appendChild(av); av.rescale(56 / av.width); av.x = 0; av.y = 0; av.setProperties({ [P(L6.avatar, 'initials')]: 'AP', [P(L6.avatar, 'badge')]: false });
+  const pb = figma.createFrame(); pb.name = 'lápiz'; pb.layoutMode = 'HORIZONTAL'; pb.primaryAxisAlignItems = 'CENTER'; pb.counterAxisAlignItems = 'CENTER'; pb.resize(24, 24); rad(pb, 'radius/full'); setPaints(pb, 'fills', [['primary']]); setPaints(pb, 'strokes', [['background']]); pb.strokeWeight = 2; pb.strokeAlign = 'OUTSIDE'; pb.appendChild(icon('pencil', 12, 'primary-foreground', 'icon')); aw.appendChild(pb); pb.x = 56 - 24 + 2; pb.y = 56 - 24 + 2;
+  const tx = stack('títulos', l, 4); tx.layoutSizingHorizontal = 'FILL'; await text('Ana Pérez', 'Title/Page', 'foreground', tx, { fill: true }); await text('Casa de los Molina', 'Body/Small', 'muted-foreground', tx, { fill: true });
+  h.appendChild(IB('outline', 'icon', 'settings'));
+}
+
+if (ARGS.screen === 'pf-nuevo') {
+  const s = screen(PP.pfNuevo, 390, 'mobile'); const c = mobileContent(s);
+  await perfilHeader(c);
+  const e = L2.empty.createInstance(); c.appendChild(e); e.layoutSizingHorizontal = 'FILL';
+  e.setProperties({ [P(L2.empty, 'title')]: 'Tu hucha empieza aquí', [P(L2.empty, 'description')]: 'Escanea un ticket y esta pantalla te dirá cuánto ahorras cada mes y cuántas compras se ciñen a la lista.', [P(L2.empty, 'icon')]: iconComp('piggy-bank').id, [P(L2.empty, 'action')]: true });
+  const act = e.findOne((n) => n.type === 'INSTANCE' && n.name === 'action'); act.swapComponent(variant(L.btn, 'variant=default, size=default, state=default'));
+  act.setProperties({ [P(L.btn, 'label')]: 'Escanear un ticket', [P(L.btn, 'icon inline-start#')]: true, [P(L.btn, 'icon inline-start ↳')]: iconComp('scan-line').id, [P(L.btn, 'icon inline-end#')]: false });
+  await endPerfil(s, c);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'pf-ahorro') {
+  const s = screen(PP.pfAhorro, 390, 'mobile'); const c = mobileContent(s);
+  await perfilHeader(c);
+  const hu = L6.hucha.createInstance(); c.appendChild(hu); hu.layoutSizingHorizontal = 'FILL';
+  tileGrid(c, [['none', 'list-checks', 'Compras perfectas', '3 de 4', 'Ceñidas a la lista'], ['none', 'receipt', 'Gasto del mes', '312,48 €', 'en 6 compras']]);
+  const bb = inst(L6.objetivo, 'estado=bien'); c.appendChild(bb); bb.layoutSizingHorizontal = 'FILL';
+  bb.findOne((n) => n.name === 'gastado').characters = '312,48 €'; bb.findOne((n) => n.name === 'objetivo').characters = ' / 400,00 €'; bb.findOne((n) => n.name === 'resto').characters = 'Te quedan 87,52 € este mes'; bb.findOne((n) => n.name === 'relleno').resize(358 * 0.78, 10);
+  const g = stack('SettingsGroup', c, 0); rad(g, 'radius/xl'); setPaints(g, 'fills', [['card']]); setPaints(g, 'strokes', [['foreground', 0.1]]); g.strokeWeight = 1; g.strokeAlign = 'INSIDE';
+  const fk = (k) => P(L2.fila, k);
+  [['sparkles', 'Resumen de agosto', 'Cómo se cerró el mes pasado'], ['chart-line', 'Precios y alertas', 'Evolución de lo que compras y dónde sale más barato']].forEach(([ic, l, h], i) => {
+    if (i) { const d = figma.createFrame(); d.name = 'divide-y'; d.resize(358, 1); setPaints(d, 'fills', [['border']]); g.appendChild(d); d.layoutSizingHorizontal = 'FILL'; }
+    const r = inst(L2.fila, 'tipo=enlace'); g.appendChild(r); r.layoutSizingHorizontal = 'FILL'; r.setProperties({ [fk('label')]: l, [fk('hint#')]: true, [fk('hint text')]: h, [fk('icon')]: iconComp(ic).id });
+  });
+  await endPerfil(s, c);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
 if (ARGS.screen === 'indice') {
   // Colocar las pantallas en una rejilla con títulos
-  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio', RC.escritorio], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue], [RC.vacio, RC.lista, RC.receta, RC.antes, RC.paso, RC.final]];
+  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio', RC.escritorio], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse], [PT.aviso, PT.escanear, PT.analizando, PT.revisar, PT.celebracion, PT.caducidades], [RP.dTarjeta, RP.dPreguntas, RP.dLista, RP.pTarjeta, RP.pPreguntas, RP.pDescontar, RP.pPorQue], [RC.vacio, RC.lista, RC.receta, RC.antes, RC.paso, RC.final], [PP.prVacio, PP.prLista, PP.prProducto, PP.rsCerrado, PP.rsPrimer, PP.pfNuevo, PP.pfAhorro]];
   let y = 0; const out = [];
   const oldT = page.findAll((n) => n.name.startsWith('título · ') && n.parent === page); for (const t of oldT) t.remove();
   for (const rowNames of order) { let x = 0, h = 0; for (const n of rowNames) { const s = page.findOne((k) => k.name === n && k.parent === page); if (!s) continue; s.x = x; s.y = y + 48; const t = await text(n, 'Title/Section', 'foreground', page); t.name = 'título · ' + n; t.x = x; t.y = y; x += s.width + 120; h = Math.max(h, s.height); out.push(n); } y += h + 48 + 200; }

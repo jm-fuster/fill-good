@@ -132,7 +132,9 @@ if (ARGS.part === 'content') {
     const lr = stack('label', c, 6, 'HORIZONTAL'); lr.counterAxisAlignItems = 'CENTER';
     lr.appendChild(icon('piggy-bank', 14, 'muted-foreground', 'icon'));
     await text('Ahorro del mes', 'Caption/Default', 'muted-foreground', lr, { name: 'label-text' });
-    const v = await text('12,40 €', 'Title/Section', { none: 'foreground', success: 'success', warning: 'warning', price: 'price' }[accent], c, { name: 'value' });
+    // fill: el valor puede ser un nombre de producto («Aceite de oliva virgen extra») y en
+    // el código se parte en líneas (no lleva truncate); en ancho automático se salía de la tarjeta
+    const v = await text('12,40 €', 'Title/Section', { none: 'foreground', success: 'success', warning: 'warning', price: 'price' }[accent], c, { name: 'value', fill: true });
     const hnt = await text('Frente al precio habitual', 'Caption/Default', 'muted-foreground', c, { fill: true, name: 'hint' });
   }
   const r = await combine(page, 'staging · StatTile', 'StatTile', { accent: ['none', 'success', 'warning', 'price'] }, 'accent', [], 'StatTile (src/components/stat-tile.tsx): rounded-xl, border, p-3, gap-1. Label en text-xs muted-foreground con icono de 14 px; valor en text-lg font-semibold tabular-nums; pista opcional en text-xs. accent pinta el valor y se llama como el token que usa: success, warning o price (el acento de precios como TEXTO; chart-3 no llega a AA como texto en claro).');
