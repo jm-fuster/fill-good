@@ -115,11 +115,12 @@ export function SpendingPanel({ data }: { data: MonthlySpending }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Resumen de {monthLabel}</CardTitle>
+        {/* size-11 y no size-9: son botones que se tocan con el pulgar (44 px). */}
         <CardAction className="flex items-center gap-1 self-center">
           <Link
             href={`/precios?mes=${prevMonth}`}
             aria-label="Mes anterior"
-            className="inline-flex size-9 items-center justify-center rounded-lg border transition-colors hover:bg-muted"
+            className="inline-flex size-11 items-center justify-center rounded-lg border transition-colors hover:bg-muted"
           >
             <ChevronLeft className="size-4" aria-hidden />
           </Link>
@@ -127,14 +128,14 @@ export function SpendingPanel({ data }: { data: MonthlySpending }) {
             <Link
               href={`/precios?mes=${nextMonth}`}
               aria-label="Mes siguiente"
-              className="inline-flex size-9 items-center justify-center rounded-lg border transition-colors hover:bg-muted"
+              className="inline-flex size-11 items-center justify-center rounded-lg border transition-colors hover:bg-muted"
             >
               <ChevronRight className="size-4" aria-hidden />
             </Link>
           ) : (
             <span
               aria-hidden
-              className="inline-flex size-9 items-center justify-center rounded-lg border text-muted-foreground opacity-40"
+              className="inline-flex size-11 items-center justify-center rounded-lg border text-muted-foreground opacity-40"
             >
               <ChevronRight className="size-4" />
             </span>

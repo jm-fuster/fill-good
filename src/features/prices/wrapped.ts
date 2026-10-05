@@ -51,10 +51,22 @@ export type MonthlyWrapped = {
   spentTotal: number;
   /** spentTotal − mes anterior. Negativo = has gastado menos. */
   spentDelta: number;
+  /**
+   * Lo que se gastó el mes anterior. Hace falta para saber si hay con qué
+   * comparar: sin él, el primer mes de un hogar decía «Has gastado más» contra
+   * un mes que no existía (el anterior contaba como cero).
+   */
+  prevSpent: number;
   receiptCount: number;
 
   /** Lo que el mes aportó a la hucha (descuentos + precio). Puede ser negativo. */
   savingsTotal: number;
+  /**
+   * Hubo con qué calcular la hucha: descuentos en los tickets o histórico de
+   * precios. La misma regla que /perfil. Sin ella, un «0,00 €» en verde se leía
+   * como un ahorro cuando solo quería decir que no había nada que medir.
+   */
+  hasSavings: boolean;
   /** Producto en el que más se gastó. */
   topProduct: WrappedHighlight | null;
   /** Cadena que más aportó a la hucha; null si ninguna aportó nada. */
@@ -70,6 +82,19 @@ export type MonthlyWrapped = {
 
 function cap(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * El último mes CERRADO («yyyy-MM»), en el calendario español. Es el que abre
+ * /resumen sin `?mes`: el resumen es el veredicto de un mes terminado (el mes en
+ * curso ya lo cuenta /perfil), y sin esto la entrada de la paleta de comandos
+ * abría un mes a medias.
+ */
+export function lastClosedMonth(): string {
+  return format(
+    subMonths(parseISO(`${currentMonthInSpain()}-01`), 1),
+    "yyyy-MM",
+  );
 }
 
 export async function getMonthlyWrapped(
@@ -150,9 +175,11 @@ export async function getMonthlyWrapped(
 
     spentTotal: roundCents(spending.total),
     spentDelta: roundCents(spending.delta),
+    prevSpent: roundCents(spending.prevTotal),
     receiptCount: spending.receiptCount,
 
     savingsTotal: spending.savingsTotal,
+    hasSavings: spending.discountTotal > 0 || spending.savingsByPrice !== 0,
     topProduct,
     bestChain,
 

@@ -12,7 +12,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { UNIT_LABELS } from "@/lib/units";
+import { formatEuro } from "@/lib/money";
 import type { PricePoint } from "../queries";
 import { chainLabel } from "../chains";
 
@@ -27,10 +27,15 @@ const CHART_COLORS = [
 
 export function PriceChart({
   points,
-  unit,
+  perLabel,
 }: {
   points: PricePoint[];
-  unit: string;
+  /**
+   * Por qué se cobra cada punto («ud», «kg»… o «pack»): lo decide la página, que
+   * es quien sabe si el histórico guarda el precio de la caja. Con la unidad del
+   * producto el tooltip decía «€/ud» donde el resto de la pantalla dice «/pack».
+   */
+  perLabel: string;
 }) {
   // Cadenas presentes, en orden de primera aparición → color fijo por cadena.
   const chains: string[] = [];
@@ -70,8 +75,6 @@ export function PriceChart({
     String(a.date).localeCompare(String(b.date)),
   );
 
-  const unitLabel = UNIT_LABELS[unit as keyof typeof UNIT_LABELS] ?? unit;
-
   return (
     <ChartContainer
       config={config}
@@ -88,11 +91,16 @@ export function PriceChart({
             format(parseISO(v), "d MMM", { locale: es })
           }
         />
+        {/* El eje NO arranca en 0 ("auto"): son céntimos de diferencia sobre un
+            euro, y con el cero abajo las líneas salían planas justo en lo que la
+            gráfica tiene que enseñar. Es una gráfica de líneas, no de barras: no
+            hay área que el corte del eje deforme. */}
         <YAxis
           tickLine={false}
           axisLine={false}
           width={48}
-          tickFormatter={(v: number) => `${v.toFixed(2)} €`}
+          domain={["auto", "auto"]}
+          tickFormatter={(v: number) => formatEuro(v)}
         />
         <ChartTooltip
           content={
@@ -106,7 +114,7 @@ export function PriceChart({
                     {labelByKey.get(String(name)) ?? String(name)}
                   </span>
                   <span className="font-mono font-medium tabular-nums">
-                    {Number(value).toFixed(2)} €/{unitLabel}
+                    {formatEuro(Number(value))}/{perLabel}
                   </span>
                 </span>
               )}
