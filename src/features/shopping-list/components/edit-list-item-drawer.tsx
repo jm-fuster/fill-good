@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Trash } from "lucide-react";
 import { toast } from "sonner";
 
@@ -49,6 +49,28 @@ export function EditListItemDrawer({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  /*
+    «Quitar de la lista» pide un segundo toque, como «Eliminar del inventario» en
+    la ficha del producto (edit-item-drawer.tsx), que es su hermano: el mismo
+    sheet de edición con el destructivo en el pie. Antes cerraba y quitaba al
+    primero, y el botón está entre «Guardar cambios» y «Cancelar». El «Deshacer»
+    de 5 s sigue después, pero solo sale si el servidor devolvió copia de la
+    fila, así que no bastaba como red.
+  */
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    },
+    [],
+  );
+  // Al cerrar, el botón vuelve a su estado normal (patrón de ajuste en render).
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (!open) setConfirmRemove(false);
+  }
 
   // Unidad y cantidad controladas para poder decir a qué equivale la línea
   // mientras se teclea. Se resincronizan comparando el propio item —y no sus
@@ -106,6 +128,14 @@ export function EditListItemDrawer({
   }
 
   function handleDelete() {
+    if (!confirmRemove) {
+      setConfirmRemove(true);
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = setTimeout(() => setConfirmRemove(false), 5000);
+      return;
+    }
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    setConfirmRemove(false);
     // Cierra el drawer y delega en el borrado diferido con "Deshacer" (L6).
     onOpenChange(false);
     onRemove(item);
@@ -215,9 +245,15 @@ export function EditListItemDrawer({
             <Button type="submit" size="lg" loading={pending}>
               {pending ? "Guardando…" : "Guardar cambios"}
             </Button>
-            <Button type="button" variant="destructive" onClick={handleDelete}>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={pending}
+              aria-live="polite"
+            >
               <Trash aria-hidden />
-              Quitar de la lista
+              {confirmRemove ? "¿Seguro? Quitar de la lista" : "Quitar de la lista"}
             </Button>
             <ResponsiveModalClose asChild>
               <Button type="button" variant="ghost">
