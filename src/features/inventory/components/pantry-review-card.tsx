@@ -121,7 +121,9 @@ export function PantryReviewCard({ items }: { items: PantryReviewEntry[] }) {
               cada uno.
             </p>
           </div>
-          <Button size="sm" onClick={openReview} className="self-start">
+          {/* Tamaño por defecto (h-11): la tarjeta se toca con el pulgar, y
+              `sm` (36 px) es para contextos densos no táctiles. */}
+          <Button onClick={openReview} className="self-start">
             Repasar
           </Button>
         </div>
