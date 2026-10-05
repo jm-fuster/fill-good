@@ -187,7 +187,7 @@ export function HouseholdSettings({
           */}
           {invite.expired ? (
             <div className="flex flex-col gap-3">
-              <code className="rounded-lg border bg-muted px-3 py-2.5 font-mono text-lg tracking-widest text-muted-foreground line-through">
+              <code className="rounded-lg border bg-muted px-3 py-2.5 font-mono text-base tracking-wider break-all text-muted-foreground line-through sm:text-lg sm:tracking-widest">
                 {household.inviteCode}
               </code>
               <p className="text-sm text-destructive">
@@ -201,8 +201,16 @@ export function HouseholdSettings({
             </div>
           ) : (
             <>
+              {/*
+                El código son 12 caracteres, y en mono con tracking-widest más
+                los tres botones de 44 no cabía en 390 px: se pasaba unos 7 px y
+                se cortaba por la derecha, justo lo que hay que dictar. En móvil
+                baja un punto y aprieta el espaciado; `min-w-0` deja que el
+                bloque encoja y `break-all` lo parte en dos líneas en los
+                móviles más estrechos (360) antes que esconder un carácter.
+              */}
               <div className="flex items-center gap-2">
-                <code className="flex-1 rounded-lg border bg-muted px-3 py-2.5 font-mono text-lg tracking-widest">
+                <code className="min-w-0 flex-1 rounded-lg border bg-muted px-3 py-2.5 font-mono text-base tracking-wider break-all sm:text-lg sm:tracking-widest">
                   {household.inviteCode}
                 </code>
                 <Button
@@ -252,7 +260,10 @@ export function HouseholdSettings({
                 key={m.userId}
                 className="flex items-center justify-between gap-2 text-sm"
               >
-                <span className="truncate">
+                {/* Sin `min-w-0` un hijo de flex no encoge por debajo de su
+                    texto y el `truncate` no llegaba a actuar: un nombre largo
+                    empujaba el badge y el botón de quitar fuera de la fila. */}
+                <span className="min-w-0 truncate">
                   {m.displayName ?? "Miembro"}
                   {m.isCurrentUser ? (
                     <span className="text-muted-foreground"> (tú)</span>

@@ -2,6 +2,9 @@ import Link from "next/link";
 
 import { PageContainer } from "@/components/layout/page-container";
 
+const FOOTER_LINK =
+  "inline-flex min-h-11 items-center rounded-sm text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50";
+
 export function LandingFooter() {
   const year = new Date().getFullYear();
 
@@ -27,31 +30,38 @@ export function LandingFooter() {
             </p>
           </div>
 
+          {/*
+            Cada enlace mide 44 px de alto aunque se vea como texto: sin eso
+            eran unos 20 px, y en el móvil cuatro enlaces tan juntos se tocan
+            unos por otros. El alto va en el enlace y no en la fila, para que al
+            partirse en dos líneas cada una siga siendo un blanco completo; por
+            eso el hueco vertical es cero (el propio alto ya separa).
+          */}
           <nav
             aria-label="Enlaces del pie"
-            className="flex flex-wrap items-center gap-5 text-sm"
+            className="-my-3 flex flex-wrap items-center gap-x-5 text-sm"
           >
             <Link
               href="/privacidad"
-              className="text-muted-foreground transition-colors hover:text-foreground"
+              className={FOOTER_LINK}
             >
               Privacidad
             </Link>
             <Link
               href="/terminos"
-              className="text-muted-foreground transition-colors hover:text-foreground"
+              className={FOOTER_LINK}
             >
               Términos
             </Link>
             <Link
               href="/sign-in"
-              className="text-muted-foreground transition-colors hover:text-foreground"
+              className={FOOTER_LINK}
             >
               Iniciar sesión
             </Link>
             <Link
               href="/sign-up"
-              className="text-muted-foreground transition-colors hover:text-foreground"
+              className={FOOTER_LINK}
             >
               Crear cuenta gratis
             </Link>
