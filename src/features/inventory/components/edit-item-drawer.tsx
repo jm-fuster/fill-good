@@ -304,11 +304,28 @@ export function EditItemDrawer({
   // tiene que salir en la que el usuario abrió, sea cual sea de las dos.
   const [sameRows, setSameRows] = useState<SameProductRow[]>([]);
   const [joining, startJoin] = useTransition();
+  /*
+    «Juntarlo todo en…» pide un segundo toque: suma las otras líneas en esta y
+    las BORRA, de un toque y sin deshacer. Mismo doble toque que «Eliminar del
+    inventario», con 5 s para el segundo. El estado se desarma al recargar las
+    líneas, que es lo que pasa al reabrir la ficha.
+  */
+  const [confirmJoin, setConfirmJoin] = useState(false);
+  const joinTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (joinTimerRef.current) clearTimeout(joinTimerRef.current);
+    },
+    [],
+  );
   useEffect(() => {
     if (!open) return;
     let active = true;
     getSameProductRowsAction(entry.productId, entry.id).then((rows) => {
-      if (active) setSameRows(rows);
+      if (active) {
+        setSameRows(rows);
+        setConfirmJoin(false);
+      }
     });
     return () => {
       active = false;
@@ -328,6 +345,14 @@ export function EditItemDrawer({
   })();
 
   function joinLocations() {
+    if (!confirmJoin) {
+      setConfirmJoin(true);
+      if (joinTimerRef.current) clearTimeout(joinTimerRef.current);
+      joinTimerRef.current = setTimeout(() => setConfirmJoin(false), 5000);
+      return;
+    }
+    if (joinTimerRef.current) clearTimeout(joinTimerRef.current);
+    setConfirmJoin(false);
     startJoin(async () => {
       const res = await safeAction(
         mergeInventoryRowsAction(entry.id),
@@ -704,8 +729,11 @@ export function EditItemDrawer({
                 variant="outline"
                 onClick={joinLocations}
                 loading={joining}
+                aria-live="polite"
               >
-                Juntarlo todo en {LOCATION_LABELS[entry.location].toLowerCase()}
+                {confirmJoin
+                  ? `¿Seguro? ${sameRows.length === 1 ? "La otra línea se suma" : "Las otras líneas se suman"} aquí`
+                  : `Juntarlo todo en ${LOCATION_LABELS[entry.location].toLowerCase()}`}
               </Button>
             </div>
           ) : null}
