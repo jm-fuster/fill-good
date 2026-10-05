@@ -82,6 +82,7 @@ import { runAddAction, showAddResultToast, type AddInput } from "./add-item";
 import { ItemReorderList } from "./item-reorder-list";
 import { QuantityStepper } from "./quantity-stepper";
 import { useCheckout } from "./use-checkout";
+import { CheckoutLabel } from "./checkout-label";
 import { EditListItemDrawer } from "./edit-list-item-drawer";
 
 /**
@@ -216,7 +217,8 @@ export function ShoppingListView({
           return;
         }
         const snapshot = r?.deleted;
-        toast(`${item.name} quitado`, {
+        // Sin concordar con el producto (ver shopping-mode.tsx)
+        toast(`Has quitado «${item.name}»`, {
           duration: 5000,
           action: snapshot
             ? {
@@ -498,7 +500,7 @@ export function ShoppingListView({
                 : "Arrastra el asa para cambiar el orden."}
             </p>
           </div>
-          <Button size="sm" onClick={() => setReordering(false)}>
+          <Button onClick={() => setReordering(false)}>
             <Check aria-hidden />
             Listo
           </Button>
@@ -598,24 +600,21 @@ export function ShoppingListView({
         />
       ) : (
         <>
+          {/* Reordenar y Agrupar a 44 px: esta barra se toca con el pulgar
+              (h-9 / `sm` es solo para contextos densos no táctiles). */}
           <div className="flex items-center justify-between gap-1">
             <p className="text-xs font-medium text-muted-foreground">
               {allItems.length} producto{allItems.length === 1 ? "" : "s"}
             </p>
             <div className="flex items-center gap-1">
               {pending.length >= 2 ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setReordering(true)}
-                >
+                <Button variant="ghost" onClick={() => setReordering(true)}>
                   <ArrowUpDown aria-hidden />
                   Reordenar
                 </Button>
               ) : null}
               <Button
                 variant="ghost"
-                size="sm"
                 onClick={() => setGrouped(!grouped)}
                 aria-pressed={grouped}
               >
@@ -1070,7 +1069,6 @@ function Suggestions({
       {hidden > 0 || showAll ? (
         <Button
           variant="ghost"
-          size="sm"
           className="mt-1 w-full"
           onClick={() => setShowAll(!showAll)}
           aria-expanded={showAll}
@@ -1094,7 +1092,7 @@ function CheckoutBar({ count }: { count: number }) {
         onClick={checkout}
       >
         <ShoppingCart aria-hidden />
-        {pending ? "Guardando…" : `Finalizar compra (${count}) → inventario`}
+        {pending ? "Guardando…" : <CheckoutLabel count={count} />}
       </Button>
     </div>
   );

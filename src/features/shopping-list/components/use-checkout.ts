@@ -34,11 +34,18 @@ export function useCheckout(exitTo?: string) {
       // Conflictos de unidad o líneas que no llegaron al inventario: la compra
       // se cierra igual, pero esto no puede pasar en silencio.
       if (r.warning) toast.warning(r.warning, { duration: 8000 });
-      toast.success(
-        `${r.added} producto${r.added === 1 ? "" : "s"} añadido${
-          r.added === 1 ? "" : "s"
-        } al inventario`,
-      );
+      // Con cero no se celebra: «0 productos añadidos» salía en verde, y sin
+      // aviso delante parecía que todo había ido bien.
+      const added = r.added ?? 0;
+      if (added > 0) {
+        toast.success(
+          `${added} producto${added === 1 ? "" : "s"} añadido${
+            added === 1 ? "" : "s"
+          } al inventario`,
+        );
+      } else if (!r.warning) {
+        toast.info("No se ha añadido nada al inventario.");
+      }
       const ids = r.inventoryItemIds ?? [];
       if (ids.length > 0) {
         router.push(

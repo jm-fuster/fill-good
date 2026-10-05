@@ -125,9 +125,9 @@ function cameraErrorMessage(error: unknown): string {
       return "No hay permiso para usar la cámara. Puedes hacer una foto normal del ticket.";
     case "NotFoundError":
     case "OverconstrainedError":
-      return "No se ha encontrado ninguna cámara en este dispositivo.";
+      return "No se ha encontrado ninguna cámara en este dispositivo. Puedes subir una foto del ticket.";
     case "NotReadableError":
-      return "La cámara está ocupada por otra aplicación.";
+      return "La cámara está ocupada por otra aplicación. Ciérrala y vuelve a probar, o haz una foto normal del ticket.";
     default:
       return "No se pudo abrir la cámara. Puedes hacer una foto normal del ticket.";
   }
@@ -154,6 +154,11 @@ export function DocumentScanner({
   const detectedRef = useRef(false);
   const capturingRef = useRef(false);
   const draggingRef = useRef<number | null>(null);
+  /** El escáner ya se cerró: un recorte en vuelo no debe subir nada. */
+  const closedRef = useRef(false);
+  /** Espejo de `torch` para apagarla al congelar sin rehacer `capture`. */
+  const torchOnRef = useRef(false);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   const [stage, setStage] = useState<Stage>("starting");
   const [detected, setDetected] = useState(false);
@@ -162,6 +167,21 @@ export function DocumentScanner({
   /** `null` = el dispositivo no expone linterna. */
   const [torch, setTorch] = useState<boolean | null>(null);
   const [colors, setColors] = useState({ edge: "#ffffff", locked: "#ffffff" });
+  /**
+   * `detected` con retardo, solo para el lector de pantalla. La detección se
+   * evalúa ~8 veces por segundo y, con el pulso regular, oscila entre «encuadra»
+   * y «detectado»: con la pista en `role="status"` cada vaivén era un anuncio.
+   * Lo que se ve sigue siendo inmediato; lo que se anuncia espera a que el
+   * estado aguante un momento.
+   */
+  const [steadyDetected, setSteadyDetected] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setSteadyDetected(detected), 700);
+    return () => window.clearTimeout(id);
+  }, [detected]);
+  useEffect(() => {
+    torchOnRef.current = torch === true;
+  }, [torch]);
 
   // Callbacks en refs: el efecto que abre la cámara debe correr UNA vez, y no
   // volver a pedir permiso porque el padre haya recreado una función.
@@ -183,12 +203,20 @@ export function DocumentScanner({
     });
   }, []);
 
-  // Bloquea el scroll del documento mientras el visor ocupa la pantalla.
+  // Bloquea el scroll del documento mientras el visor ocupa la pantalla, y lleva
+  // el foco dentro: sin eso, con teclado o lector de pantalla se seguía en el
+  // botón de detrás, tapado por el visor. Devolverlo al cerrar es cosa del padre,
+  // que es quien sabe a qué botón (`scan-form.tsx`).
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    // En desarrollo StrictMode monta, desmonta y vuelve a montar: sin esto el
+    // desmontaje de ensayo dejaba el escáner «cerrado» y no capturaba nunca.
+    closedRef.current = false;
+    closeRef.current?.focus();
     return () => {
       document.body.style.overflow = previous;
+      closedRef.current = true;
     };
   }, []);
 
@@ -342,8 +370,11 @@ export function DocumentScanner({
       trace();
       context.fill("evenodd");
 
+      // «Bloqueado» (a punto de disparar solo) se distingue por el GROSOR, no
+      // solo por el color: en oscuro --primary y --success son casi el mismo
+      // verde (L 0,72 y 0,70), y el cambio de tono solo no se veía.
       context.strokeStyle = locked ? colors.locked : colors.edge;
-      context.lineWidth = 3;
+      context.lineWidth = locked ? 6 : 3;
       context.lineJoin = "round";
       context.beginPath();
       trace();
@@ -366,6 +397,16 @@ export function DocumentScanner({
     // se recorta.
     video.pause();
     vibrateTick();
+    // Con el fotograma congelado la linterna ya no ilumina nada (y en esa vista
+    // no hay botón para apagarla): se apaga aquí. «Repetir» no la vuelve a
+    // encender; es un toque.
+    if (torchOnRef.current) {
+      const [track] = streamRef.current?.getVideoTracks() ?? [];
+      track
+        ?.applyConstraints({ advanced: [{ torch: false } as TorchConstraint] })
+        .then(() => setTorch(false))
+        .catch(() => {});
+    }
 
     let bitmap: ImageBitmap | null = null;
     try {
@@ -519,10 +560,14 @@ export function DocumentScanner({
         toPixels(quad[2]),
         toPixels(quad[3]),
       ]);
+      // Escape (o la X) durante el recorte cierra el escáner, pero esta promesa
+      // sigue: sin la guarda, el ticket se subía después de haber cancelado.
+      if (closedRef.current) return;
       callbacksRef.current.onCapture(
         new File([blob], "ticket.jpg", { type: "image/jpeg" }),
       );
     } catch {
+      if (closedRef.current) return;
       setStage("adjusting");
       callbacksRef.current.onError(
         "No se pudo recortar el ticket. Ajusta las esquinas y prueba otra vez.",
@@ -590,20 +635,41 @@ export function DocumentScanner({
     });
   };
 
-  const hint =
+  const hintFor = (isDetected: boolean) =>
     stage === "starting"
       ? "Abriendo la cámara…"
       : stage === "scanning"
-        ? detected
+        ? isDetected
           ? "Ticket detectado. Mantén el pulso para capturar."
           : "Encuadra el ticket completo sobre una superficie lisa."
         : stage === "adjusting"
           ? "Arrastra las esquinas si el recorte no es exacto."
           : "Recortando y enderezando…";
+  const hint = hintFor(detected);
+  const announcedHint = hintFor(steadyDetected);
 
-  // Por encima de la bottom nav, que va en `z-50`.
+  const closeButton = (
+    <Button
+      ref={closeRef}
+      variant="ghost"
+      size="icon"
+      aria-label="Cerrar el escáner"
+      onClick={() => callbacksRef.current.onCancel()}
+    >
+      <X aria-hidden />
+    </Button>
+  );
+
+  // Por encima de la bottom nav, que va en `z-50`. No es un `Dialog` (ver la
+  // cabecera), pero para la tecnología de apoyo sí se comporta como uno: tapa
+  // toda la página y lo de detrás no se puede usar.
   return (
-    <div className="dark fixed inset-0 z-[60] flex flex-col bg-background text-foreground">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Escanear el ticket"
+      className="dark fixed inset-0 z-[60] flex flex-col bg-background text-foreground"
+    >
       <div ref={containerRef} className="relative min-h-0 flex-1">
         {/* `muted` no es solo por el autoplay de iOS: sin pista de audio, la
             regla jsx-a11y/media-has-caption no exige subtítulos, que en una
@@ -647,41 +713,44 @@ export function DocumentScanner({
           : null}
       </div>
 
-      <div className="shrink-0 px-4 pt-3 pb-safe">
-        <p role="status" className="pb-3 text-center text-sm">
+      {/* pb-safe-3 y no pb-safe: sin inset (Android con botones, navegador de
+          escritorio) la fila quedaba pegada al borde de la pantalla. */}
+      <div className="shrink-0 px-4 pt-3 pb-safe-3">
+        <p aria-hidden className="pb-3 text-center text-sm">
           {hint}
+        </p>
+        <p role="status" className="sr-only">
+          {announcedHint}
         </p>
 
         {stage === "adjusting" || stage === "processing" ? (
-          <div className="flex items-center justify-center gap-3">
-            <Button
-              variant="outline"
-              size="lg"
-              disabled={stage === "processing"}
-              onClick={retry}
-            >
-              <RotateCcw aria-hidden />
-              Repetir
-            </Button>
-            <Button
-              size="lg"
-              loading={stage === "processing"}
-              onClick={() => void confirm()}
-            >
-              <Check aria-hidden />
-              Usar este recorte
-            </Button>
+          // La X también aquí: antes, ajustando solo se podía salir con Escape,
+          // que en el móvil no existe, o repitiendo y cerrando. Para que quepan
+          // los tres en 360 px los botones van al tamaño por defecto (44 px,
+          // táctil igual) y el principal dice «Usar recorte».
+          <div className="flex items-center gap-2">
+            {closeButton}
+            <div className="flex flex-1 items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                disabled={stage === "processing"}
+                onClick={retry}
+              >
+                <RotateCcw aria-hidden />
+                Repetir
+              </Button>
+              <Button
+                loading={stage === "processing"}
+                onClick={() => void confirm()}
+              >
+                <Check aria-hidden />
+                Usar recorte
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="flex items-center justify-between gap-4">
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label="Cerrar el escáner"
-              onClick={() => callbacksRef.current.onCancel()}
-            >
-              <X aria-hidden />
-            </Button>
+            {closeButton}
 
             <Button
               size="icon"
