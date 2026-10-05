@@ -1,7 +1,8 @@
 // build-screens.js — Fase 6: pantallas clave en «◆ PANTALLAS», montadas SOLO con
 // instancias de la librería y de los patrones. Son frames (no componentes): una
 // pantalla no se reutiliza, se revisa. ARGS.screen:
-//   inventario-movil | inventario-escritorio | lista-movil | lista-escritorio | menus-movil | inventario-movil-oscuro | indice
+//   inventario-movil | inventario-escritorio | lista-movil | lista-escritorio | menus-movil | inventario-movil-oscuro
+//   pu-crear | pu-pregunta | pu-invitar | pu-lista | pu-inventario | pu-unirse (primer uso) | indice
 async function setOf(pageName, name) { const p = figma.root.children.find((x) => x.name === pageName); await p.loadAsync(); const n = p.findOne((k) => (k.type === 'COMPONENT_SET' || (k.type === 'COMPONENT' && k.parent.type !== 'COMPONENT_SET')) && k.name === name); if (!n) throw new Error('Falta ' + name); return n; }
 const P = (cs, p) => Object.keys(cs.componentPropertyDefinitions).find((k) => k.startsWith(p));
 const variant = (cs, name) => { const v = cs.children.find((c) => c.name === name); if (!v) throw new Error('Variante ' + name + ' en ' + cs.name); return v; };
@@ -185,9 +186,159 @@ if (ARGS.screen === 'menus-movil') {
   return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
 }
 
+// ── Primer uso ──────────────────────────────────────────────────────────────
+// Alta → /onboarding → /bienvenida → /lista, y /inventario desde la nav; más la
+// entrada de quien recibe la invitación (/unirse/[code]). Las tres pantallas de
+// alta van FUERA del shell y a pantalla completa: `main mx-auto flex min-h-dvh
+// max-w-md flex-col justify-center px-6 py-10`.
+const PU = {
+  crear: 'Primer uso · 1 · Crear hogar', pregunta: 'Primer uso · 2 · ¿Compartes la compra?', invitar: 'Primer uso · 3 · Invitar',
+  lista: 'Primer uso · 4 · Lista vacía', inventario: 'Primer uso · 5 · Inventario vacío', unirse: 'Primer uso · Unirse con invitación',
+};
+function fullScreen(name) {
+  const s = screen(name, 390, 'mobile');
+  const m = stack('main', null, 0); s.appendChild(m); m.x = 0; m.y = 0; m.resize(390, 844); m.primaryAxisSizingMode = 'FIXED'; m.primaryAxisAlignItems = 'CENTER';
+  padX(m, 'spacing/6'); padY(m, 'spacing/10');
+  return { s, m };
+}
+async function intro(m, title, lead) {
+  const h = stack('cabecera', m, 8); h.counterAxisAlignItems = 'CENTER'; bind(h, 'paddingBottom', 'spacing/8'); // mb-8
+  const t = await text(title, 'Title/Page', 'foreground', h, { fill: true }); t.textAlignHorizontal = 'CENTER';
+  const p = await text(lead, 'Body/Small', 'muted-foreground', h, { fill: true }); p.textAlignHorizontal = 'CENTER';
+  return h;
+}
+const L2 = {
+  tabs: await setOf('03 · Navegación', 'Tabs · List'), trig: await setOf('03 · Navegación', 'Tabs · Trigger'),
+  label: await setOf('02 · Formularios', 'Label'), input: await setOf('02 · Formularios', 'Input'),
+  empty: await setOf('05 · Contenido', 'EmptyState'), sel: await setOf('◆ PATRONES', 'Chip de selección'), fila: await setOf('◆ PATRONES', 'Fila de ajustes'),
+};
+function tabs(parent, labels, active) {
+  const t = inst(L2.tabs, 'variant=default'); parent.appendChild(t); t.layoutSizingHorizontal = 'FILL'; // grid w-full grid-cols-2
+  const kids = t.children.filter((k) => k.type === 'INSTANCE');
+  kids.forEach((k, i) => { if (i >= labels.length) { k.visible = false; return; } k.swapComponent(variant(L2.trig, `variant=default, state=${i === active ? 'active' : 'default'}`)); k.setProperties({ [P(L2.trig, 'label')]: labels[i] }); k.layoutSizingHorizontal = 'FILL'; });
+  return t;
+}
+async function field(parent, label, { placeholder, value, optional, mono } = {}) {
+  const f = stack(label, parent, 8);
+  const l = inst(L2.label, 'state=default'); f.appendChild(l); l.setProperties({ [P(L2.label, 'label')]: optional ? `${label} (opcional)` : label });
+  if (optional) { const tx = l.findOne((n) => n.type === 'TEXT'); const from = label.length + 1; tx.setRangeFills(from, tx.characters.length, [solid('muted-foreground')]); }
+  const i = inst(L2.input, `state=default, filled=${value ? 'true' : 'false'}`); f.appendChild(i); i.layoutSizingHorizontal = 'FILL';
+  const pr = {}; if (placeholder) pr[P(L2.input, 'placeholder')] = placeholder; if (value) pr[P(L2.input, 'value')] = value; i.setProperties(pr);
+  if (mono) { const tx = i.findOne((n) => n.type === 'TEXT' && n.visible); tx.fontName = { family: 'Geist Mono', style: 'Regular' }; tx.letterSpacing = { value: 10, unit: 'PERCENT' }; } // font-mono tracking-widest uppercase
+  return f;
+}
+function fullBtn(parent, v, size, label, ic, end) { const b = BTN(v, size, label, ic); if (end) b.setProperties({ [P(L.btn, 'icon inline-end#')]: true, [P(L.btn, 'icon inline-end ↳')]: iconComp(end).id }); parent.appendChild(b); b.layoutSizingHorizontal = 'FILL'; return b; }
+const HOGAR = 'Casa de los Molina';
+// En el primer uso la lista está vacía: la nav no lleva recuento (NavListCount no pinta nada con 0)
+// Va DESPUÉS de activate(): cambiar el destino activo devuelve la visibilidad al badge.
+const noListCount = (s) => { for (const b of s.findAll((n) => n.type === 'INSTANCE' && n.name === 'badge')) b.visible = false; };
+
+if (ARGS.screen === 'pu-crear' || ARGS.screen === 'pu-unirse') {
+  const join = ARGS.screen === 'pu-unirse';
+  const { s, m } = fullScreen(join ? PU.unirse : PU.crear);
+  await intro(m, join ? 'Únete al hogar' : 'Empieza con tu hogar', join
+    ? 'Te han invitado a un hogar en Fill Good. Revisa el código y pulsa «Unirme al hogar» para empezar a compartir inventario y lista de la compra.'
+    : 'Crea un hogar nuevo para gestionar tu inventario y tu lista de la compra, o únete al de un familiar con su código de invitación.');
+  const t = stack('Tabs', m, 8); tabs(t, ['Crear hogar', 'Unirme'], join ? 1 : 0);
+  const form = stack('form', t, 16);
+  if (join) { await field(form, 'Código de invitación', { value: '3F9A2B10', mono: true }); await field(form, 'Tu nombre', { placeholder: 'Cómo te verán los demás', optional: true }); fullBtn(form, 'default', 'lg', 'Unirme al hogar', 'log-in'); }
+  else { await field(form, 'Nombre del hogar', { placeholder: 'p. ej. Casa de los Molina' }); await field(form, 'Tu nombre', { placeholder: 'Cómo te verán los demás', optional: true }); fullBtn(form, 'default', 'lg', 'Crear mi hogar', 'house'); }
+  if (!join) { // mt-10 border-t pt-4 + DeleteAccountRow (supresión sin pasar por Ajustes)
+    const w = stack('borrar-cuenta', m, 0); bind(w, 'paddingTop', 'spacing/10');
+    const b = stack('border-t', w, 0); b.strokes = [solid('border')]; b.strokeTopWeight = 1; b.strokeBottomWeight = 0; b.strokeLeftWeight = 0; b.strokeRightWeight = 0; b.strokeAlign = 'INSIDE'; bind(b, 'paddingTop', 'spacing/4');
+    const r = inst(L2.fila, 'tipo=accion-destructiva'); b.appendChild(r); r.layoutSizingHorizontal = 'FILL';
+    r.setProperties({ [P(L2.fila, 'label')]: 'Borrar cuenta', [P(L2.fila, 'hint#')]: false, [P(L2.fila, 'icon')]: iconComp('trash').id });
+  }
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'pu-pregunta' || ARGS.screen === 'pu-invitar') {
+  const yes = ARGS.screen === 'pu-invitar';
+  const { s, m } = fullScreen(yes ? PU.invitar : PU.pregunta);
+  await intro(m, '¿Compartes la compra con alguien?', `«${HOGAR}» ya está creado. Si hacéis la compra entre varios, la lista se ve y se actualiza en el móvil de cada uno.`);
+  if (!yes) {
+    const a = stack('respuestas', m, 12); a.counterAxisAlignItems = 'CENTER'; // los dos primeros llenan; «Ahora no» va self-center
+    fullBtn(a, 'default', 'lg', 'Sí, con alguien más', 'users');
+    fullBtn(a, 'outline', 'lg', 'No, solo yo', 'user');
+    const skip = BTN('ghost', 'default', 'Ahora no'); a.appendChild(skip);
+    for (const t of skip.findAll((n) => n.type === 'TEXT')) setPaints(t, 'fills', [['muted-foreground']]);
+  } else {
+    const a = stack('invitar', m, 16);
+    await text(`Invita a quien compra contigo: pareja, familia, compañeros de piso… Con el enlace entran directos a «${HOGAR}» y veis la misma lista, al momento. Caduca en 7 días; puedes generar otro en Ajustes.`, 'Body/Small', 'muted-foreground', a, { fill: true });
+    const b = stack('enlace', a, 8);
+    fullBtn(b, 'default', 'lg', 'Compartir enlace', 'share-2'); // solo si existe navigator.share (móvil)
+    fullBtn(b, 'outline', 'lg', 'Copiar enlace', 'copy');
+    fullBtn(a, 'ghost', 'lg', 'Seguir a mi lista', null, 'arrow-right');
+  }
+  return { screen: s.id, fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'pu-lista') {
+  const s = screen(PU.lista, 390, 'mobile');
+  const c = mobileContent(s);
+  withActions(c, 'Lista de la compra', []);
+  const e = L2.empty.createInstance(); c.appendChild(e); e.layoutSizingHorizontal = 'FILL';
+  e.setProperties({ [P(L2.empty, 'title')]: 'La lista está vacía', [P(L2.empty, 'description')]: 'Marca de una vez todo lo que necesites. Al terminar la compra, lo que marques pasará a tu inventario.', [P(L2.empty, 'icon')]: iconComp('shopping-cart').id, [P(L2.empty, 'action')]: true });
+  const act = e.findOne((n) => n.type === 'INSTANCE' && n.name === 'action');
+  act.swapComponent(variant(L.btn, 'variant=default, size=lg, state=default'));
+  act.setProperties({ [P(L.btn, 'label')]: 'Añadir productos', [P(L.btn, 'icon inline-start#')]: true, [P(L.btn, 'icon inline-start ↳')]: iconComp('plus').id, [P(L.btn, 'icon inline-end#')]: false });
+  finishMobile(s, c);
+  await activate(s, 1); noListCount(s);
+  return { screen: s.id, h: Math.round(s.height), fixedIcons: await fixIconColors(s) };
+}
+
+if (ARGS.screen === 'pu-inventario') {
+  // El catálogo sembrado al crear el hogar (seed_default_products), agrupado como
+  // getStarterCatalog: por sort_order de categoría y por nombre dentro de cada una.
+  const CATALOGO = [
+    ['Fruta', 'manzana', ['Plátanos', 'Manzanas', 'Naranjas', 'Peras', 'Limones']],
+    ['Verdura', 'brocoli', ['Patatas', 'Cebollas', 'Ajos', 'Tomates', 'Zanahorias', 'Pimientos', 'Calabacines', 'Lechuga', 'Pepinos', 'Brócoli']],
+    ['Carne', 'carne', ['Pechugas de pollo', 'Carne picada', 'Lomo de cerdo', 'Jamón cocido', 'Jamón serrano']],
+    ['Pescado', 'pescado', ['Salmón', 'Merluza']],
+    ['Lácteos y huevos', 'leche', ['Leche', 'Huevos', 'Yogures', 'Queso curado', 'Queso rallado', 'Mantequilla', 'Nata para cocinar']],
+    ['Panadería', 'pan', ['Pan', 'Pan de molde']],
+    ['Despensa', 'conserva', ['Aceite de oliva virgen extra', 'Aceite de girasol', 'Arroz', 'Macarrones', 'Espaguetis', 'Lentejas', 'Garbanzos cocidos', 'Atún en lata', 'Tomate frito', 'Harina de trigo', 'Azúcar', 'Sal', 'Vinagre', 'Café', 'Cacao soluble', 'Cereales', 'Mayonesa', 'Caldo de pollo', 'Pan rallado', 'Miel']],
+    ['Congelados', 'hielo', ['Guisantes congelados', 'Gambas congeladas', 'Pizza congelada']],
+    ['Bebidas', 'refresco', ['Agua embotellada', 'Zumo de naranja', 'Refrescos', 'Cerveza']],
+    ['Snacks y dulces', 'chocolate', ['Galletas', 'Chocolate', 'Patatas fritas', 'Frutos secos']],
+    ['Limpieza', 'esponja', ['Papel higiénico', 'Papel de cocina', 'Detergente para la ropa', 'Suavizante', 'Lavavajillas', 'Limpiador multiusos', 'Bolsas de basura', 'Lejía']],
+    ['Higiene', 'bote-spray', ['Gel de ducha', 'Champú', 'Pasta de dientes', 'Desodorante', 'Jabón de manos']],
+  ];
+  const MARCADOS = new Set(['Plátanos', 'Leche', 'Huevos']);
+  const s = screen(PU.inventario, 390, 'mobile');
+  const c = mobileContent(s);
+  withActions(c, 'Inventario', [IB('outline', 'icon', 'rotate-ccw-clock')]);
+  const wrap = stack('vacío', c, 24);
+  const pick = stack('StarterPicker', wrap, 24); bind(pick, 'paddingBottom', 'spacing/24'); // pb-24: sitio para la barra fija
+  const hd = stack('intro', pick, 4);
+  await text('¿Qué tienes ya en casa?', 'Title/Base', 'foreground', hd, { fill: true });
+  await text('Marca lo que haya ahora mismo; las cantidades las ajustas luego. También puedes escanear un ticket o añadir productos a mano.', 'Body/Small', 'muted-foreground', hd, { fill: true });
+  const KL = P(L2.sel, 'label');
+  for (const [cat, slug, items] of CATALOGO) {
+    const sec = stack(cat, pick, 8);
+    const h3 = stack('h3', sec, 6, 'HORIZONTAL'); h3.counterAxisAlignItems = 'CENTER'; h3.appendChild(product(slug, 16)); await text(cat, 'Body/Small Medium', 'muted-foreground', h3);
+    const row = stack('chips', sec, 8, 'HORIZONTAL'); row.layoutWrap = 'WRAP'; row.counterAxisSpacing = 8;
+    for (const n of [...items].sort((a, b) => a.localeCompare(b, 'es'))) { const ch = inst(L2.sel, `selected=${MARCADOS.has(n)}`); row.appendChild(ch); ch.setProperties({ [KL]: n }); }
+  }
+  const nudge = stack('escanear', wrap, 6); nudge.counterAxisAlignItems = 'CENTER'; padX(nudge, 'spacing/4'); padY(nudge, 'spacing/4'); rad(nudge, 'radius/xl'); setPaints(nudge, 'strokes', [['border']]); nudge.strokeWeight = 1; nudge.strokeAlign = 'INSIDE'; nudge.dashPattern = [4, 4];
+  const np = await text('¿Vienes de la compra? La IA añade los productos y sus precios por ti.', 'Body/Small', 'muted-foreground', nudge, { fill: true }); np.textAlignHorizontal = 'CENTER';
+  nudge.appendChild(BTN('outline', 'default', 'O escanea tu primer ticket', 'scan-line'));
+  finishMobile(s, c);
+  // Barra fija de confirmación: bottom-fab, a la altura del FAB, con su hueco reservado a la derecha
+  const fab = s.findOne((n) => n.type === 'INSTANCE' && n.name === 'FAB');
+  const bar = stack('confirmar (fixed)', null, 12, 'HORIZONTAL'); s.appendChild(bar); bar.resize(390, 56); bar.layoutSizingVertical = 'HUG'; padX(bar, 'spacing/4');
+  const bt = BTN('default', 'lg', `Añadir ${MARCADOS.size} productos`); bar.appendChild(bt); bt.layoutGrow = 1; bt.layoutSizingHorizontal = 'FILL'; bind(bt, 'height', 'spacing/14');
+  const lg = (await figma.getLocalEffectStylesAsync()).find((e) => /lg/.test(e.name)); if (lg) await bt.setEffectStyleIdAsync(lg.id);
+  const gap = figma.createFrame(); gap.name = 'hueco del FAB'; gap.fills = []; gap.resize(56, 56); bar.appendChild(gap);
+  bar.x = 0; bar.y = fab.y;
+  s.insertChild(s.children.indexOf(fab), bar); // el FAB queda por encima
+  await activate(s, 0); noListCount(s);
+  return { screen: s.id, h: Math.round(s.height), shadow: lg && lg.name, fixedIcons: await fixIconColors(s) };
+}
+
 if (ARGS.screen === 'indice') {
   // Colocar las pantallas en una rejilla con títulos
-  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio']];
+  const order = [['Inventario · móvil', 'Inventario · móvil · oscuro', 'Lista de la compra · móvil', 'Menús · móvil'], ['Inventario · escritorio', 'Lista de la compra · escritorio'], [PU.crear, PU.pregunta, PU.invitar, PU.lista, PU.inventario, PU.unirse]];
   let y = 0; const out = [];
   const oldT = page.findAll((n) => n.name.startsWith('título · ') && n.parent === page); for (const t of oldT) t.remove();
   for (const rowNames of order) { let x = 0, h = 0; for (const n of rowNames) { const s = page.findOne((k) => k.name === n && k.parent === page); if (!s) continue; s.x = x; s.y = y + 48; const t = await text(n, 'Title/Section', 'foreground', page); t.name = 'título · ' + n; t.x = x; t.y = y; x += s.width + 120; h = Math.max(h, s.height); out.push(n); } y += h + 48 + 200; }
