@@ -7,9 +7,11 @@ type CookingIngredient = RecipeCooking["ingredients"][number];
 /**
  * La cantidad de un ingrediente en palabras. Sin cantidad se dice «al gusto» y no
  * se deja el hueco en blanco: en la sal y en el aceite de engrasar la ausencia de
- * número no es un dato que falte, es el dato.
+ * número no es un dato que falte, es el dato. La usa también el repaso de
+ * ingredientes del modo cocinado: escribiendo la cantidad en crudo salía
+ * «0.5 kg» ahí y «0,5 kg» en el panel de los pasos, para el mismo ingrediente.
  */
-function amountLabel(ing: CookingIngredient): string {
+export function amountLabel(ing: CookingIngredient): string {
   if (ing.quantity === null) return "al gusto";
   return ing.unit
     ? formatQuantity(ing.quantity, ing.unit)
