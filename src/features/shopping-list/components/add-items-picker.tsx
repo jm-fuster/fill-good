@@ -271,7 +271,7 @@ export function AddItemsPicker({
             placeholder="Leche, 2 yogures, tomates 1 kg…"
             autoComplete="off"
             maxLength={120}
-            className="pr-9 pl-9"
+            className="pr-11 pl-9"
           />
           {query ? (
             <button
@@ -281,7 +281,7 @@ export function AddItemsPicker({
                 refocus();
               }}
               aria-label="Borrar búsqueda"
-              className="absolute top-1/2 right-1 flex size-9 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
+              className="absolute top-1/2 right-0 flex size-11 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground"
             >
               <X aria-hidden className="size-4" />
             </button>
@@ -381,9 +381,14 @@ export function AddItemsPicker({
 
         {groups.every((g) => g.products.length === 0) ? (
           <p className="py-2 text-sm text-muted-foreground">
-            {searching
-              ? "No tienes nada con ese nombre. Créalo con el botón de arriba."
-              : "Tu catálogo está vacío: escribe arriba lo que necesites y créalo."}
+            {/* Con el nombre ya entre los nuevos no hay botón de crear (lo
+                explica el aviso de arriba): remitir a él era mandar a un
+                botón que no existe. */}
+            {!searching
+              ? "Tu catálogo está vacío: escribe arriba lo que necesites y créalo."
+              : canCreate
+                ? "No tienes nada con ese nombre. Créalo con el botón de arriba."
+                : "No tienes nada más con ese nombre."}
           </p>
         ) : null}
       </div>
@@ -403,7 +408,7 @@ export function AddItemsPicker({
             ? "Añadiendo…"
             : total === 0
               ? "Añadir a la lista"
-              : `Añadir ${total} a la lista`}
+              : `Añadir ${total} ${total === 1 ? "producto" : "productos"} a la lista`}
         </Button>
       </ResponsiveModalFooter>
     </div>
@@ -494,8 +499,16 @@ function ProductChip({
         </span>
       ) : null}
       {/* Ya en la lista: marcarlo suma a lo que hay, no crea una fila repetida. */}
-      {onList && !selected ? (
-        <ShoppingCart className="size-3.5 shrink-0 text-primary" aria-hidden />
+      {/* También marcado: sin el carrito, al marcar un producto que ya
+          estaba en la lista dejaba de verse que se va a SUMAR cantidad. */}
+      {onList ? (
+        <ShoppingCart
+          className={cn(
+            "size-3.5 shrink-0",
+            selected ? "text-primary-foreground" : "text-primary",
+          )}
+          aria-hidden
+        />
       ) : null}
     </button>
   );
@@ -514,7 +527,7 @@ function resultLabel({ added = 0, merged = 0 }: BulkAddState): string {
   if (merged > 0) {
     parts.push(
       added > 0
-        ? `${merged} ya estaba${merged === 1 ? "" : "n"} (cantidad sumada)`
+        ? `${merged} ya estaba${merged === 1 ? "" : "n"} (${merged === 1 ? "cantidad sumada" : "cantidades sumadas"})`
         : merged === 1
           ? "Ya estaba en la lista: cantidad sumada"
           : `${merged} ya estaban en la lista: cantidades sumadas`,

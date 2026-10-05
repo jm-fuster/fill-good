@@ -552,12 +552,18 @@ export function ShoppingListView({
                 stores={storeOptions}
                 chain={activeChain}
               />
+              {/* Pie sticky, y por eso DENTRO del px-4 (sticky compensa ese relleno
+                con -mx-4): con muchos pasillos el botón quedaba al final del
+                scroll. */}
+              <ResponsiveModalFooter sticky>
+                <Button
+                  variant="outline"
+                  onClick={() => setAisleOrdering(false)}
+                >
+                  Listo
+                </Button>
+              </ResponsiveModalFooter>
             </div>
-            <ResponsiveModalFooter>
-              <Button variant="outline" onClick={() => setAisleOrdering(false)}>
-                Listo
-              </Button>
-            </ResponsiveModalFooter>
           </ResponsiveModalContent>
         </ResponsiveModal>
       </div>

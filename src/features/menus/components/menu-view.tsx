@@ -877,7 +877,14 @@ export function MenuView({
         open={confirmReplace}
         onOpenChange={(o) => !o && setConfirmReplace(false)}
       >
-        <ResponsiveModalContent>
+        <ResponsiveModalContent
+          // Como en «¿Eliminar esta receta?»: el foco inicial cae en la acción
+          // segura y no en la destructiva, que es la primera del DOM.
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            document.getElementById("menu-replace-cancel")?.focus();
+          }}
+        >
           <ResponsiveModalHeader>
             <ResponsiveModalTitle>Rehacer todo el menú</ResponsiveModalTitle>
             <ResponsiveModalDescription>
@@ -899,7 +906,7 @@ export function MenuView({
               {generating ? "Rehaciendo…" : "Rehacer todo"}
             </Button>
             <ResponsiveModalClose asChild>
-              <Button type="button" variant="ghost">
+              <Button id="menu-replace-cancel" type="button" variant="ghost">
                 Cancelar
               </Button>
             </ResponsiveModalClose>
@@ -1924,7 +1931,9 @@ function EditEntryDrawer({
                     : mode === "recipe"
                       ? (detail?.name ?? editing?.current)
                       : isNew
-                        ? "Genéralo con IA, elige una receta de tu recetario o escríbelo."
+                        ? isPastDay
+                          ? "Elige una receta de tu recetario o escríbelo."
+                          : "Genéralo con IA, elige una receta de tu recetario o escríbelo."
                         : "Edita o quita este plato."}
           </ResponsiveModalDescription>
         </ResponsiveModalHeader>
@@ -1958,6 +1967,14 @@ function EditEntryDrawer({
             aria-label={mode === "move" ? "Mover a…" : "Duplicar en…"}
             className="flex flex-col gap-3 px-4 outline-none"
           >
+            {/* Sin esto las casillas bloqueadas solo salían al 50 %, sin
+                explicación. */}
+            {mode === "move" && cooked ? (
+              <p className="text-sm text-muted-foreground">
+                Ya está cocinado: puedes moverlo a hoy o a un día anterior, no a
+                uno que no ha llegado.
+              </p>
+            ) : null}
             <SlotPickerGrid
               days={days}
               slots={slots}
@@ -2347,9 +2364,11 @@ function EditEntryDrawer({
                     : "Lo cocinamos"}
               </Button>
             ) : null}
+            {/* «Cerrar» y no «Cancelar»: «No se hizo», su motivo y fijar se
+                guardan al tocarlos, así que cerrar no deshace nada de eso. */}
             <ResponsiveModalClose asChild>
               <Button type="button" variant="ghost">
-                Cancelar
+                {isNew ? "Cancelar" : "Cerrar"}
               </Button>
             </ResponsiveModalClose>
           </ResponsiveModalFooter>
@@ -2674,9 +2693,15 @@ function CookedDeductionsSteps({
               loading={pending}
             >
               <ShoppingCart aria-hidden />
-              {selected.size <= 1
-                ? "Apuntar 1 en la lista"
-                : `Apuntar ${selected.size} en la lista`}
+              {/* Con `<= 1` el cero decía «Apuntar 1»: con nada marcado el botón
+                  (deshabilitado) prometía apuntar algo. */}
+              {pending
+                ? "Apuntando…"
+                : selected.size === 0
+                  ? "Apuntar en la lista"
+                  : selected.size === 1
+                    ? "Apuntar 1 en la lista"
+                    : `Apuntar ${selected.size} en la lista`}
             </Button>
             <Button
               type="button"
@@ -2699,9 +2724,11 @@ function CookedDeductionsSteps({
               <Check aria-hidden />
               {pending
                 ? "Descontando…"
-                : count <= 1
-                  ? "Descontar 1 ingrediente"
-                  : `Descontar ${count} ingredientes`}
+                : count === 0
+                  ? "Descontar"
+                  : count === 1
+                    ? "Descontar 1 ingrediente"
+                    : `Descontar ${count} ingredientes`}
             </Button>
             <Button
               type="button"
@@ -2843,6 +2870,14 @@ function TonightDrawer({
               Ahora mismo no hay ninguna receta cocinable con lo que tienes.
               Añade recetas a tu recetario o compra lo que falte.
             </p>
+            {/* El consejo sin enlace dejaba el modal sin más salida que
+                «Cerrar». */}
+            <Button asChild variant="outline" className="mt-2 w-full">
+              <Link href="/recetas">
+                <ChefHat aria-hidden />
+                Ir a mis recetas
+              </Link>
+            </Button>
           </div>
         )}
 

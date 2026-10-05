@@ -871,12 +871,13 @@ export function ShoppingMode({
               orders={aisleOrders}
               chain={effectiveChain}
             />
+            {/* Pie sticky, dentro del px-4 (ver shopping-list-view.tsx). */}
+            <ResponsiveModalFooter sticky>
+              <Button variant="outline" onClick={() => setOrdering(false)}>
+                Seguir comprando
+              </Button>
+            </ResponsiveModalFooter>
           </div>
-          <ResponsiveModalFooter>
-            <Button variant="outline" onClick={() => setOrdering(false)}>
-              Seguir comprando
-            </Button>
-          </ResponsiveModalFooter>
         </ResponsiveModalContent>
       </ResponsiveModal>
     </div>

@@ -181,7 +181,9 @@ export function ProductIconPickerView({
         </div>
       )}
 
-      <ResponsiveModalFooter className="px-0">
+      {/* sticky: con 14 secciones de iconos, «Volver» quedaba al final del
+          scroll y lo único a mano era cerrar la ficha entera. */}
+      <ResponsiveModalFooter sticky>
         <Button type="button" variant="ghost" onClick={onBack}>
           <ChevronLeft aria-hidden />
           Volver
