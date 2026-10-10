@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { useRefreshSessionClaims } from "@/hooks/use-refresh-session-claims";
 import { safeAction } from "@/lib/action-error";
 
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export function AiConsentCard({
   className?: string;
 }) {
   const [pending, start] = useTransition();
+  const refreshClaims = useRefreshSessionClaims();
 
   function accept() {
     start(async () => {
@@ -37,6 +39,9 @@ export function AiConsentCard({
         return;
       }
       onAccepted();
+      // Sin esperar: el token con el «sí» solo ahorra la llamada a Clerk de la
+      // próxima carga; un token que aún diga «no» se comprueba con Clerk.
+      void refreshClaims();
     });
   }
 

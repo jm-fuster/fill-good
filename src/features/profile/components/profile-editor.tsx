@@ -18,6 +18,7 @@ import {
   ResponsiveModalHeader,
   ResponsiveModalTitle,
 } from "@/components/ui/responsive-modal";
+import { useRefreshSessionClaims } from "@/hooks/use-refresh-session-claims";
 import { compressImage } from "@/lib/image";
 import { safeAction } from "@/lib/action-error";
 
@@ -67,7 +68,8 @@ export function ProfileEditor({
   /** Hogar activo; null = no pertenece a ninguno, no hay nombre que editar. */
   householdName: string | null;
 }) {
-  const { user } = useUser();
+  const { isLoaded, user } = useUser();
+  const refreshClaims = useRefreshSessionClaims();
   const fileRef = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,8 +79,16 @@ export function ProfileEditor({
 
   // Clerk mantiene `user` al día en el cliente, así que tras subir la foto el
   // avatar se actualiza sin recargar. El valor del servidor es solo el arranque
-  // (evita el hueco de iniciales durante la hidratación).
-  const imageUrl = user?.hasImage ? user.imageUrl : (initialImageUrl ?? null);
+  // (evita el hueco de iniciales durante la hidratación): en cuanto Clerk ha
+  // cargado, manda Clerk, también cuando dice que NO hay foto. Antes, con
+  // `user?.hasImage ? … : initialImageUrl`, quitar la foto devolvía el avatar a
+  // la del servidor, o sea a la que se acababa de quitar.
+  const imageUrl =
+    isLoaded && user
+      ? user.hasImage
+        ? user.imageUrl
+        : null
+      : (initialImageUrl ?? null);
   const busy = uploading || removing;
 
   async function changePhoto(file: File) {
@@ -89,6 +99,9 @@ export function ProfileEditor({
       await user?.setProfileImage({
         file: new File([blob], "avatar.jpg", { type: "image/jpeg" }),
       });
+      // La foto también viaja en el token de sesión (lo que pinta /perfil al
+      // cargar): sin esto, la próxima carga podría enseñar la anterior.
+      await refreshClaims();
       toast.success("Foto actualizada");
     } catch {
       setError("No se pudo subir la foto. Prueba con otra imagen.");
@@ -102,6 +115,7 @@ export function ProfileEditor({
     setRemoving(true);
     try {
       await user?.setProfileImage({ file: null });
+      await refreshClaims();
       toast.success("Foto quitada");
     } catch {
       setError("No se pudo quitar la foto. Inténtalo de nuevo.");
