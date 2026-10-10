@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
 import { House, Info, ListOrdered, Palette, Store } from "lucide-react";
 
@@ -13,6 +12,7 @@ import { ExportDataRow } from "@/features/account/components/export-data-row";
 import { LogoutRow } from "@/features/account/components/logout-row";
 import { AiConsentSettingRow } from "@/features/ai-consent/components/ai-consent-setting-row";
 import { getAiConsent } from "@/features/ai-consent/queries";
+import { getCurrentUser } from "@/lib/current-user";
 import { BudgetRow } from "@/features/household/components/budget-row";
 import { PantryReviewSettingRow } from "@/features/inventory/components/pantry-review-setting-row";
 import { getPantryReviewPrefs } from "@/features/inventory/queries";
@@ -59,22 +59,30 @@ function alexaValue(count: number): string {
  * que se resuelve de un toque (tema) o en un modal corto (objetivo de gasto).
  */
 export default async function AjustesPage() {
-  const [user, household, aiConsent, pantryReview, usageOptOut] =
-    await Promise.all([
-      currentUser(),
-      getCurrentHousehold(),
-      getAiConsent(),
-      getPantryReviewPrefs(),
-      getUsageOptOut(),
-    ]);
+  // El hogar ya lo resolvió el layout (`cache()`), así que todo lo demás sale
+  // en UNA tanda: antes miembros, tiendas y Alexa esperaban detrás de la
+  // llamada de red a Clerk de la primera.
+  const household = await getCurrentHousehold();
+  const [
+    user,
+    aiConsent,
+    pantryReview,
+    usageOptOut,
+    members,
+    storeChains,
+    alexaLinks,
+  ] = await Promise.all([
+    getCurrentUser(),
+    getAiConsent(),
+    getPantryReviewPrefs(),
+    getUsageOptOut(),
+    household ? getHouseholdMembers(household.id) : [],
+    household
+      ? getHouseholdChains()
+      : { chains: [], source: "manual" as const },
+    household ? getAlexaLinks(household.id) : [],
+  ]);
   const email = user?.primaryEmailAddress?.emailAddress;
-  const [members, storeChains, alexaLinks] = household
-    ? await Promise.all([
-        getHouseholdMembers(household.id),
-        getHouseholdChains(),
-        getAlexaLinks(household.id),
-      ])
-    : [[], { chains: [], source: "manual" as const }, []];
   const alexaLinkCount = alexaLinks.length;
   // Mismo orden de preferencia que /perfil (el nombre del hogar manda): son la
   // misma persona y verse con dos nombres según la pantalla resulta inquietante.

@@ -1,5 +1,10 @@
 import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
-import { Serwist } from "serwist";
+import {
+  CacheableResponsePlugin,
+  ExpirationPlugin,
+  Serwist,
+  StaleWhileRevalidate,
+} from "serwist";
 import { defaultCache } from "@serwist/next/worker";
 
 import { SHARE_CACHE, SHARE_KEY } from "@/lib/share-target";
@@ -11,6 +16,10 @@ declare global {
 }
 
 declare const self: ServiceWorkerGlobalScope;
+
+/** Scripts de entrada de Clerk enlazados por versión mayor (ver abajo). */
+const CLERK_ENTRY_SCRIPT =
+  /^\/npm\/@clerk\/(clerk-js|ui)@\d+\/dist\/(clerk|ui)\.browser\.js$/;
 
 const serwist = new Serwist({
   precacheEntries: self.__SW_MANIFEST,
@@ -24,7 +33,43 @@ const serwist = new Serwist({
   // carga (salta la barrera "No se pudo cargar"). Sin precarga, el fetch de
   // NetworkFirst sigue la redirección de Clerk con normalidad.
   navigationPreload: false,
-  runtimeCaching: defaultCache,
+  runtimeCaching: [
+    // Los dos scripts de entrada de Clerk (clerk-js y su UI). Clerk los enlaza
+    // por versión MAYOR (`@clerk/clerk-js@6/…`), y esa URL es una redirección
+    // con `no-store` a la versión exacta: la `defaultCache` los pasaba por su
+    // NetworkFirst de terceros, así que CADA apertura de la app pagaba ese
+    // viaje (~75 ms con fibra, más con datos) antes de poder arrancar la
+    // sesión en el navegador. Con StaleWhileRevalidate se sirven del
+    // dispositivo al instante y la redirección se hace en segundo plano: una
+    // versión nueva de Clerk entra en la apertura siguiente, como pasaría con
+    // cualquier caché HTTP. Son estáticos públicos (nada personal), y aun así
+    // el cierre de sesión borra esta caché como las demás.
+    //
+    // Es seguro servir una copia vieja porque los dos scripts reescriben su
+    // ruta de trozos a SU versión exacta (`…/@clerk/ui@1.40.0/dist/…`): una
+    // copia en caché nunca pide trozos de otra versión.
+    //
+    // Solo esas dos URLs, y solo respuestas CORS 200. Los trozos ya llevan la
+    // versión exacta y Clerk los sirve con un año de caché HTTP, así que no
+    // ganan nada aquí; y como los pide sin `crossorigin`, llegan OPACOS, y
+    // Chrome cuenta cada respuesta opaca con relleno en la cuota: medido, una
+    // regla para todo `/npm/@clerk/` subía el almacenamiento a 110 MB.
+    {
+      matcher: ({ url, sameOrigin }) =>
+        !sameOrigin && CLERK_ENTRY_SCRIPT.test(url.pathname),
+      handler: new StaleWhileRevalidate({
+        cacheName: "clerk-scripts",
+        plugins: [
+          new CacheableResponsePlugin({ statuses: [200] }),
+          new ExpirationPlugin({
+            maxEntries: 4,
+            maxAgeSeconds: 7 * 24 * 60 * 60,
+          }),
+        ],
+      }),
+    },
+    ...defaultCache,
+  ],
   fallbacks: {
     entries: [
       {

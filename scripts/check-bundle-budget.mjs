@@ -37,9 +37,19 @@ const BUDGET_KB = 185;
 const LAYOUT_BUDGETS_KB = {
   // Medido el 23-sep-2026 tras diferir los modales del shell: 69,1 / 214,5 /
   // 72,6 KB. Presupuesto = +10%, como el del baseline.
-  "src/app/layout": 76,
-  "src/app/(app)/layout": 236,
-  "src/app/(legal)/layout": 80,
+  //
+  // Recalibrado el 10-oct-2026: 86,9 / 166,5 / 90,5 KB. El de `(app)` BAJA
+  // ~49 KB (supabase-js y la paleta de comandos pasan a cargarse aparte, ver
+  // `lib/supabase/client.ts` y `command-palette.tsx`) y se aprieta para que la
+  // ganancia no se pierda sin que nadie lo note. El raíz SUBE ~18 KB a
+  // conciencia: son las traducciones de Clerk, que antes iban serializadas en
+  // el payload RSC de cada documento y de cada Server Action que revalida
+  // (~16 KB brotli cada vez) y ahora viajan una sola vez como JS que guarda el
+  // service worker (ver `components/clerk-config.ts`). El de `(legal)` sube
+  // por lo mismo: incluye al raíz.
+  "src/app/layout": 96,
+  "src/app/(app)/layout": 183,
+  "src/app/(legal)/layout": 100,
 };
 
 const NEXT_DIR = ".next";

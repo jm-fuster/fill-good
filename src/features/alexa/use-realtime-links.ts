@@ -24,7 +24,7 @@ export function useRealtimeAlexaLinks(householdId: string) {
   const router = useRouter();
 
   useEffect(() => {
-    if (!householdId || !session) return;
+    if (!householdId || !session || !supabase) return;
     let cancelled = false;
 
     const channel = supabase.channel(`alexa-links-${householdId}`);

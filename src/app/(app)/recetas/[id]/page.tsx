@@ -25,14 +25,20 @@ export default async function EditarRecetaPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const recipe = await getRecipeForEdit(id);
-  if (!recipe) notFound();
-  const [rating, cost, catalog, stock] = await Promise.all([
+  // Todo sale a la vez: nada de lo de abajo necesita la receta, solo su id.
+  // Pero el 404 sigue mandando: primero se espera la receta, y si no existe
+  // el resto se descarta sin que su posible fallo cambie la respuesta (el
+  // `catch` vacío solo evita un rechazo sin manejar).
+  const rest = Promise.all([
     getRecipeRating(id),
     getRecipeCost(id),
     getProductCatalog(),
     getStockByProduct(),
   ]);
+  rest.catch(() => {});
+  const recipe = await getRecipeForEdit(id);
+  if (!recipe) notFound();
+  const [rating, cost, catalog, stock] = await rest;
 
   return (
     <PageContainer>

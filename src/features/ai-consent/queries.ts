@@ -1,4 +1,4 @@
-import { currentUser } from "@clerk/nextjs/server";
+import { getCurrentUser } from "@/lib/current-user";
 
 import { AI_CONSENT_REQUIRED_ERROR, AI_CONSENT_VERSION } from "./version";
 
@@ -49,7 +49,7 @@ export const AI_CONSENT_UNAVAILABLE_ERROR =
 export async function getAiConsent(): Promise<AiConsent> {
   let user;
   try {
-    user = await currentUser();
+    user = await getCurrentUser();
   } catch (err) {
     console.error("getAiConsent: no se pudo leer el usuario de Clerk:", err);
     return { consented: false, at: null, version: null, unavailable: true };

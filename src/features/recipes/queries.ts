@@ -299,26 +299,33 @@ export async function getRecipeForEdit(
   const householdId = await getActiveHouseholdId();
   if (!householdId) return null;
   const supabase = createServerSupabaseClient();
-  const { data: recipe, error } = await supabase
-    .from("recipes")
-    .select(
-      "id, name, description, servings, prep_minutes, meal_types, seasons, steps, steps_source, is_saved",
-    )
-    .eq("household_id", householdId)
-    .eq("id", id)
-    .maybeSingle();
+  // Receta e ingredientes a la vez: los segundos solo necesitan el id. Si la
+  // receta no vale, los ingredientes se descartan sin mirarlos.
+  const [
+    { data: recipe, error },
+    { data: ingredients, error: ingErr },
+  ] = await Promise.all([
+    supabase
+      .from("recipes")
+      .select(
+        "id, name, description, servings, prep_minutes, meal_types, seasons, steps, steps_source, is_saved",
+      )
+      .eq("household_id", householdId)
+      .eq("id", id)
+      .maybeSingle(),
+    supabase
+      .from("recipe_ingredients")
+      .select("name, quantity, unit, optional, product_id")
+      .eq("household_id", householdId)
+      .eq("recipe_id", id)
+      .order("position", { ascending: true })
+      .order("id", { ascending: true }),
+  ]);
   if (error) throw error;
 
   const row = recipe as RecipeRow | null;
   if (!row || !row.is_saved) return null;
 
-  const { data: ingredients, error: ingErr } = await supabase
-    .from("recipe_ingredients")
-    .select("name, quantity, unit, optional, product_id")
-    .eq("household_id", householdId)
-    .eq("recipe_id", id)
-    .order("position", { ascending: true })
-    .order("id", { ascending: true });
   // Un fallo aquí NO puede leerse como «la receta no tiene ingredientes»: el
   // formulario abriría vacío y guardar borraría todos los de verdad (el
   // guardado reemplaza la lista entera). Mejor la barrera de error que eso.

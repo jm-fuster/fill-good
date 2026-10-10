@@ -23,6 +23,12 @@ const cached = new Set<string>();
  *
  * Aquí: una vez por ruta y pestaña, sin la query, y solo con red. Si se navegó
  * sin red, se reintenta al volver.
+ *
+ * Y en REPOSO, no al montar: esa copia es otro render completo de la página, y
+ * pedida en el arranque competía por la red con lo que la pantalla sí necesita
+ * en ese momento (el script de Clerk, los prefetch de la navegación). La visita
+ * cuenta igual aunque se salga antes de que llegue el reposo: la llamada
+ * pendiente no se cancela.
  */
 export function PageCacheOnVisit() {
   const { serwist } = useSerwist();
@@ -37,7 +43,11 @@ export function PageCacheOnVisit() {
         .messageSW({ type: "CACHE_URLS", payload: { urlsToCache: [pathname] } })
         .catch(() => cached.delete(pathname));
     };
-    cache();
+    if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(cache, { timeout: 5000 });
+    } else {
+      setTimeout(cache, 2000);
+    }
     window.addEventListener("online", cache);
     return () => window.removeEventListener("online", cache);
   }, [serwist, pathname]);

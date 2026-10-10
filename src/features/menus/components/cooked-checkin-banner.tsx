@@ -38,10 +38,14 @@ async function loadCheckin(): Promise<{
       return null;
     }
 
-    const prefs = await getMenuPrefs();
+    // A la vez: el repaso viene activado por defecto, así que esperar a las
+    // preferencias para luego pedir los platos era un viaje más en toda casa
+    // que no lo ha apagado, a cambio de ahorrar una consulta en las que sí.
+    const [prefs, entries] = await Promise.all([
+      getMenuPrefs(),
+      getPendingCheckinEntries(),
+    ]);
     if (!prefs.checkinEnabled) return null;
-
-    const entries = await getPendingCheckinEntries();
     if (entries.length === 0) return null;
 
     return { entries, slots: activeSlots(prefs.planBreakfast) };

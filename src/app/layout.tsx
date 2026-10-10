@@ -1,10 +1,9 @@
 import { ClerkProvider } from "@clerk/nextjs";
-import { esES } from "@clerk/localizations";
-import { shadcn } from "@clerk/ui/themes";
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SerwistProvider } from "@serwist/next/react";
 
+import { clerkAppearance, clerkLocalization } from "@/components/clerk-config";
 import { PageCacheOnVisit } from "@/components/page-cache-on-visit";
 import { ThemeProvider } from "@/components/theme-provider";
 import { SessionEndCleanup } from "@/features/account/components/session-end-cleanup";
@@ -17,9 +16,15 @@ const geistSans = Geist({
   subsets: ["latin"],
 });
 
+// Sin precarga: la monoespaciada solo sale en un puñado de sitios (código de
+// invitación, tabla de precios de un producto, tooltip de las gráficas) y
+// precargarla metía ~23 KB de fuente en la primera carga de TODAS las páginas,
+// compitiendo con el CSS y el JS. Se descarga cuando algo la usa; el fallback
+// con métricas ajustadas que genera next/font evita el salto de maquetación.
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -59,7 +64,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
-        <ClerkProvider localization={esES} appearance={{ theme: shadcn }}>
+        <ClerkProvider
+          localization={clerkLocalization}
+          appearance={clerkAppearance}
+        >
           {/*
             Los dos valores por defecto de Serwist, apagados a propósito:
              - `reloadOnOnline` recargaba la página entera al volver la red, y

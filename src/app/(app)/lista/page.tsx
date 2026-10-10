@@ -28,15 +28,31 @@ export default async function ListaPage() {
   // innecesario). Los pasillos y las tiendas viajan aquí porque el orden de
   // pasillos —el que se guarda por supermercado— se edita desde el modo
   // reordenar de esta pantalla; son unas pocas filas.
-  const [list, catalog, pendingTicket, categories, aisleOrders, { chains }] =
-    await Promise.all([
-      getActiveList(),
-      getProductCatalog(),
-      getTripPendingTicket(),
-      getStoreCategories(),
-      getChainAisleOrders(),
-      getHouseholdChains(),
-    ]);
+  //
+  // Lo que sí depende de la lista tampoco espera a la tanda entera: los
+  // artículos salen en cuanto se sabe cuál es, y las sugerencias (la lectura
+  // más pesada, todo el historial de compras) arrancan ya y solo esperan a la
+  // lista para excluir lo que está apuntado (ver `getSuggestions`).
+  const listPromise = getActiveList();
+  const [
+    list,
+    items,
+    suggestions,
+    catalog,
+    pendingTicket,
+    categories,
+    aisleOrders,
+    { chains },
+  ] = await Promise.all([
+    listPromise,
+    listPromise.then((l) => (l ? getListItems(l.id) : [])),
+    getSuggestions(listPromise.then((l) => l?.id ?? null)),
+    getProductCatalog(),
+    getTripPendingTicket(),
+    getStoreCategories(),
+    getChainAisleOrders(),
+    getHouseholdChains(),
+  ]);
 
   if (!list) {
     return (
@@ -55,12 +71,6 @@ export default async function ListaPage() {
       </PageContainer>
     );
   }
-
-  // Estas sí dependen de list.id.
-  const [items, suggestions] = await Promise.all([
-    getListItems(list.id),
-    getSuggestions(list.id),
-  ]);
 
   return (
     <PageContainer>

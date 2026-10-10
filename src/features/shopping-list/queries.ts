@@ -201,24 +201,26 @@ export async function getActiveListProductIds(): Promise<Set<string>> {
   const householdId = await getActiveHouseholdId();
   if (!householdId) return new Set();
   const supabase = createServerSupabaseClient();
+  // Una sola query, como `getActiveListBadge` (antes 2 secuenciales: lista →
+  // artículos, en el camino más lento de /inventario): los productos van
+  // embebidos y filtrados en el propio embed. La clave foránea compuesta
+  // (household_id, list_id) garantiza que los artículos son del mismo hogar.
   const { data: list } = await supabase
     .from("shopping_lists")
-    .select("id")
+    .select("id, shopping_list_items(product_id)")
     .eq("household_id", householdId)
     .eq("status", "active")
+    .not("shopping_list_items.product_id", "is", null)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   if (!list) return new Set();
 
-  const { data } = await supabase
-    .from("shopping_list_items")
-    .select("product_id")
-    .eq("household_id", householdId)
-    .eq("list_id", list.id)
-    .not("product_id", "is", null);
+  const items = list.shopping_list_items as unknown as
+    | { product_id: string | null }[]
+    | null;
   return new Set(
-    (data ?? [])
+    (items ?? [])
       .map((i) => i.product_id)
       .filter((id): id is string => Boolean(id)),
   );
@@ -571,8 +573,15 @@ function suggestedQuantityFor(
  *
  * Nunca se sugiere algo que ya esté en la lista, ni un producto silenciado con
  * «Descartar» cuyo plazo siga vigente (`suggestions_snoozed_until`).
+ *
+ * La lista puede llegar como PROMESA: de ella solo sale qué excluir, así que el
+ * historial —la lectura más pesada de /lista— no tiene por qué esperar a saber
+ * cuál es la lista activa. La página la pasa sin resolver y las otras tres
+ * consultas salen ya; `null` (sin lista) no excluye nada.
  */
-export async function getSuggestions(listId: string): Promise<Suggestion[]> {
+export async function getSuggestions(
+  listId: string | Promise<string | null>,
+): Promise<Suggestion[]> {
   const householdId = await getActiveHouseholdId();
   if (!householdId) return [];
   const supabase = createServerSupabaseClient();
@@ -606,12 +615,18 @@ export async function getSuggestions(listId: string): Promise<Suggestion[]> {
       .from("inventory_items")
       .select("product_id, quantity, expiry_date")
       .eq("household_id", householdId),
-    supabase
-      .from("shopping_list_items")
-      .select("product_id")
-      .eq("household_id", householdId)
-      .eq("list_id", listId)
-      .not("product_id", "is", null),
+    (async () => {
+      const id = await listId;
+      if (!id) {
+        return { data: [] as { product_id: string | null }[], error: null };
+      }
+      return supabase
+        .from("shopping_list_items")
+        .select("product_id")
+        .eq("household_id", householdId)
+        .eq("list_id", id)
+        .not("product_id", "is", null);
+    })(),
     // Todo el historial, de mil en mil: de aquí salen la cadencia y el «hace
     // N días» de cada producto, y cortado en mil —con el orden ascendente— lo
     // que se perdía era lo más reciente: se proponía reponer lo comprado ayer.
