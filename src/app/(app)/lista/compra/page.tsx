@@ -6,6 +6,7 @@ import {
   getStoreCategories,
 } from "@/features/categories/queries";
 import { getHouseholdChains } from "@/features/household/queries";
+import { getLatestUnitPrices } from "@/features/prices/queries";
 import { ShoppingMode } from "@/features/shopping-list/components/shopping-mode";
 import {
   getActiveList,
@@ -17,7 +18,23 @@ import {
 export const metadata: Metadata = { title: "Modo compra" };
 
 export default async function ModoCompraPage() {
-  const list = await getActiveList();
+  // Todo sale a la vez que la lista activa, en vez de esperar a saber cuál es:
+  // solo los artículos la necesitan de verdad, y las sugerencias únicamente
+  // para excluir lo apuntado (ver `getSuggestions`). Los precios se piden ya
+  // porque `getShoppingModeItems` los usa siempre y van en `cache()`: es la
+  // misma lectura, empezada antes. Si no hay lista se redirige igual y lo
+  // demás se descarta (el `catch` vacío solo evita un rechazo sin manejar).
+  const listPromise = getActiveList();
+  const rest = Promise.all([
+    getProductCatalog(),
+    getSuggestions(listPromise.then((l) => l?.id ?? null)),
+    getStoreCategories(),
+    getChainAisleOrders(),
+    getHouseholdChains(),
+    getLatestUnitPrices(),
+  ]);
+  rest.catch(() => {});
+  const list = await listPromise;
   if (!list) redirect("/lista");
 
   // `categories` va aquí porque el orden de pasillos se corrige DENTRO de la
@@ -27,15 +44,8 @@ export default async function ModoCompraPage() {
   // `aisleOrders` y `chains` viajan enteros (todas las tiendas del hogar, no la
   // del viaje): así cambiar de tienda en el pasillo reordena al instante, sin
   // volver al servidor con la cobertura del supermercado.
-  const [items, catalog, suggestions, categories, aisleOrders, { chains }] =
-    await Promise.all([
-      getShoppingModeItems(list.id),
-      getProductCatalog(),
-      getSuggestions(list.id),
-      getStoreCategories(),
-      getChainAisleOrders(),
-      getHouseholdChains(),
-    ]);
+  const [items, [catalog, suggestions, categories, aisleOrders, { chains }]] =
+    await Promise.all([getShoppingModeItems(list.id), rest]);
 
   return (
     <ShoppingMode

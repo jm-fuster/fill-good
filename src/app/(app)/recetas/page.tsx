@@ -22,15 +22,15 @@ import { getCurrentHousehold } from "@/features/household/queries";
 export const metadata: Metadata = { title: "Mis recetas" };
 
 export default async function RecetasPage() {
-  const [recipes, household, seedCards] = await Promise.all([
+  // El hogar ya lo resolvió el layout (`cache()`): con él a mano, las señales
+  // salen en la primera tanda; solo el coste espera, porque necesita los ids.
+  const household = await getCurrentHousehold();
+  const [recipes, seedCards, signalsList] = await Promise.all([
     getSavedRecipes(),
-    getCurrentHousehold(),
     getSeedRecipeCards(),
-  ]);
-  const [signalsList, costMap] = await Promise.all([
     household ? getRecipeSignals(household.id) : Promise.resolve([]),
-    getRecipeCostsForIds(recipes.map((r) => r.id)),
   ]);
+  const costMap = await getRecipeCostsForIds(recipes.map((r) => r.id));
   const signals: Record<string, RecipeSignals> = Object.fromEntries(
     signalsList.map((s) => [s.recipeId, s]),
   );

@@ -210,12 +210,16 @@ export const getHouseholdChains = cache(async (): Promise<HouseholdChains> => {
   const household = await getCurrentHousehold();
   if (!household) return { chains: [], source: "manual" };
 
+  // Las dos consultas a la vez: un hogar sin tiendas configuradas pagaba dos
+  // viajes seguidos en /inventario, /lista, el modo compra y Ajustes. Si al
+  // final manda lo configurado, la de tickets se descarta, y su posible fallo
+  // con ella (el `catch` vacío solo evita un rechazo sin manejar: si hace falta,
+  // el `await` de abajo lo sigue lanzando, como antes).
+  const seenInReceipts = getChainsSeenInReceipts(household.id);
+  seenInReceipts.catch(() => {});
   const configured = await getConfiguredChains(household.id);
   if (configured.length > 0) return { chains: configured, source: "manual" };
-  return {
-    chains: await getChainsSeenInReceipts(household.id),
-    source: "receipts",
-  };
+  return { chains: await seenInReceipts, source: "receipts" };
 });
 
 /** Miembros de un hogar, ordenados por antigüedad. */

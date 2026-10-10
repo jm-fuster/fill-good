@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getActiveHouseholdId } from "@/features/household/queries";
 import { shiftDays, todayLocalISO } from "@/lib/dates";
@@ -264,8 +266,15 @@ const CHECKIN_WINDOW_DAYS = 7;
  *
  * Degrada en suave: si la consulta falla (p. ej. la migración aún no está
  * aplicada) devuelve lista vacía en vez de tumbar la página que la pide.
+ *
+ * `cache()` porque la piden los DOS avisos del shell (el repaso de platos y el
+ * de despensa, que cede ante él) en cada página, y /menus una tercera vez: así
+ * es una sola consulta por request. Solo memoiza dentro de un render; en una
+ * Server Action se ejecuta siempre.
  */
-export async function getPendingCheckinEntries(): Promise<PendingCheckinEntry[]> {
+export const getPendingCheckinEntries = cache(async (): Promise<
+  PendingCheckinEntry[]
+> => {
   const householdId = await getActiveHouseholdId();
   if (!householdId) return [];
   const today = todayLocalISO();
@@ -301,7 +310,7 @@ export async function getPendingCheckinEntries(): Promise<PendingCheckinEntry[]>
     }))
     // Una entrada sin nombre no se puede preguntar ("¿cocinaste …?").
     .filter((e) => e.name !== "");
-}
+});
 
 /** Regla del menú tal como la consume la UI (con el nombre de la receta). */
 export type MenuRule = {
@@ -404,8 +413,10 @@ export const DEFAULT_MENU_PREFS: MenuPrefs = {
  * `configured: false` (el generador se comporta como antes y la UI ofrece el
  * onboarding). Sin el filtro por hogar, un usuario con preferencias en dos
  * hogares recibía dos filas y `.maybeSingle()` fallaba.
+ *
+ * `cache()`: en /menus la piden la página y el aviso del repaso del shell.
  */
-export async function getMenuPrefs(): Promise<MenuPrefs> {
+export const getMenuPrefs = cache(async (): Promise<MenuPrefs> => {
   const householdId = await getActiveHouseholdId();
   if (!householdId) return DEFAULT_MENU_PREFS;
   const supabase = createServerSupabaseClient();
@@ -427,5 +438,5 @@ export async function getMenuPrefs(): Promise<MenuPrefs> {
     checkinEnabled: data.checkin_enabled,
     configured: true,
   };
-}
+});
 

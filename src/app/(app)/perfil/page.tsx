@@ -34,13 +34,16 @@ export const metadata: Metadata = { title: "Perfil" };
  * desplegable de hogares vive en el header de escritorio).
  */
 export default async function PerfilPage() {
-  const [user, household, households, overview] = await Promise.all([
+  // El hogar ya lo resolvió el layout (va en `cache()`): esperarlo aquí es
+  // gratis, y así los miembros salen en la misma tanda que el resto en vez de
+  // esperar detrás de la llamada a Clerk y del marcador del mes.
+  const household = await getCurrentHousehold();
+  const [user, households, overview, members] = await Promise.all([
     currentUser(),
-    getCurrentHousehold(),
     getUserHouseholds(),
     getProfileOverview(),
+    household ? getHouseholdMembers(household.id) : [],
   ]);
-  const members = household ? await getHouseholdMembers(household.id) : [];
 
   // El nombre del hogar manda sobre el de Clerk: es el que ven tus convivientes
   // (firma los movimientos del inventario) y el único que se puede editar aquí,

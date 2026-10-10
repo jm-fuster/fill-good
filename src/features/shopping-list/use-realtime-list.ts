@@ -84,7 +84,7 @@ export function useRealtimeList(listId: string, handlers: Handlers = {}) {
   });
 
   useEffect(() => {
-    if (!listId || !session) return;
+    if (!listId || !session || !supabase) return;
     let cancelled = false;
     let heartbeat: ReturnType<typeof setInterval> | null = null;
     let degraded: ReturnType<typeof setInterval> | null = null;
