@@ -170,6 +170,45 @@ for (const r of layoutRows) {
 }
 console.log("");
 
+// ── Registro de iconos de producto ─────────────────────────────────────────
+// Los dibujos de `registry.ts` no pueden llegar al JS del navegador, ni de
+// entrada ni diferido: el navegador pinta desde el sprite, y el registro son
+// ~70 KB gz que hasta oct-2026 iban en cada pantalla con iconos. Lo único que
+// lo impide es una rama que Next elimina al compilar (`process.browser` en
+// `components/product-icon.tsx`), y un `import` estático en cualquier otro
+// componente de cliente la esquivaría sin que ningún tipo se quejara. Se buscan
+// trazos del registro en todos los trozos de `static/chunks`: son texto que
+// solo existe ahí (el sprite va aparte, en `static/media`).
+const iconPaths = [
+  ...readFileSync(join("src", "lib", "product-icons", "registry.ts"), "utf8")
+    .matchAll(/ d="([^"]{60,})"/g),
+]
+  .slice(0, 8)
+  .map((m) => m[1]);
+if (iconPaths.length === 0) {
+  fail(
+    "No se encontraron trazos en src/lib/product-icons/registry.ts: ¿cambió " +
+      "su formato? Sin ellos no se puede comprobar que el registro no llegue " +
+      "al navegador.",
+  );
+}
+const chunksDir = join(NEXT_DIR, "static", "chunks");
+const leaked = readdirSync(chunksDir, { recursive: true })
+  .map(String)
+  .filter((rel) => rel.endsWith(".js"))
+  .filter((rel) => {
+    const code = readFileSync(join(chunksDir, rel), "utf8");
+    return iconPaths.some((d) => code.includes(d));
+  });
+if (leaked.length > 0) {
+  fail(
+    `El registro de iconos de producto ha vuelto al JS del navegador ` +
+      `(${leaked.join(", ")}).\n` +
+      `Algún componente de cliente importa src/lib/product-icons/registry.ts: ` +
+      `pinta con <ProductIcon>, que en el navegador usa el sprite.`,
+  );
+}
+
 const isUpdate = process.argv.includes("--update");
 if (isUpdate) {
   console.log(
@@ -234,5 +273,9 @@ console.log(
           `${(r.gzip / 1024).toFixed(1)} / ${r.budget}`,
       )
       .join(", ") +
-    ` KB gzip)\x1b[0m\n`,
+    ` KB gzip)\x1b[0m`,
+);
+console.log(
+  `\x1b[32m✔ El registro de iconos no está en el JS del navegador ` +
+    `(${iconPaths.length} trazos buscados)\x1b[0m\n`,
 );

@@ -323,6 +323,10 @@ $sb = [System.Text.StringBuilder]::new()
 [void]$sb.AppendLine("// Fuentes: Fluent Emoji Flat (MIT) y 14 dibujos propios (assets/product-icons/).")
 [void]$sb.AppendLine("// Cada entrada guarda su viewBox (vb) porque los sets no comparten lienzo.")
 [void]$sb.AppendLine("// Regenerar con scripts/gen-product-icons.ps1.")
+[void]$sb.AppendLine("//")
+[void]$sb.AppendLine("// Solo para el servidor: el navegador pinta desde sprite.svg (ver")
+[void]$sb.AppendLine("// scripts/gen-product-icon-sprite.mjs y components/product-icon.tsx). En el JS")
+[void]$sb.AppendLine("// de una pantalla eran ~70 KB gz; check-bundle-budget falla si vuelve.")
 [void]$sb.AppendLine("")
 [void]$sb.AppendLine("export const ICON_BODIES: Record<string, { vb: string; body: string }> = {")
 foreach ($k in $reg.Keys) {
@@ -334,6 +338,11 @@ foreach ($k in $reg.Keys) {
 
 $outDir = Join-Path $PSScriptRoot "..\src\lib\product-icons"
 $enc = New-Object System.Text.UTF8Encoding($false); [System.IO.File]::WriteAllText((Join-Path $outDir "registry.ts"), $sb.ToString(), $enc)
+
+# El sprite y la lista de slugs que usa el navegador salen del registro recien
+# escrito. Si no se regeneran, `check:iconos` (CI) falla.
+node (Join-Path $PSScriptRoot "gen-product-icon-sprite.mjs")
+if ($LASTEXITCODE -ne 0) { throw "No se pudo generar el sprite de iconos." }
 
 "=== OK ($($ok.Count)) ==="
 $ok -join "`n"

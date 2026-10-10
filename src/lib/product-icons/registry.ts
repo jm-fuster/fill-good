@@ -2,6 +2,10 @@
 // Fuentes: Fluent Emoji Flat (MIT) y 14 dibujos propios (assets/product-icons/).
 // Cada entrada guarda su viewBox (vb) porque los sets no comparten lienzo.
 // Regenerar con scripts/gen-product-icons.ps1.
+//
+// Solo para el servidor: el navegador pinta desde sprite.svg (ver
+// scripts/gen-product-icon-sprite.mjs y components/product-icon.tsx). En el JS
+// de una pantalla eran ~70 KB gz; check-bundle-budget falla si vuelve.
 
 export const ICON_BODIES: Record<string, { vb: string; body: string }> = {
   'manzana': { vb: '0 0 32 32', body: '<g fill="none"><path fill="#00D26A" d="M10.25 2H4.22a5.92 5.92 0 0 0 5.92 5.92h6.03C16.18 4.66 13.52 2 10.25 2"/><path fill="#F8312F" d="M18.09 7.38c-1.34.57-2.86.57-4.2 0c-4.2-1.77-9.04.26-10.72 4.51a16.72 16.72 0 0 0 0 12.29a9.227 9.227 0 0 0 11.06 5.49c1.15-.32 2.37-.32 3.52 0a9.203 9.203 0 0 0 11.06-5.49c1.56-3.95 1.56-8.34 0-12.29c-1.67-4.25-6.51-6.28-10.72-4.51"/></g>' },

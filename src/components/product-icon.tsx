@@ -1,10 +1,25 @@
 import { cn } from "@/lib/utils";
-import { ICON_BODIES } from "@/lib/product-icons/registry";
-import { DEFAULT_ICON_SLUG } from "@/lib/product-icons/catalog";
+import { DEFAULT_ICON_SLUG, isKnownIcon } from "@/lib/product-icons/catalog";
 import {
   resolveProductIcon,
   type ResolvedIcon,
 } from "@/lib/product-icons/guess";
+import { ICON_VIEWBOXES } from "@/lib/product-icons/slugs";
+import { PRODUCT_ICON_SPRITE_URL } from "@/lib/product-icons/sprite-url";
+
+/*
+ * Los dibujos, SOLO fuera del navegador. `process.browser` lo fija Next al
+ * compilar (`true` en el JS del navegador), así que en ese JS la rama del
+ * `require` es código muerto y el registro no entra: eran ~70 KB gz en cada
+ * pantalla que pinta un icono, por delante de su hidratación.
+ * `check-bundle-budget` falla si el registro vuelve a aparecer en el JS del
+ * navegador, que es lo único que garantiza que esto siga siendo verdad.
+ */
+const SERVER_BODIES: Record<string, { vb: string; body: string }> | null =
+  process.browser
+    ? null
+    : // eslint-disable-next-line @typescript-eslint/no-require-imports -- un `import` estático metería el registro en el JS del navegador; el `require` vive en una rama que Next elimina al compilar para el navegador (ver arriba).
+      require("@/lib/product-icons/registry").ICON_BODIES;
 
 /**
  * Icono de producto (L16). Renderiza el SVG a color del registro (Fluent Emoji Flat,
@@ -17,6 +32,20 @@ import {
  * El color es INTRÍNSECO: cada SVG trae sus rellenos, así que pasar `text-*` en
  * `className` no tiñe nada (solo afectaría al emoji de reserva). Para atenuar un
  * icono usa `opacity-*`, que sí funciona en ambos casos. El tamaño va en `size`.
+ *
+ * DE DÓNDE SALE EL DIBUJO, que no es obvio y del que depende que no parpadee:
+ *  · en el servidor, el dibujo va DENTRO del HTML, como siempre: los iconos
+ *    salen en el primer pintado, sin esperar a nada;
+ *  · en el navegador, el componente pinta `<use href="sprite.svg#slug">`, que
+ *    no necesita el registro. Al hidratar, React NO reescribe el contenido de
+ *    un `dangerouslySetInnerHTML` (en producción ni lo compara), y después
+ *    solo lo toca cuando cambia el texto, que para un mismo icono no cambia
+ *    nunca: el dibujo que vino del servidor se queda donde está.
+ * Así que el sprite solo lo usan los iconos que se montan en el navegador (una
+ * fila nueva, un modal, la página a la que se navega), y para entonces ya está
+ * cargado: lo pide en reposo `ProductIconSpriteWarmup`, desde el shell.
+ * `suppressHydrationWarning` calla en desarrollo el aviso de esa diferencia, que
+ * es intencionada.
  */
 export function ProductIcon({
   slug,
@@ -55,16 +84,21 @@ export function ProductIcon({
     );
   }
 
-  const entry = ICON_BODIES[r.slug] ?? ICON_BODIES[DEFAULT_ICON_SLUG];
+  const id = isKnownIcon(r.slug) ? r.slug : DEFAULT_ICON_SLUG;
   return (
     <svg
-      viewBox={entry.vb}
+      viewBox={ICON_VIEWBOXES[id]}
       width={size}
       height={size}
       aria-hidden
       focusable="false"
       className={cn("shrink-0", className)}
-      dangerouslySetInnerHTML={{ __html: entry.body }}
+      dangerouslySetInnerHTML={{
+        __html: SERVER_BODIES
+          ? SERVER_BODIES[id].body
+          : `<use href="${PRODUCT_ICON_SPRITE_URL}#${id}"/>`,
+      }}
+      suppressHydrationWarning
     />
   );
 }

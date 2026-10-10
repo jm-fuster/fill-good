@@ -60,6 +60,8 @@ jobs:
       - if: ${{ !cancelled() }}
         run: npm run check:acciones
       - if: ${{ !cancelled() }}
+        run: npm run check:iconos
+      - if: ${{ !cancelled() }}
         run: npm run check:fechas
       - if: ${{ !cancelled() }}
         run: npm run check:guardas
