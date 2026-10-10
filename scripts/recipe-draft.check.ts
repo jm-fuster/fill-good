@@ -40,7 +40,7 @@ import {
   MAX_RECIPE_INGREDIENT_NAME,
   MAX_RECIPE_INGREDIENTS,
   MAX_RECIPE_STEPS,
-} from "@/features/recipes/schemas";
+} from "@/features/recipes/limits";
 import type { UnitType } from "@/lib/supabase/types";
 
 let fallos = 0;

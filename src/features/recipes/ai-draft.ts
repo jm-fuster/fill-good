@@ -27,7 +27,7 @@ import {
   MAX_RECIPE_INGREDIENT_NAME,
   MAX_RECIPE_INGREDIENTS,
   MAX_RECIPE_STEPS,
-} from "./schemas";
+} from "./limits";
 
 /** Un ingrediente de la receta (lo que maneja el formulario). */
 export type DraftIngredient = {

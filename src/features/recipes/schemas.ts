@@ -1,39 +1,18 @@
 import { z } from "zod";
 
+import {
+  MAX_INGREDIENT_QUANTITY,
+  MAX_RECIPE_INGREDIENT_NAME,
+  MAX_RECIPE_INGREDIENTS,
+  MAX_RECIPE_STEPS,
+} from "./limits";
+
 const unit = z.enum(["ud", "g", "kg", "ml", "l"]);
 // El desayuno también: sin él, editar una de las recetas de desayuno del pack
 // obligaba a elegir comida o cena y la receta dejaba de ofrecerse para
 // desayunar (el generador respeta `meal_types`).
 const mealType = z.enum(["breakfast", "lunch", "dinner"]);
 const season = z.enum(["all", "winter", "summer"]);
-
-/**
- * Topes de la receta. Viven aquí porque el schema es quien los hace cumplir; la
- * mezcla de lo generado por IA (`ai-draft.ts`) los importa para no pasarse y
- * dejar un borrador que el propio guardado rechazaría.
- */
-export const MAX_RECIPE_STEPS = 30;
-export const MAX_RECIPE_INGREDIENTS = 50;
-/**
- * Tope del NOMBRE de un ingrediente. Se exporta porque es el único de esta
- * validación sin `.catch()`: pasarse no ajusta el valor, tumba el guardado
- * entero con el mensaje por defecto de zod (en inglés y sin decir qué fila). Un
- * modelo que escribe «Caldo de pollo o, en su defecto, una pastilla de
- * concentrado disuelta en agua templada» se lo come, así que la mezcla lo recorta
- * antes de que llegue aquí.
- */
-export const MAX_RECIPE_INGREDIENT_NAME = 120;
-/**
- * Tope de la CANTIDAD de un ingrediente: `numeric(10, 2)` son 8 dígitos
- * enteros, así que 99999999,99 es el techo real de la columna.
- *
- * No es una cota de cordura, es la de la base. Pasarse no da un dato raro: da
- * `numeric field overflow`, un error de ESCRITURA que llega cuando el guardado
- * ya ha empezado. Al editar una receta eso significaba quedarse sin ningún
- * ingrediente (ver `updateRecipeAction`), y basta una errata de un dedo —un
- * cero de más repetido al teclear los gramos— para provocarlo.
- */
-export const MAX_INGREDIENT_QUANTITY = 99_999_999;
 
 const nullableText = (max: number) =>
   z
