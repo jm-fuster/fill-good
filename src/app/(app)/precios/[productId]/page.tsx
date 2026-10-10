@@ -5,7 +5,7 @@ import { es } from "date-fns/locale";
 
 import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader } from "@/components/layout/page-header";
-import { PriceChart } from "@/features/prices/components/price-chart";
+import { PriceChartLazy } from "@/features/prices/components/price-chart-lazy";
 import { CHAIN_LABELS } from "@/features/prices/chains";
 import { computeChainComparison } from "@/features/prices/chain-comparison";
 import { getProductPriceHistory } from "@/features/prices/queries";
@@ -116,7 +116,7 @@ export default async function PrecioDetallePage({
           </div>
 
           {points.length > 1 ? (
-            <PriceChart points={points} perLabel={perLabel} />
+            <PriceChartLazy points={points} perLabel={perLabel} />
           ) : (
             <p className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
               Con una sola compra aún no hay tendencia. Escanea más tickets con

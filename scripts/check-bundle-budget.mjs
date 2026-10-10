@@ -193,19 +193,41 @@ if (iconPaths.length === 0) {
   );
 }
 const chunksDir = join(NEXT_DIR, "static", "chunks");
-const leaked = readdirSync(chunksDir, { recursive: true })
+const clientChunks = readdirSync(chunksDir, { recursive: true })
   .map(String)
   .filter((rel) => rel.endsWith(".js"))
-  .filter((rel) => {
-    const code = readFileSync(join(chunksDir, rel), "utf8");
-    return iconPaths.some((d) => code.includes(d));
-  });
+  .map((rel) => ({ rel, code: readFileSync(join(chunksDir, rel), "utf8") }));
+const leaked = clientChunks
+  .filter(({ code }) => iconPaths.some((d) => code.includes(d)))
+  .map(({ rel }) => rel);
 if (leaked.length > 0) {
   fail(
     `El registro de iconos de producto ha vuelto al JS del navegador ` +
       `(${leaked.join(", ")}).\n` +
       `Algún componente de cliente importa src/lib/product-icons/registry.ts: ` +
       `pinta con <ProductIcon>, que en el navegador usa el sprite.`,
+  );
+}
+
+// ── zod ────────────────────────────────────────────────────────────────────
+// Los esquemas de `features/*/schemas.ts` validan en el SERVIDOR (Server
+// Actions, route handlers); el navegador solo usa sus TIPOS, que desaparecen
+// al compilar. Pero basta importar un VALOR de uno de esos módulos —una
+// constante— desde un componente de cliente para que el módulo entero, y con
+// él zod (~90 KB gz), entre en el JS de la pantalla: pasó con el formulario de
+// receta y los topes que hoy viven en `recipes/limits.ts`. Ningún tipo avisa.
+// La marca es `._zod.`, el campo interno de cada esquema de zod 4, que la
+// minificación no renombra: está en los trozos de zod del servidor y en
+// ninguno del navegador.
+const zodLeaked = clientChunks
+  .filter(({ code }) => code.includes("._zod."))
+  .map(({ rel }) => rel);
+if (zodLeaked.length > 0) {
+  fail(
+    `zod ha vuelto al JS del navegador (${zodLeaked.join(", ")}).\n` +
+      `Algún componente de cliente importa un VALOR de un schemas.ts (los ` +
+      `tipos no cuentan): lleva esa constante a un módulo sin zod, como ` +
+      `src/features/recipes/limits.ts, o impórtala con \`import type\`.`,
   );
 }
 
@@ -277,5 +299,9 @@ console.log(
 );
 console.log(
   `\x1b[32m✔ El registro de iconos no está en el JS del navegador ` +
-    `(${iconPaths.length} trazos buscados)\x1b[0m\n`,
+    `(${iconPaths.length} trazos buscados)\x1b[0m`,
+);
+console.log(
+  `\x1b[32m✔ zod no está en el JS del navegador ` +
+    `(${clientChunks.length} trozos revisados)\x1b[0m\n`,
 );

@@ -50,12 +50,8 @@ import type { CatalogProduct } from "@/features/shopping-list/queries";
 import { ProductAutocomplete } from "@/features/shopping-list/components/product-autocomplete";
 import type { RecipeForEdit, MealTypeValue, SeasonValue } from "../queries";
 import { cleanStepText } from "../ai-draft";
-import {
-  MAX_INGREDIENT_QUANTITY,
-  MAX_RECIPE_STEPS,
-  type RecipeIngredientInput,
-  type RecipeInput,
-} from "../schemas";
+import { MAX_INGREDIENT_QUANTITY, MAX_RECIPE_STEPS } from "../limits";
+import type { RecipeIngredientInput, RecipeInput } from "../schemas";
 import {
   MEAL_TYPE_OPTIONS,
   RECIPE_GENERATION_STEPS,
