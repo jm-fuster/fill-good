@@ -1,4 +1,4 @@
-import { getCurrentUser } from "@/lib/current-user";
+import { getCurrentUser, getSessionUserClaims } from "@/lib/current-user";
 
 import { AI_CONSENT_REQUIRED_ERROR, AI_CONSENT_VERSION } from "./version";
 
@@ -65,6 +65,26 @@ export async function getAiConsent(): Promise<AiConsent> {
     version,
     unavailable: false,
   };
+}
+
+/**
+ * ¿Pintar la superficie de IA o el aviso de consentimiento? Para la puerta de
+ * una PANTALLA (/escanear), no para decidir si se mandan datos a Google: eso lo
+ * decide siempre `getAiConsent`, en la acción.
+ *
+ * Mira primero el token de sesión (ver `getSessionUserClaims`), que no cuesta
+ * una llamada a Clerk. Pero solo se fía de él cuando dice que SÍ: un «no», o un
+ * token sin el dato, se comprueba con Clerk. Así el único desfase posible del
+ * token (hasta un minuto) nunca le vuelve a pedir el consentimiento a quien
+ * acaba de darlo; y al revés, retirarlo en Ajustes renueva el token en el acto
+ * (`useRefreshSessionClaims`), y aun si algo fallara, la acción de IA pregunta
+ * a Clerk y se negaría igual.
+ */
+export async function getAiConsentHint(): Promise<boolean> {
+  const claims = await getSessionUserClaims();
+  const version = claims?.aiConsentVersion ?? null;
+  if (version !== null && version >= AI_CONSENT_VERSION) return true;
+  return (await getAiConsent()).consented;
 }
 
 /**

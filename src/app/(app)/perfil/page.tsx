@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { currentUser } from "@clerk/nextjs/server";
 import { Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -11,6 +10,7 @@ import { ProfileDashboard } from "@/features/profile/components/profile-dashboar
 import { ProfileEditor } from "@/features/profile/components/profile-editor";
 import { getProfileOverview } from "@/features/profile/queries";
 import { HouseholdSwitcherInline } from "@/features/household/components/household-switcher";
+import { getCurrentUser, getSessionUserClaims } from "@/lib/current-user";
 import {
   getCurrentHousehold,
   getHouseholdMembers,
@@ -38,8 +38,12 @@ export default async function PerfilPage() {
   // gratis, y así los miembros salen en la misma tanda que el resto en vez de
   // esperar detrás de la llamada a Clerk y del marcador del mes.
   const household = await getCurrentHousehold();
+  // Nombre y foto salen del token de sesión, sin llamar a Clerk (~150 ms en cada
+  // carga, ver `getSessionUserClaims`). Solo se le pregunta si el token no los
+  // trae: sin los claims configurados, o sin saber si hay foto.
+  const claims = await getSessionUserClaims();
   const [user, households, overview, members] = await Promise.all([
-    currentUser(),
+    claims?.hasImage != null ? null : getCurrentUser(),
     getUserHouseholds(),
     getProfileOverview(),
     household ? getHouseholdMembers(household.id) : [],
@@ -51,12 +55,24 @@ export default async function PerfilPage() {
   // haber funcionado.
   const memberName =
     members.find((m) => m.isCurrentUser)?.displayName ?? null;
-  const displayName =
-    memberName ??
-    user?.firstName ??
-    user?.fullName ??
-    user?.primaryEmailAddress?.emailAddress ??
-    "Tu cuenta";
+  const accountName = user
+    ? (user.firstName ?? user.fullName)
+    : (claims?.firstName ?? claims?.fullName ?? null);
+  // El correo no va en el token: solo hace falta, y solo entonces se pide a
+  // Clerk, si no hay nombre ni en el hogar ni en la cuenta.
+  const email =
+    memberName || accountName
+      ? null
+      : ((user ?? (await getCurrentUser()))?.primaryEmailAddress
+          ?.emailAddress ?? null);
+  const displayName = memberName ?? accountName ?? email ?? "Tu cuenta";
+  const imageUrl = user
+    ? user.hasImage
+      ? user.imageUrl
+      : null
+    : claims?.hasImage
+      ? claims.imageUrl
+      : null;
 
   const householdLabel = household?.name ?? null;
 
@@ -68,7 +84,7 @@ export default async function PerfilPage() {
           <ProfileEditor
             displayName={displayName}
             currentName={memberName}
-            initialImageUrl={user?.hasImage ? user.imageUrl : null}
+            initialImageUrl={imageUrl}
             householdName={household?.name ?? null}
           />
         }

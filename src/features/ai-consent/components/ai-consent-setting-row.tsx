@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { useRefreshSessionClaims } from "@/hooks/use-refresh-session-claims";
 import { safeAction } from "@/lib/action-error";
 
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import { AiConsentModal } from "./ai-consent-modal";
  */
 export function AiConsentSettingRow({ consented }: { consented: boolean }) {
   const router = useRouter();
+  const refreshClaims = useRefreshSessionClaims();
   const [pending, start] = useTransition();
   const [asking, setAsking] = useState(false);
 
@@ -35,6 +37,9 @@ export function AiConsentSettingRow({ consented }: { consented: boolean }) {
         toast.error(result.error);
         return;
       }
+      // Esperando: un token viejo diría que SÍ hay consentimiento, y /escanear
+      // se fía del token cuando dice que sí (ver `getAiConsentHint`).
+      await refreshClaims();
       toast.success("Consentimiento de IA retirado");
       router.refresh();
     });
