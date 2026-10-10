@@ -2,6 +2,7 @@ import type { PrecacheEntry, SerwistGlobalConfig } from "serwist";
 import {
   CacheableResponsePlugin,
   ExpirationPlugin,
+  NetworkFirst,
   Serwist,
   StaleWhileRevalidate,
 } from "serwist";
@@ -65,6 +66,32 @@ const serwist = new Serwist({
             maxEntries: 4,
             maxAgeSeconds: 7 * 24 * 60 * 60,
           }),
+        ],
+      }),
+    },
+    // El resto de terceros: la misma regla que trae la `defaultCache`
+    // (NetworkFirst, 32 entradas, una hora), pero guardando SOLO respuestas
+    // 200. La de Serwist guarda también las OPACAS (status 0, las de peticiones
+    // sin CORS), y Chrome cuenta cada una con varios MB de relleno en la cuota:
+    // los trozos de la UI de Clerk llegan así, y con solo abrir /sign-in
+    // quedaban diez y la app pasaba de 100 MB de almacenamiento (medido el
+    // 10-oct-2026). No aportaban nada: llevan la versión exacta en la URL y un
+    // año de caché HTTP. Las opacas que ya haya en un móvil se van solas, porque
+    // la caché y su caducidad de una hora son las mismas.
+    //
+    // Va delante de `...defaultCache` y en la práctica sustituye a la suya: con
+    // una URL de terceros, las reglas por expresión regular de Serwist solo
+    // casan si lo hacen desde el principio de la URL, así que delante de la
+    // suya solo estaban las de Google Fonts, que la app no usa (next/font sirve
+    // las fuentes desde el propio dominio y la CSP no deja cargar otras).
+    {
+      matcher: ({ sameOrigin }) => !sameOrigin,
+      handler: new NetworkFirst({
+        cacheName: "cross-origin",
+        networkTimeoutSeconds: 10,
+        plugins: [
+          new CacheableResponsePlugin({ statuses: [200] }),
+          new ExpirationPlugin({ maxEntries: 32, maxAgeSeconds: 60 * 60 }),
         ],
       }),
     },
