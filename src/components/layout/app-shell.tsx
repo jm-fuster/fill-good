@@ -5,6 +5,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { NavListCountProvider } from "@/components/layout/nav-list-count";
+import { ProductIconSpriteWarmup } from "@/components/product-icon-sprite-warmup";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { HouseholdSwitcherMenu } from "@/features/household/components/household-switcher";
@@ -57,6 +58,9 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
               a propósito: cambiar de hogar lo remonta, y la visita queda
               anotada en la casa que se está viendo. */}
           <VisitPing />
+          {/* Deja listo en reposo el sprite de iconos de producto, para los
+              iconos que se monten ya en el navegador (ver `ProductIcon`). */}
+          <ProductIconSpriteWarmup />
           {/* Primer elemento focusable: salta la navegación e ir al contenido. */}
           <a
             href="#contenido"

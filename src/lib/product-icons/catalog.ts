@@ -1,10 +1,12 @@
-import { ICON_BODIES } from "./registry";
+import { ICON_VIEWBOXES } from "./slugs";
 
 /**
  * Catálogo de iconos de producto (L16). Presenta los slugs del registro agrupados
  * en secciones legibles para el selector, con etiqueta en español y palabras clave
  * para el buscador. El registro (`ICON_BODIES`) es la fuente de verdad de qué
- * iconos existen; este archivo solo los ordena y nombra para la UI.
+ * iconos existen; este archivo solo los ordena y nombra para la UI. Lo consulta a
+ * través de `slugs.ts`, que se genera del registro, porque este módulo llega al
+ * navegador y el registro no debe (ver `scripts/gen-product-icon-sprite.mjs`).
  *
  * Estilo propio: iconos a color plano de Fluent Emoji Flat (MIT) más catorce
  * dibujados para la app en la misma gramática visual. Cada SVG trae sus propios
@@ -253,5 +255,8 @@ export const ICON_KEYWORDS: Record<string, string> = {
 
 /** ¿Existe un icono con este slug en el registro? Fuente de verdad para validar. */
 export function isKnownIcon(slug: string | null | undefined): boolean {
-  return typeof slug === "string" && Object.prototype.hasOwnProperty.call(ICON_BODIES, slug);
+  return (
+    typeof slug === "string" &&
+    Object.prototype.hasOwnProperty.call(ICON_VIEWBOXES, slug)
+  );
 }
