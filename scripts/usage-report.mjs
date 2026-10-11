@@ -69,11 +69,12 @@ async function all(table, cols, { optional = false } = {}) {
   }
 }
 
-const [households, members, receipts, trips, listItems, menus, entries, inventory, push, days, events] =
+const [households, members, receipts, receiptItems, trips, listItems, menus, entries, inventory, push, days, events] =
   await Promise.all([
     all("households", "id, created_at, pantry_reviewed_at, pantry_review_enabled"),
     all("household_members", "household_id, user_id, role, joined_at"),
     all("receipts", "household_id, status, created_at, confirmed_at"),
+    all("receipt_items", "household_id, product_id, purchased_at"),
     all("shopping_trips", "household_id, closed_at"),
     all("shopping_list_items", "household_id, created_at, checked_at"),
     all("weekly_menus", "household_id, created_at"),
@@ -118,6 +119,11 @@ const rows = sorted.map((h, i) => {
     .map((r) => t(r.confirmed_at) ?? t(r.created_at))
     .sort((a, b) => a - b);
   const cooked = of(entries, h.id).map((e) => t(e.cooked_at)).filter(Boolean);
+  // Las líneas que leen el histórico en `getSuggestions` (con producto y
+  // fecha): son el conjunto más grande de los que se piden de mil en mil.
+  const historyRows = of(receiptItems, h.id).filter(
+    (r) => r.product_id && r.purchased_at,
+  ).length;
   const visits = of(days, h.id).map((d) => dayMs(d.day));
   const lastWrite = maxOf([
     ...confirmed,
@@ -139,6 +145,7 @@ const rows = sorted.map((h, i) => {
       miembros: mem.length,
       invitado: invited.length ? tras(invited[0], created) : "—",
       tickets: confirmed.length,
+      "líneas": historyRows,
       "1er tkt": tras(confirmed[0] ?? null, created),
       "2º tkt": tras(confirmed[1] ?? null, created),
       compras: of(trips, h.id).length,
@@ -159,6 +166,7 @@ const rows = sorted.map((h, i) => {
     household: h,
     members: mem.length,
     tickets: confirmed.length,
+    historyRows,
     lastWrite,
     lastVisit: maxOf(visits),
   };
@@ -178,6 +186,62 @@ console.log(`  con 2+ tickets confirmados:            ${n((r) => r.tickets >= 2)
 console.log(`  con alguna escritura en 7 / 30 días:   ${n((r) => within(r.lastWrite, 7))} / ${n((r) => within(r.lastWrite, 30))}`);
 if (days) {
   console.log(`  con alguna visita en 7 / 30 días:      ${n((r) => within(r.lastVisit, 7))} / ${n((r) => within(r.lastVisit, 30))}`);
+}
+
+// ── Histórico de compras que se lee de mil en mil ──────────────────────────
+// /lista (sugerencias), /menus, /recetas, /lista/compra (último precio) y
+// /precios leen TODO el histórico de líneas de ticket del hogar con
+// `fetchAllRows`: páginas de `PAGE_ROWS` pedidas una detrás de otra. Mientras
+// un hogar quepa en una página es una sola consulta pequeña y no compensa
+// tocarlo (medido el 11-oct-2026: el hogar más activo, 171 líneas). Cuando se
+// acerque a la segunda, cada carga de esas pantallas suma un viaje a la base, y
+// otro por cada mil líneas más: entonces sí toca llevar el cálculo a la base.
+// Son dos piezas, y ninguna cambia un resultado:
+//  · el último precio por producto (`getLatestUnitPrices`) se puede pedir desde
+//    `products`, con el embed de `receipt_items` ordenado por fecha (y por `id`
+//    para desempatar) y `limit(1, { referencedTable })`: una fila por producto
+//    y sin migración;
+//  · la cadencia de compra de `getSuggestions` necesita TODAS las fechas, así
+//    que pide una función SQL que devuelva, por producto, sus días de compra
+//    distintos (o la mediana ya calculada): migración, con sus permisos (ver
+//    AGENTS.md) y probada en PGlite.
+// El umbral sale de `fetch-all.ts` y no va copiado aquí, para que no se
+// desacompase si algún día cambia el tamaño de página.
+const pageRowsMatch = readFileSync(
+  join(raiz, "src", "lib", "supabase", "fetch-all.ts"),
+  "utf8",
+).match(/export const PAGE_ROWS = ([\d_]+);/);
+const pageRows = pageRowsMatch ? Number(pageRowsMatch[1].replaceAll("_", "")) : null;
+if (pageRows === null) {
+  console.log(
+    "\nHistórico de compras: no se pudo leer PAGE_ROWS de src/lib/supabase/fetch-all.ts. Revisa este aviso en scripts/usage-report.mjs.",
+  );
+} else {
+  const warnFrom = Math.floor(pageRows * 0.8);
+  const longest = [...rows].sort((a, b) => b.historyRows - a.historyRows)[0];
+  console.log(
+    `\nHistórico de compras (se lee de ${pageRows} en ${pageRows}; aviso desde ${warnFrom} líneas):`,
+  );
+  console.log(
+    `  el más largo:      ${longest ? `${longest.view.H}${longest.test ? " (prueba)" : ""}, ${longest.historyRows} líneas` : "—"}`,
+  );
+  const near = rows.filter((r) => r.historyRows >= warnFrom);
+  for (const r of near) {
+    // fetchAllRows para cuando una página llega corta: con N líneas pide
+    // floor(N / página) + 1, una detrás de otra.
+    const requests = Math.floor(r.historyRows / pageRows) + 1;
+    console.log(
+      `  ⚠ ${r.view.H}${r.test ? " (prueba)" : ""}: ${r.historyRows} líneas → ` +
+        (requests > 1
+          ? `${requests} consultas seguidas en cada carga de esas pantallas.`
+          : `aún 1 consulta, pero la segunda llega en ${pageRows - r.historyRows} líneas.`),
+    );
+  }
+  if (near.length > 0) {
+    console.log(
+      "  Toca llevar el último precio y la cadencia de compra a la base: el cómo, en el comentario de esta sección (scripts/usage-report.mjs).",
+    );
+  }
 }
 
 if (!events || !days) {
