@@ -57,6 +57,12 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   batata: "boniato", cebolla: "cebolla", cebolleta: "cebolla",
   chalota: "cebolla",
   ajo: "ajo", puerro: "puerro", pimiento: "pimiento", guindilla: "guindilla",
+  // El pimiento a secas es el verde de Fluent; el rojo tiene que decirlo. Las
+  // variedades van con "pimiento" delante porque "piquillo" empata en longitud
+  // con "pimiento" y el empate lo gana la clave que se declaró antes.
+  "pimiento rojo": "pimiento-rojo", "pimiento asado": "pimiento-rojo",
+  "pimiento del piquillo": "pimiento-rojo", piquillo: "pimiento-rojo",
+  "pimiento morron": "pimiento-rojo", "pimiento choricero": "pimiento-rojo",
   chile: "guindilla", brocoli: "brocoli", coliflor: "coliflor", col: "col",
   // Genéricos: "verduras salteadas/congeladas", "menestra". Antes caían en `sal`
   // porque la clave corta se colaba en "salteadas".
@@ -69,7 +75,7 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   guisante: "guisantes", "judias verdes": "guisantes", pepino: "pepino",
   pepinillo: "pepino",
   calabacin: "calabacin", calabaza: "calabaza", lechuga: "lechuga",
-  canonigos: "lechuga", rucula: "lechuga", endivia: "lechuga",
+  canonigos: "lechuga", rucula: "lechuga", endivia: "lechuga", cogollo: "lechuga",
   escarola: "lechuga", berros: "lechuga", apio: "lechuga", hinojo: "lechuga",
   espinaca: "lechuga", acelga: "lechuga", esparrago: "esparragos",
   trigueros: "esparragos", berenjena: "berenjena", remolacha: "remolacha",
@@ -77,22 +83,37 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   champinon: "champinon", seta: "champinon", portobello: "champinon",
   shiitake: "champinon", boletus: "champinon",
   aceituna: "aceituna", alcaparra: "aceituna", encurtido: "aceituna",
+  piparra: "guindilla",
   jengibre: "jengibre",
-  // Carne
+  // Carne. Ojo: "filete", "lomo" y "solomillo" son DÉBILES (ver WEAK_KEYWORDS).
   carne: "carne", ternera: "carne", cerdo: "carne", "carne picada": "carne",
   filete: "carne", solomillo: "carne", lomo: "carne", conejo: "carne",
-  albondiga: "carne", tofu: "carne", seitan: "carne",
+  carrillera: "carne", carrillada: "carne", entrecot: "carne",
+  churrasco: "carne", codillo: "carne", "secreto iberico": "carne",
+  "presa iberica": "carne", "pluma iberica": "carne",
+  albondiga: "albondigas", tofu: "carne", seitan: "carne",
   pollo: "pollo",
   pavo: "pollo", pechuga: "pollo", muslo: "pollo", alitas: "pollo",
   costilla: "costilla", chuleta: "costilla",
-  cordero: "costilla", bacon: "bacon", panceta: "bacon", salchicha: "perrito",
-  chorizo: "perrito", embutido: "perrito", fuet: "perrito",
-  salchichon: "perrito", mortadela: "perrito", longaniza: "perrito",
-  butifarra: "perrito", morcilla: "perrito", sobrasada: "perrito",
-  chistorra: "perrito", lacon: "perrito",
+  cordero: "costilla", bacon: "bacon", panceta: "bacon",
+  // La salchicha fresca es el perrito; el embutido CURADO tiene su icono.
+  salchicha: "perrito", butifarra: "perrito",
+  chorizo: "chorizo", embutido: "chorizo", fuet: "chorizo",
+  salchichon: "chorizo", longaniza: "chorizo", morcilla: "chorizo",
+  sobrasada: "chorizo", chistorra: "chorizo", txistorra: "chorizo",
+  "lomo embuchado": "chorizo",
   jamon: "jamon", paleta: "jamon", serrano: "jamon",
+  // El cocido y el de pavo son fiambre en lonchas, no la pata de serrano. Nada
+  // de "pechuga de pavo" a secas: también es el filete fresco.
+  "jamon cocido": "fiambre", "jamon york": "fiambre", york: "fiambre",
+  fiambre: "fiambre", "pavo en lonchas": "fiambre",
+  "pechuga de pavo en lonchas": "fiambre", mortadela: "fiambre",
+  chopped: "fiambre", lacon: "fiambre",
   // Pescado y marisco
-  pescado: "pescado", salmon: "pescado", merluza: "pescado", atun: "pescado",
+  pescado: "pescado", salmon: "salmon", merluza: "pescado",
+  // "Atún" en una lista de la compra es casi siempre la lata; el fresco lo dice.
+  atun: "atun", "atun fresco": "pescado", "lomo de atun": "pescado",
+  ventresca: "atun", melva: "atun", "bonito del norte": "atun",
   sardina: "pescado", bacalao: "pescado", lubina: "pescado", dorada: "pescado",
   boqueron: "pescado", anchoa: "pescado", rape: "pescado", rodaballo: "pescado",
   trucha: "pescado", caballa: "pescado", panga: "pescado", perca: "pescado",
@@ -108,26 +129,34 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   surimi: "surimi", "palitos de cangrejo": "surimi",
   // Lácteos y huevos
   leche: "leche", yogur: "yogur", yogurt: "yogur", kefir: "yogur",
-  cuajada: "yogur", nata: "leche", batido: "leche",
+  cuajada: "yogur", bifidus: "yogur", actimel: "yogur", danacol: "yogur",
+  nata: "leche", batido: "leche",
   queso: "queso", requeson: "queso", mascarpone: "queso", mozzarella: "queso",
   huevo: "huevo", mantequilla: "mantequilla",
   margarina: "mantequilla", helado: "helado",
   // Panadería y cereales
-  pan: "pan", "pan de molde": "pan", "pan rallado": "conserva", hogaza: "pan",
-  // Sigue siendo pan: sin esta regla gana "cereales" (8) sobre "pan" (3).
-  "pan de cereales": "pan",
+  // El pan rallado se vende en bolsa o en caja de cartón, no en lata.
+  pan: "pan", "pan de molde": "pan", "pan rallado": "harina", hogaza: "pan",
+  // Sigue siendo pan: sin esta regla gana "cereales" (8) sobre "pan" (3), y
+  // "hamburguesa" (11) se lleva el pan de las hamburguesas.
+  "pan de cereales": "pan", "pan de hamburguesa": "pan",
   baguette: "baguette", croissant: "croissant", bagel: "bagel",
   pretzel: "pretzel", tortita: "tortitas", gofre: "gofre", pita: "pan-plano",
   // Las tortillas de trigo/maíz son pan plano, no la tortilla de patatas. Ganan
   // por longitud a la regla "tortilla" de más abajo.
   "tortilla de trigo": "pan-plano", "tortillas de trigo": "pan-plano",
   "tortilla de maiz": "pan-plano", "tortillas de maiz": "pan-plano",
+  fajita: "pan-plano", "tortitas para fajitas": "pan-plano",
   arroz: "arroz", pasta: "pasta", macarron: "pasta", espagueti: "pasta",
-  fideo: "pasta", tallarin: "pasta", harina: "harina",
+  fideo: "pasta", tallarin: "pasta", espiral: "pasta", helice: "pasta",
+  penne: "pasta", fusilli: "pasta", tortellini: "pasta", ravioli: "pasta",
+  lasana: "pasta", canelon: "pasta", noqui: "pasta", gnocchi: "pasta",
+  ramen: "fideos", noodle: "fideos",
+  harina: "harina", bicarbonato: "harina",
   cuscus: "arroz", quinoa: "arroz", bulgur: "arroz",
   cereales: "cereales", cereal: "cereales", muesli: "cereales",
   granola: "cereales", avena: "cereales",
-  tostada: "pan", biscote: "pan", picos: "pan", colines: "pan",
+  tostada: "pan", biscote: "pan", picos: "pan", colines: "pan", regana: "pan",
   // Despensa
   conserva: "conserva", lata: "conserva", garbanzo: "alubias", lenteja: "alubias",
   alubia: "alubias", judia: "alubias", legumbre: "alubias", tarro: "tarro",
@@ -140,6 +169,11 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   // Nada de "cocido" a secas: es un adjetivo ("pulpo cocido", "jamón cocido") y le
   // ganaba por longitud al producto de verdad.
   caldo: "sopa", sopa: "sopa", potaje: "sopa", "cocido madrileno": "sopa",
+  // El caldo DE algo es caldo: "pollo" y "pescado" le ganaban por longitud y salía
+  // un muslo, y "pastillas" (de caldo) le daba el icono del MEDICAMENTO.
+  "caldo de pollo": "sopa", "caldo de pescado": "sopa", "caldo de carne": "sopa",
+  "caldo de verduras": "sopa", "caldo en pastillas": "sopa",
+  "pastillas de caldo": "sopa",
   // "crema" sola es un guiso (de calabacín, de verduras). Las excepciones dulces
   // y la cosmética ganan por longitud, pero la catalana necesita regla propia.
   crema: "sopa", "crema catalana": "flan",
@@ -155,7 +189,8 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   te: "tetera", infusion: "tetera", mate: "mate", refresco: "refresco",
   cola: "refresco", tonica: "refresco", bitter: "refresco",
   isotonica: "refresco", "bebida energetica": "refresco", kombucha: "refresco",
-  agua: "agua", vino: "vino",
+  // Nada de "moscatel" a secas: también es uva de mesa.
+  agua: "agua", vino: "vino", "pedro ximenez": "vino", jerez: "vino",
   // El vaso de whisky de Fluent vale para cualquier licor.
   whisky: "vaso", ron: "vaso", ginebra: "vaso", vodka: "vaso",
   vermut: "vaso", licor: "vaso", brandy: "vaso", orujo: "vaso",
@@ -171,6 +206,8 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   // Platos preparados
   pizza: "pizza", hamburguesa: "hamburguesa", sandwich: "sandwich",
   taco: "taco", burrito: "burrito", sushi: "sushi", ensalada: "ensalada",
+  // "ensalada" no es prefijo de "ensaladilla" (ensalad-A / ensalad-I).
+  ensaladilla: "ensalada",
   paella: "paella",
   // "marisco" (7) le gana por longitud a "paella" (6), así que la variante más
   // vendida necesita su propia regla o la paella sale con una gamba.
@@ -285,11 +322,29 @@ function keywordPattern(kw: string): RegExp {
   return new RegExp("(^|[^a-z])" + body);
 }
 
+/**
+ * Cortes que dicen CÓMO viene la pieza y no de QUÉ es: «filete», «lomo» y
+ * «solomillo» se dicen igual de cerdo que de pollo o de salmón. Como claves
+ * normales le ganaban por longitud al animal —«Filete de pollo» salía con el
+ * chuletón, «Lubina en filete» también y «Lomo de salmón» nunca llegaba al
+ * salmón—, así que solo cuentan cuando el nombre no trae nada más concreto. Lo
+ * que sí tiene sentido con el corte delante va como clave de varias palabras
+ * («lomo embuchado», «lomo de atún»), que no es débil. «Taco» entra por lo
+ * mismo: en la carnicería es un corte («tacos de ternera», «lomo en taco»), y
+ * solo cuando no acompaña a nada es el taco mexicano.
+ */
+const WEAK_KEYWORDS = new Set(["filete", "lomo", "solomillo", "taco"]);
+
 const RULES: Array<[RegExp, string]> = Object.entries(KEYWORD_TO_SLUG)
   .filter(([, slug]) => isKnownIcon(slug))
   .map(([kw, slug]): [string, string] => [forMatching(normalizeName(kw)), slug])
-  // Gana la clave MÁS LARGA ya sin conectores, que es la que de verdad se compara.
-  .sort((a, b) => b[0].length - a[0].length)
+  // Gana la clave MÁS LARGA ya sin conectores, que es la que de verdad se
+  // compara; las débiles, siempre detrás de todas las demás.
+  .sort(
+    (a, b) =>
+      Number(WEAK_KEYWORDS.has(a[0])) - Number(WEAK_KEYWORDS.has(b[0])) ||
+      b[0].length - a[0].length,
+  )
   .map(([kw, slug]) => [keywordPattern(kw), slug]);
 
 /**

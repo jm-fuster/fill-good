@@ -2,16 +2,16 @@
 #
 # Fuentes (TODAS a color plano y con la misma gramatica visual):
 #   - Fluent Emoji Flat (MIT) por defecto, via la API de Iconify.
-#   - Dibujos propios en assets/product-icons/*.svg (p='local') para los 14 conceptos
+#   - Dibujos propios en assets/product-icons/*.svg (p='local') para los 19 conceptos
 #     que no existen a color en NINGUN set abierto: se revisaron las 41 colecciones
 #     de Iconify con palette=true. Son originales de esta app, sin licencia de
 #     terceros que atribuir. Los 8 de L16d se comprobaron ademas contra el listado
 #     completo de fluent-emoji-flat (3145 nombres): no hay yogur, botella de agua,
 #     aceite, jamon, tortilla, bolsa de harina, coliflor ni calabacin.
 #   - Donantes recoloreados con el campo 's': una ciruela es el melocoton de Fluent
-#     en morado y una frambuesa es su racimo de arandanos en rojo. Reutilizar el
-#     artwork de Microsoft encaja mejor que redibujarlo, y son frutas que en la vida
-#     real comparten forma con su donante.
+#     en morado, un pimiento rojo es su pimiento verde y unas albondigas son su
+#     falafel con el interior de carne. Reutilizar el artwork de Microsoft encaja
+#     mejor que redibujarlo cuando el producto real comparte forma con el donante.
 #
 # Antes esta cola venia de Game Icons (CC-BY 3.0), pero eran siluetas de UN solo
 # color y desentonaban entre ilustraciones de 2-4 colores. Ya no se usa ningun SVG
@@ -44,13 +44,17 @@
 # distinguirse de la manzana roja: lleva swap a cuerpo #5AB557 y hoja #008463 (el
 # verde oscuro que ya usan fresa, tomate y lechuga para los rabos).
 #
-# OJO - la comprobacion solo se aplica a los colores que elegimos NOSOTROS. El
-# artwork de Fluent entra tal cual, y hay ~14 iconos suyos palidos que en claro
-# quedan lavados (leche 1.4:1, queso 1.8, platano 1.9, huevo, mantequilla, ajo,
-# baguette, cerveza, copas, biberon, llave, wc, pera, mango). Recolorear emoji ajenos
-# es una decision de producto sin tomar, no un descuido: si algun dia se toma, se
-# resuelve con swaps y se les puede exigir la regla tambien. Mientras tanto, no los
-# pongas en un sitio donde el icono sea la prueba de algo (la landing, p.ej.).
+# Los PALIDOS de Fluent (oct-2026). La comprobacion solo se aplica a los colores que
+# elegimos nosotros, y el artwork de Fluent entraba tal cual: 14 glifos suyos se
+# lavaban en claro (leche 1.4:1, ajo 1.5, mantequilla 1.6, queso 1.8, platano,
+# huevo, baguette 1.9...). Ya no es una decision pendiente: los de comida y bebida
+# llevan un swap que oscurece SOLO el tono que dibuja la silueta (el vaso de la
+# leche, la corteza de la baguette, el canto del plato de la mantequilla), en su
+# misma familia, y con eso pasan la regla como cualquier otro swap. El cuerpo que
+# dice QUE es no se toca: el queso sigue amarillo y la leche blanca. Quedan fuera,
+# a proposito: 'limon' (dos formas planas sin borde ni sombra: el unico tono que
+# dibuja la silueta es el amarillo que lo hace limon), y 'llave' y 'wc', que no son
+# comida. Esos tres no se pongan donde el icono sea la prueba de algo (la landing).
 #
 # NOTA: no hay fallback de busqueda difusa a proposito. Si un nombre desaparece del
 # set, el concepto sale en MISS; antes se sustituia en silencio por el primer
@@ -65,14 +69,28 @@ $concepts = @(
   # existe justo para NO confundirse con la roja: cuerpo y hoja bajan a un verde que
   # se ve en los dos temas. Lo verifica Test-IconContrast.
   @{k='manzana-verde'; f='green-apple'; s=@{'#86D72F'='#5AB557'; '#00D26A'='#008463'}},
-  @{k='platano'; f='banana'},
+  # Palidos de Fluent (ver la cabecera): se oscurece el tono de silueta.
+  # Platano: las dos solapas de detras y la linea de la piel pasan a ambar; el rabo,
+  # al ocre de las sombras de pan.
+  @{k='platano'; f='banana'; s=@{'#F9C23C'='#ED9200'; '#F3AD61'='#D3883E'}},
   @{k='naranja'; f='tangerine'}, @{k='limon'; f='lemon'}, @{k='fresa'; f='strawberry'},
   @{k='uvas'; f='grapes'}, @{k='sandia'; f='watermelon'}, @{k='pina'; f='pineapple'},
-  @{k='pera'; f='pear'}, @{k='melocoton'; f='peach'}, @{k='cerezas'; f='cherries'},
-  @{k='melon'; f='melon'}, @{k='kiwi'; f='kiwi-fruit'}, @{k='mango'; f='mango'},
+  # Pera: el cuerpo neon (#C3EF3C, 1.3:1) baja a un verde pera de la misma tonalidad
+  # y la hoja al verde oscuro de los rabos (#008463).
+  @{k='pera'; f='pear'; s=@{'#C3EF3C'='#91BA15'; '#00D26A'='#008463'}},
+  @{k='melocoton'; f='peach'}, @{k='cerezas'; f='cherries'},
+  @{k='melon'; f='melon'}, @{k='kiwi'; f='kiwi-fruit'},
+  @{k='mango'; f='mango'; s=@{'#FFB02E'='#F5961E'}},
   @{k='coco'; f='coconut'}, @{k='arandanos'; f='blueberries'}, @{k='aguacate'; f='avocado'},
   @{k='zanahoria'; f='carrot'}, @{k='tomate'; f='tomato'}, @{k='patata'; f='potato'},
-  @{k='cebolla'; f='onion'}, @{k='ajo'; f='garlic'}, @{k='pimiento'; f='bell-pepper'},
+  # Ajo: la piel exterior (toda la silueta) pasa a gris lila, el de un ajo morado.
+  # Se probo el ocre (#E19747), que es lo que oscurece "en su familia", y al lado
+  # de 'cebolla' --ocre con vetas-- eran el mismo bulbo: el lila es lo que los separa.
+  @{k='cebolla'; f='onion'}, @{k='ajo'; f='garlic'; s=@{'#FFCE7C'='#A89BB5'}},
+  @{k='pimiento'; f='bell-pepper'},
+  # El pimiento de Fluent es VERDE, y el de la cocina espanola (sofrito, asados) es
+  # el rojo: mismo glifo con el cuerpo en rojos y el rabo en verde.
+  @{k='pimiento-rojo'; f='bell-pepper'; s=@{'#C3EF3C'='#00D26A'; '#44911B'='#CA0B4A'; '#008463'='#F8312F'}},
   @{k='guindilla'; f='hot-pepper'}, @{k='brocoli'; f='broccoli'}, @{k='maiz'; f='ear-of-corn'},
   @{k='pepino'; f='cucumber'}, @{k='lechuga'; f='leafy-green'}, @{k='berenjena'; f='eggplant'},
   # OJO: 'mushroom' a secas es el matamoscas rojo de lunares (Amanita muscaria),
@@ -83,9 +101,18 @@ $concepts = @(
   @{k='bacon'; f='bacon'}, @{k='perrito'; f='hot-dog'},
   @{k='pescado'; f='fish'}, @{k='gamba'; f='shrimp'}, @{k='cangrejo'; f='crab'},
   @{k='langosta'; f='lobster'}, @{k='calamar'; f='squid'}, @{k='ostra'; f='oyster'},
-  @{k='leche'; f='glass-of-milk'}, @{k='queso'; f='cheese-wedge'}, @{k='huevo'; f='egg'},
-  @{k='mantequilla'; f='butter'}, @{k='helado'; f='ice-cream'}, @{k='helado-cucurucho'; f='soft-ice-cream'},
-  @{k='pan'; f='bread'}, @{k='croissant'; f='croissant'}, @{k='baguette'; f='baguette-bread'},
+  # Leche: el vaso es lo unico que dibuja la silueta; la leche sigue blanca.
+  @{k='leche'; f='glass-of-milk'; s=@{'#AEDDFF'='#00A6ED'}},
+  # Queso: la cara de arriba y los agujeros (el tono de sombra), no los costados.
+  @{k='queso'; f='cheese-wedge'; s=@{'#FFB02E'='#E19747'}},
+  # Huevo: una sola forma de un solo color, asi que es el cuerpo: huevo moreno.
+  @{k='huevo'; f='egg'; s=@{'#F3AD61'='#E19747'}},
+  # Mantequilla: el canto del plato cierra el contorno de abajo.
+  @{k='mantequilla'; f='butter'; s=@{'#D3D3D3'='#9B9B9B'; '#F9C23C'='#FFB02E'}},
+  @{k='helado'; f='ice-cream'}, @{k='helado-cucurucho'; f='soft-ice-cream'},
+  @{k='pan'; f='bread'}, @{k='croissant'; f='croissant'},
+  # Baguette: la corteza es a la vez cuerpo y silueta; los cortes siguen crema.
+  @{k='baguette'; f='baguette-bread'; s=@{'#F3AD61'='#D3883E'}},
   @{k='bagel'; f='bagel'}, @{k='pretzel'; f='pretzel'}, @{k='tortitas'; f='pancakes'},
   @{k='arroz'; f='cooked-rice'}, @{k='pasta'; f='spaghetti'}, @{k='gofre'; f='waffle'},
   @{k='pan-plano'; f='flatbread'},
@@ -95,10 +122,15 @@ $concepts = @(
   @{k='piruleta'; f='lollipop'}, @{k='donut'; f='doughnut'}, @{k='tarta'; f='shortcake'},
   @{k='cupcake'; f='cupcake'}, @{k='palomitas'; f='popcorn'}, @{k='pastel'; f='pie'},
   @{k='flan'; f='custard'}, @{k='dango'; f='dango'},
-  @{k='cafe'; f='hot-beverage'}, @{k='vino'; f='wine-glass'}, @{k='cerveza'; f='beer-mug'},
+  @{k='cafe'; f='hot-beverage'}, @{k='vino'; f='wine-glass'},
+  # Jarras: el cristal que rodea la cerveza al azul de la leche; en 'copas' las
+  # asas quedan un punto mas oscuras que el cristal, como en el original.
+  @{k='cerveza'; f='beer-mug'; s=@{'#AEDDFF'='#00A6ED'; '#83CBFF'='#00A6ED'}},
   @{k='refresco'; f='cup-with-straw'}, @{k='coctel'; f='tropical-drink'},
   @{k='champan'; f='bottle-with-popping-cork'}, @{k='tetera'; f='teapot'}, @{k='mate'; f='mate'},
-  @{k='vaso'; f='tumbler-glass'}, @{k='copas'; f='clinking-beer-mugs'}, @{k='te-burbujas'; f='bubble-tea'},
+  @{k='vaso'; f='tumbler-glass'},
+  @{k='copas'; f='clinking-beer-mugs'; s=@{'#AEDDFF'='#00A6ED'; '#83CBFF'='#0084CE'}},
+  @{k='te-burbujas'; f='bubble-tea'},
   @{k='hielo'; f='ice'},
   @{k='jabon'; f='soap'}, @{k='esponja'; f='sponge'}, @{k='cubo'; f='bucket'},
   @{k='escoba'; f='broom'}, @{k='papel'; f='roll-of-paper'}, @{k='bote-spray'; f='lotion-bottle'},
@@ -127,9 +159,10 @@ $concepts = @(
   @{k='lima'; f='lime'}, @{k='guisantes'; f='pea-pod'},
   # Donantes de Fluent recoloreados: misma forma real, otra paleta.
   @{k='ciruela'; f='peach'; s=@{'#FF822D'='#8D65C5'; '#FF6723'='#6B438B'}},
-  @{k='frambuesa'; f='blueberries'; s=@{
-    '#6B438B'='#CA0B4A'; '#8D65C5'='#F8312F'; '#AA7DE5'='#FF6DC6';
-    '#BCA4EB'='#FF6DC6'; '#533566'='#990838'}},
+  # La frambuesa fue los arandanos de Fluent en rojo hasta oct-2026, y en la prueba
+  # a ciegas dos de tres la llamaron GRANADA: las coronas de cinco puntas de los
+  # arandanos son la corona de la granada. Ahora es dibujo propio (cupula de drupas).
+  @{k='frambuesa'; f='frambuesa'; p='local'},
   # Dibujos propios (assets/product-icons/), en la gramatica de Fluent: pocas formas
   # grandes, rellenos planos, sin trazos ni degradados, y un tono oscuro que defina
   # la figura sobre fondo claro.
@@ -169,7 +202,26 @@ $concepts = @(
   # este icono no cumple la regla de color.
   @{k='coliflor'; f='coliflor'; p='local'},
   # --- Ampliacion L16f ----------------------------------------------------------
-  @{k='guantes'; f='gloves'}
+  @{k='guantes'; f='gloves'},
+  # --- Ampliacion L16g (oct-2026) -------------------------------------------------
+  # Salen de cruzar ~240 nombres reales de producto con guess.ts: alimentos de
+  # mucha compra que caian en un icono prestado que enganaba. El salmon y el atun
+  # en lata salian con el pez azul entero, el embutido con un perrito caliente y el
+  # jamon cocido o el pavo en lonchas con la pata de serrano. Los cuatro dibujos, y
+  # los ocho propios rehechos en la misma tanda (tortilla, calabacin, puerro,
+  # frambuesa, jamon, col, harina, esparragos), pasaron una prueba A CIEGAS: tres
+  # jueces que no sabian que era cada icono lo identificaron entre sus vecinos, y
+  # los rehechos tenian que ganar al dibujo anterior en esa misma prueba.
+  @{k='salmon'; f='salmon'; p='local'},
+  @{k='chorizo'; f='chorizo'; p='local'},
+  @{k='fiambre'; f='fiambre'; p='local'},
+  @{k='atun'; f='atun'; p='local'},
+  # 'falafel' se descarto en L16d para croquetas porque se leia como albondiga: es
+  # justo lo que es ahora, con el interior verde de la que esta partida en carne.
+  @{k='albondigas'; f='falafel'; s=@{'#402A32'='#7D4533'; '#6D4534'='#A56953'; '#C3EF3C'='#FBB8AB'}}
+  # Descartados en L16g tras dibujarlos: croquetas (con cualquier composicion se
+  # leian como panecillos o patatas) y vinagre (ninguna botella decia vinagre: la
+  # oscura era vino tinto y la marron salsa de soja). Siguen sin icono propio.
   # ESTE SET ES DE CONSUMIBLES DE LA COMPRA, no de bazar. Se probo a cerrar la cola
   # larga con 11 glifos de Fluent (cubiertos, cuchillo, planta, flores, globos,
   # cuaderno, boligrafo, enchufe, auriculares, ropa) y sobraban: son cosas
@@ -180,7 +232,7 @@ $concepts = @(
   #
   # Descartados ademas tras verlos renderizados: 'takeout-box' para fiambrera (es un
   # carton chino de comida para llevar, no un tupper) y 'falafel' para croquetas
-  # (lleva perejil y se lee como albondiga).
+  # (lleva perejil y se lee como albondiga; por eso mismo es hoy 'albondigas').
   #
   # NO intentes dibujar el mejillon (L16e). Se probaron 5 composiciones -- lente con
   # carne central, dos valvas finas en V, valvas abiertas, gota con la carne anidada
@@ -220,6 +272,33 @@ function Rename-SvgIds([string]$body, [string]$key) {
     $body = [regex]::Replace($body, 'url\(#' + $esc + '\)', 'url(#' + $new + ')')
   }
   return $body
+}
+
+# Descarga un SVG de Iconify. Devuelve $null SOLO si el icono no existe (404): eso
+# es un MISS de verdad. Cualquier otro fallo (429 por rafaga, 5xx, red caida) se
+# reintenta con espera creciente y, si no se recupera, LANZA: un fallo de red no
+# puede tratarse como "el icono ya no existe". Paso en oct-2026: Iconify contesto
+# 429 a partir del icono 65 y el generador escribio un registro con 65 de 164
+# iconos, como si los otros 99 hubieran desaparecido del set.
+function Get-RemoteSvg([string]$url) {
+  for ($try = 1; $try -le 6; $try++) {
+    try { return (New-Object System.Net.WebClient).DownloadString($url) }
+    catch {
+      # PowerShell envuelve la WebException en una MethodInvocationException.
+      $ex = $_.Exception
+      while ($ex -and -not ($ex -is [System.Net.WebException])) { $ex = $ex.InnerException }
+      $resp = if ($ex) { $ex.Response } else { $null }
+      $code = if ($resp) { [int]$resp.StatusCode } else { 0 }
+      if ($code -eq 404) { return $null }
+      if ($try -eq 6) { throw ("{0}: {1}" -f $url, $_.Exception.Message) }
+      $wait = [Math]::Pow(2, $try)
+      if ($resp -and $resp.Headers['Retry-After']) {
+        $ra = 0
+        if ([int]::TryParse($resp.Headers['Retry-After'], [ref]$ra)) { $wait = [Math]::Max($wait, $ra) }
+      }
+      Start-Sleep -Seconds $wait
+    }
+  }
 }
 
 function Get-ViewBox([string]$svg) {
@@ -277,7 +356,9 @@ foreach ($c in $concepts) {
     $path = Join-Path $localDir ($c.f + ".svg")
     if (Test-Path $path) { $svg = [System.IO.File]::ReadAllText($path) }
   } else {
-    try { $svg = (New-Object System.Net.WebClient).DownloadString("https://api.iconify.design/$p/$($c.f).svg") } catch { $svg = $null }
+    # Sin try: un fallo de red aborta el script ANTES de escribir nada (ver
+    # Get-RemoteSvg). El registro que hay en disco se queda como estaba.
+    $svg = Get-RemoteSvg "https://api.iconify.design/$p/$($c.f).svg"
   }
   if (-not $svg -or $svg -notmatch '<svg') { $miss += ("{0} ({1}:{2})" -f $c.k, $p, $c.f); continue }
 
@@ -285,13 +366,20 @@ foreach ($c in $concepts) {
   if (-not $body) { $miss += ("{0} (svg ilegible)" -f $c.k); continue }
   $body = Rename-SvgIds $body $c.k
 
+  # Los hex, SIEMPRE en mayusculas. Iconify los servia asi y paso a servirlos en
+  # minuscula (visto en oct-2026): sin esto, todos los swaps de abajo -- escritos en
+  # mayusculas -- salian en MISS como obsoletos, y el registro entero cambiaba de
+  # caja sin que cambiara un solo color. Normalizar aqui hace que los swaps y el
+  # diff del registro no dependan de como lo sirva Iconify ese dia.
+  $body = [regex]::Replace($body, '#[0-9A-Fa-f]{6}\b', { param($m) $m.Value.ToUpperInvariant() })
+
   if ($c.s) {
     # Recoloreado puntual. Si el hex original ya no esta, el set ha cambiado bajo
     # nuestros pies y el arreglo de contraste ya no se aplica: hay que revisarlo.
     # -cnotmatch (no -notmatch) porque .Replace SI distingue mayusculas: con el
-    # comparador por defecto, un dia que Iconify sirviera '#ff822d' en minuscula la
-    # comprobacion pasaria, el reemplazo no haria nada y el icono entraria con el
-    # color viejo sin aparecer en MISS. Justo el fallo silencioso que esto evita.
+    # comparador por defecto, una clave escrita en minuscula pasaria la comprobacion,
+    # el reemplazo no haria nada y el icono entraria con el color viejo sin aparecer
+    # en MISS. Por eso las claves de 's' van en mayusculas, como el cuerpo normalizado.
     foreach ($from in $c.s.Keys) {
       if ($body -cnotmatch [regex]::Escape($from)) {
         $miss += ("{0} (swap obsoleto: ya no usa {1})" -f $c.k, $from); $body = $null; break
@@ -320,7 +408,7 @@ foreach ($c in $concepts) {
 
 $sb = [System.Text.StringBuilder]::new()
 [void]$sb.AppendLine("// GENERADO - no editar a mano. Iconos a color (cada SVG trae sus rellenos).")
-[void]$sb.AppendLine("// Fuentes: Fluent Emoji Flat (MIT) y 14 dibujos propios (assets/product-icons/).")
+[void]$sb.AppendLine("// Fuentes: Fluent Emoji Flat (MIT) y 19 dibujos propios (assets/product-icons/).")
 [void]$sb.AppendLine("// Cada entrada guarda su viewBox (vb) porque los sets no comparten lienzo.")
 [void]$sb.AppendLine("// Regenerar con scripts/gen-product-icons.ps1.")
 [void]$sb.AppendLine("//")
