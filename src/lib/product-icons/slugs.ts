@@ -31,6 +31,7 @@ export const ICON_VIEWBOXES: Readonly<Record<string, string>> = {
   "cebolla": "0 0 32 32",
   "ajo": "0 0 32 32",
   "pimiento": "0 0 32 32",
+  "pimiento-rojo": "0 0 32 32",
   "guindilla": "0 0 32 32",
   "brocoli": "0 0 32 32",
   "maiz": "0 0 32 32",
@@ -171,4 +172,9 @@ export const ICON_VIEWBOXES: Readonly<Record<string, string>> = {
   "calabacin": "0 0 32 32",
   "coliflor": "0 0 32 32",
   "guantes": "0 0 32 32",
+  "salmon": "0 0 32 32",
+  "chorizo": "0 0 32 32",
+  "fiambre": "0 0 32 32",
+  "atun": "0 0 32 32",
+  "albondigas": "0 0 32 32",
 };

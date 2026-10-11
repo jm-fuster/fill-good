@@ -62,6 +62,8 @@ jobs:
       - if: ${{ !cancelled() }}
         run: npm run check:iconos
       - if: ${{ !cancelled() }}
+        run: npm run check:adivina
+      - if: ${{ !cancelled() }}
         run: npm run check:sesion
       - if: ${{ !cancelled() }}
         run: npm run check:fechas

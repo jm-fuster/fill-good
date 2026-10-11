@@ -8,7 +8,7 @@ import { ICON_VIEWBOXES } from "./slugs";
  * través de `slugs.ts`, que se genera del registro, porque este módulo llega al
  * navegador y el registro no debe (ver `scripts/gen-product-icon-sprite.mjs`).
  *
- * Estilo propio: iconos a color plano de Fluent Emoji Flat (MIT) más catorce
+ * Estilo propio: iconos a color plano de Fluent Emoji Flat (MIT) más diecinueve
  * dibujados para la app en la misma gramática visual. Cada SVG trae sus propios
  * rellenos, así que el color no depende del tema: es lo que permite distinguir de un
  * vistazo un tomate de una manzana.
@@ -32,19 +32,22 @@ export const ICON_SECTIONS: IconSection[] = [
     title: "Verdura",
     slugs: [
       "zanahoria", "tomate", "patata", "boniato", "cebolla", "ajo", "puerro", "pimiento",
-      "guindilla", "brocoli", "coliflor", "col", "maiz", "guisantes",
+      "pimiento-rojo", "guindilla", "brocoli", "coliflor", "col", "maiz", "guisantes",
       "pepino", "calabacin", "calabaza", "lechuga", "esparragos", "berenjena", "remolacha",
       "champinon", "aceituna", "jengibre",
     ],
   },
   {
     title: "Carne",
-    slugs: ["carne", "pollo", "costilla", "bacon", "jamon", "perrito"],
+    slugs: [
+      "carne", "pollo", "costilla", "albondigas", "bacon", "jamon", "fiambre",
+      "chorizo", "perrito",
+    ],
   },
   {
     title: "Pescado y marisco",
     slugs: [
-      "pescado", "gamba", "cangrejo", "langosta", "calamar", "pulpo",
+      "pescado", "salmon", "gamba", "cangrejo", "langosta", "calamar", "pulpo",
       "ostra", "surimi",
     ],
   },
@@ -59,8 +62,8 @@ export const ICON_SECTIONS: IconSection[] = [
   {
     title: "Despensa",
     slugs: [
-      "arroz", "pasta", "cereales", "conserva", "tarro", "aceite", "miel", "sal", "sarten",
-      "hierbas", "harina", "cacahuetes", "castana", "alubias",
+      "arroz", "pasta", "cereales", "conserva", "atun", "tarro", "aceite", "miel", "sal",
+      "sarten", "hierbas", "harina", "cacahuetes", "castana", "alubias",
     ],
   },
   {
@@ -168,6 +171,9 @@ export const ICON_LABELS: Record<string, string> = {
   surimi: "Surimi", empanadilla: "Empanadilla", cereales: "Cereales",
   // Ampliación L16f
   guantes: "Guantes",
+  // Ampliación L16g
+  salmon: "Salmón", chorizo: "Embutido", fiambre: "Fiambre",
+  atun: "Atún en lata", "pimiento-rojo": "Pimiento rojo", albondigas: "Albóndigas",
 };
 
 /** Sinónimos de búsqueda por slug (además de la etiqueta). Normalizados aparte. */
@@ -176,18 +182,24 @@ export const ICON_KEYWORDS: Record<string, string> = {
   platano: "banana", naranja: "mandarina clementina", uvas: "uva racimo",
   cacahuetes: "cacahuete nueces almendras frutos secos",
   alubias: "judias lentejas garbanzos legumbre",
-  perrito: "salchicha chorizo frankfurt embutido",
+  perrito: "salchicha frankfurt butifarra",
+  chorizo: "chorizo fuet salchichon longaniza sobrasada morcilla salami embutido curado",
+  fiambre: "jamon cocido york pavo lonchas mortadela embutido",
+  albondigas: "albondiga",
   carne: "filete ternera cerdo picada solomillo",
   pollo: "muslo ave pavo",
   costilla: "chuleta cordero",
   leche: "nata lacteo batido",
   queso: "quesos lonchas rallado",
-  pescado: "salmon merluza atun sardina lubina dorada",
+  pescado: "merluza sardina lubina dorada bacalao",
+  salmon: "salmon ahumado lomo",
+  atun: "atun lata conserva bonito sardinas",
+  "pimiento-rojo": "pimiento rojo morron piquillo",
   gamba: "gambas langostinos marisco",
   pan: "hogaza barra molde",
   arroz: "arroz risotto",
   pasta: "macarrones espaguetis fideos tallarines",
-  conserva: "lata bote atun tomate frito maiz",
+  conserva: "lata bote tomate frito maiz",
   tarro: "bote mermelada salsa mayonesa mostaza ketchup pate hummus encurtidos",
   cafe: "te infusion cafe",
   refresco: "cola bebida vaso",

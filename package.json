@@ -23,6 +23,7 @@
     "check:guardas": "node scripts/check-guards.mjs",
     "check:acciones": "node scripts/check-server-actions.mjs",
     "check:iconos": "node scripts/gen-product-icon-sprite.mjs --check",
+    "check:adivina": "node scripts/check-icon-guess.mjs",
     "check:sesion": "node scripts/check-session-claims.mjs",
     "compare:menu": "node scripts/compare-menu-models.mjs",
     "informe:uso": "node scripts/usage-report.mjs",
