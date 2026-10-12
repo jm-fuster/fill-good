@@ -103,6 +103,9 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   sobrasada: "chorizo", chistorra: "chorizo", txistorra: "chorizo",
   "lomo embuchado": "chorizo",
   jamon: "jamon", paleta: "jamon", serrano: "jamon",
+  // "jamon" empareja por prefijo y empieza antes que "pollo": sin esta clave el
+  // jamoncito de pollo (el muslo) salía con la pata de serrano.
+  jamoncito: "pollo",
   // El cocido y el de pavo son fiambre en lonchas, no la pata de serrano. Nada
   // de "pechuga de pavo" a secas: también es el filete fresco.
   "jamon cocido": "fiambre", "jamon york": "fiambre", york: "fiambre",
@@ -137,9 +140,11 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   // Panadería y cereales
   // El pan rallado se vende en bolsa o en caja de cartón, no en lata.
   pan: "pan", "pan de molde": "pan", "pan rallado": "harina", hogaza: "pan",
-  // Sigue siendo pan: sin esta regla gana "cereales" (8) sobre "pan" (3), y
-  // "hamburguesa" (11) se lleva el pan de las hamburguesas.
+  // Siguen siendo pan. Desde que gana la clave que empieza antes ya salía así sin
+  // estas dos; se dejan porque documentan el caso y no cuestan nada.
   "pan de cereales": "pan", "pan de hamburguesa": "pan",
+  // "pan" empieza antes que "pita": el compuesto necesita su propia clave.
+  "pan de pita": "pan-plano",
   baguette: "baguette", croissant: "croissant", bagel: "bagel",
   pretzel: "pretzel", tortita: "tortitas", gofre: "gofre", pita: "pan-plano",
   // Las tortillas de trigo/maíz son pan plano, no la tortilla de patatas. Ganan
@@ -174,9 +179,16 @@ const KEYWORD_TO_SLUG: Record<string, string> = {
   "caldo de pollo": "sopa", "caldo de pescado": "sopa", "caldo de carne": "sopa",
   "caldo de verduras": "sopa", "caldo en pastillas": "sopa",
   "pastillas de caldo": "sopa",
-  // "crema" sola es un guiso (de calabacín, de verduras). Las excepciones dulces
-  // y la cosmética ganan por longitud, pero la catalana necesita regla propia.
+  // "crema" sola es un guiso (de calabacín, de verduras, de champiñones). Como
+  // empieza antes que cualquier ingrediente, TODAS las demás cremas necesitan su
+  // clave de varias palabras: la dulce, la de untar, la de cocina y la cosmética.
   crema: "sopa", "crema catalana": "flan",
+  "crema de cacahuete": "cacahuetes", "crema de cacao": "chocolate",
+  "crema de leche": "leche", "crema de queso": "queso",
+  "crema hidratante": "bote-spray", "crema facial": "bote-spray",
+  "crema solar": "bote-spray",
+  // Postre lácteo en tarrina, no un plato de arroz ni un vaso de leche.
+  "arroz con leche": "yogur",
   "frutos secos": "cacahuetes", cacahuete: "cacahuetes",
   nuez: "cacahuetes", almendra: "cacahuetes", avellana: "cacahuetes",
   pistacho: "cacahuetes",
@@ -333,32 +345,71 @@ function keywordPattern(kw: string): RegExp {
  * mismo: en la carnicería es un corte («tacos de ternera», «lomo en taco»), y
  * solo cuando no acompaña a nada es el taco mexicano.
  */
-const WEAK_KEYWORDS = new Set(["filete", "lomo", "solomillo", "taco"]);
+const WEAK_KEYWORDS = new Set([
+  "filete", "lomo", "solomillo", "taco",
+  // Lo mismo con el ENVASE: «lata», «tarro» y «conserva» dicen cómo viene, no
+  // qué es. Antes «Lata de atún» salía con el atún solo por un empate de longitud
+  // que decidía el orden en que se declararon las claves, y «Tarro de miel» con el
+  // tarro porque le ganaba por longitud a «miel».
+  "lata", "tarro", "conserva",
+  // «Zumo de naranja» es la naranja a propósito (el diccionario ya lo contaba): el
+  // zumo solo se queda con el brik cuando no dice de qué es.
+  "zumo",
+]);
 
-const RULES: Array<[RegExp, string]> = Object.entries(KEYWORD_TO_SLUG)
+type Rule = { re: RegExp; slug: string; len: number; weak: boolean };
+
+const RULES: Rule[] = Object.entries(KEYWORD_TO_SLUG)
   .filter(([, slug]) => isKnownIcon(slug))
   .map(([kw, slug]): [string, string] => [forMatching(normalizeName(kw)), slug])
-  // Gana la clave MÁS LARGA ya sin conectores, que es la que de verdad se
-  // compara; las débiles, siempre detrás de todas las demás.
-  .sort(
-    (a, b) =>
-      Number(WEAK_KEYWORDS.has(a[0])) - Number(WEAK_KEYWORDS.has(b[0])) ||
-      b[0].length - a[0].length,
-  )
-  .map(([kw, slug]) => [keywordPattern(kw), slug]);
+  .map(([kw, slug]) => ({
+    re: keywordPattern(kw),
+    slug,
+    len: kw.length,
+    weak: WEAK_KEYWORDS.has(kw),
+  }));
 
 /**
  * Adivina el slug de icono a partir del nombre del producto, o null si no hay
  * ninguna regla que encaje. Determinista: mismo nombre → mismo icono siempre.
+ *
+ * Entre las claves que encajan gana, por este orden:
+ *  1. la que NO es débil (ver WEAK_KEYWORDS);
+ *  2. la que EMPIEZA ANTES en el nombre: en español el núcleo va delante y lo
+ *     que viene detrás de «de/con» es el ingrediente o el sabor. Por eso
+ *     «Galletas de chocolate» es una galleta y «Café con leche», un café; con
+ *     «gana la más larga» salía la tableta de chocolate y el vaso de leche;
+ *  3. la más LARGA, que es lo que mantiene a «pasta de dientes» por delante de
+ *     «pasta»: las dos empiezan en el mismo sitio;
+ *  4. el orden de declaración, para que un empate no dependa del motor.
+ *
+ * Lo que arrastra la posición y no es obvio: un producto compuesto cuya clave
+ * corta empieza antes que la que lo define ("pan" antes que "pita") necesita su
+ * propia clave de varias palabras ("pan de pita"), que empieza en el mismo sitio
+ * y gana por longitud. Los compuestos conocidos ya las tienen; `check:adivina`
+ * fija los que más se compran.
  */
 export function guessProductIcon(name: string | null | undefined): string | null {
   if (!name) return null;
   const n = forMatching(normalizeName(name));
   if (!n) return null;
-  for (const [re, slug] of RULES) {
-    if (re.test(n)) return slug;
+  let best: { slug: string; start: number; len: number; weak: boolean } | null =
+    null;
+  for (const r of RULES) {
+    const m = r.re.exec(n);
+    if (!m) continue;
+    // El patrón empieza por `(^|[^a-z])`: el carácter previo no cuenta.
+    const start = m.index + m[1].length;
+    if (
+      !best ||
+      Number(r.weak) < Number(best.weak) ||
+      (r.weak === best.weak &&
+        (start < best.start || (start === best.start && r.len > best.len)))
+    ) {
+      best = { slug: r.slug, start, len: r.len, weak: r.weak };
+    }
   }
-  return null;
+  return best ? best.slug : null;
 }
 
 export type ResolvedIcon =
