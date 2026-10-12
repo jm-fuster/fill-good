@@ -60,7 +60,7 @@ export default function AcercaDePage() {
                 de Microsoft, variante Flat (licencia MIT).
               </li>
               <li>
-                Catorce iconos están dibujados para Fill Good, porque no existen
+                Diecinueve iconos están dibujados para Fill Good, porque no existen
                 a color en ninguna librería abierta.
               </li>
               <li>
