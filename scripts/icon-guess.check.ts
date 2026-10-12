@@ -14,10 +14,17 @@
  * colores" y "sal" en "salmorejo", "pastillas" ponía el icono del medicamento al
  * caldo en pastillas, y "filete" ponía el chuletón a una lubina. Las tres reglas que
  * gobiernan el diccionario, y que estos casos fijan:
- *  · gana la clave MÁS LARGA ya sin conectores ("pasta de dientes" > "pasta");
+ *  · gana la clave que EMPIEZA ANTES en el nombre, porque en español el núcleo
+ *    va delante y lo que sigue a «de/con» es el ingrediente («Galletas de
+ *    chocolate» es una galleta); a igual posición, la MÁS LARGA ("pasta de
+ *    dientes" > "pasta");
  *  · las claves de ≤4 letras anclan el final (y admiten el plural español);
- *  · los cortes ("filete", "lomo", "solomillo") son débiles: solo cuentan si el
- *    nombre no dice de qué animal es.
+ *  · los cortes ("filete", "lomo", "solomillo", "taco") y los envases ("lata",
+ *    "tarro", "conserva") y "zumo" son débiles: solo cuentan si el nombre no
+ *    dice de qué es.
+ * La posición tiene un precio que el check también fija: un compuesto cuya clave
+ * corta empieza antes ("pan" antes que "pita", "crema" antes que "cacahuete")
+ * necesita su propia clave de varias palabras, o se lo traga la corta.
  *
  * Lo que NO se prueba: el icono de la categoría ni el override manual
  * (`resolveProductIcon`), ni el dibujo. Un caso que espera un slug que no existe
@@ -164,6 +171,54 @@ es("Pimientos del piquillo", "pimiento-rojo");
 es("Pimiento morrón", "pimiento-rojo");
 es("Pimientos asados", "pimiento-rojo");
 es("Pimiento italiano", "pimiento");
+
+seccion("El núcleo del nombre manda, no el ingrediente más largo");
+es("Helado Häagen-Dazs 4 unidades chocolate", "helado");
+es("Galleta con mantequilla", "galleta");
+es("Croissants de margarina", "croissant");
+es("Galletas de chocolate", "galleta");
+es("Cereales con chocolate", "cereales");
+es("Batido de chocolate", "leche");
+es("Café con leche", "cafe");
+es("Sopa de fideos", "sopa");
+es("Crema de calabacín", "sopa");
+es("Pollo troceado para paella", "pollo");
+es("Tomate ensalada", "tomate");
+
+seccion("…y lo que ya iba bien con la clave más larga sigue igual");
+es("Pasta de dientes", "diente");
+es("Papel de aluminio", "bolsas");
+es("Pan de molde", "pan");
+es("Pan de pita", "pan-plano");
+es("Zumo de naranja", "naranja");
+es("Lata de atún", "atun");
+es("Bolsa de patatas fritas", "patatas-fritas");
+es("Leche de avena", "brik");
+es("Caldo de pollo", "sopa");
+es("Crema catalana", "flan");
+
+seccion("Lo que la posición rompería si no tuviera su clave de varias palabras");
+es("Crema de cacahuete", "cacahuetes");
+es("Crema de cacao", "chocolate");
+es("Crema de leche", "leche");
+es("Crema de queso", "queso");
+es("Crema de champiñones", "sopa");
+es("Crema hidratante", "bote-spray");
+es("Crema solar", "bote-spray");
+es("Jamoncito de pollo Alipende", "pollo");
+es("Arroz con leche", "yogur");
+es("Zumo", "brik");
+es("Zumo de piña", "pina");
+es("Zumo de limón", "limon");
+
+seccion("Los envases dicen cómo viene, no qué es");
+es("Tarro de miel", "miel");
+es("Conserva de atún", "atun");
+es("Atún en aceite", "atun");
+es("Sardinas en aceite", "pescado");
+es("Lata de maíz", "maiz");
+es("Lata", "conserva");
+es("Tarro", "tarro");
 
 seccion("Nombres reales que caían en la categoría");
 es("Carrilleras", "carne");
