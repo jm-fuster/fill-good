@@ -23,7 +23,7 @@ en Ajustes. Ya no está ninguno en el código actual.
 Los iconos de producto de `src/lib/product-icons/registry.ts` son la variante
 Flat de [Fluent Emoji](https://github.com/microsoft/fluentui-emoji), obtenida a
 través de [Iconify](https://icon-sets.iconify.design/fluent-emoji-flat/), y
-algunos van recoloreados. Los 14 dibujos de `assets/product-icons/` son
+algunos van recoloreados. Los 19 dibujos de `assets/product-icons/` son
 propios.
 
 ```text

@@ -215,6 +215,6 @@ otros ni redistribuirlo.
 
 Los iconos de producto son de
 [Fluent Emoji](https://github.com/microsoft/fluentui-emoji), de Microsoft, con
-licencia MIT, salvo 14 dibujados para la app en `assets/product-icons/`. Sus
+licencia MIT, salvo 19 dibujados para la app en `assets/product-icons/`. Sus
 avisos de licencia, y los de los componentes de shadcn/ui, están en
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
